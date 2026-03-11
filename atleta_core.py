@@ -60,11 +60,32 @@ def importar_csv_garmin(ruta_csv, db_path="atleta.db"):
         fase_ciclo = None
         if genero == "mujer":
             fecha_ultima_regla = input("Introduce la fecha de tu última regla (YYYY-MM-DD): ").strip()
-            duracion_ciclo = int(input("Introduce la duración media de tu ciclo en días: ").strip())
+            duracion_ciclo = int(input("Introduce la duración media de tu ciclo en días (por defecto 28): ") or 28)
             fase_ciclo = calcular_fase_ciclo(fecha_ultima_regla, duracion_ciclo)
 
         if km[0] > 10:
             ajustar_consejo_nutricional(km[0], genero, fase_ciclo)
+        elif genero == "hombre" and km[0] > 100:
+            print("Has realizado un esfuerzo extremo. Prioriza alimentos ricos en proteínas y carbohidratos para una recuperación óptima.")
+
+    connection.commit()
+    connection.close()
+
+# Crear tabla para entrenamientos de fuerza
+def crear_tabla_fuerza(db_path="atleta.db"):
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS entrenamientos_fuerza (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha TEXT,
+            ejercicio TEXT,
+            series INTEGER,
+            repeticiones INTEGER,
+            peso REAL
+        )
+    ''')
 
     connection.commit()
     connection.close()
@@ -117,5 +138,6 @@ if __name__ == "__main__":
     # Preparación para Streamlit: En el futuro, estas funciones pueden ser llamadas desde una interfaz gráfica.
     ruta_csv = "actividad.csv"
     crear_tabla_fuerza()
+    print("Base de datos y tablas inicializadas correctamente.")
     importar_csv_garmin(ruta_csv)
     print("Tiempo estimado para completar un maratón:", calcular_tiempo_maraton())
