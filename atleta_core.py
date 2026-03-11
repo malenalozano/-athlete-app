@@ -73,6 +73,29 @@ def importar_csv_garmin(ruta_csv, db_path="atleta.db"):
 
 # Crear tabla para usuarios
 def crear_tabla_usuarios(db_path="atleta.db"):
+
+# Insertar usuarios en la tabla
+def insertar_usuario(nombre, genero, objetivo, db_path="atleta.db"):
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+
+    # Verificar si el usuario ya existe
+    cursor.execute('''
+        SELECT * FROM usuarios WHERE nombre = ? AND genero = ? AND objetivo = ?
+    ''', (nombre, genero, objetivo))
+    usuario_existente = cursor.fetchone()
+
+    if not usuario_existente:
+        cursor.execute('''
+            INSERT INTO usuarios (nombre, genero, objetivo)
+            VALUES (?, ?, ?)
+        ''', (nombre, genero, objetivo))
+        print(f"Usuario '{nombre}' insertado correctamente.")
+    else:
+        print(f"El usuario '{nombre}' ya existe en la base de datos.")
+
+    connection.commit()
+    connection.close()
     connection = sqlite3.connect(db_path)
     cursor = connection.cursor()
 
@@ -155,6 +178,11 @@ if __name__ == "__main__":
     # Preparación para Streamlit: En el futuro, estas funciones pueden ser llamadas desde una interfaz gráfica.
     ruta_csv = "actividad.csv"
     crear_tabla_fuerza()
+    crear_tabla_usuarios()
+
+    # Insertar perfiles iniciales
+    insertar_usuario("Malena", "Mujer", "Maraton < 5min/km")
+    insertar_usuario("Dani", "Hombre", "Ultra 100km")
     print("Base de datos y tablas inicializadas correctamente.")
     importar_csv_garmin(ruta_csv)
     print("Tiempo estimado para completar un maratón:", calcular_tiempo_maraton())
