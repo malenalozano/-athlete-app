@@ -9,12 +9,12 @@ usuario = st.sidebar.selectbox("Selecciona un usuario", ["Malena", "Dani"])
 
 if usuario == "Malena":
     st.subheader("Objetivo de Malena: Maratón")
-    fecha_ultima_regla = st.date_input("Fecha de tu última regla:")
+    fecha_ultima_regla = st.date_input("Fecha de tu última regla:", format="DD/MM/YYYY")
     if st.button("Calcular predicción de Ciclo"):
         if fecha_ultima_regla:
             duracion_ciclo = 28  # Puedes permitir al usuario cambiar esto si es necesario
             fase_ciclo = calcular_fase_ciclo(fecha_ultima_regla, duracion_ciclo)
-            st.write(f"Fase del ciclo calculada para Malena: {fase_ciclo}")
+            st.markdown(f"### Fase del ciclo calculada para Malena: **{fase_ciclo}**")
             
             # Mostrar consejo nutricional basado en los últimos KM
             st.write("Obteniendo consejo nutricional...")

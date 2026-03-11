@@ -169,7 +169,7 @@ def calcular_fase_ciclo(fecha_ultima_regla, duracion_ciclo=28):
         fecha_ultima = datetime.strptime(fecha_ultima_regla, "%Y-%m-%d")
     else:
         fecha_ultima = fecha_ultima_regla
-    hoy = datetime.now()
+    hoy = datetime.now().date()
     dias_desde_ultima = (hoy - fecha_ultima).days
     dia_ciclo = dias_desde_ultima % duracion_ciclo
 
