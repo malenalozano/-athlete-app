@@ -71,6 +71,23 @@ def importar_csv_garmin(ruta_csv, db_path="atleta.db"):
     connection.commit()
     connection.close()
 
+# Crear tabla para usuarios
+def crear_tabla_usuarios(db_path="atleta.db"):
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            genero TEXT NOT NULL,
+            objetivo TEXT
+        )
+    ''')
+
+    connection.commit()
+    connection.close()
+
 # Crear tabla para entrenamientos de fuerza
 def crear_tabla_fuerza(db_path="atleta.db"):
     connection = sqlite3.connect(db_path)
