@@ -36,6 +36,12 @@ def importar_csv_garmin(ruta_csv, db_path="atleta.db"):
     ''')
 
     # Leer e insertar datos del CSV
+    import os
+
+    if not os.path.exists(ruta_csv):
+        print(f"Error: El archivo {ruta_csv} no existe. Asegúrate de que el archivo esté en el directorio actual.")
+        return
+
     with open(ruta_csv, newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
