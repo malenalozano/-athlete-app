@@ -1,1 +1,18 @@
-.aider*
+# Archivos temporales de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Entornos virtuales (por si acaso creas uno luego)
+venv/
+env/
+
+# Base de datos (opcional)
+# Si quieres que tu novio vea tus mismos datos, NO la pongas aquí.
+# Si quieres que cada uno tenga su propia base de datos vacía, ponla:
+atleta.db
+
+# Archivos de configuración de editores
+.vscode/
+.idea/.aider*
