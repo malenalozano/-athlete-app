@@ -165,7 +165,10 @@ def crear_tabla_fuerza(db_path="atleta.db"):
 
 # Calcular fase del ciclo menstrual
 def calcular_fase_ciclo(fecha_ultima_regla, duracion_ciclo=28):
-    fecha_ultima = datetime.strptime(fecha_ultima_regla, "%Y-%m-%d")
+    if isinstance(fecha_ultima_regla, str):
+        fecha_ultima = datetime.strptime(fecha_ultima_regla, "%Y-%m-%d")
+    else:
+        fecha_ultima = fecha_ultima_regla
     hoy = datetime.now()
     dias_desde_ultima = (hoy - fecha_ultima).days
     dia_ciclo = dias_desde_ultima % duracion_ciclo
@@ -181,11 +184,11 @@ def calcular_fase_ciclo(fecha_ultima_regla, duracion_ciclo=28):
 def ajustar_consejo_nutricional(km, genero, fase_ciclo=None):
     if genero.lower() == "mujer":
         if fase_ciclo == "Fase Lútea":
-            print("Has realizado un gran esfuerzo. Prioriza carbohidratos de calidad en tu próxima comida para apoyar tu salud hormonal.")
+            return "Has realizado un gran esfuerzo. Prioriza carbohidratos de calidad en tu próxima comida para apoyar tu salud hormonal."
         else:
-            print("Has realizado un gran esfuerzo. Asegúrate de consumir una comida balanceada con carbohidratos y proteínas.")
+            return "Has realizado un gran esfuerzo. Asegúrate de consumir una comida balanceada con carbohidratos y proteínas."
     else:
-        print("Has realizado un gran esfuerzo. Considera alimentos con baja carga glucémica para optimizar tu recuperación.")
+        return "Has realizado un gran esfuerzo. Considera alimentos con baja carga glucémica para optimizar tu recuperación."
 
 # Código para ejecutar la importación y mostrar el tiempo estimado de maratón
 if __name__ == "__main__":
