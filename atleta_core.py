@@ -53,6 +53,15 @@ def importar_csv_garmin(ruta_csv, db_path="atleta.db"):
     connection.commit()
     connection.close()
 
+    # Analizar los KM recorridos y proporcionar un consejo nutricional
+    cursor = connection.cursor()
+    cursor.execute("SELECT km_recorridos FROM datos_garmin")
+    km_recorridos = cursor.fetchall()
+
+    for km in km_recorridos:
+        if km[0] > 10:
+            print("Has realizado un gran esfuerzo. Tu cuerpo necesita energía para recuperarse y proteger tu salud hormonal; prioriza carbohidratos de calidad en tu próxima comida sin contar calorías.")
+
 # Código para ejecutar la importación y mostrar el tiempo estimado de maratón
 if __name__ == "__main__":
     ruta_csv = "actividad.csv"
