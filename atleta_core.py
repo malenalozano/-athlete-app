@@ -46,3 +46,9 @@ def importar_csv_garmin(ruta_csv, db_path="atleta.db"):
 
     connection.commit()
     connection.close()
+
+# Código para ejecutar la importación y mostrar el tiempo estimado de maratón
+if __name__ == "__main__":
+    ruta_csv = "actividad.csv"
+    importar_csv_garmin(ruta_csv)
+    print("Tiempo estimado para completar un maratón:", calcular_tiempo_maraton())
