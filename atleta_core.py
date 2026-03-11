@@ -4,6 +4,7 @@ Este software está diseñado bajo una perspectiva de fisiología femenina.
 
 import sqlite3
 import csv
+from datetime import datetime, timedelta
 
 # Función para calcular el tiempo de maratón basado en un ritmo objetivo de 5:00 min/km
 def calcular_tiempo_maraton():
@@ -55,14 +56,66 @@ def importar_csv_garmin(ruta_csv, db_path="atleta.db"):
     km_recorridos = cursor.fetchall()
 
     for km in km_recorridos:
+        genero = input("Por favor, introduce tu género (hombre/mujer): ").strip().lower()
+        fase_ciclo = None
+        if genero == "mujer":
+            fecha_ultima_regla = input("Introduce la fecha de tu última regla (YYYY-MM-DD): ").strip()
+            duracion_ciclo = int(input("Introduce la duración media de tu ciclo en días: ").strip())
+            fase_ciclo = calcular_fase_ciclo(fecha_ultima_regla, duracion_ciclo)
+
         if km[0] > 10:
-            print("Has realizado un gran esfuerzo. Tu cuerpo necesita energía para recuperarse y proteger tu salud hormonal; prioriza carbohidratos de calidad en tu próxima comida sin contar calorías.")
+            ajustar_consejo_nutricional(km[0], genero, fase_ciclo)
 
     connection.commit()
     connection.close()
 
+# Crear tabla para entrenamientos de fuerza
+def crear_tabla_fuerza(db_path="atleta.db"):
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS entrenamientos_fuerza (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha TEXT,
+            ejercicio TEXT,
+            series INTEGER,
+            repeticiones INTEGER,
+            peso REAL
+        )
+    ''')
+
+    connection.commit()
+    connection.close()
+
+# Calcular fase del ciclo menstrual
+def calcular_fase_ciclo(fecha_ultima_regla, duracion_ciclo=28):
+    fecha_ultima = datetime.strptime(fecha_ultima_regla, "%Y-%m-%d")
+    hoy = datetime.now()
+    dias_desde_ultima = (hoy - fecha_ultima).days
+    dia_ciclo = dias_desde_ultima % duracion_ciclo
+
+    if dia_ciclo <= 13:
+        return "Fase Folicular"
+    elif 14 <= dia_ciclo <= 16:
+        return "Fase Ovulatoria"
+    else:
+        return "Fase Lútea"
+
+# Ajustar consejo nutricional según género y fase del ciclo
+def ajustar_consejo_nutricional(km, genero, fase_ciclo=None):
+    if genero.lower() == "mujer":
+        if fase_ciclo == "Fase Lútea":
+            print("Has realizado un gran esfuerzo. Prioriza carbohidratos de calidad en tu próxima comida para apoyar tu salud hormonal.")
+        else:
+            print("Has realizado un gran esfuerzo. Asegúrate de consumir una comida balanceada con carbohidratos y proteínas.")
+    else:
+        print("Has realizado un gran esfuerzo. Considera alimentos con baja carga glucémica para optimizar tu recuperación.")
+
 # Código para ejecutar la importación y mostrar el tiempo estimado de maratón
 if __name__ == "__main__":
+    # Preparación para Streamlit: En el futuro, estas funciones pueden ser llamadas desde una interfaz gráfica.
     ruta_csv = "actividad.csv"
+    crear_tabla_fuerza()
     importar_csv_garmin(ruta_csv)
     print("Tiempo estimado para completar un maratón:", calcular_tiempo_maraton())
