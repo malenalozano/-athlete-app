@@ -4,5 +4,5 @@ pandas
 plotly
 garminconnect
 python-dotenv
-libsql-experimental
+libsql-client
 google-generativeai
