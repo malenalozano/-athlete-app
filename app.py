@@ -1,9 +1,8 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 import plotly.express as px
 import os
-from db_manager import DB_PATH
+from db_manager import get_db_connection
 from garmin_sync import sincronizar_actividades
 
 # Intentamos importar la IA, si falla no rompe el programa entero
@@ -18,9 +17,6 @@ st.set_page_config(page_title="Proyecto Athlete", page_icon="🏃‍♀️", lay
 # Menú lateral
 st.sidebar.title("Navegación")
 menu = st.sidebar.radio("Ir a:", ["Dashboard", "Sincronizar Garmin", "Diario Fisiológico", "Consultorio Virtual"])
-
-def get_db_connection():
-    return sqlite3.connect(DB_PATH)
 
 # ==========================================
 # PESTAÑA 1: DASHBOARD

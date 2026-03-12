@@ -1,13 +1,10 @@
-import sqlite3
 import os
 from garminconnect import Garmin, GarminConnectConnectionError, GarminConnectAuthenticationError
 from dotenv import load_dotenv
+from db_manager import get_db_connection
 
 # Cargar variables de entorno
 load_dotenv()
-
-# Ruta de la base de datos
-DB_PATH = os.getenv("DB_PATH", "atleta.db")
 
 def sincronizar_actividades(email, password, usuario_id):
     """
@@ -30,7 +27,7 @@ def sincronizar_actividades(email, password, usuario_id):
         actividades_sincronizadas = 0
 
         # Conectar a la base de datos
-        conexion = sqlite3.connect(DB_PATH)
+        conexion = get_db_connection()
         cursor = conexion.cursor()
 
         for actividad in actividades:

@@ -1,16 +1,21 @@
-import sqlite3
+import libsql_experimental as sqlite3
 import os
 from dotenv import load_dotenv
 
-# Cargar variables de entorno (preparando para Turso en el futuro)
+# Cargar variables de entorno
 load_dotenv()
 
-# Ruta de la base de datos
-DB_PATH = os.getenv("DB_PATH", "atleta.db")
+# Variables de conexión a Turso
+TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL")
+TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
+
+def get_db_connection():
+    """Establece una conexión con la base de datos de Turso."""
+    return sqlite3.connect(TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
 
 def init_db():
     """Inicializa la base de datos y crea las tablas base del proyecto."""
-    conexion = sqlite3.connect(DB_PATH)
+    conexion = get_db_connection()
     cursor = conexion.cursor()
 
     # 1. Tabla de Usuarios

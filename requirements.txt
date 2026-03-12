@@ -4,3 +4,4 @@ python-dotenv
 pandas
 plotly
 google-generativeai
+libsql-experimental
