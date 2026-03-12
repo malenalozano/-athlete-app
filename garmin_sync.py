@@ -6,9 +6,9 @@ from db_manager import get_db_connection
 # Cargar variables de entorno
 load_dotenv()
 
-def sincronizar_actividades(email, password, usuario_id):
+def sincronizar_actividades(email, password, usuario_id, num_actividades=20):
     """
-    Sincroniza las últimas 10 actividades de Garmin con la base de datos.
+    Sincroniza las últimas actividades de Garmin con la base de datos.
     """
     try:
         # Inicializar cliente Garmin y realizar login
@@ -22,8 +22,8 @@ def sincronizar_actividades(email, password, usuario_id):
         return f"Error inesperado: {e}"
 
     try:
-        # Obtener las últimas 10 actividades
-        actividades = client.get_activities(0, 10)
+        # Obtener las últimas actividades según el número especificado
+        actividades = client.get_activities(0, num_actividades)
         actividades_sincronizadas = 0
 
         # Conectar a la base de datos

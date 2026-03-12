@@ -70,11 +70,12 @@ elif menu == "Sincronizar Garmin":
         email = st.text_input("Email de Garmin")
         password = st.text_input("Contraseña", type="password")
         user_id = st.number_input("ID de Usuario", min_value=1, value=1)
+        num_actividades = st.number_input("¿Cuántas actividades quieres recuperar?", min_value=1, max_value=100, value=20)
         submit = st.form_submit_button("Sincronizar Ahora")
         
     if submit:
         with st.spinner("Sincronizando con Garmin..."):
-            resultado = sincronizar_actividades(email, password, int(user_id))
+            resultado = sincronizar_actividades(email, password, int(user_id), int(num_actividades))
             if "Error" in resultado:
                 st.error(resultado)
             else:
