@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-modelo = genai.GenerativeModel("gemini-1.5-flash")
+modelo = genai.GenerativeModel("models/gemini-1.5-flash-latest")
 
 def obtener_consejo(prompt_usuario, contexto_datos):
     system_prompt = "Eres un entrenador experto en fisiología femenina. Responde claro y útil."
