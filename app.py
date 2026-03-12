@@ -64,7 +64,15 @@ elif menu == "Dashboard":
         conexion = sqlite3.connect(DB_PATH)
         query = "SELECT * FROM actividades_garmin"
         df = pd.read_sql_query(query, conexion)
+        # Leer datos del Diario Fisiológico
+        query_fisiologia = "SELECT * FROM diario_fisiologia"
+        df_fisiologia = pd.read_sql_query(query_fisiologia, conexion)
         conexion.close()
+
+        # Procesamiento y cruce de datos
+        df['fecha'] = pd.to_datetime(df['fecha']).dt.date
+        df_fisiologia['fecha'] = pd.to_datetime(df_fisiologia['fecha']).dt.date
+        df_merged = pd.merge(df, df_fisiologia, on='fecha', how='left')
 
         # Manejo de base de datos vacía
         if df.empty:
@@ -93,6 +101,22 @@ elif menu == "Dashboard":
         # Gráfica 2: Evolución de Distancia
         fig_distancia = px.bar(df, x='fecha', y='distancia_km', title="Evolución de Distancia")
         st.plotly_chart(fig_distancia)
+
+        # Nueva Sección Visual: Fisiología y Rendimiento
+        st.subheader("🧬 Fisiología y Rendimiento (Perspectiva Femenina)")
+
+        # Gráfica 3: Impacto del Ciclo
+        if 'fase_ciclo' in df_merged.columns and not df_merged['fase_ciclo'].isnull().all():
+            fig_ciclo = px.box(df_merged, x='fase_ciclo', y='fc_media', title="Impacto del Ciclo en Frecuencia Cardíaca")
+            st.plotly_chart(fig_ciclo)
+
+        # Insights (Motor de Reglas Científicas Básico)
+        if not df_fisiologia.empty:
+            registro_reciente = df_fisiologia.iloc[-1]
+            if registro_reciente['fase_ciclo'] == "Lútea":
+                st.info("💡 Insight Científico (Dra. Stacy Sims): Estás en Fase Lútea. Tu temperatura basal y progesterona están elevadas, lo que puede aumentar tus pulsaciones medias y la sensación de fatiga. Prioriza hoy carbohidratos y mantén una buena hidratación para el entrenamiento.")
+            elif registro_reciente['fase_ciclo'] == "Folicular":
+                st.info("💡 Insight Científico: Fase Folicular. Tu cuerpo está en un estado óptimo para asimilar la alta intensidad y el trabajo de fuerza. ¡Aprovecha para los entrenos clave hacia tu Sub 5:00!")
 
     except sqlite3.Error as e:
         st.error(f"Error al conectar con la base de datos: {e}")
