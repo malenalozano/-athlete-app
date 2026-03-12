@@ -12,7 +12,7 @@ if not API_KEY:
 genai.configure(api_key=API_KEY)
 
 # Inicializar el modelo
-modelo = genai.GenerativeModel(model="gemini-1.5-flash")
+modelo = genai.GenerativeModel("gemini-1.5-flash")
 
 def obtener_consejo(prompt_usuario, contexto_datos):
     """

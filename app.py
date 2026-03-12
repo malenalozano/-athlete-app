@@ -1,152 +1,152 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from garmin_sync import sincronizar_actividades
 import plotly.express as px
+import os
 from db_manager import DB_PATH
-from ai_coach import obtener_consejo
+from garmin_sync import sincronizar_actividades
+
+# Intentamos importar la IA, si falla no rompe el programa entero
+try:
+    from ai_coach import obtener_consejo
+except ImportError:
+    obtener_consejo = None
 
 # Configuración de la página
-st.set_page_config(page_title="Proyecto Athlete", page_icon="🏃")
+st.set_page_config(page_title="Proyecto Athlete", page_icon="🏃‍♀️", layout="wide")
 
-# Menú de navegación en la barra lateral
-menu = st.sidebar.radio("Navegación", ["Dashboard", "Sincronizar Garmin", "Diario Fisiológico", "Consultorio Virtual"])
+# Menú lateral
+st.sidebar.title("Navegación")
+menu = st.sidebar.radio("Ir a:", ["Dashboard", "Sincronizar Garmin", "Diario Fisiológico", "Consultorio Virtual"])
 
-# Pestaña "Sincronizar Garmin"
-if menu == "Sincronizar Garmin":
-    st.title("Sincronizar Garmin")
-    st.write("Introduce tus credenciales de Garmin para sincronizar tus actividades.")
+def get_db_connection():
+    return sqlite3.connect(DB_PATH)
 
-    with st.form("form_sincronizar"):
+# ==========================================
+# PESTAÑA 1: DASHBOARD
+# ==========================================
+if menu == "Dashboard":
+    st.title("📊 Dashboard de Rendimiento")
+    conn = get_db_connection()
+    try:
+        df_actividades = pd.read_sql_query("SELECT * FROM actividades_garmin", conn)
+        df_fisio = pd.read_sql_query("SELECT * FROM diario_fisiologia", conn)
+    except:
+        df_actividades = pd.DataFrame()
+        df_fisio = pd.DataFrame()
+    conn.close()
+
+    if df_actividades.empty:
+        st.warning("No hay actividades sincronizadas. Ve a la pestaña 'Sincronizar Garmin'.")
+    else:
+        # Preparar datos
+        df_actividades['fecha_dt'] = pd.to_datetime(df_actividades['fecha']).dt.tz_localize(None)
+        df_actividades = df_actividades.sort_values('fecha_dt')
+        df_actividades['distancia_km'] = df_actividades['distancia_m'] / 1000
+
+        # KPIs (Métricas principales)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Actividades", len(df_actividades))
+        col2.metric("Distancia Total (km)", f"{df_actividades['distancia_km'].sum():.2f}")
+        col3.metric("FC Media Histórica", f"{df_actividades['fc_media'].mean():.0f}" if pd.notnull(df_actividades['fc_media'].mean()) else "N/A")
+
+        # Gráficas
+        st.plotly_chart(px.line(df_actividades, x='fecha_dt', y='fc_media', markers=True, title="Evolución de Frecuencia Cardíaca"), use_container_width=True)
+        st.plotly_chart(px.bar(df_actividades, x='fecha_dt', y='distancia_km', title="Evolución de Distancia (km)"), use_container_width=True)
+
+        # Insights Científicos
+        st.subheader("🧬 Fisiología y Rendimiento")
+        if not df_fisio.empty:
+            ultima_fase = df_fisio.iloc[-1]['fase_ciclo']
+            if ultima_fase == "Fase Lútea":
+                st.info("💡 **Insight Científico (Dra. Stacy Sims):** Estás en Fase Lútea. Tu temperatura basal y progesterona están elevadas, lo que puede aumentar tus pulsaciones medias y la sensación de fatiga. Prioriza carbohidratos.")
+            elif ultima_fase == "Fase Folicular":
+                st.success("💡 **Insight Científico:** Fase Folicular. Tu cuerpo está en estado óptimo para alta intensidad. ¡Aprovecha para entrenos clave hacia tu Sub 5:00!")
+        else:
+            st.info("Añade datos en el 'Diario Fisiológico' para ver correlaciones con tus pulsaciones.")
+
+# ==========================================
+# PESTAÑA 2: SINCRONIZAR GARMIN
+# ==========================================
+elif menu == "Sincronizar Garmin":
+    st.title("🔄 Sincronizar Garmin")
+    with st.form("garmin_form"):
         email = st.text_input("Email de Garmin")
-        password = st.text_input("Contraseña de Garmin", type="password")
-        usuario_id = st.number_input("ID de Usuario", min_value=1, step=1)
+        password = st.text_input("Contraseña", type="password")
+        user_id = st.number_input("ID de Usuario", min_value=1, value=1)
         submit = st.form_submit_button("Sincronizar Ahora")
-
-        if submit:
-            with st.spinner("Sincronizando con Garmin..."):
-                resultado = sincronizar_actividades(email, password, usuario_id)
+        
+    if submit:
+        with st.spinner("Sincronizando con Garmin..."):
+            resultado = sincronizar_actividades(email, password, int(user_id))
             if "Error" in resultado:
                 st.error(resultado)
             else:
                 st.success(resultado)
 
-# Pestaña "Diario Fisiológico"
+# ==========================================
+# PESTAÑA 3: DIARIO FISIOLÓGICO
+# ==========================================
 elif menu == "Diario Fisiológico":
-    st.title("Diario Fisiológico")
-    st.write("Registra tu estado fisiológico diario.")
-
-    with st.form("form_diario"):
-        fase_ciclo = st.selectbox("Fase del Ciclo", ["Folicular", "Lútea", "Ovulatoria", "No Aplica"])
-        fatiga = st.slider("Nivel de Fatiga (1-10)", min_value=1, max_value=10, step=1)
+    st.title("📓 Diario Fisiológico")
+    with st.form("fisio_form"):
+        fecha = st.date_input("Fecha")
+        fase = st.selectbox("Fase del Ciclo", ["Fase Folicular", "Fase Ovulatoria", "Fase Lútea", "No Aplica"])
+        fatiga = st.slider("Nivel de Fatiga (1-10)", 1, 10, 5)
         notas = st.text_area("Notas / Molestias / Dolor")
-        submit = st.form_submit_button("Guardar")
+        submit_fisio = st.form_submit_button("Guardar Registro")
+        
+    if submit_fisio:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO diario_fisiologia (usuario_id, fecha, fase_ciclo, fatiga_subjetiva, dolor_notas) VALUES (?, ?, ?, ?, ?)",
+                       (1, str(fecha), fase, fatiga, notas))
+        conn.commit()
+        conn.close()
+        st.success("Registro guardado correctamente.")
 
-        if submit:
-            try:
-                conexion = sqlite3.connect(DB_PATH)
-                cursor = conexion.cursor()
-                cursor.execute('''
-                    INSERT INTO diario_fisiologia (usuario_id, fecha, fase_ciclo, fatiga_subjetiva, dolor_notas)
-                    VALUES (?, DATE('now'), ?, ?, ?)
-                ''', (1, fase_ciclo, fatiga, notas))  # Cambiar usuario_id según sea necesario
-                conexion.commit()
-                conexion.close()
-                st.success("Registro guardado exitosamente.")
-            except sqlite3.Error as e:
-                st.error(f"Error al guardar en la base de datos: {e}")
-
-# Pestaña "Consultorio Virtual"
+# ==========================================
+# PESTAÑA 4: CONSULTORIO VIRTUAL (IA)
+# ==========================================
 elif menu == "Consultorio Virtual":
-    st.title("Consultorio Virtual")
-    st.write("Consulta a tu entrenador virtual sobre tu rendimiento y fisiología.")
+    st.title("🧠 Consultorio Virtual (IA)")
+    if obtener_consejo is None:
+        st.error("Error: No se ha podido cargar ai_coach.py. Revisa que el archivo exista y esté correcto.")
+    else:
+        # Extraer contexto para la IA
+        conn = get_db_connection()
+        try:
+            df_actividades = pd.read_sql_query("SELECT fecha, tipo_deporte, distancia_m, ritmo_medio, fc_media FROM actividades_garmin ORDER BY fecha DESC LIMIT 3", conn)
+            df_fisio = pd.read_sql_query("SELECT fecha, fase_ciclo, fatiga_subjetiva, dolor_notas FROM diario_fisiologia ORDER BY fecha DESC LIMIT 1", conn)
+            contexto = f"Últimas actividades: {df_actividades.to_dict('records')}. Estado fisiológico: {df_fisio.to_dict('records')}."
+        except:
+            contexto = "Aún no hay datos suficientes registrados."
+        conn.close()
 
-    try:
-        # Extraer resumen de las últimas 3 actividades
-        conexion = sqlite3.connect(DB_PATH)
-        query = "SELECT fecha, distancia_m, fc_media FROM actividades_garmin ORDER BY fecha DESC LIMIT 3"
-        df_resumen = pd.read_sql_query(query, conexion)
-        conexion.close()
+        # Interfaz de Chat
+        if "mensajes" not in st.session_state:
+            st.session_state.mensajes = []
 
-        if df_resumen.empty:
-            st.warning("No hay actividades sincronizadas. Ve a la pestaña 'Sincronizar Garmin'.")
-            st.stop()
+        # Mostrar historial de mensajes
+        for msg in st.session_state.mensajes:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-        # Convertir el resumen a un string simple
-        contexto_datos = df_resumen.to_string(index=False)
-
-        # Interfaz de chat
-        st.chat_message("assistant").write("¡Hola! Soy tu entrenador virtual. ¿En qué puedo ayudarte hoy?")
-        user_input = st.chat_input("Escribe tu pregunta aquí...")
-
-        if user_input:
-            st.chat_message("user").write(user_input)
-            with st.spinner("Pensando..."):
-                respuesta = obtener_consejo(user_input, contexto_datos)
-            st.chat_message("assistant").write(respuesta)
-
-    except sqlite3.Error as e:
-        st.error(f"Error al conectar con la base de datos: {e}")
-    st.title("Dashboard")
-    st.write("Próximamente: Gráficas de Rendimiento e IA.")
-
-    try:
-        conexion = sqlite3.connect(DB_PATH)
-        query = "SELECT * FROM actividades_garmin"
-        df = pd.read_sql_query(query, conexion)
-        # Leer datos del Diario Fisiológico
-        query_fisiologia = "SELECT * FROM diario_fisiologia"
-        df_fisiologia = pd.read_sql_query(query_fisiologia, conexion)
-        conexion.close()
-
-        # Procesamiento y cruce de datos
-        df['fecha'] = pd.to_datetime(df['fecha']).dt.date
-        df_fisiologia['fecha'] = pd.to_datetime(df_fisiologia['fecha']).dt.date
-        df_merged = pd.merge(df, df_fisiologia, on='fecha', how='left')
-
-        # Manejo de base de datos vacía
-        if df.empty:
-            st.warning("No hay actividades sincronizadas. Ve a la pestaña 'Sincronizar Garmin'.")
-            st.stop()
-
-        # Procesamiento de datos
-        df['fecha'] = pd.to_datetime(df['fecha'])
-        df = df.sort_values(by='fecha')
-        df['distancia_km'] = df['distancia_m'] / 1000
-
-        # Métricas clave (KPIs)
-        total_actividades = len(df)
-        distancia_total = df['distancia_km'].sum()
-        fc_media_promedio = df['fc_media'].mean()
-
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total de Actividades", total_actividades)
-        col2.metric("Distancia Total (km)", f"{distancia_total:.2f}")
-        col3.metric("Frecuencia Cardíaca Media", f"{fc_media_promedio:.1f}")
-
-        # Gráfica 1: Evolución de Frecuencia Cardíaca
-        fig_fc = px.line(df, x='fecha', y='fc_media', title="Evolución de Frecuencia Cardíaca", markers=True)
-        st.plotly_chart(fig_fc)
-
-        # Gráfica 2: Evolución de Distancia
-        fig_distancia = px.bar(df, x='fecha', y='distancia_km', title="Evolución de Distancia")
-        st.plotly_chart(fig_distancia)
-
-        # Nueva Sección Visual: Fisiología y Rendimiento
-        st.subheader("🧬 Fisiología y Rendimiento (Perspectiva Femenina)")
-
-        # Gráfica 3: Impacto del Ciclo
-        if 'fase_ciclo' in df_merged.columns and not df_merged['fase_ciclo'].isnull().all():
-            fig_ciclo = px.box(df_merged, x='fase_ciclo', y='fc_media', title="Impacto del Ciclo en Frecuencia Cardíaca")
-            st.plotly_chart(fig_ciclo)
-
-        # Insights (Motor de Reglas Científicas Básico)
-        if not df_fisiologia.empty:
-            registro_reciente = df_fisiologia.iloc[-1]
-            if registro_reciente['fase_ciclo'] == "Lútea":
-                st.info("💡 Insight Científico (Dra. Stacy Sims): Estás en Fase Lútea. Tu temperatura basal y progesterona están elevadas, lo que puede aumentar tus pulsaciones medias y la sensación de fatiga. Prioriza hoy carbohidratos y mantén una buena hidratación para el entrenamiento.")
-            elif registro_reciente['fase_ciclo'] == "Folicular":
-                st.info("💡 Insight Científico: Fase Folicular. Tu cuerpo está en un estado óptimo para asimilar la alta intensidad y el trabajo de fuerza. ¡Aprovecha para los entrenos clave hacia tu Sub 5:00!")
-
-    except sqlite3.Error as e:
-        st.error(f"Error al conectar con la base de datos: {e}")
+        # Input del usuario
+        duda = st.chat_input("Escribe tu duda (ej. ¿Cómo ves mi carga de entrenamiento en esta fase de mi ciclo?)...")
+        if duda:
+            # Mostrar lo que escribió el usuario
+            with st.chat_message("user"):
+                st.markdown(duda)
+            st.session_state.mensajes.append({"role": "user", "content": duda})
+            
+            # Mostrar la respuesta de la IA
+            with st.chat_message("assistant"):
+                with st.spinner("Analizando tus datos biométricos..."):
+                    try:
+                        # Ojo: pasamos duda y contexto. Si tu ai_coach pide más parámetros, avisame.
+                        respuesta = obtener_consejo(duda, contexto) 
+                        st.markdown(respuesta)
+                        st.session_state.mensajes.append({"role": "assistant", "content": respuesta})
+                    except Exception as e:
+                        st.error(f"Error al procesar la respuesta: {e}")

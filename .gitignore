@@ -16,3 +16,6 @@ atleta.db
 # Archivos de configuración de editores
 .vscode/
 .idea/.aider*
+.aider*
+# Mis secretos (¡NUNCA SUBIR!)
+.env

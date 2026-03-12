@@ -1,16 +1,20 @@
-db_manager.py
 import sqlite3
 import os
+from dotenv import load_dotenv
 
-DB_PATH = "atleta.db"
+# Cargar variables de entorno (preparando para Turso en el futuro)
+load_dotenv()
+
+# Ruta de la base de datos
+DB_PATH = os.getenv("DB_PATH", "atleta.db")
 
 def init_db():
-    try:
-        connection = sqlite3.connect(DB_PATH)
-        cursor = connection.cursor()
+    """Inicializa la base de datos y crea las tablas base del proyecto."""
+    conexion = sqlite3.connect(DB_PATH)
+    cursor = conexion.cursor()
 
-        # Crear tabla usuarios
-        cursor.execute('''
+    # 1. Tabla de Usuarios
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre TEXT,
@@ -18,10 +22,10 @@ def init_db():
             password_garmin TEXT,
             rol TEXT
         )
-        ''')
+    ''')
 
-        # Crear tabla actividades_garmin
-        cursor.execute('''
+    # 2. Tabla de Actividades Garmin
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS actividades_garmin (
             id_actividad TEXT PRIMARY KEY,
             usuario_id INTEGER,
@@ -33,10 +37,10 @@ def init_db():
             fc_media INTEGER,
             fc_max INTEGER
         )
-        ''')
+    ''')
 
-        # Crear tabla diario_fisiologia
-        cursor.execute('''
+    # 3. Tabla Diario Fisiología (Foco Femenino y Salud)
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS diario_fisiologia (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             usuario_id INTEGER,
@@ -45,15 +49,11 @@ def init_db():
             fatiga_subjetiva INTEGER,
             dolor_notas TEXT
         )
-        ''')
+    ''')
 
-        connection.commit()
-        print("Base de datos inicializada correctamente")
-    except sqlite3.Error as e:
-        print(f"Error al inicializar la base de datos: {e}")
-    finally:
-        if connection:
-            connection.close()
+    conexion.commit()
+    conexion.close()
 
 if __name__ == "__main__":
     init_db()
+    print("Base de datos inicializada correctamente")
