@@ -55,8 +55,10 @@ def sincronizar_actividades(email, password, usuario_id):
         conexion.close()
 
         return f"Sincronización completada: {actividades_sincronizadas} actividades sincronizadas."
-    except sqlite3.Error as e:
-        return f"Error de base de datos: {e}"
+    except Exception as e:
+        if "database" in str(e).lower():
+            return f"Error de base de datos: {e}"
+        return f"Error inesperado durante la sincronización: {e}"
     except Exception as e:
         return f"Error inesperado durante la sincronización: {e}"
 
