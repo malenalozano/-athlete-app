@@ -4,6 +4,7 @@ import plotly.express as px
 import os
 from db_manager import get_db_connection
 from garmin_sync import sincronizar_actividades
+from ai_coach import procesar_nota_fuerza
 
 # Intentamos importar la IA, si falla no rompe el programa entero
 try:
