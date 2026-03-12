@@ -3,3 +3,4 @@ python-garminconnect
 python-dotenv
 pandas
 plotly
+google-generativeai

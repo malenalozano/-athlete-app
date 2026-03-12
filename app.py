@@ -4,12 +4,13 @@ import pandas as pd
 from garmin_sync import sincronizar_actividades
 import plotly.express as px
 from db_manager import DB_PATH
+from ai_coach import obtener_consejo
 
 # Configuración de la página
 st.set_page_config(page_title="Proyecto Athlete", page_icon="🏃")
 
 # Menú de navegación en la barra lateral
-menu = st.sidebar.radio("Navegación", ["Dashboard", "Sincronizar Garmin", "Diario Fisiológico"])
+menu = st.sidebar.radio("Navegación", ["Dashboard", "Sincronizar Garmin", "Diario Fisiológico", "Consultorio Virtual"])
 
 # Pestaña "Sincronizar Garmin"
 if menu == "Sincronizar Garmin":
@@ -55,8 +56,37 @@ elif menu == "Diario Fisiológico":
             except sqlite3.Error as e:
                 st.error(f"Error al guardar en la base de datos: {e}")
 
-# Pestaña "Dashboard"
-elif menu == "Dashboard":
+# Pestaña "Consultorio Virtual"
+elif menu == "Consultorio Virtual":
+    st.title("Consultorio Virtual")
+    st.write("Consulta a tu entrenador virtual sobre tu rendimiento y fisiología.")
+
+    try:
+        # Extraer resumen de las últimas 3 actividades
+        conexion = sqlite3.connect(DB_PATH)
+        query = "SELECT fecha, distancia_m, fc_media FROM actividades_garmin ORDER BY fecha DESC LIMIT 3"
+        df_resumen = pd.read_sql_query(query, conexion)
+        conexion.close()
+
+        if df_resumen.empty:
+            st.warning("No hay actividades sincronizadas. Ve a la pestaña 'Sincronizar Garmin'.")
+            st.stop()
+
+        # Convertir el resumen a un string simple
+        contexto_datos = df_resumen.to_string(index=False)
+
+        # Interfaz de chat
+        st.chat_message("assistant").write("¡Hola! Soy tu entrenador virtual. ¿En qué puedo ayudarte hoy?")
+        user_input = st.chat_input("Escribe tu pregunta aquí...")
+
+        if user_input:
+            st.chat_message("user").write(user_input)
+            with st.spinner("Pensando..."):
+                respuesta = obtener_consejo(user_input, contexto_datos)
+            st.chat_message("assistant").write(respuesta)
+
+    except sqlite3.Error as e:
+        st.error(f"Error al conectar con la base de datos: {e}")
     st.title("Dashboard")
     st.write("Próximamente: Gráficas de Rendimiento e IA.")
 
