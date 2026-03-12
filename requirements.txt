@@ -6,3 +6,4 @@ garminconnect
 python-dotenv
 libsql
 google-generativeai
+pypdf

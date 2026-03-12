@@ -23,3 +23,43 @@ def procesar_nota_fuerza(texto):
         import csv
         return {"exito": True, "datos": [f for f in csv.DictReader(txt.split('\n'), delimiter=';')], "raw": txt}
     except Exception as e: return {"exito": False, "datos": [], "raw": str(e)}
+
+
+def ajustar_plan_con_feedback(plan_csv, feedback, perfil_resumen=""):
+    """
+    Recibe el plan actual (como texto CSV con cabecera) y feedback en lenguaje natural.
+    Devuelve el mismo CSV con los cambios solicitados aplicados.
+    """
+    prompt = (
+        "Eres una entrenadora de alto rendimiento. Te doy el plan de entrenamiento semanal de una atleta en formato CSV "
+        "(separador ;) y su feedback sobre cambios que desea.\n"
+        "Aplica solo los cambios pedidos. No modifiques lo que no se mencione. "
+        "Devuelve el plan completo actualizado SIN texto extra, solo CSV con cabecera.\n"
+        f"Perfil atleta: {perfil_resumen}\n"
+        f"Plan actual:\n{plan_csv}\n\n"
+        f"Feedback de la atleta: {feedback}"
+    )
+    try:
+        txt = modelo.generate_content(prompt).text
+        txt = txt.replace('```csv', '').replace('```', '').strip()
+        import csv, io
+        reader = csv.DictReader(io.StringIO(txt), delimiter=';')
+        filas = list(reader)
+        if filas:
+            return {"exito": True, "datos": filas, "raw": txt}
+        return {"exito": False, "datos": [], "raw": txt}
+    except Exception as e:
+        return {"exito": False, "datos": [], "raw": str(e)}
+
+
+def obtener_consejo(duda, contexto=""):
+    prompt = (
+        "Eres una entrenadora de running y fuerza para mujer atleta. "
+        "Responde de forma concreta, segura y accionable en español.\n"
+        f"Contexto del atleta: {contexto}\n"
+        f"Pregunta: {duda}"
+    )
+    try:
+        return modelo.generate_content(prompt).text.strip()
+    except Exception as e:
+        return f"No pude generar consejo ahora mismo: {e}"
