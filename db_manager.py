@@ -28,6 +28,10 @@ def init_db():
         )
     ''')
 
+    # Añadir columnas rpe y musculo_principal si no existen
+    cursor.execute("ALTER TABLE entrenamientos_fuerza ADD COLUMN IF NOT EXISTS rpe INTEGER")
+    cursor.execute("ALTER TABLE entrenamientos_fuerza ADD COLUMN IF NOT EXISTS musculo_principal TEXT")
+
     # 2. Tabla de Actividades Garmin
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS actividades_garmin (

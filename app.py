@@ -164,14 +164,18 @@ elif menu == "🏋️‍♀️ Diario de Fuerza":
                     st.success("Nota procesada correctamente. Revisa los resultados:")
                     st.write(ejercicios)
 
+                    # Mostrar resumen de músculos trabajados
+                    musculos_trabajados = {ej['musculo_principal'] for ej in ejercicios}
+                    st.info(f"Hoy has trabajado principalmente: {', '.join(musculos_trabajados)}")
+
                     if st.button("Confirmar y Guardar en Nube"):
                         conn = get_db_connection()
                         cursor = conn.cursor()
                         for ejercicio in ejercicios:
                             cursor.execute('''
-                                INSERT INTO entrenamientos_fuerza (fecha, ejercicio, peso, series, repeticiones, grupo_muscular, notas)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            ''', (st.date_input("Fecha"), ejercicio['ejercicio'], ejercicio['peso'], ejercicio['series'], ejercicio['repeticiones'], ejercicio['grupo_muscular'], nota_fuerza))
+                                INSERT INTO entrenamientos_fuerza (fecha, ejercicio, peso, series, repeticiones, grupo_muscular, rpe, musculo_principal, notas)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ''', (st.date_input("Fecha"), ejercicio['ejercicio'], ejercicio['peso'], ejercicio['series'], ejercicio['repeticiones'], ejercicio['grupo_muscular'], ejercicio.get('rpe', 0), ejercicio['musculo_principal'], nota_fuerza))
                         conn.commit()
                         conn.close()
                         st.success("Entrenamiento guardado correctamente.")

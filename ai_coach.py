@@ -23,16 +23,18 @@ def obtener_consejo(prompt_usuario, contexto_datos):
         "a mejorar su rendimiento y alcanzar un ritmo de 5:00 min/km. Responde de manera clara y útil."
     )
     prompt_completo = f"{system_prompt}\n\nContexto del usuario:\n{contexto_datos}\n\nPregunta del usuario:\n{prompt_usuario}"
-    respuesta = modelo.generate_text(prompt=prompt_completo)
+    respuesta = modelo.generate_content(prompt=prompt_completo)
     return respuesta.text
 def procesar_nota_fuerza(texto_nota):
     """
     Procesa una nota de entrenamiento de fuerza utilizando la API de Gemini.
     """
     prompt = (
-        "Extrae los ejercicios de fuerza de este texto y devuélvelos en formato JSON "
-        "(una lista de objetos con: ejercicio, peso, series, repeticiones, grupo_muscular). "
-        "Si no se especifica grupo muscular, asígnalo tú (ej: Hip Thrust -> Glúteos). "
+        "Eres un experto en biomecánica. Analiza notas de gimnasio. "
+        "Extrae: ejercicio, peso_total (suma discos + barra), series, repeticiones. "
+        "Identifica 'musculo_principal' (ej: Sentadilla -> Cuádriceps). "
+        "Identifica 'RPE' (esfuerzo del 1 al 10 basado en las notas del usuario). "
+        "Si el usuario no dice peso, pon 0. Devuelve SIEMPRE un JSON válido (lista de objetos). "
         f"Texto: {texto_nota}"
     )
     respuesta = modelo.generate_text(prompt=prompt)
