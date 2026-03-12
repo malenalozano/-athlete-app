@@ -309,6 +309,7 @@ def guardar_estudio_referencia(usuario_id, uploaded_file, categoria, resumen_man
         conn.close()
 
 
+@st.cache_data(ttl=600)
 def contexto_estudios(usuario_id=None):
     conn = get_db_connection()
     try:
@@ -898,6 +899,7 @@ def cargar_plan_semanal(usuario_id, semana_inicio):
     return df
 
 
+@st.cache_data(ttl=300)
 def resumen_usuario_para_plan(usuario_id):
     conn = get_db_connection()
     out = {
@@ -1053,6 +1055,7 @@ def inicio_semana(fecha_obj):
     return fecha_obj - timedelta(days=fecha_obj.weekday())
 
 
+@st.cache_data(ttl=60)
 def resumen_dashboard(usuario_id):
     conn = get_db_connection()
     out = {
@@ -1329,20 +1332,38 @@ if "usuario_id" not in st.session_state:
         st.rerun()
 
     st.markdown(
-        """<div style='max-width:440px;margin:80px auto 0 auto;text-align:center;'>
-        <h1 style='margin-bottom:4px;'>🏃‍♀️ Proyecto Athlete</h1>
-        <p style='color:#64748b;margin-bottom:32px;'>Selecciona tu perfil de atleta</p>
-        </div>""",
+        """
+        <style>
+        .login-wrap { max-width:420px; margin:72px auto 32px; text-align:center; }
+        .login-badge {
+            width:62px; height:62px;
+            background:linear-gradient(135deg,#6b8f12 0%,#d9f20f 100%);
+            border-radius:18px; margin:0 auto 18px;
+            display:flex; align-items:center; justify-content:center;
+            box-shadow:0 8px 24px rgba(107,143,18,0.30);
+        }
+        .login-badge svg { width:30px; height:30px; fill:white; }
+        .login-title { font-size:1.75rem; font-weight:800; color:#123126; margin:0 0 6px; letter-spacing:-0.03em; }
+        .login-sub { color:#315447; font-size:0.95rem; margin:0 0 28px; }
+        </style>
+        <div class="login-wrap">
+            <div class="login-badge">
+                <svg viewBox="0 0 24 24"><path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"/></svg>
+            </div>
+            <div class="login-title">Proyecto Athlete</div>
+            <div class="login-sub">Selecciona tu perfil de atleta</div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("🙋‍♀️ Malena", use_container_width=True, type="primary"):
+        if st.button("Malena", use_container_width=True, type="primary"):
             st.session_state.usuario_id = 1
             _guardar_ultimo_usuario(1)
             st.rerun()
-        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-        if st.button("🙋‍♂️ Dani", use_container_width=True):
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        if st.button("Dani", use_container_width=True):
             st.session_state.usuario_id = 2
             _guardar_ultimo_usuario(2)
             st.rerun()
@@ -1353,7 +1374,7 @@ perfil = obtener_perfil(user_actual)
 
 # 3. ONBOARDING (Configuración inicial de Perfil + Garmin)
 if perfil is None:
-    st.title("👋 ¡Bienvenida a tu Plan Maestro!")
+    st.title("Proyecto Athlete")
     st.subheader("Configura tu perfil de atleta y conexión Garmin")
     
     with st.form("onboarding_form"):
@@ -1399,111 +1420,275 @@ if perfil is None:
     st.stop()
 
 # 4. MENÚ SUPERIOR CON SELECTOR DE PERFIL
-# Estilos nav
+nombre_usuario = perfil.get("nombre", "Atleta") if perfil else "Atleta"
+_bienvenida = f"Bienvenida, {nombre_usuario}" if user_actual == 1 else f"Bienvenido, {nombre_usuario}"
+
 st.markdown(
-    """
+    f"""
     <style>
-    .bloque-nav {
+    :root {
+        --ath-bg: #ecf2e3;
+        --ath-surface: #f3f7eb;
+        --ath-card: #eef4df;
+        --ath-border: #c5d1b0;
+        --ath-text: #123126;
+        --ath-text-soft: #315447;
+        --ath-brand-deep: #082d27;
+        --ath-brand-mid: #12443a;
+        --ath-lime: #d9f20f;
+        --ath-olive: #6b8f12;
+    }
+    /* ─── Global typography ─── */
+    html, body, [class*="css"] {{
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+    }}
+    [data-testid="stAppViewContainer"] {{
         background:
-            radial-gradient(circle at top left, rgba(94, 234, 212, 0.16), transparent 28%),
-            linear-gradient(135deg, #083344 0%, #0f766e 46%, #0f172a 100%);
-        border-radius: 24px;
-        padding: 18px 20px 14px 20px;
-        margin-bottom: 18px;
-        box-shadow: 0 18px 45px rgba(2, 6, 23, 0.30);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-    .bloque-nav h3 {
-        color: #f0fdfa;
-        margin: 0 0 4px 0;
-        font-weight: 700;
-        letter-spacing: 0.2px;
-        font-size: 1.18rem;
-    }
-    .bloque-nav p {
-        color: rgba(236, 254, 255, 0.82);
-        margin: 0;
-        font-size: 0.96rem;
-    }
-    div[data-testid="stHorizontalBlock"] [role="radiogroup"] {
-        gap: 0.75rem;
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.10);
-        padding: 0.5rem;
-        border-radius: 18px;
-        backdrop-filter: blur(6px);
-    }
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] {
-        min-height: 52px;
-        background: rgba(248, 250, 252, 0.90);
-        border: 1px solid rgba(148, 163, 184, 0.22);
-        border-radius: 14px;
-        padding: 8px 16px;
+            radial-gradient(circle at 8% 8%, rgba(217,242,15,0.10) 0%, transparent 38%),
+            linear-gradient(180deg, var(--ath-bg) 0%, #e8efdc 100%);
+        color: var(--ath-text);
+    }}
+    [data-testid="stHeader"] {{
+        background: rgba(236,242,227,0.75);
+        backdrop-filter: blur(8px);
+    }}
+    /* ─── Header brand bar ─── */
+    .nav-outer {{
+        background:
+            radial-gradient(ellipse at 8% 50%, rgba(217,242,15,0.19) 0%, transparent 55%),
+            linear-gradient(135deg, var(--ath-brand-deep) 0%, var(--ath-brand-mid) 48%, var(--ath-brand-deep) 100%);
+        border-radius: 20px;
+        padding: 14px 20px 12px 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 12px 40px rgba(2,6,23,0.28);
+        border: 1px solid rgba(217,242,15,0.22);
+    }}
+    .athlete-brand {{
         display: flex;
         align-items: center;
-        justify-content: center;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
-        transition: all 0.18s ease;
-    }
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] > div {
-        color: #0f172a !important;
-        font-weight: 700;
+        gap: 13px;
+        padding: 2px 0 4px 0;
+    }}
+    .brand-icon {{
+        width: 44px; height: 44px;
+        background: linear-gradient(135deg, var(--ath-olive) 0%, var(--ath-lime) 100%);
+        border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+        box-shadow: 0 4px 14px rgba(107,143,18,0.38);
+    }}
+    .brand-icon svg {{ width:24px; height:24px; fill:white; }}
+    .brand-text-title {{
+        font-size: 1.22rem; font-weight: 800; color: #f0fdfa;
+        letter-spacing: -0.022em; line-height: 1.2;
+    }}
+    .brand-text-sub {{
+        font-size: 0.79rem; color: rgba(204,251,241,0.78);
+        font-weight: 400; line-height: 1.1; margin-top: 2px;
+    }}
+    /* ─── Nav radio ─── */
+    div[data-testid="stHorizontalBlock"] [role="radiogroup"] {{
+        gap: 0.45rem;
+        background: rgba(248, 255, 234, 0.10);
+        border: 1px solid rgba(217,242,15,0.22);
+        padding: 0.38rem;
+        border-radius: 13px;
+        backdrop-filter: blur(8px);
+    }}
+    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] {{
+        min-height: 42px;
+        background: rgba(241, 247, 229, 0.95);
+        border: 1px solid rgba(145, 163, 111, 0.36);
+        border-radius: 9px;
+        padding: 6px 13px;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.42);
+        transition: all 0.16s ease;
+    }}
+    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] > div {{
+        color: var(--ath-text) !important;
+        font-weight: 600;
         opacity: 1 !important;
-        font-size: 0.95rem;
-        letter-spacing: 0.01em;
-    }
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] svg {
-        fill: #0f172a !important;
-    }
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"]:hover {
+        font-size: 0.865rem;
+        letter-spacing: 0.008em;
+    }}
+    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] svg {{
+        fill: var(--ath-text) !important;
+    }}
+    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"]:hover {{
         transform: translateY(-1px);
-        border-color: rgba(45, 212, 191, 0.70);
-        background: #ffffff;
-    }
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"][aria-checked="true"] {
-        background: linear-gradient(180deg, #ffffff 0%, #ecfeff 100%);
-        border-color: #14b8a6;
-        box-shadow: 0 10px 22px rgba(15, 118, 110, 0.18);
-    }
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"][aria-checked="true"] > div {
-        color: #0f766e !important;
-    }
-    div[data-testid="stSelectbox"] > div[data-baseweb="select"] {
-        background: rgba(248, 250, 252, 0.92);
+        border-color: rgba(217,242,15,0.65);
+        background: #f7fbef;
+    }}
+    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"][aria-checked="true"] {{
+        background: linear-gradient(160deg, #f8fce9 0%, #eef7d7 100%);
+        border-color: var(--ath-olive);
+        box-shadow: 0 5px 16px rgba(107,143,18,0.25);
+    }}
+    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"][aria-checked="true"] > div {{
+        color: #365513 !important;
+        font-weight: 700;
+    }}
+    /* ─── Profile selectbox ─── */
+    div[data-testid="stSelectbox"] > div[data-baseweb="select"] {{
+        background: rgba(240,246,227,0.95);
+        border-radius: 10px;
+        border: 1px solid rgba(145,163,111,0.38);
+        min-height: 42px;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.48);
+    }}
+    div[data-testid="stSelectbox"] svg {{ fill: var(--ath-text); }}
+    /* ─── Metric cards ─── */
+    [data-testid="stMetric"] {{
+        background: var(--ath-card);
+        border: 1px solid var(--ath-border);
         border-radius: 14px;
-        border: 1px solid rgba(148, 163, 184, 0.26);
-        min-height: 52px;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
-    }
-    div[data-testid="stSelectbox"] svg {
-        fill: #0f172a;
-    }
-    @media (max-width: 900px) {
-        div[data-testid="stHorizontalBlock"] [role="radiogroup"] {
-            gap: 0.45rem;
-            padding: 0.35rem;
-        }
-        div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] {
-            min-height: 46px;
-            padding: 8px 12px;
-        }
-        div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] > div {
-            font-size: 0.84rem;
-        }
-    }
+        padding: 16px 18px;
+        box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+        transition: box-shadow 0.2s ease;
+    }}
+    [data-testid="stMetric"]:hover {{
+        box-shadow: 0 5px 18px rgba(0,0,0,0.09);
+    }}
+    [data-testid="stMetricLabel"] p {{
+        font-size: 0.72rem !important;
+        color: var(--ath-text-soft) !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.065em !important;
+    }}
+    [data-testid="stMetricValue"] {{
+        font-size: 1.52rem !important;
+        font-weight: 800 !important;
+        color: var(--ath-text) !important;
+        letter-spacing: -0.02em !important;
+    }}
+    /* ─── Primary buttons ─── */
+    .stButton > button {{
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        font-size: 0.875rem !important;
+        letter-spacing: 0.008em !important;
+        transition: all 0.18s ease !important;
+    }}
+    .stButton > button[kind="primary"] {{
+        background: linear-gradient(135deg, #55760f 0%, #d9f20f 100%) !important;
+        color: #0f291f !important;
+        border: none !important;
+        box-shadow: 0 3px 10px rgba(107,143,18,0.28) !important;
+    }}
+    .stButton > button[kind="primary"]:hover {{
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 20px rgba(107,143,18,0.38) !important;
+    }}
+    .stButton > button:not([kind="primary"]) {{
+        background: #edf4dd !important;
+        color: var(--ath-text) !important;
+        border: 1px solid #b7c99a !important;
+    }}
+    .stButton > button:not([kind="primary"]):hover {{
+        background: #e3efcc !important;
+        border-color: #8aa863 !important;
+        transform: translateY(-1px) !important;
+    }}
+    /* ─── Garmin sync pill button ─── */
+    .garmin-btn button {{
+        background: linear-gradient(135deg, #0c3c31 0%, #254f0a 100%) !important;
+        color: #f0fdfa !important;
+        border: none !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        font-size: 0.82rem !important;
+        letter-spacing: 0.015em !important;
+        box-shadow: 0 3px 12px rgba(12,60,49,0.36) !important;
+        transition: all 0.2s ease !important;
+        min-height: 42px !important;
+        width: 100% !important;
+    }}
+    .garmin-btn button:hover {{
+        box-shadow: 0 6px 20px rgba(12,60,49,0.45) !important;
+        transform: translateY(-1px) !important;
+    }}
+    /* ─── Expanders ─── */
+    details[data-testid="stExpander"] {{
+        border: 1px solid var(--ath-border) !important;
+        border-radius: 12px !important;
+        overflow: hidden;
+        background: var(--ath-surface);
+    }}
+    details[data-testid="stExpander"] summary {{
+        padding: 12px 16px !important;
+        font-weight: 600 !important;
+        color: var(--ath-text) !important;
+        background: #e9f2d6 !important;
+    }}
+    /* ─── Dividers ─── */
+    hr {{
+        border: none !important;
+        border-top: 1px solid #cdd9b9 !important;
+        margin: 18px 0 !important;
+    }}
+    /* ─── Responsive ─── */
+    @media (max-width: 900px) {{
+        .nav-outer {{ padding: 10px 12px 8px 12px; border-radius: 14px; }}
+        .brand-text-title {{ font-size: 1.05rem; }}
+        div[data-testid="stHorizontalBlock"] [role="radiogroup"] {{
+            gap: 0.28rem; padding: 0.28rem;
+        }}
+        div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] {{
+            min-height: 36px; padding: 4px 8px;
+        }}
+        div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] > div {{
+            font-size: 0.76rem;
+        }}
+        [data-testid="stMetricValue"] {{ font-size: 1.25rem !important; }}
+        [data-testid="stMetricLabel"] p {{ font-size: 0.62rem !important; }}
+    }}
+    @media (max-width: 600px) {{
+        .brand-icon {{ width:36px; height:36px; border-radius:9px; }}
+        .brand-text-title {{ font-size: 0.95rem; }}
+        .brand-text-sub {{ font-size: 0.70rem; }}
+    }}
     </style>
-    <div class="bloque-nav">
-        <h3>Plan Maestro de Rendimiento</h3>
-        <p>Dashboard, biblioteca, planificación y calendario en una barra superior más clara y compacta.</p>
+    <div class="nav-outer">
+        <div class="athlete-brand">
+            <div class="brand-icon">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"/>
+                </svg>
+            </div>
+            <div>
+                <div class="brand-text-title">Proyecto Athlete</div>
+                <div class="brand-text-sub">{_bienvenida}</div>
+            </div>
+        </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# Selector de perfil en la parte superior
-_perfiles = {"🙋‍♀️ Malena": 1, "🙋‍♂️ Dani": 2}
-_perfil_actual_nombre = "🙋‍♀️ Malena" if user_actual == 1 else "🙋‍♂️ Dani"
-_nav_col, _sel_col = st.columns([0.78, 0.22])
+# ── Opciones de menú según perfil ─────────────────────────────────────────
+_opciones_menu = [
+    "Dashboard",
+    "Biblioteca Científica",
+    "Asistente Virtual",
+    "Diario de Fuerza",
+    "Entrenador Personal",
+    "Calendario",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# ── Fila nav: radio + botón Garmin + selector de perfil ───────────────────
+_perfiles = {"Malena": 1, "Dani": 2}
+_perfil_actual_nombre = "Malena" if user_actual == 1 else "Dani"
+_nav_col, _garmin_col, _sel_col = st.columns([0.63, 0.20, 0.17])
+
+with _garmin_col:
+    st.markdown('<div class="garmin-btn">', unsafe_allow_html=True)
+    _do_sync = st.button("↺  Sincronizar Garmin", key="garmin_sync_header", use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
 with _sel_col:
     _elegido = st.selectbox(
         "Perfil",
@@ -1519,60 +1704,44 @@ with _sel_col:
 with _nav_col:
     menu = st.radio(
         "Navegación principal",
-        [
-            "Dashboard",
-            "Biblioteca Científica",
-            "Ciclo Menstrual",
-            "Consultorio Virtual",
-            "Diario de Fuerza",
-            "Entrenador Personal",
-            "Calendario",
-        ],
+        _opciones_menu,
         horizontal=True,
         label_visibility="collapsed",
     )
+
+# ── Lógica de sincronización Garmin ───────────────────────────────────────
+if _do_sync:
+    cred = obtener_credenciales_garmin(user_actual)
+    if cred and cred[0]:
+        with st.spinner("Conectando con Garmin…"):
+            try:
+                email_g, p_enc_g = cred
+                pw_g = desencriptar_password(p_enc_g)
+                n_carreras = sincronizar_actividades_inteligente(email_g, pw_g, user_actual)
+                n_bio = sincronizar_biometricos_garmin(email_g, pw_g, user_actual, dias=7)
+                client_g = iniciar_sesion_garmin(email_g, pw_g)
+                hoy_g = datetime.now()
+                for _i in range(3):
+                    _fd = hoy_g - timedelta(days=_i)
+                    _ds = obtener_datos_sueno(client_g, _fd)
+                    if _ds:
+                        guardar_sueno_db(user_actual, _ds)
+                st.cache_data.clear()
+                st.toast(f"Sincronizado — {n_carreras} actividades · {n_bio} días biométricos")
+                st.rerun()
+            except Exception as _e:
+                st.error(f"Error al sincronizar: {_e}")
+    else:
+        st.warning("Configura tus credenciales Garmin en el perfil.")
 
 # ==========================================
 # PESTAÑA 1: DASHBOARD (Con lógica de Sueño unificada)
 # ==========================================
 if menu == "Dashboard":
-    # Bienvenida siempre visible al abrir la app
-    nombre_usuario = perfil.get("nombre", "Atleta") if perfil else "Atleta"
     st.markdown(
-        f"<h2 style='margin-bottom:0;'>👋 Bienvenida, <span style='color:#0f766e;'>{nombre_usuario}</span></h2>",
+        "<h2 style='font-size:1.5rem;font-weight:800;color:#0f172a;letter-spacing:-0.02em;margin-bottom:4px;'>Dashboard</h2>",
         unsafe_allow_html=True,
     )
-    col_t, col_b = st.columns([0.9, 0.1])
-    with col_t:
-        st.title(f"📊 Dashboard de {perfil['nombre']}")
-    with col_b:
-        if st.button("🔄", help="Sincronizar Carreras y Sueño"):
-            cred = obtener_credenciales_garmin(user_actual)
-            if cred and cred[0]:
-                with st.spinner("Sincronizando Garmin..."):
-                    try:
-                        email, p_enc = cred
-                        pw = desencriptar_password(p_enc)
-                        
-                        # 1. Sincronizar Carreras
-                        n_carreras = sincronizar_actividades_inteligente(email, pw, user_actual)
-                        n_biometricos = sincronizar_biometricos_garmin(email, pw, user_actual, dias=7)
-                        
-                        # 2. Sincronizar Sueño (compatibilidad con flujo previo)
-                        client = iniciar_sesion_garmin(email, pw)
-                        hoy = datetime.now()
-                        for i in range(3):
-                            fecha_target = hoy - timedelta(days=i)
-                            datos_s = obtener_datos_sueno(client, fecha_target)
-                            if datos_s:
-                                guardar_sueno_db(user_actual, datos_s) # Pasamos user_actual
-                        
-                        st.toast(f"¡Actualizado! +{n_carreras} carreras · {n_biometricos} días biométricos", icon="🏃‍♀️")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error sincronizando: {e}")
-            else:
-                st.error("Configura Garmin en tu perfil.")
 
     conn = get_db_connection()
     # Leemos datos filtrados por usuario
@@ -1897,7 +2066,10 @@ elif menu == "Biblioteca Científica":
 # PESTAÑA 3: CICLO MENSTRUAL
 # ==========================================
 elif menu == "Ciclo Menstrual":
-    st.title("🩷 Ciclo Menstrual")
+    if user_actual != 1:
+        st.info("Esta sección no está disponible para este perfil.")
+        st.stop()
+    st.title("Ciclo Menstrual")
     with st.form("fisio_form"):
         fecha = st.date_input("Fecha")
         fase = st.selectbox("Fase del Ciclo", ["Fase Folicular", "Fase Ovulatoria", "Fase Lútea", "No Aplica"])
@@ -1952,8 +2124,8 @@ elif menu == "Ciclo Menstrual":
 # ==========================================
 # PESTAÑA 4: CONSULTORIO VIRTUAL (IA)
 # ==========================================
-elif menu == "Consultorio Virtual":
-    st.title("🧠 Consultorio Virtual (IA)")
+elif menu == "Asistente Virtual":
+    st.title("Asistente Virtual")
     if obtener_consejo is None:
         st.error("Error: No se ha podido cargar ai_coach.py. Revisa que el archivo exista y esté correcto.")
     else:
