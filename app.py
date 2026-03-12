@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from garmin_sync import sincronizar_actividades
+import plotly.express as px
 from db_manager import DB_PATH
 
 # Configuración de la página
@@ -65,9 +66,33 @@ elif menu == "Dashboard":
         df = pd.read_sql_query(query, conexion)
         conexion.close()
 
-        if not df.empty:
-            st.dataframe(df)
-        else:
-            st.warning("No hay datos disponibles en la base de datos.")
+        # Manejo de base de datos vacía
+        if df.empty:
+            st.warning("No hay actividades sincronizadas. Ve a la pestaña 'Sincronizar Garmin'.")
+            st.stop()
+
+        # Procesamiento de datos
+        df['fecha'] = pd.to_datetime(df['fecha'])
+        df = df.sort_values(by='fecha')
+        df['distancia_km'] = df['distancia_m'] / 1000
+
+        # Métricas clave (KPIs)
+        total_actividades = len(df)
+        distancia_total = df['distancia_km'].sum()
+        fc_media_promedio = df['fc_media'].mean()
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total de Actividades", total_actividades)
+        col2.metric("Distancia Total (km)", f"{distancia_total:.2f}")
+        col3.metric("Frecuencia Cardíaca Media", f"{fc_media_promedio:.1f}")
+
+        # Gráfica 1: Evolución de Frecuencia Cardíaca
+        fig_fc = px.line(df, x='fecha', y='fc_media', title="Evolución de Frecuencia Cardíaca", markers=True)
+        st.plotly_chart(fig_fc)
+
+        # Gráfica 2: Evolución de Distancia
+        fig_distancia = px.bar(df, x='fecha', y='distancia_km', title="Evolución de Distancia")
+        st.plotly_chart(fig_distancia)
+
     except sqlite3.Error as e:
         st.error(f"Error al conectar con la base de datos: {e}")
