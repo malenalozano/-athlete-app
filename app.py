@@ -240,6 +240,24 @@ def asegurar_tablas_premium():
     conn.close()
 
 
+def asegurar_indices_consulta():
+    """Índices para acelerar lecturas frecuentes por usuario y fecha."""
+    conn = get_db_connection()
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_act_usuario_fecha ON actividades_garmin(usuario_id, fecha)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sueno_usuario_fecha ON datos_sueno(usuario_id, fecha)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_fisio_usuario_fecha ON diario_fisiologia(usuario_id, fecha)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_usuario_fecha ON sesiones_fuerza(usuario_id, fecha)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_plan_usuario_semana_fecha ON plan_entrenamiento(usuario_id, semana_inicio, fecha)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bio_usuario_fecha ON datos_biometricos_premium(usuario_id, fecha)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lesion_usuario_activa ON historial_lesiones(usuario_id, activa)")
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
 def _directorio_estudios():
     path = os.path.join(os.path.dirname(__file__), "uploaded_studies")
     os.makedirs(path, exist_ok=True)
@@ -455,6 +473,61 @@ def construir_checkpoints_objetivo(perfil, df_act):
             }
         )
     return pd.DataFrame(filas)
+
+
+def render_checkpoints_moderno(df_check, objetivo_txt):
+    """Render premium de checkpoints para reemplazar tabla plana."""
+    if df_check.empty:
+        st.info("No hay checkpoints definidos para este objetivo todavía.")
+        return
+
+    completados = int((df_check["estado"] == "✅ Hecho").sum())
+    total = len(df_check)
+    progreso = completados / total if total else 0
+
+    h1, h2 = st.columns([0.68, 0.32])
+    with h1:
+        st.progress(progreso)
+        st.caption(f"{completados} de {total} checkpoints completados para el objetivo {objetivo_txt}.")
+    with h2:
+        st.markdown(
+            f"""
+            <div style='background:#14372d;border:1px solid #2e5c4b;border-radius:12px;padding:12px 14px;text-align:center;'>
+                <div style='font-size:0.74rem;color:#9eb8a8;letter-spacing:0.05em;text-transform:uppercase;'>Progreso</div>
+                <div style='font-size:1.35rem;font-weight:800;color:#d8e9db;line-height:1.1;margin-top:2px;'>{int(progreso * 100)}%</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    for _, row in df_check.iterrows():
+        hecho = row["estado"] == "✅ Hecho"
+        estado_label = "Hecho" if hecho else "Pendiente"
+        estado_bg = "#315b14" if hecho else "#5a4f10"
+        estado_border = "#7aa51a" if hecho else "#c7a61d"
+        left_accent = "#7aa51a" if hecho else "#d9f20f"
+
+        st.markdown(
+            f"""
+            <div style='background:#0f2b24;border:1px solid #2d5445;border-left:5px solid {left_accent};border-radius:12px;padding:12px 14px;margin-bottom:10px;'>
+                <div style='display:flex;justify-content:space-between;align-items:flex-start;gap:10px;'>
+                    <div style='flex:1 1 auto;'>
+                        <div style='font-weight:700;color:#d8e9db;font-size:0.98rem;line-height:1.25;'>{row['checkpoint']}</div>
+                        <div style='font-size:0.82rem;color:#9eb8a8;margin-top:4px;'>{row['detalle']}</div>
+                    </div>
+                    <div style='flex:0 0 auto;text-align:right;'>
+                        <span style='display:inline-block;background:{estado_bg};border:1px solid {estado_border};color:#effad4;font-weight:700;font-size:0.72rem;border-radius:999px;padding:4px 9px;'>
+                            {estado_label}
+                        </span>
+                        <div style='font-size:0.76rem;color:#99b7a6;margin-top:8px;'>Mejor marca</div>
+                        <div style='font-weight:700;color:#d9f20f;font-size:0.9rem;line-height:1.1;'>{row['mejor_marca']}</div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def extraer_fecha_historica(texto):
@@ -1117,6 +1190,64 @@ def resumen_dashboard(usuario_id):
     return out
 
 
+@st.cache_data(ttl=120)
+def cargar_datos_dashboard(usuario_id):
+    """Carga cacheada del dashboard para evitar SELECT pesados en cada rerun."""
+    conn = get_db_connection()
+    try:
+        # Evitamos SELECT * para reducir transferencia y parseo.
+        df_act = pd.read_sql_query(
+            """
+            SELECT fecha, distancia_m, ritmo_medio, fc_media
+            FROM actividades_garmin
+            WHERE usuario_id = ?
+            ORDER BY fecha DESC
+            LIMIT 1500
+            """,
+            conn,
+            params=(usuario_id,),
+        )
+        try:
+            df_sueno = pd.read_sql_query(
+                """
+                SELECT fecha, horas_totales, score
+                FROM datos_sueno
+                WHERE usuario_id = ?
+                ORDER BY fecha DESC
+                LIMIT 7
+                """,
+                conn,
+                params=(usuario_id,),
+            )
+        except Exception:
+            df_sueno = pd.DataFrame()
+
+        try:
+            df_fuerza = pd.read_sql_query(
+                """
+                SELECT s.fecha, e.peso, e.series, e.repeticiones, e.musculo_principal
+                FROM ejercicios_fuerza e
+                INNER JOIN sesiones_fuerza s ON s.id = e.sesion_id
+                WHERE s.usuario_id = ?
+                ORDER BY s.fecha
+                """,
+                conn,
+                params=(usuario_id,),
+            )
+        except Exception:
+            try:
+                df_fuerza = pd.read_sql_query(
+                    "SELECT fecha, peso, series, repeticiones, musculo_principal FROM entrenamientos_fuerza",
+                    conn,
+                )
+            except Exception:
+                df_fuerza = pd.DataFrame()
+    finally:
+        conn.close()
+
+    return df_act, df_sueno, df_fuerza
+
+
 def construir_calendario_semanal_actividades(df_act, df_fuerza, semana_inicio):
     semana_fin = semana_inicio + timedelta(days=6)
     out = pd.DataFrame(
@@ -1310,9 +1441,12 @@ def render_calendario_ciclo(df_ciclo, anio, mes):
 
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="Proyecto Athlete", page_icon="🏃‍♀️", layout="wide")
-asegurar_tabla_plan_entrenamiento()
-asegurar_tablas_fuerza()
-asegurar_tablas_premium()
+if "_db_setup_done" not in st.session_state:
+    asegurar_tabla_plan_entrenamiento()
+    asegurar_tablas_fuerza()
+    asegurar_tablas_premium()
+    asegurar_indices_consulta()
+    st.session_state._db_setup_done = True
 
 # Ocultar sidebar completa
 st.markdown(
@@ -1343,8 +1477,8 @@ if "usuario_id" not in st.session_state:
             box-shadow:0 8px 24px rgba(107,143,18,0.30);
         }
         .login-badge svg { width:30px; height:30px; fill:white; }
-        .login-title { font-size:1.75rem; font-weight:800; color:#123126; margin:0 0 6px; letter-spacing:-0.03em; }
-        .login-sub { color:#315447; font-size:0.95rem; margin:0 0 28px; }
+        .login-title { font-size:1.75rem; font-weight:800; color:#d8e9db; margin:0 0 6px; letter-spacing:-0.03em; }
+        .login-sub { color:#9eb8a8; font-size:0.95rem; margin:0 0 28px; }
         </style>
         <div class="login-wrap">
             <div class="login-badge">
@@ -1416,6 +1550,7 @@ if perfil is None:
                 conn.execute("UPDATE usuarios SET email_garmin = ?, password_garmin_enc = ? WHERE id = ?", (email_garmin, pass_enc, user_actual))
                 conn.commit()
                 conn.close()
+            st.cache_data.clear()
             st.rerun()
     st.stop()
 
@@ -1426,30 +1561,30 @@ _bienvenida = f"Bienvenida, {nombre_usuario}" if user_actual == 1 else f"Bienven
 st.markdown(
     f"""
     <style>
-    :root {
-        --ath-bg: #ecf2e3;
-        --ath-surface: #f3f7eb;
-        --ath-card: #eef4df;
-        --ath-border: #c5d1b0;
-        --ath-text: #123126;
-        --ath-text-soft: #315447;
+    :root {{
+        --ath-bg: #071e1a;
+        --ath-surface: #0c2922;
+        --ath-card: #103128;
+        --ath-border: #2a4c3d;
+        --ath-text: #d8e9db;
+        --ath-text-soft: #9eb8a8;
         --ath-brand-deep: #082d27;
-        --ath-brand-mid: #12443a;
+        --ath-brand-mid: #0f3a31;
         --ath-lime: #d9f20f;
-        --ath-olive: #6b8f12;
-    }
+        --ath-olive: #7aa51a;
+    }}
     /* ─── Global typography ─── */
     html, body, [class*="css"] {{
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
     }}
     [data-testid="stAppViewContainer"] {{
         background:
-            radial-gradient(circle at 8% 8%, rgba(217,242,15,0.10) 0%, transparent 38%),
-            linear-gradient(180deg, var(--ath-bg) 0%, #e8efdc 100%);
+            radial-gradient(circle at 8% 8%, rgba(217,242,15,0.08) 0%, transparent 36%),
+            linear-gradient(180deg, #041612 0%, var(--ath-bg) 45%, #03100d 100%);
         color: var(--ath-text);
     }}
     [data-testid="stHeader"] {{
-        background: rgba(236,242,227,0.75);
+        background: rgba(6, 26, 21, 0.78);
         backdrop-filter: blur(8px);
     }}
     /* ─── Header brand bar ─── */
@@ -1489,7 +1624,7 @@ st.markdown(
     /* ─── Nav radio ─── */
     div[data-testid="stHorizontalBlock"] [role="radiogroup"] {{
         gap: 0.45rem;
-        background: rgba(248, 255, 234, 0.10);
+        background: rgba(10, 36, 30, 0.68);
         border: 1px solid rgba(217,242,15,0.22);
         padding: 0.38rem;
         border-radius: 13px;
@@ -1497,12 +1632,12 @@ st.markdown(
     }}
     div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] {{
         min-height: 42px;
-        background: rgba(241, 247, 229, 0.95);
-        border: 1px solid rgba(145, 163, 111, 0.36);
+        background: rgba(17, 46, 38, 0.94);
+        border: 1px solid rgba(122,165,26,0.48);
         border-radius: 9px;
         padding: 6px 13px;
         display: flex; align-items: center; justify-content: center;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.42);
+        box-shadow: inset 0 1px 0 rgba(217,242,15,0.08);
         transition: all 0.16s ease;
     }}
     div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] > div {{
@@ -1517,21 +1652,21 @@ st.markdown(
     }}
     div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"]:hover {{
         transform: translateY(-1px);
-        border-color: rgba(217,242,15,0.65);
-        background: #f7fbef;
+        border-color: rgba(217,242,15,0.72);
+        background: #1a4536;
     }}
     div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"][aria-checked="true"] {{
-        background: linear-gradient(160deg, #f8fce9 0%, #eef7d7 100%);
+        background: linear-gradient(160deg, #234b22 0%, #446a1b 100%);
         border-color: var(--ath-olive);
         box-shadow: 0 5px 16px rgba(107,143,18,0.25);
     }}
     div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"][aria-checked="true"] > div {{
-        color: #365513 !important;
+        color: #f3ffd1 !important;
         font-weight: 700;
     }}
     /* ─── Profile selectbox ─── */
     div[data-testid="stSelectbox"] > div[data-baseweb="select"] {{
-        background: rgba(240,246,227,0.95);
+        background: rgba(17, 46, 38, 0.94);
         border-radius: 10px;
         border: 1px solid rgba(145,163,111,0.38);
         min-height: 42px;
@@ -1544,11 +1679,11 @@ st.markdown(
         border: 1px solid var(--ath-border);
         border-radius: 14px;
         padding: 16px 18px;
-        box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+        box-shadow: 0 1px 8px rgba(0,0,0,0.22);
         transition: box-shadow 0.2s ease;
     }}
     [data-testid="stMetric"]:hover {{
-        box-shadow: 0 5px 18px rgba(0,0,0,0.09);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.30);
     }}
     [data-testid="stMetricLabel"] p {{
         font-size: 0.72rem !important;
@@ -1582,13 +1717,13 @@ st.markdown(
         box-shadow: 0 6px 20px rgba(107,143,18,0.38) !important;
     }}
     .stButton > button:not([kind="primary"]) {{
-        background: #edf4dd !important;
+        background: #12362c !important;
         color: var(--ath-text) !important;
-        border: 1px solid #b7c99a !important;
+        border: 1px solid #3f6b54 !important;
     }}
     .stButton > button:not([kind="primary"]):hover {{
-        background: #e3efcc !important;
-        border-color: #8aa863 !important;
+        background: #194637 !important;
+        border-color: #7aa51a !important;
         transform: translateY(-1px) !important;
     }}
     /* ─── Garmin sync pill button ─── */
@@ -1620,7 +1755,7 @@ st.markdown(
         padding: 12px 16px !important;
         font-weight: 600 !important;
         color: var(--ath-text) !important;
-        background: #e9f2d6 !important;
+        background: #163a2f !important;
     }}
     /* ─── Dividers ─── */
     hr {{
@@ -1739,43 +1874,11 @@ if _do_sync:
 # ==========================================
 if menu == "Dashboard":
     st.markdown(
-        "<h2 style='font-size:1.5rem;font-weight:800;color:#0f172a;letter-spacing:-0.02em;margin-bottom:4px;'>Dashboard</h2>",
+        "<h2 style='font-size:1.5rem;font-weight:800;color:#d8e9db;letter-spacing:-0.02em;margin-bottom:4px;'>Dashboard</h2>",
         unsafe_allow_html=True,
     )
 
-    conn = get_db_connection()
-    # Leemos datos filtrados por usuario
-    df_act = pd.read_sql_query(f"SELECT * FROM actividades_garmin WHERE usuario_id = {user_actual}", conn)
-    try:
-        df_sueno = pd.read_sql_query(
-            f"SELECT * FROM datos_sueno WHERE usuario_id = {user_actual} ORDER BY fecha DESC LIMIT 7",
-            conn,
-        )
-    except Exception:
-        df_sueno = pd.DataFrame()
-
-    try:
-        df_fuerza = pd.read_sql_query(
-            """
-            SELECT s.fecha, e.peso, e.series, e.repeticiones, e.musculo_principal
-            FROM ejercicios_fuerza e
-            INNER JOIN sesiones_fuerza s ON s.id = e.sesion_id
-            WHERE s.usuario_id = ?
-            ORDER BY s.fecha
-            """,
-            conn,
-            params=(user_actual,),
-        )
-    except Exception:
-        try:
-            df_fuerza = pd.read_sql_query(
-                "SELECT fecha, peso, series, repeticiones, musculo_principal FROM entrenamientos_fuerza",
-                conn,
-            )
-        except Exception:
-            df_fuerza = pd.DataFrame()
-
-    conn.close()
+    df_act, df_sueno, df_fuerza = cargar_datos_dashboard(user_actual)
 
     # Resumen rápido de lo importante
     resumen = resumen_dashboard(user_actual)
@@ -1804,12 +1907,7 @@ if menu == "Dashboard":
     st.divider()
     st.subheader("🏁 Checkpoints y pequeños logros")
     df_check = construir_checkpoints_objetivo(perfil, df_act)
-    if not df_check.empty:
-        completados = int((df_check["estado"] == "✅ Hecho").sum())
-        progreso = completados / len(df_check)
-        st.progress(progreso)
-        st.caption(f"{completados} de {len(df_check)} checkpoints completados para el objetivo {perfil.get('objetivo', 'actual')}.")
-        st.dataframe(df_check, use_container_width=True, hide_index=True)
+    render_checkpoints_moderno(df_check, perfil.get("objetivo", "actual"))
 
     st.divider()
     st.subheader("🗓️ Calendario semanal de actividades")
@@ -1820,10 +1918,10 @@ if menu == "Dashboard":
         with cols_sem[i]:
             st.markdown(
                 f"""
-                <div style='background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:10px;min-height:110px;'>
-                    <div style='font-weight:700;color:#0f172a;'>{row['dia']}</div>
-                    <div style='font-size:0.78rem;color:#475569;margin-bottom:6px;'>{row['fecha'].strftime('%d/%m')}</div>
-                    <div style='font-size:0.84rem;color:#1e293b;'>{row['actividad']}</div>
+                <div style='background:#0f2b24;border:1px solid #2d5445;border-radius:10px;padding:10px;min-height:110px;'>
+                    <div style='font-weight:700;color:#d8e9db;'>{row['dia']}</div>
+                    <div style='font-size:0.78rem;color:#93b4a2;margin-bottom:6px;'>{row['fecha'].strftime('%d/%m')}</div>
+                    <div style='font-size:0.84rem;color:#c2d8ca;'>{row['actividad']}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1977,8 +2075,8 @@ if menu == "Dashboard":
             bg = "#bae6fd"       # azul celeste
             borde = "1px solid #7dd3fc"
         else:
-            bg = "#f8fafc"
-            borde = "1px dashed #cbd5e1"
+            bg = "#0f2b24"
+            borde = "1px dashed #3a6856"
 
         malena_txt = malena_rows.iloc[0]["sesion"] if not malena_rows.empty else "—"
         dani_txt   = dani_rows.iloc[0]["sesion"]   if not dani_rows.empty   else "—"
@@ -1987,7 +2085,7 @@ if menu == "Dashboard":
             st.markdown(
                 f"""<div style='background:{bg};border:{borde};border-radius:10px;
                     padding:10px 8px;min-height:120px;font-size:0.8rem;'>
-                    <div style='font-weight:700;color:#0f172a;margin-bottom:4px;'>{nombres_dias[i]}</div>
+                    <div style='font-weight:700;color:#d8e9db;margin-bottom:4px;'>{nombres_dias[i]}</div>
                     <div style='color:#be185d;'>🙋‍♀️ {malena_txt[:28]}</div>
                     <div style='color:#0369a1;margin-top:4px;'>🙋‍♂️ {dani_txt[:28]}</div>
                     {'<div style="margin-top:6px;font-size:0.72rem;color:#15803d;font-weight:600;">✔ Juntos</div>' if coincide else ''}
@@ -2031,6 +2129,7 @@ elif menu == "Biblioteca Científica":
             usuario_estudio = 0 if alcance == "Compartido para ambos" else user_actual
             try:
                 guardar_estudio_referencia(usuario_estudio, uploaded, categoria, resumen_manual)
+                st.cache_data.clear()
                 st.success("Estudio guardado. La IA ya podrá usarlo como contexto.")
                 st.rerun()
             except Exception as e:
@@ -2084,6 +2183,7 @@ elif menu == "Ciclo Menstrual":
                        (user_actual, str(fecha), fase, fatiga, notas))
         conn.commit()
         conn.close()
+        st.cache_data.clear()
         st.success("Registro guardado correctamente.")
 
     conn = get_db_connection()
@@ -2274,6 +2374,7 @@ elif menu == "Diario de Fuerza":
                                 ),
                             )
                     conn.commit()
+                    st.cache_data.clear()
                     st.success(f"✅ {n_sesiones} sesión{'es' if n_sesiones > 1 else ''} guardada{'s' if n_sesiones > 1 else ''} correctamente.")
                     st.session_state.resultado_ia = None
                     st.session_state.sesiones_detectadas = []
@@ -2583,6 +2684,7 @@ elif menu == "Entrenador Personal":
                     )
                     conn.commit()
                     conn.close()
+                    st.cache_data.clear()
                     st.success("✅ Lesión registrada.")
                     st.rerun()
                 else:
@@ -2610,6 +2712,7 @@ elif menu == "Entrenador Personal":
                                     (str(datetime.now().date()), int(row["id"])),
                                 )
                                 conn.commit()
+                                st.cache_data.clear()
                                 st.rerun()
         except Exception as e:
             st.error(f"Error cargando lesiones: {e}")
@@ -2667,10 +2770,10 @@ elif menu == "Calendario":
                     color = colores.get(fila["tipo"], "#334155")
                     st.markdown(
                         f"""
-                        <div style='border-left:6px solid {color}; padding:8px 10px; border-radius:8px; background:#f8fafc;'>
-                            <div style='font-size:0.78rem; color:#475569;'>{fila['fecha_dt'].strftime('%d/%m')}</div>
-                            <div style='font-weight:700; color:#0f172a; margin:2px 0;'>{fila['sesion']}</div>
-                            <div style='font-size:0.82rem; color:#334155;'>{fila['duracion_min']} min · {fila['intensidad']}</div>
+                        <div style='border-left:6px solid {color}; padding:8px 10px; border-radius:8px; background:#0f2b24;'>
+                            <div style='font-size:0.78rem; color:#93b4a2;'>{fila['fecha_dt'].strftime('%d/%m')}</div>
+                            <div style='font-weight:700; color:#d8e9db; margin:2px 0;'>{fila['sesion']}</div>
+                            <div style='font-size:0.82rem; color:#bfd6c8;'>{fila['duracion_min']} min · {fila['intensidad']}</div>
                         </div>
                         """,
                         unsafe_allow_html=True,
