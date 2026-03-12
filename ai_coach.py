@@ -1,36 +1,25 @@
 import google.generativeai as genai
 import os
-import json
+import csv
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# Configuración ultra-simple
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# Usamos 'gemini-pro', que es el nombre más estable y universal
-modelo = genai.GenerativeModel("gemini-pro")
+# 🚀 TRUCO SENIOR: Auto-detectar el modelo que funcione
+nombre_modelo = "gemini-1.5-flash" # Por si acaso
+for m in genai.list_models():
+    if 'generateContent' in m.supported_generation_methods and 'gemini' in m.name:
+        nombre_modelo = m.name
+        break # Cogemos el primero que funcione y salimos
 
-def obtener_consejo(prompt_usuario, contexto_datos):
-    try:
-        prompt_completo = f"Eres un entrenador experto en fisiología femenina.\nContexto: {contexto_datos}\nPregunta: {prompt_usuario}"
-        # Cambiamos generate_text por generate_content (estándar actual)
-        res = modelo.generate_content(prompt_completo)
-        return res.text
-    except Exception as e:
-        return f"Error en Consultorio: {str(e)}"
+print(f"✅ Conectado al modelo: {nombre_modelo}")
+modelo = genai.GenerativeModel(nombre_modelo)
 
 def procesar_nota_fuerza(texto):
-    prompt = (
-        f"Analiza esta nota de gimnasio y devuelve SOLO un JSON (lista de objetos) "
-        f"con las llaves: ejercicio, peso, series, repeticiones, musculo_principal, rpe. "
-        f"Texto: {texto}"
-    )
+    prompt = f"CSV estricto (;). Cabecera: ejercicio;peso;series;repeticiones;grupo_muscular;musculo_principal;rpe\nREGLA VITAL: Infiere la anatomía. grupo_muscular = 'Tren Superior', 'Tren Inferior' o 'Core'. musculo_principal = lista de todos los músculos implicados (ej: Cuádriceps, Glúteos, Isquios, Core). Devuelve solo CSV.\nTexto: '{texto}'"
     try:
-        res = modelo.generate_content(prompt)
-        # Limpieza de markdown por si la IA se pone creativa
-        txt = res.text.replace('```json', '').replace('```', '').strip()
-        return json.loads(txt)
-    except Exception as e:
-        print(f"Error procesando nota: {e}")
-        return []
+        txt = modelo.generate_content(prompt).text.replace('```csv', '').replace('```', '').strip()
+        import csv
+        return {"exito": True, "datos": [f for f in csv.DictReader(txt.split('\n'), delimiter=';')], "raw": txt}
+    except Exception as e: return {"exito": False, "datos": [], "raw": str(e)}

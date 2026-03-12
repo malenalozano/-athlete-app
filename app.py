@@ -151,51 +151,55 @@ elif menu == "Consultorio Virtual":
 elif menu == "🏋️‍♀️ Diario de Fuerza":
     st.title("🏋️‍♀️ Diario de Fuerza")
 
-    # Sección de Entrada
-    st.subheader("Registrar Entrenamiento de Fuerza")
-    nota_fuerza = st.text_area("Escribe o pega tu nota de entrenamiento:")
+    if "resultado_ia" not in st.session_state:
+        st.session_state.resultado_ia = None
+
+    nota_fuerza = st.text_area("Pega tu entreno:", height=100, placeholder="Ej: búlgaras 3 series con 5 kg y no he terminado la última repetición")
+
     if st.button("Procesar con IA"):
-        if not nota_fuerza.strip():
-            st.error("Por favor, ingresa una nota de entrenamiento.")
+        if nota_fuerza:
+            with st.spinner("Transformando a CSV..."):
+                st.session_state.resultado_ia = procesar_nota_fuerza(nota_fuerza)
+                st.rerun() # Recargamos para mostrar los datos
+
+    # Si hay un resultado guardado en memoria, lo analizamos
+    if st.session_state.resultado_ia:
+        res = st.session_state.resultado_ia
+        
+        # Si falló o la lista de datos está vacía, mostramos el error crudo
+        if not res["exito"] or len(res["datos"]) == 0:
+            st.error("❌ La IA no pudo extraer los datos correctamente. Mira lo que respondió:")
+            st.code(res["raw"]) # ESTO ES VITAL PARA DEBUGGEAR
         else:
-            with st.spinner("Procesando con IA..."):
+            st.success("✅ ¡Datos extraídos con éxito!")
+            st.dataframe(res["datos"])
+            
+            fecha_f = st.date_input("Fecha", key="f_fuerza")
+            
+            if st.button("🚀 Guardar en Base de Datos"):
+                conn = get_db_connection()
                 try:
-                    ejercicios = procesar_nota_fuerza(nota_fuerza)
-                    st.success("Nota procesada correctamente. Revisa los resultados:")
-                    st.write(ejercicios)
+                    for ej in res["datos"]:
+                        # Aquí está la magia que atrapa los músculos nuevos
+                        conn.execute('INSERT INTO entrenamientos_fuerza (fecha, ejercicio, peso, series, repeticiones, grupo_muscular, rpe, musculo_principal, notas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+                        (fecha_f.strftime('%Y-%m-%d'), ej.get('ejercicio', ''), float(ej.get('peso', 0) or 0), int(ej.get('series', 0) or 0), int(ej.get('repeticiones', 0) or 0), ej.get('grupo_muscular', 'Tren Inferior'), int(ej.get('rpe', 5) or 5), ej.get('musculo_principal', 'Varios'), nota_fuerza))
+                    
+                    conn.commit()
+                    st.success("¡Guardado perfecto y con anatomía! 🦵")
+                    st.session_state.resultado_ia = None
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error SQL: {e}")
+                finally:
+                    conn.close()
 
-                    # Mostrar resumen de músculos trabajados
-                    musculos_trabajados = {ej['musculo_principal'] for ej in ejercicios}
-                    st.info(f"Hoy has trabajado principalmente: {', '.join(musculos_trabajados)}")
-
-                    # ... dentro de la pestaña de fuerza, después de mostrar la tabla de ejercicios ...
-
-if st.button("Confirmar y Guardar en Nube"):
+    st.divider()
+    st.subheader("📊 Historial")
     conn = get_db_connection()
     try:
-        # Usamos la fecha seleccionada por el usuario
-        fecha_entreno = st.date_input("Fecha", key="fecha_fuerza_guardar").strftime('%Y-%m-%d')
-        
-        for ejercicio in ejercicios:
-            # Insertamos todos los campos nuevos detectados por la IA
-            conn.execute('''
-                INSERT INTO entrenamientos_fuerza 
-                (fecha, ejercicio, peso, series, repeticiones, grupo_muscular, rpe, musculo_principal, notas)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                fecha_entreno, 
-                ejercicio.get('ejercicio', 'Desconocido'), 
-                ejercicio.get('peso', 0), 
-                ejercicio.get('series', 0), 
-                ejercicio.get('repeticiones', 0), 
-                ejercicio.get('musculo_principal', 'Varios'), # Usamos el detectado por IA
-                ejercicio.get('rpe', 5), 
-                ejercicio.get('musculo_principal', 'Varios'),
-                nota_fuerza
-            ))
-        conn.commit()
-        st.success("¡Entrenamiento de pierna guardado con éxito! 🏋️‍♀️")
-    except Exception as e:
-        st.error(f"Error al guardar: {e}")
+        historial = pd.read_sql_query("SELECT fecha, ejercicio, peso, series, repeticiones, rpe FROM entrenamientos_fuerza ORDER BY fecha DESC LIMIT 10", conn)
+        st.dataframe(historial, use_container_width=True)
+    except:
+        st.info("Aún no hay datos.")
     finally:
         conn.close()
