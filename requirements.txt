@@ -1,7 +1,8 @@
 streamlit
-python-garminconnect
-python-dotenv
+garminconnect
 pandas
 plotly
-google-generativeai
+garminconnect
+python-dotenv
 libsql-experimental
+google-generativeai
