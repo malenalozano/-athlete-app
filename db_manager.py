@@ -56,8 +56,25 @@ def init_db():
         )
     ''')
 
+    # 4. Tabla de Entrenamientos de Fuerza
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS entrenamientos_fuerza (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha TEXT,
+            ejercicio TEXT,
+            peso REAL,
+            series INTEGER,
+            repeticiones INTEGER,
+            grupo_muscular TEXT,
+            notas TEXT
+        )
+    ''')
+
     conexion.commit()
     conexion.close()
+
+# Ejecutar la creación de la base de datos al importar el módulo
+init_db()
 
 if __name__ == "__main__":
     init_db()

@@ -16,7 +16,7 @@ st.set_page_config(page_title="Proyecto Athlete", page_icon="🏃‍♀️", lay
 
 # Menú lateral
 st.sidebar.title("Navegación")
-menu = st.sidebar.radio("Ir a:", ["Dashboard", "Sincronizar Garmin", "Diario Fisiológico", "Consultorio Virtual"])
+menu = st.sidebar.radio("Ir a:", ["Dashboard", "Sincronizar Garmin", "Diario Fisiológico", "Consultorio Virtual", "🏋️‍♀️ Diario de Fuerza"])
 
 # ==========================================
 # PESTAÑA 1: DASHBOARD
@@ -147,3 +147,43 @@ elif menu == "Consultorio Virtual":
                         st.session_state.mensajes.append({"role": "assistant", "content": respuesta})
                     except Exception as e:
                         st.error(f"Error al procesar la respuesta: {e}")
+elif menu == "🏋️‍♀️ Diario de Fuerza":
+    st.title("🏋️‍♀️ Diario de Fuerza")
+
+    # Sección de Entrada
+    st.subheader("Registrar Entrenamiento de Fuerza")
+    nota_fuerza = st.text_area("Escribe o pega tu nota de entrenamiento:")
+    if st.button("Procesar con IA"):
+        if not nota_fuerza.strip():
+            st.error("Por favor, ingresa una nota de entrenamiento.")
+        else:
+            with st.spinner("Procesando con IA..."):
+                try:
+                    ejercicios = procesar_nota_fuerza(nota_fuerza)
+                    st.success("Nota procesada correctamente. Revisa los resultados:")
+                    st.write(ejercicios)
+
+                    if st.button("Confirmar y Guardar en Nube"):
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        for ejercicio in ejercicios:
+                            cursor.execute('''
+                                INSERT INTO entrenamientos_fuerza (fecha, ejercicio, peso, series, repeticiones, grupo_muscular, notas)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            ''', (st.date_input("Fecha"), ejercicio['ejercicio'], ejercicio['peso'], ejercicio['series'], ejercicio['repeticiones'], ejercicio['grupo_muscular'], nota_fuerza))
+                        conn.commit()
+                        conn.close()
+                        st.success("Entrenamiento guardado correctamente.")
+                except Exception as e:
+                    st.error(f"Error al procesar la nota: {e}")
+
+    # Sección Historial
+    st.subheader("Historial de Entrenamientos de Fuerza")
+    conn = get_db_connection()
+    try:
+        df_fuerza = pd.read_sql_query("SELECT * FROM entrenamientos_fuerza ORDER BY fecha DESC", conn)
+        st.dataframe(df_fuerza)
+    except Exception as e:
+        st.error(f"Error al cargar el historial: {e}")
+    finally:
+        conn.close()
