@@ -10,7 +10,7 @@ TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL")
 TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
 
 def get_db_connection():
-    return libsql.create_client_sync(url=os.getenv("TURSO_DATABASE_URL"), auth_token=os.getenv("TURSO_AUTH_TOKEN"))
+    return sqlite3.connect(TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
 
 def init_db():
     """Inicializa la base de datos y crea las tablas base del proyecto."""
