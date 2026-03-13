@@ -1,22 +1,56 @@
-import google.generativeai as genai
 import os
-import csv
 from dotenv import load_dotenv
+import google.generativeai as genai
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# 🚀 TRUCO SENIOR: Auto-detectar el modelo que funcione
-nombre_modelo = "gemini-1.5-flash" # Por si acaso
-for m in genai.list_models():
-    if 'generateContent' in m.supported_generation_methods and 'gemini' in m.name:
-        nombre_modelo = m.name
-        break # Cogemos el primero que funcione y salimos
+_modelo = None
+_gemini_disponible = False
+_gemini_error = None
 
-print(f"✅ Conectado al modelo: {nombre_modelo}")
-modelo = genai.GenerativeModel(nombre_modelo)
+
+def _inicializar_modelo():
+    global _modelo, _gemini_disponible, _gemini_error
+
+    if _modelo is not None or _gemini_disponible:
+        return _modelo
+
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        _gemini_error = "Gemini no configurado: define GEMINI_API_KEY o GOOGLE_API_KEY"
+        return None
+
+    try:
+        genai.configure(api_key=api_key)
+        nombre_modelo = "gemini-1.5-flash"
+        try:
+            for m in genai.list_models():
+                if "generateContent" in m.supported_generation_methods and "gemini" in m.name:
+                    nombre_modelo = m.name
+                    break
+        except Exception:
+            # Si no se puede listar modelos, seguimos con el valor por defecto.
+            pass
+
+        _modelo = genai.GenerativeModel(nombre_modelo)
+        _gemini_disponible = True
+        _gemini_error = None
+        return _modelo
+    except Exception as e:
+        _gemini_error = str(e)
+        _modelo = None
+        _gemini_disponible = False
+        return None
 
 def procesar_nota_fuerza(texto):
+    modelo = _inicializar_modelo()
+    if modelo is None:
+        return {
+            "exito": False,
+            "datos": [],
+            "raw": f"IA no disponible: {_gemini_error}",
+        }
+
     prompt = f"CSV estricto (;). Cabecera: ejercicio;peso;series;repeticiones;grupo_muscular;musculo_principal;rpe\nREGLA VITAL: Infiere la anatomía. grupo_muscular = 'Tren Superior', 'Tren Inferior' o 'Core'. musculo_principal = lista de todos los músculos implicados (ej: Cuádriceps, Glúteos, Isquios, Core). Devuelve solo CSV.\nTexto: '{texto}'"
     try:
         txt = modelo.generate_content(prompt).text.replace('```csv', '').replace('```', '').strip()
@@ -30,6 +64,14 @@ def ajustar_plan_con_feedback(plan_csv, feedback, perfil_resumen=""):
     Recibe el plan actual (como texto CSV con cabecera) y feedback en lenguaje natural.
     Devuelve el mismo CSV con los cambios solicitados aplicados.
     """
+    modelo = _inicializar_modelo()
+    if modelo is None:
+        return {
+            "exito": False,
+            "datos": [],
+            "raw": f"IA no disponible: {_gemini_error}",
+        }
+
     prompt = (
         "Eres una entrenadora de alto rendimiento. Te doy el plan de entrenamiento semanal de una atleta en formato CSV "
         "(separador ;) y su feedback sobre cambios que desea.\n"
@@ -53,6 +95,10 @@ def ajustar_plan_con_feedback(plan_csv, feedback, perfil_resumen=""):
 
 
 def obtener_consejo(duda, contexto=""):
+    modelo = _inicializar_modelo()
+    if modelo is None:
+        return "La IA no esta configurada en este entorno. Configura GEMINI_API_KEY para habilitar consejos."
+
     prompt = (
         "Eres una entrenadora de running y fuerza para mujer atleta. "
         "Responde de forma concreta, segura y accionable en español.\n"

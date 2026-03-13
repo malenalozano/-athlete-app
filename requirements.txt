@@ -4,7 +4,7 @@ pandas
 plotly
 garminconnect
 python-dotenv
-libsql
+libsql; python_version < "3.14"
 google-generativeai
 pypdf
 cryptography

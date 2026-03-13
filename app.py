@@ -1507,67 +1507,132 @@ if "usuario_id" not in st.session_state:
     st.markdown(
         """
         <style>
-        .login-wrap { max-width:420px; margin:72px auto 32px; text-align:center; }
+        [data-testid="stAppViewContainer"] {
+            background:
+                linear-gradient(135deg, #0E1117 0%, #0A2E0A 52%, #0E1117 100%);
+        }
+        .st-key-login_shell {
+            max-width: 460px;
+            margin: 0 auto;
+            padding: 0 8px;
+        }
+        .login-pill {
+            width: fit-content;
+            margin: 8px auto 24px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: rgba(201, 255, 0, 0.20);
+            border: 1px solid rgba(201, 255, 0, 0.40);
+            color: #C9FF00;
+            font-weight: 700;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .login-pill svg { width: 16px; height: 16px; fill: #C9FF00; }
+        .login-wrap { margin: 0 auto; text-align: center; }
         .login-badge {
-            width:62px; height:62px;
-            background:linear-gradient(135deg,#6b8f12 0%,#d9f20f 100%);
-            border-radius:18px; margin:0 auto 18px;
-            display:flex; align-items:center; justify-content:center;
-            box-shadow:0 8px 24px rgba(107,143,18,0.30);
+            width: 64px;
+            height: 64px;
+            background: #C9FF00;
+            border-radius: 12px;
+            margin: 0 auto 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 24px rgba(201, 255, 0, 0.50);
         }
-        .login-badge svg { width:30px; height:30px; fill:white; }
-        .login-title { font-size:1.75rem; font-weight:800; color:#d8e9db; margin:0 0 6px; letter-spacing:-0.03em; }
-        .login-sub { color:#9eb8a8; font-size:0.95rem; margin:0 0 28px; }
-        .login-actions {
-            background: rgba(12, 41, 34, 0.88);
-            border: 1px solid rgba(217,242,15,0.20);
-            border-radius: 18px;
-            padding: 16px;
-            box-shadow: 0 12px 28px rgba(0,0,0,0.18);
+        .login-badge svg { width: 32px; height: 32px; fill: #0E1117; }
+        .login-title {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #FFFFFF;
+            margin: 0 0 8px;
+            line-height: 1.15;
         }
-        .login-actions .stButton > button {
-            min-height: 48px;
+        .login-sub {
+            color: #8B949E;
+            font-size: 1rem;
+            margin: 0 0 26px;
+        }
+        .st-key-login_card {
+            border-radius: 16px;
+            border: 1px solid rgba(201, 255, 0, 0.40);
+            background: linear-gradient(135deg, #161B22 0%, #0E1117 100%);
+            padding: 32px;
+            box-shadow: 0 0 40px rgba(201, 255, 0, 0.15), inset 0 1px 0 rgba(201, 255, 0, 0.10);
+            backdrop-filter: blur(12px);
+        }
+        .st-key-login_card .stButton > button {
+            min-height: 56px;
             border-radius: 12px !important;
-            font-weight: 700 !important;
+            font-size: 1.125rem !important;
+            font-weight: 800 !important;
+            letter-spacing: 0;
+            transition: all 0.18s ease;
+            background: linear-gradient(90deg, #30363D 0%, #161B22 100%) !important;
+            color: #FFFFFF !important;
+            border: 1px solid rgba(201, 255, 0, 0.30) !important;
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22) !important;
         }
-        .login-actions .stButton:nth-of-type(1) > button {
-            background: linear-gradient(135deg, #93bf16 0%, #d9f20f 100%) !important;
-            color: #102515 !important;
-            border: none !important;
-            box-shadow: 0 6px 18px rgba(217,242,15,0.26) !important;
+        .st-key-login_card .stButton > button:hover {
+            background: linear-gradient(90deg, #C9FF00 0%, #a8d600 100%) !important;
+            color: #0E1117 !important;
+            border: 1px solid rgba(201, 255, 0, 0.95) !important;
+            box-shadow: 0 10px 24px rgba(201, 255, 0, 0.35) !important;
         }
-        .login-actions .stButton:nth-of-type(2) > button {
-            background: linear-gradient(135deg, #0d2f25 0%, #1d5844 100%) !important;
-            color: #efffd0 !important;
-            border: 1px solid rgba(131,184,132,0.40) !important;
+        .login-foot {
+            text-align: center;
+            margin-top: 22px;
+            color: #8B949E;
+            font-size: 0.75rem;
+        }
+        @media (max-width: 900px) {
+            .st-key-login_shell { max-width: 100%; }
+            .login-title { font-size: 2.25rem; }
+            .st-key-login_card { padding: 24px 18px; }
+            .st-key-login_card .stButton > button {
+                min-height: 52px;
+                font-size: 1rem !important;
+            }
         }
         </style>
-        <div class="login-wrap">
-            <div class="login-badge">
-                <svg viewBox="0 0 24 24"><path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"/></svg>
-            </div>
-            <div class="login-title">Proyecto Athlete</div>
-            <div class="login-sub">Selecciona tu perfil de atleta</div>
-        </div>
         """,
         unsafe_allow_html=True,
     )
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([1, 1.15, 1])
     with col2:
-        st.markdown('<div class="login-actions">', unsafe_allow_html=True)
-        if st.button("Malena", use_container_width=True, type="primary"):
-            st.session_state.usuario_id = 1
-            _guardar_ultimo_usuario(1)
-            st.rerun()
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-        if st.button("Dani", use_container_width=True):
-            st.session_state.usuario_id = 2
-            _guardar_ultimo_usuario(2)
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+        with st.container(key="login_shell"):
+            st.markdown('<div class="login-pill"><svg viewBox="0 0 24 24"><path d="M12 12c2.2 0 4-1.8 4-4s-1.8-4-4-4-4 1.8-4 4 1.8 4 4 4zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></svg><span>Athlete Dashboard</span></div>', unsafe_allow_html=True)
+            with st.container(key="login_card"):
+                st.markdown(
+                    """
+                    <div class="login-wrap">
+                        <div class="login-badge">
+                            <svg viewBox="0 0 24 24"><path d="M12 12c2.2 0 4-1.8 4-4s-1.8-4-4-4-4 1.8-4 4 1.8 4 4 4zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></svg>
+                        </div>
+                        <div class="login-title">Proyecto Athlete</div>
+                        <div class="login-sub">Selecciona tu perfil de atleta</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if st.button("Malena", key="btn_malena", use_container_width=True):
+                    st.session_state.usuario_id = 1
+                    _guardar_ultimo_usuario(1)
+                    st.rerun()
+                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                if st.button("Dani", key="btn_dani", use_container_width=True):
+                    st.session_state.usuario_id = 2
+                    _guardar_ultimo_usuario(2)
+                    st.rerun()
+            st.markdown('<div class="login-foot">Sistema personalizado de entrenamiento y seguimiento</div>', unsafe_allow_html=True)
     st.stop()
 
-user_actual = st.session_state.usuario_id
+user_actual = st.session_state.get("usuario_id")
+if user_actual is None:
+    st.stop()
 perfil = obtener_perfil_cache(user_actual)
 
 # 3. ONBOARDING (Configuración inicial de Perfil + Garmin)
@@ -1658,160 +1723,133 @@ st.markdown(
     f"""
     <style>
     :root {{
-        --ath-bg: #071e1a;
-        --ath-surface: #0c2922;
-        --ath-card: #103128;
-        --ath-border: #2a4c3d;
-        --ath-text: #d8e9db;
-        --ath-text-soft: #9eb8a8;
-        --ath-brand-deep: #082d27;
-        --ath-brand-mid: #0f3a31;
-        --ath-lime: #d9f20f;
-        --ath-olive: #7aa51a;
-        --ath-lime-soft: #eefdb2;
-        --ath-lime-border: rgba(217,242,15,0.34);
+        --ath-bg: #0E1117;
+        --ath-surface: #161B22;
+        --ath-card: #161B22;
+        --ath-border: rgba(201,255,0,0.30);
+        --ath-text: #FFFFFF;
+        --ath-text-soft: #8B949E;
+        --ath-brand-deep: #0E1117;
+        --ath-brand-mid: #0A2E0A;
+        --ath-lime: #C9FF00;
+        --ath-olive: #A8D600;
+        --ath-lime-soft: #E8FF8A;
+        --ath-lime-border: rgba(201,255,0,0.40);
     }}
     /* ─── Global typography ─── */
     html, body, [class*="css"] {{
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
     }}
-    h1, h2, h3 {{ color: #e7f6b7 !important; }}
+    h1, h2, h3 {{ color: #FFFFFF !important; }}
     p, li, label, span {{ color: var(--ath-text); }}
     [data-testid="stAppViewContainer"] {{
         background:
-            radial-gradient(circle at 8% 8%, rgba(217,242,15,0.08) 0%, transparent 36%),
-            linear-gradient(180deg, #041612 0%, var(--ath-bg) 45%, #03100d 100%);
+            radial-gradient(circle at 8% 8%, rgba(201,255,0,0.10) 0%, transparent 36%),
+            linear-gradient(180deg, #0E1117 0%, #0A2E0A 55%, #0E1117 100%);
         color: var(--ath-text);
     }}
     [data-testid="stHeader"] {{
-        background: rgba(6, 26, 21, 0.78);
+        background: rgba(14, 17, 23, 0.78);
         backdrop-filter: blur(8px);
     }}
     /* ─── Header brand bar ─── */
-    .nav-outer {{
+    .st-key-nav_shell > div[data-testid="stHorizontalBlock"] {{
         background:
-            radial-gradient(ellipse at 8% 50%, rgba(217,242,15,0.23) 0%, transparent 55%),
-            linear-gradient(135deg, var(--ath-brand-deep) 0%, var(--ath-brand-mid) 48%, var(--ath-brand-deep) 100%);
+            linear-gradient(90deg, #0E1117 0%, #0A2E0A 100%);
         border-radius: 20px;
-        padding: 12px 20px 10px 20px;
+        padding: 14px 16px;
         margin-bottom: 16px;
-        box-shadow: 0 12px 40px rgba(2,6,23,0.28);
-        border: 1px solid var(--ath-lime-border);
-    }}
-    .top-nav-anchor + div[data-testid="stHorizontalBlock"] {{
-        background:
-            radial-gradient(ellipse at 8% 50%, rgba(217,242,15,0.23) 0%, transparent 55%),
-            linear-gradient(135deg, var(--ath-brand-deep) 0%, var(--ath-brand-mid) 48%, var(--ath-brand-deep) 100%);
-        border-radius: 20px;
-        padding: 10px 14px;
-        margin-bottom: 16px;
-        box-shadow: 0 12px 40px rgba(2,6,23,0.28);
+        box-shadow: 0 0 30px rgba(201, 255, 0, 0.10), inset 0 1px 0 rgba(201, 255, 0, 0.10);
         border: 1px solid var(--ath-lime-border);
         align-items: center;
-        gap: 0.75rem;
+        gap: 0.9rem;
     }}
-    .top-nav-anchor + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+    .st-key-nav_shell > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
         display: flex;
         align-items: center;
     }}
-    .top-nav-anchor + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div {{
+    .st-key-nav_shell > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div {{
         width: 100%;
     }}
     .athlete-brand {{
         display: flex;
         align-items: center;
-        gap: 13px;
-        padding: 2px 0 4px 0;
+        gap: 12px;
+        padding: 0;
     }}
     .brand-icon {{
-        width: 44px; height: 44px;
-        background: linear-gradient(135deg, var(--ath-olive) 0%, var(--ath-lime) 100%);
-        border-radius: 12px;
+        width: 48px; height: 48px;
+        background: #C9FF00;
+        border-radius: 10px;
         display: flex; align-items: center; justify-content: center;
         flex-shrink: 0;
-        box-shadow: 0 4px 14px rgba(107,143,18,0.38);
+        box-shadow: 0 8px 20px rgba(201, 255, 0, 0.35);
     }}
-    .brand-icon svg {{ width:24px; height:24px; fill:white; }}
+    .brand-icon svg {{ width:26px; height:26px; fill:#0E1117; }}
     .brand-text-title {{
-        font-size: 1.22rem; font-weight: 800; color: #f5ffd6;
-        letter-spacing: -0.022em; line-height: 1.2;
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: #FFFFFF;
+        letter-spacing: 0;
+        line-height: 1.1;
     }}
     .brand-text-sub {{
-        font-size: 0.79rem; color: rgba(231,246,183,0.85);
-        font-weight: 400; line-height: 1.1; margin-top: 2px;
+        font-size: 0.75rem;
+        color: #8B949E;
+        font-weight: 400;
+        line-height: 1.1;
+        margin-top: 2px;
     }}
-    .brand-pill {{
-        display:flex;
-        align-items:center;
-        gap:10px;
-        background: rgba(13, 44, 36, 0.95);
-        border: 1px solid var(--ath-lime-border);
-        border-radius: 14px;
-        min-height: 58px;
-        padding: 8px 10px;
-        box-shadow: inset 0 1px 0 rgba(217,242,15,0.08);
+    /* ─── Nav pills ─── */
+    .st-key-nav_shell [data-testid="stPills"] [role="radiogroup"] {{
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        overflow-y: hidden;
+        gap: 0.35rem;
+        background: transparent;
+        border: none;
+        padding: 0;
+        border-radius: 0;
+        scrollbar-width: none;
     }}
-    .brand-pill-title {{
-        color:#f5ffd6;
-        font-size:0.96rem;
-        font-weight:800;
-        line-height:1.1;
+    .st-key-nav_shell [data-testid="stPills"] [role="radiogroup"]::-webkit-scrollbar {{
+        display: none;
     }}
-    .brand-pill-sub {{
-        color: rgba(231,246,183,0.82);
-        font-size:0.72rem;
-        line-height:1.1;
-    }}
-    /* ─── Nav radio ─── */
-    div[data-testid="stHorizontalBlock"] [role="radiogroup"] {{
-        gap: 0.45rem;
-        background: rgba(13, 44, 36, 0.95);
-        border: 1px solid var(--ath-lime-border);
-        padding: 0.38rem;
-        border-radius: 13px;
-        backdrop-filter: blur(8px);
-    }}
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] {{
-        min-height: 42px;
-        background: rgba(17, 46, 38, 0.94);
-        border: 1px solid rgba(151,189,68,0.66);
-        border-radius: 9px;
-        padding: 6px 13px;
-        display: flex; align-items: center; justify-content: center;
-        box-shadow: inset 0 1px 0 rgba(217,242,15,0.08);
+    .st-key-nav_shell [data-testid="stPills"] button {{
+        min-height: 34px !important;
+        background: transparent !important;
+        border: 1px solid transparent !important;
+        border-radius: 9px !important;
+        padding: 4px 12px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        white-space: nowrap;
+        flex-shrink: 0;
         transition: all 0.16s ease;
+        color: #8B949E !important;
+        font-weight: 500 !important;
+        font-size: 0.76rem !important;
+        box-shadow: none !important;
     }}
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] > div {{
-        color: var(--ath-text) !important;
-        font-weight: 600;
-        opacity: 1 !important;
-        font-size: 0.865rem;
-        letter-spacing: 0.008em;
+    .st-key-nav_shell [data-testid="stPills"] button:hover {{
+        background: #161B22;
+        border-color: transparent;
     }}
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] svg {{
-        fill: var(--ath-text) !important;
-    }}
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"]:hover {{
-        transform: translateY(-1px);
-        border-color: rgba(217,242,15,0.9);
-        background: #22503f;
-    }}
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"][aria-checked="true"] {{
-        background: linear-gradient(160deg, #385e14 0%, #8fb715 100%);
-        border-color: var(--ath-lime);
-        box-shadow: 0 5px 18px rgba(217,242,15,0.28);
-    }}
-    div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"][aria-checked="true"] > div {{
-        color: #f3ffd1 !important;
-        font-weight: 700;
+    .st-key-nav_shell [data-testid="stPills"] button[aria-pressed="true"] {{
+        background: rgba(201, 255, 0, 0.20);
+        border-color: rgba(201, 255, 0, 0.60);
+        box-shadow: 0 8px 18px rgba(201, 255, 0, 0.20);
+        color: #FFFFFF !important;
     }}
     /* ─── Profile selectbox ─── */
     div[data-testid="stSelectbox"] > div[data-baseweb="select"] {{
-        background: rgba(17, 46, 38, 0.94);
+        background: #161B22;
         border-radius: 10px;
-        border: 1px solid rgba(196,217,130,0.55);
+        border: 1px solid rgba(201,255,0,0.40);
         min-height: 48px;
-        box-shadow: inset 0 1px 0 rgba(217,242,15,0.15);
+        box-shadow: inset 0 1px 0 rgba(201,255,0,0.15);
     }}
     div[data-testid="stSelectbox"] svg {{ fill: var(--ath-text); }}
     div[data-testid="stSelectbox"] label p {{
@@ -1822,53 +1860,70 @@ st.markdown(
         text-transform: uppercase !important;
     }}
     div[data-baseweb="slider"] [role="slider"] {{
-        background: #d9f20f !important;
-        border-color: #d9f20f !important;
-        box-shadow: 0 0 0 4px rgba(217,242,15,0.16) !important;
+        background: #C9FF00 !important;
+        border-color: #C9FF00 !important;
+        box-shadow: 0 0 0 4px rgba(201,255,0,0.16) !important;
     }}
     div[data-baseweb="slider"] [role="slider"]::before {{
-        background: #d9f20f !important;
+        background: #C9FF00 !important;
     }}
     div[data-baseweb="slider"] > div > div > div {{
-        background: #d9f20f !important;
+        background: #C9FF00 !important;
     }}
     div[data-baseweb="slider"] > div > div:nth-child(1) {{
-        background: rgba(217,242,15,0.22) !important;
+        background: rgba(201,255,0,0.22) !important;
     }}
     div[data-baseweb="slider"] > div > div:nth-child(2),
     div[data-baseweb="slider"] > div > div:nth-child(2) > div,
     div[data-baseweb="slider"] > div > div:nth-child(3),
     div[data-baseweb="slider"] > div > div:nth-child(3) > div {{
-        background: #d9f20f !important;
-        border-color: #d9f20f !important;
+        background: #C9FF00 !important;
+        border-color: #C9FF00 !important;
     }}
     div[data-baseweb="slider"] [data-testid="stTickBar"] div {{
-        background: linear-gradient(90deg, rgba(217,242,15,0.28) 0%, #d9f20f 100%) !important;
+        background: linear-gradient(90deg, rgba(201,255,0,0.28) 0%, #C9FF00 100%) !important;
     }}
     .form-panel {{
-        background: rgba(12, 41, 34, 0.78);
-        border: 1px solid rgba(217,242,15,0.18);
+        background: rgba(22, 27, 34, 0.90);
+        border: 1px solid rgba(201,255,0,0.20);
         border-radius: 16px;
         padding: 14px 16px 6px;
         margin-bottom: 12px;
     }}
     .form-panel [data-testid="stSlider"] label,
     .form-panel [data-testid="stSelectSlider"] label {{
-        color: #eefdb2 !important;
+        color: #E8FF8A !important;
         font-weight: 700 !important;
     }}
     .form-title {{
-        color: #eefdb2;
+        color: #C9FF00;
         font-size: 0.92rem;
         font-weight: 800;
         letter-spacing: 0.04em;
         text-transform: uppercase;
         margin-bottom: 10px;
     }}
+    [data-testid="stTextInput"] input,
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stDateInput"] input,
+    [data-testid="stFileUploader"] section {{
+        background: #0E1117 !important;
+        color: #FFFFFF !important;
+        border: 1px solid rgba(201,255,0,0.30) !important;
+        border-radius: 10px !important;
+    }}
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stTextArea"] textarea:focus,
+    [data-testid="stNumberInput"] input:focus,
+    [data-testid="stDateInput"] input:focus {{
+        border-color: #C9FF00 !important;
+        box-shadow: 0 0 0 1px #C9FF00 !important;
+    }}
     /* ─── Metric cards ─── */
     [data-testid="stMetric"] {{
         background: var(--ath-card);
-        border: 1px solid rgba(161,194,82,0.52);
+        border: 1px solid rgba(201,255,0,0.32);
         border-radius: 14px;
         padding: 16px 18px;
         box-shadow: 0 1px 8px rgba(0,0,0,0.22);
@@ -1899,35 +1954,35 @@ st.markdown(
         transition: all 0.18s ease !important;
     }}
     .stButton > button[kind="primary"] {{
-        background: linear-gradient(135deg, #55760f 0%, #d9f20f 100%) !important;
-        color: #0f291f !important;
+        background: linear-gradient(135deg, #C9FF00 0%, #A8D600 100%) !important;
+        color: #0E1117 !important;
         border: none !important;
-        box-shadow: 0 3px 10px rgba(107,143,18,0.28) !important;
+        box-shadow: 0 3px 10px rgba(201,255,0,0.25) !important;
     }}
     .stButton > button[kind="primary"]:hover {{
         transform: translateY(-1px) !important;
-        box-shadow: 0 6px 20px rgba(107,143,18,0.38) !important;
+        box-shadow: 0 6px 20px rgba(201,255,0,0.34) !important;
     }}
     .stButton > button:not([kind="primary"]) {{
-        background: #12362c !important;
+        background: #161B22 !important;
         color: var(--ath-text) !important;
-        border: 1px solid #3f6b54 !important;
+        border: 1px solid rgba(201,255,0,0.30) !important;
     }}
     .stButton > button:not([kind="primary"]):hover {{
-        background: #194637 !important;
-        border-color: #7aa51a !important;
+        background: #1E2430 !important;
+        border-color: #C9FF00 !important;
         transform: translateY(-1px) !important;
     }}
     /* ─── Garmin sync pill button ─── */
     .garmin-btn button {{
-        background: linear-gradient(135deg, #0c3c31 0%, #254f0a 100%) !important;
-        color: #f0fdfa !important;
+        background: linear-gradient(135deg, #161B22 0%, #0A2E0A 100%) !important;
+        color: #C9FF00 !important;
         border: none !important;
         border-radius: 12px !important;
         font-weight: 600 !important;
         font-size: 1rem !important;
         letter-spacing: 0.015em !important;
-        box-shadow: 0 3px 12px rgba(12,60,49,0.36) !important;
+        box-shadow: 0 3px 12px rgba(201,255,0,0.18) !important;
         transition: all 0.2s ease !important;
         min-height: 48px !important;
         min-width: 48px !important;
@@ -1935,7 +1990,7 @@ st.markdown(
         padding: 0 !important;
     }}
     .garmin-btn button:hover {{
-        box-shadow: 0 6px 20px rgba(12,60,49,0.45) !important;
+        box-shadow: 0 6px 20px rgba(201,255,0,0.25) !important;
         transform: translateY(-1px) !important;
     }}
     .calendar-legend {{
@@ -1948,11 +2003,11 @@ st.markdown(
         display: inline-flex;
         align-items: center;
         gap: 0.5rem;
-        background: rgba(12, 41, 34, 0.82);
-        border: 1px solid rgba(217,242,15,0.16);
+        background: rgba(22, 27, 34, 0.90);
+        border: 1px solid rgba(201,255,0,0.22);
         border-radius: 999px;
         padding: 0.48rem 0.82rem;
-        color: #d8e9db;
+        color: #FFFFFF;
         font-size: 0.84rem;
         font-weight: 600;
     }}
@@ -1972,66 +2027,67 @@ st.markdown(
     details[data-testid="stExpander"] summary {{
         padding: 12px 16px !important;
         font-weight: 600 !important;
-        color: #f0fcc8 !important;
-        background: #1a4638 !important;
+        color: #FFFFFF !important;
+        background: #1E2430 !important;
     }}
     /* ─── Tabs, tables and charts ─── */
     button[data-baseweb="tab"] {{
-        color: #d5e8bf !important;
+        color: #8B949E !important;
     }}
     button[data-baseweb="tab"][aria-selected="true"] {{
-        color: #f0ffd0 !important;
-        border-bottom-color: #d9f20f !important;
+        color: #FFFFFF !important;
+        border-bottom-color: #C9FF00 !important;
     }}
     div[data-testid="stDataFrame"] div[role="grid"] {{
         border: 1px solid var(--ath-lime-border);
         border-radius: 10px;
     }}
     div[data-testid="stDataFrame"] [role="columnheader"] {{
-        background: #234738 !important;
-        color: #f0fcc8 !important;
+        background: #1E2430 !important;
+        color: #FFFFFF !important;
     }}
     div[data-testid="stDataFrame"] [role="gridcell"] {{
-        background: #102c24 !important;
-        color: #d8e9db !important;
+        background: #161B22 !important;
+        color: #FFFFFF !important;
+    }}
+    [data-testid="stAlert"] {{
+        border: 1px solid rgba(201,255,0,0.30) !important;
+        border-radius: 12px !important;
+        background: #161B22 !important;
     }}
     /* ─── Dividers ─── */
     hr {{
         border: none !important;
-        border-top: 1px solid rgba(217,242,15,0.38) !important;
+        border-top: 1px solid rgba(201,255,0,0.38) !important;
         margin: 18px 0 !important;
     }}
     /* ─── Responsive ─── */
     @media (max-width: 900px) {{
-        .nav-outer {{ padding: 10px 12px 8px 12px; border-radius: 14px; }}
-        .top-nav-anchor + div[data-testid="stHorizontalBlock"] {{
+        .st-key-nav_shell > div[data-testid="stHorizontalBlock"] {{
             padding: 10px 12px;
             border-radius: 16px;
             gap: 0.55rem;
         }}
-        .brand-text-title {{ font-size: 1.05rem; }}
-        div[data-testid="stHorizontalBlock"] [role="radiogroup"] {{
-            gap: 0.28rem; padding: 0.28rem;
+        .brand-text-title {{ font-size: 0.88rem; }}
+        .st-key-nav_shell [data-testid="stPills"] [role="radiogroup"] {{
+            gap: 0.2rem;
         }}
-        div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] {{
-            min-height: 36px; padding: 4px 8px;
+        .st-key-nav_shell [data-testid="stPills"] button {{
+            min-height: 32px; padding: 3px 8px;
         }}
-        div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] > div {{
-            font-size: 0.76rem;
+        .st-key-nav_shell [data-testid="stPills"] button {{
+            font-size: 0.72rem;
         }}
         [data-testid="stMetricValue"] {{ font-size: 1.25rem !important; }}
         [data-testid="stMetricLabel"] p {{ font-size: 0.62rem !important; }}
     }}
     @media (max-width: 600px) {{
-        .top-nav-anchor + div[data-testid="stHorizontalBlock"] {{
+        .st-key-nav_shell > div[data-testid="stHorizontalBlock"] {{
             padding: 8px 10px;
         }}
-        .brand-icon {{ width:36px; height:36px; border-radius:9px; }}
-        .brand-text-title {{ font-size: 0.95rem; }}
+        .brand-icon {{ width:38px; height:38px; border-radius:8px; }}
+        .brand-text-title {{ font-size: 0.82rem; }}
         .brand-text-sub {{ font-size: 0.70rem; }}
-        .brand-pill {{ min-height: 52px; padding:6px 8px; }}
-        .brand-pill-title {{ font-size: 0.82rem; }}
-        .brand-pill-sub {{ font-size: 0.65rem; }}
     }}
     </style>
     """,
@@ -2040,10 +2096,9 @@ st.markdown(
 
 # ── Opciones de menú según perfil ─────────────────────────────────────────
 _opciones_menu = [
-    "Dashboard",
+    "Inicio",
     "Perfil",
     "Biblioteca Científica",
-    "Asistente Virtual",
     "Diario de Fuerza",
     "Entrenador Personal",
     "Calendario",
@@ -2054,51 +2109,60 @@ if user_actual == 1:  # Ciclo Menstrual solo para Malena
 # ── Fila nav: marca + pestañas + Garmin + selector de perfil ──────────────
 _perfiles = {"Malena": 1, "Dani": 2}
 _perfil_actual_nombre = "Malena" if user_actual == 1 else "Dani"
-st.markdown('<div class="top-nav-anchor"></div>', unsafe_allow_html=True)
-_brand_col, _nav_col, _garmin_col, _sel_col = st.columns([0.24, 0.52, 0.07, 0.17])
+with st.container(key="nav_shell"):
+    _brand_col, _nav_col, _garmin_col, _sel_col = st.columns([0.19, 0.63, 0.06, 0.12])
 
-with _brand_col:
-    st.markdown(
-        f"""
-        <div class="brand-pill">
-            <div class="brand-icon">
-                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"/>
-                </svg>
+    with _brand_col:
+        st.markdown(
+            f"""
+            <div class="athlete-brand">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="brand-text-title">Proyecto Athlete</div>
+                    <div class="brand-text-sub">{_bienvenida}</div>
+                </div>
             </div>
-            <div>
-                <div class="brand-pill-title">Proyecto Athlete</div>
-                <div class="brand-pill-sub">{_bienvenida}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-with _garmin_col:
-    st.markdown('<div class="garmin-btn">', unsafe_allow_html=True)
-    _do_sync = st.button("↻", key="garmin_sync_header", help="Sincronizar Garmin")
-    st.markdown('</div>', unsafe_allow_html=True)
+    with _nav_col:
+        if "menu_actual" not in st.session_state:
+            st.session_state.menu_actual = "Inicio"
+        if st.session_state.menu_actual not in _opciones_menu:
+            st.session_state.menu_actual = "Inicio"
 
-with _sel_col:
-    _elegido = st.selectbox(
-        "Perfil",
-        list(_perfiles.keys()),
-        index=list(_perfiles.keys()).index(_perfil_actual_nombre),
-        label_visibility="collapsed",
-    )
-    if _perfiles[_elegido] != user_actual:
-        st.session_state.usuario_id = _perfiles[_elegido]
-        _guardar_ultimo_usuario(_perfiles[_elegido])
-        st.rerun()
+        _menu_sel = st.pills(
+            "Navegación principal",
+            _opciones_menu,
+            selection_mode="single",
+            default=st.session_state.menu_actual,
+            label_visibility="collapsed",
+        )
+        if _menu_sel:
+            st.session_state.menu_actual = _menu_sel
+        menu = st.session_state.menu_actual
 
-with _nav_col:
-    menu = st.radio(
-        "Navegación principal",
-        _opciones_menu,
-        horizontal=True,
-        label_visibility="collapsed",
-    )
+    with _garmin_col:
+        st.markdown('<div class="garmin-btn">', unsafe_allow_html=True)
+        _do_sync = st.button("↻", key="garmin_sync_header", help="Sincronizar Garmin")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with _sel_col:
+        _elegido = st.selectbox(
+            "Perfil",
+            list(_perfiles.keys()),
+            index=list(_perfiles.keys()).index(_perfil_actual_nombre),
+            label_visibility="collapsed",
+        )
+        if _perfiles[_elegido] != user_actual:
+            st.session_state.usuario_id = _perfiles[_elegido]
+            _guardar_ultimo_usuario(_perfiles[_elegido])
+            st.rerun()
 
 # ── Lógica de sincronización Garmin ───────────────────────────────────────
 if _do_sync:
@@ -2128,11 +2192,12 @@ if _do_sync:
 # ==========================================
 # PESTAÑA 1: DASHBOARD (Con lógica de Sueño unificada)
 # ==========================================
-if menu == "Dashboard":
+if menu in ("Dashboard", "Inicio"):
     st.markdown(
-        "<h2 style='font-size:1.5rem;font-weight:800;color:#d8e9db;letter-spacing:-0.02em;margin-bottom:4px;'>Dashboard</h2>",
+        "<h2 style='font-size:1.5rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;margin-bottom:4px;'>Dashboard</h2>",
         unsafe_allow_html=True,
     )
+    st.caption("Resumen de los ultimos 7 dias")
 
     df_act, df_sueno, df_fuerza = cargar_datos_dashboard(user_actual)
 
@@ -2376,8 +2441,15 @@ if menu == "Dashboard":
 # PESTAÑA 2: PERFIL
 # ==========================================
 elif menu == "Perfil":
-    st.title("👤 Perfil")
-    st.caption("Aquí puedes ver y editar los datos que la IA usa para planificar tus entrenamientos.")
+    st.markdown(
+        """
+        <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
+            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>👤 Perfil</div>
+            <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Edita los datos que usa la IA para planificar tus entrenamientos.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     perfil_actual = obtener_perfil_cache(user_actual) or {}
     datos_plan = resumen_usuario_para_plan(user_actual)
@@ -2544,7 +2616,15 @@ elif menu == "Perfil":
 # PESTAÑA 3: BIBLIOTECA CIENTÍFICA
 # ==========================================
 elif menu == "Biblioteca Científica":
-    st.title("📚 Biblioteca Científica")
+    st.markdown(
+        """
+        <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
+            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>📚 Biblioteca Científica</div>
+            <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Sube estudios para que la IA los use como contexto técnico en planificación y recomendaciones.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.caption(
         "Los archivos se guardan en disco y en la base de datos solo se almacena metadato + texto/resumen. "
         "Así evitas cargar Turso con binarios pesados y la IA sí puede usar el contenido."
@@ -2670,7 +2750,15 @@ elif menu == "Ciclo Menstrual":
 # PESTAÑA 5: CONSULTORIO VIRTUAL (IA)
 # ==========================================
 elif menu == "Asistente Virtual":
-    st.title("Asistente Virtual")
+    st.markdown(
+        """
+        <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
+            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>💬 Asistente Virtual</div>
+            <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Consulta dudas de entrenamiento con contexto de Garmin, fisiologia y estudios cientificos.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     if obtener_consejo is None:
         st.error("Error: No se ha podido cargar ai_coach.py. Revisa que el archivo exista y esté correcto.")
     else:
@@ -2721,7 +2809,15 @@ elif menu == "Asistente Virtual":
                     except Exception as e:
                         st.error(f"Error al procesar la respuesta: {e}")
 elif menu == "Diario de Fuerza":
-    st.title("🏋️‍♀️ Diario de Fuerza")
+    st.markdown(
+        """
+        <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
+            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>🏋️ Diario de Fuerza</div>
+            <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Escribe en lenguaje natural y deja que la IA estructure tus sesiones automaticamente.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if "resultado_ia" not in st.session_state:
         st.session_state.resultado_ia = None
@@ -2871,7 +2967,15 @@ elif menu == "Diario de Fuerza":
 # PESTAÑA 6: ENTRENADOR PERSONAL
 # ==========================================
 elif menu == "Entrenador Personal":
-    st.title("🎯 Entrenador Personal Premium")
+    st.markdown(
+        """
+        <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
+            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>🎯 Entrenador Personal Premium</div>
+            <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Control diario, planificacion semanal adaptativa y gestion de lesiones en una sola vista.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     tab_checkin, tab_plan, tab_lesiones = st.tabs(
         ["📊 Check-in Diario", "🧠 Generar Plan Semanal", "🩹 Lesiones y Prevención"]
@@ -3169,8 +3273,15 @@ elif menu == "Entrenador Personal":
 # PESTAÑA 7: CALENDARIO
 # ==========================================
 elif menu == "Calendario":
-    st.title("🗓️ Calendario de Entrenamientos")
-    st.caption("Vista semanal de tus sesiones planificadas.")
+    st.markdown(
+        """
+        <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
+            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>🗓️ Calendario de Entrenamientos</div>
+            <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Vista semanal de tus sesiones planificadas con detalle por dia e intensidad.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     hoy = datetime.now().date()
     inicio_default = hoy - timedelta(days=hoy.weekday())

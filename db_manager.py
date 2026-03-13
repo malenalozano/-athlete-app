@@ -1,14 +1,23 @@
-import libsql as sqlite3
+import sqlite3
 import os
 from dotenv import load_dotenv
+
+try:
+    import libsql as libsql_sqlite3
+except Exception:
+    libsql_sqlite3 = None
 
 load_dotenv()
 URL = os.getenv("TURSO_DATABASE_URL")
 TOKEN = os.getenv("TURSO_AUTH_TOKEN")
+LOCAL_DB_PATH = os.getenv("LOCAL_DB_PATH", "atleta.db")
 
 
 def get_db_connection():
-    return sqlite3.connect(URL, auth_token=TOKEN)
+    # Prefer Turso when URL is available; otherwise use local SQLite file.
+    if URL and libsql_sqlite3 is not None:
+        return libsql_sqlite3.connect(URL, auth_token=TOKEN)
+    return sqlite3.connect(LOCAL_DB_PATH)
 
 
 def _column_exists(conn, table_name, column_name):
