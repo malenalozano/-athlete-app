@@ -69,6 +69,7 @@ def _dividir_nota_por_fechas(texto):
 
 
 # ── Plan conjunto (Malena + Dani para semana) ─────────────────────────────
+@st.cache_data(ttl=120)
 def _cargar_plan_conjunto(semana_dt):
     """Devuelve DataFrame con planes de ambos usuarios para la semana indicada."""
     conn = get_db_connection()
@@ -87,6 +88,11 @@ def _cargar_plan_conjunto(semana_dt):
     finally:
         conn.close()
     return df
+
+
+@st.cache_data(ttl=300)
+def obtener_perfil_cache(usuario_id):
+    return obtener_perfil(usuario_id)
 
 
 def asegurar_tabla_plan_entrenamiento():
@@ -354,6 +360,7 @@ def contexto_estudios(usuario_id=None):
     return "\n".join(bloques)
 
 
+@st.cache_data(ttl=120)
 def obtener_estado_ciclo_malena():
     conn = get_db_connection()
     try:
@@ -954,8 +961,10 @@ def guardar_plan_semanal(usuario_id, semana_inicio, plan_df):
         )
     conn.commit()
     conn.close()
+    st.cache_data.clear()
 
 
+@st.cache_data(ttl=120)
 def cargar_plan_semanal(usuario_id, semana_inicio):
     conn = get_db_connection()
     df = pd.read_sql_query(
@@ -1439,6 +1448,36 @@ def render_calendario_ciclo(df_ciclo, anio, mes):
                     unsafe_allow_html=True,
                 )
 
+
+def aplicar_tema_plotly(fig, titulo=None):
+    """Unifica el estilo de gráficos con la paleta Athlete (verde/lima)."""
+    fig.update_layout(
+        paper_bgcolor="#0c2922",
+        plot_bgcolor="#103128",
+        font=dict(color="#d8e9db"),
+        title_font=dict(color="#e7f6b7", size=18),
+        legend=dict(
+            bgcolor="rgba(12,41,34,0.65)",
+            bordercolor="rgba(217,242,15,0.26)",
+            borderwidth=1,
+            font=dict(color="#d8e9db"),
+        ),
+        margin=dict(l=20, r=20, t=56, b=20),
+        xaxis=dict(
+            gridcolor="rgba(217,242,15,0.12)",
+            zerolinecolor="rgba(217,242,15,0.18)",
+            linecolor="rgba(217,242,15,0.20)",
+        ),
+        yaxis=dict(
+            gridcolor="rgba(217,242,15,0.12)",
+            zerolinecolor="rgba(217,242,15,0.18)",
+            linecolor="rgba(217,242,15,0.20)",
+        ),
+    )
+    if titulo:
+        fig.update_layout(title=titulo)
+    return fig
+
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="Proyecto Athlete", page_icon="🏃‍♀️", layout="wide")
 if "_db_setup_done" not in st.session_state:
@@ -1504,7 +1543,7 @@ if "usuario_id" not in st.session_state:
     st.stop()
 
 user_actual = st.session_state.usuario_id
-perfil = obtener_perfil(user_actual)
+perfil = obtener_perfil_cache(user_actual)
 
 # 3. ONBOARDING (Configuración inicial de Perfil + Garmin)
 if perfil is None:
@@ -1572,11 +1611,15 @@ st.markdown(
         --ath-brand-mid: #0f3a31;
         --ath-lime: #d9f20f;
         --ath-olive: #7aa51a;
+        --ath-lime-soft: #eefdb2;
+        --ath-lime-border: rgba(217,242,15,0.34);
     }}
     /* ─── Global typography ─── */
     html, body, [class*="css"] {{
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
     }}
+    h1, h2, h3 {{ color: #e7f6b7 !important; }}
+    p, li, label, span {{ color: var(--ath-text); }}
     [data-testid="stAppViewContainer"] {{
         background:
             radial-gradient(circle at 8% 8%, rgba(217,242,15,0.08) 0%, transparent 36%),
@@ -1590,13 +1633,13 @@ st.markdown(
     /* ─── Header brand bar ─── */
     .nav-outer {{
         background:
-            radial-gradient(ellipse at 8% 50%, rgba(217,242,15,0.19) 0%, transparent 55%),
+            radial-gradient(ellipse at 8% 50%, rgba(217,242,15,0.23) 0%, transparent 55%),
             linear-gradient(135deg, var(--ath-brand-deep) 0%, var(--ath-brand-mid) 48%, var(--ath-brand-deep) 100%);
         border-radius: 20px;
-        padding: 14px 20px 12px 20px;
+        padding: 12px 20px 10px 20px;
         margin-bottom: 16px;
         box-shadow: 0 12px 40px rgba(2,6,23,0.28);
-        border: 1px solid rgba(217,242,15,0.22);
+        border: 1px solid var(--ath-lime-border);
     }}
     .athlete-brand {{
         display: flex;
@@ -1614,18 +1657,40 @@ st.markdown(
     }}
     .brand-icon svg {{ width:24px; height:24px; fill:white; }}
     .brand-text-title {{
-        font-size: 1.22rem; font-weight: 800; color: #f0fdfa;
+        font-size: 1.22rem; font-weight: 800; color: #f5ffd6;
         letter-spacing: -0.022em; line-height: 1.2;
     }}
     .brand-text-sub {{
-        font-size: 0.79rem; color: rgba(204,251,241,0.78);
+        font-size: 0.79rem; color: rgba(231,246,183,0.85);
         font-weight: 400; line-height: 1.1; margin-top: 2px;
+    }}
+    .brand-pill {{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        background: rgba(13, 44, 36, 0.95);
+        border: 1px solid var(--ath-lime-border);
+        border-radius: 14px;
+        min-height: 58px;
+        padding: 8px 10px;
+        box-shadow: inset 0 1px 0 rgba(217,242,15,0.08);
+    }}
+    .brand-pill-title {{
+        color:#f5ffd6;
+        font-size:0.96rem;
+        font-weight:800;
+        line-height:1.1;
+    }}
+    .brand-pill-sub {{
+        color: rgba(231,246,183,0.82);
+        font-size:0.72rem;
+        line-height:1.1;
     }}
     /* ─── Nav radio ─── */
     div[data-testid="stHorizontalBlock"] [role="radiogroup"] {{
         gap: 0.45rem;
-        background: rgba(10, 36, 30, 0.68);
-        border: 1px solid rgba(217,242,15,0.22);
+        background: rgba(13, 44, 36, 0.95);
+        border: 1px solid var(--ath-lime-border);
         padding: 0.38rem;
         border-radius: 13px;
         backdrop-filter: blur(8px);
@@ -1633,7 +1698,7 @@ st.markdown(
     div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"] {{
         min-height: 42px;
         background: rgba(17, 46, 38, 0.94);
-        border: 1px solid rgba(122,165,26,0.48);
+        border: 1px solid rgba(151,189,68,0.66);
         border-radius: 9px;
         padding: 6px 13px;
         display: flex; align-items: center; justify-content: center;
@@ -1652,13 +1717,13 @@ st.markdown(
     }}
     div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"]:hover {{
         transform: translateY(-1px);
-        border-color: rgba(217,242,15,0.72);
-        background: #1a4536;
+        border-color: rgba(217,242,15,0.9);
+        background: #22503f;
     }}
     div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"][aria-checked="true"] {{
-        background: linear-gradient(160deg, #234b22 0%, #446a1b 100%);
-        border-color: var(--ath-olive);
-        box-shadow: 0 5px 16px rgba(107,143,18,0.25);
+        background: linear-gradient(160deg, #385e14 0%, #8fb715 100%);
+        border-color: var(--ath-lime);
+        box-shadow: 0 5px 18px rgba(217,242,15,0.28);
     }}
     div[data-testid="stHorizontalBlock"] label[data-baseweb="radio"][aria-checked="true"] > div {{
         color: #f3ffd1 !important;
@@ -1668,15 +1733,15 @@ st.markdown(
     div[data-testid="stSelectbox"] > div[data-baseweb="select"] {{
         background: rgba(17, 46, 38, 0.94);
         border-radius: 10px;
-        border: 1px solid rgba(145,163,111,0.38);
+        border: 1px solid rgba(196,217,130,0.55);
         min-height: 42px;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.48);
+        box-shadow: inset 0 1px 0 rgba(217,242,15,0.15);
     }}
     div[data-testid="stSelectbox"] svg {{ fill: var(--ath-text); }}
     /* ─── Metric cards ─── */
     [data-testid="stMetric"] {{
         background: var(--ath-card);
-        border: 1px solid var(--ath-border);
+        border: 1px solid rgba(161,194,82,0.52);
         border-radius: 14px;
         padding: 16px 18px;
         box-shadow: 0 1px 8px rgba(0,0,0,0.22);
@@ -1754,13 +1819,33 @@ st.markdown(
     details[data-testid="stExpander"] summary {{
         padding: 12px 16px !important;
         font-weight: 600 !important;
-        color: var(--ath-text) !important;
-        background: #163a2f !important;
+        color: #f0fcc8 !important;
+        background: #1a4638 !important;
+    }}
+    /* ─── Tabs, tables and charts ─── */
+    button[data-baseweb="tab"] {{
+        color: #d5e8bf !important;
+    }}
+    button[data-baseweb="tab"][aria-selected="true"] {{
+        color: #f0ffd0 !important;
+        border-bottom-color: #d9f20f !important;
+    }}
+    div[data-testid="stDataFrame"] div[role="grid"] {{
+        border: 1px solid var(--ath-lime-border);
+        border-radius: 10px;
+    }}
+    div[data-testid="stDataFrame"] [role="columnheader"] {{
+        background: #234738 !important;
+        color: #f0fcc8 !important;
+    }}
+    div[data-testid="stDataFrame"] [role="gridcell"] {{
+        background: #102c24 !important;
+        color: #d8e9db !important;
     }}
     /* ─── Dividers ─── */
     hr {{
         border: none !important;
-        border-top: 1px solid #cdd9b9 !important;
+        border-top: 1px solid rgba(217,242,15,0.38) !important;
         margin: 18px 0 !important;
     }}
     /* ─── Responsive ─── */
@@ -1783,21 +1868,11 @@ st.markdown(
         .brand-icon {{ width:36px; height:36px; border-radius:9px; }}
         .brand-text-title {{ font-size: 0.95rem; }}
         .brand-text-sub {{ font-size: 0.70rem; }}
+        .brand-pill {{ min-height: 52px; padding:6px 8px; }}
+        .brand-pill-title {{ font-size: 0.82rem; }}
+        .brand-pill-sub {{ font-size: 0.65rem; }}
     }}
     </style>
-    <div class="nav-outer">
-        <div class="athlete-brand">
-            <div class="brand-icon">
-                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"/>
-                </svg>
-            </div>
-            <div>
-                <div class="brand-text-title">Proyecto Athlete</div>
-                <div class="brand-text-sub">{_bienvenida}</div>
-            </div>
-        </div>
-    </div>
     """,
     unsafe_allow_html=True,
 )
@@ -1805,6 +1880,7 @@ st.markdown(
 # ── Opciones de menú según perfil ─────────────────────────────────────────
 _opciones_menu = [
     "Dashboard",
+    "Perfil",
     "Biblioteca Científica",
     "Asistente Virtual",
     "Diario de Fuerza",
@@ -1814,10 +1890,28 @@ _opciones_menu = [
 if user_actual == 1:  # Ciclo Menstrual solo para Malena
     _opciones_menu.insert(2, "Ciclo Menstrual")
 
-# ── Fila nav: radio + botón Garmin + selector de perfil ───────────────────
+# ── Fila nav: marca + pestañas + Garmin + selector de perfil ──────────────
 _perfiles = {"Malena": 1, "Dani": 2}
 _perfil_actual_nombre = "Malena" if user_actual == 1 else "Dani"
-_nav_col, _garmin_col, _sel_col = st.columns([0.63, 0.20, 0.17])
+_brand_col, _nav_col, _garmin_col, _sel_col = st.columns([0.22, 0.48, 0.18, 0.12])
+
+with _brand_col:
+    st.markdown(
+        f"""
+        <div class="brand-pill">
+            <div class="brand-icon">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"/>
+                </svg>
+            </div>
+            <div>
+                <div class="brand-pill-title">Proyecto Athlete</div>
+                <div class="brand-pill-sub">{_bienvenida}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 with _garmin_col:
     st.markdown('<div class="garmin-btn">', unsafe_allow_html=True)
@@ -1918,10 +2012,10 @@ if menu == "Dashboard":
         with cols_sem[i]:
             st.markdown(
                 f"""
-                <div style='background:#0f2b24;border:1px solid #2d5445;border-radius:10px;padding:10px;min-height:110px;'>
-                    <div style='font-weight:700;color:#d8e9db;'>{row['dia']}</div>
-                    <div style='font-size:0.78rem;color:#93b4a2;margin-bottom:6px;'>{row['fecha'].strftime('%d/%m')}</div>
-                    <div style='font-size:0.84rem;color:#c2d8ca;'>{row['actividad']}</div>
+                <div style='background:#14362c;border:1px solid rgba(217,242,15,0.30);border-radius:10px;padding:10px;min-height:110px;'>
+                    <div style='font-weight:700;color:#f0ffd0;'>{row['dia']}</div>
+                    <div style='font-size:0.78rem;color:#cfe4ab;margin-bottom:6px;'>{row['fecha'].strftime('%d/%m')}</div>
+                    <div style='font-size:0.84rem;color:#d8e9db;'>{row['actividad']}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1941,7 +2035,8 @@ if menu == "Dashboard":
             title="Kilómetros por semana",
             labels={"week": "Semana", "km_semana": "Km"},
         )
-        fig_run.update_traces(line_color="#0f766e")
+        fig_run.update_traces(line_color="#d9f20f", marker_color="#eefdb2", line_width=3)
+        fig_run = aplicar_tema_plotly(fig_run)
         st.plotly_chart(fig_run, use_container_width=True)
 
     st.divider()
@@ -1998,14 +2093,14 @@ if menu == "Dashboard":
         st.info("Aún no hay datos de fuerza para construir la gráfica de grupos musculares.")
     else:
         color_map = {
-            "gluteos": "#ec4899",
-            "espalda biceps": "#0ea5e9",
-            "isquios": "#f97316",
-            "cuadriceps": "#22c55e",
-            "gemelos": "#f59e0b",
-            "triceps": "#8b5cf6",
-            "hombro": "#ef4444",
-            "abdominales": "#14b8a6",
+            "gluteos": "#d9f20f",
+            "espalda biceps": "#96bf14",
+            "isquios": "#5e8f12",
+            "cuadriceps": "#c5e64b",
+            "gemelos": "#7ba61c",
+            "triceps": "#4f7610",
+            "hombro": "#e4f78f",
+            "abdominales": "#9ccf22",
         }
         fig_gym = px.line(
             gym_prog,
@@ -2017,6 +2112,7 @@ if menu == "Dashboard":
             color_discrete_map=color_map,
             labels={"fecha_dt": "Fecha", "volumen": "Volumen", "grupo": "Grupo"},
         )
+        fig_gym = aplicar_tema_plotly(fig_gym)
         st.plotly_chart(fig_gym, use_container_width=True)
 
     # Visualización de Sueño
@@ -2024,7 +2120,16 @@ if menu == "Dashboard":
         st.divider()
         st.subheader("🌙 Calidad del Sueño (Última semana)")
         df_sueno['fecha_f'] = pd.to_datetime(df_sueno['fecha']).dt.strftime('%d-%m')
-        st.plotly_chart(px.bar(df_sueno.sort_values('fecha'), x='fecha_f', y='horas_totales', color='score', title="Horas y Score de Sueño"), use_container_width=True)
+        fig_sueno = px.bar(
+            df_sueno.sort_values('fecha'),
+            x='fecha_f',
+            y='horas_totales',
+            color='score',
+            title="Horas y Score de Sueño",
+            color_continuous_scale=["#5d7f15", "#96bf14", "#d9f20f"],
+        )
+        fig_sueno = aplicar_tema_plotly(fig_sueno)
+        st.plotly_chart(fig_sueno, use_container_width=True)
 
         d1, d2, d3, d4 = st.columns(4)
         d1.metric("Sueño profundo", "—" if radar["sleep_profundo_7d"] is None else f"{radar['sleep_profundo_7d']:.2f} h")
@@ -2066,14 +2171,14 @@ if menu == "Dashboard":
         coincide = malena_activa and dani_activo
 
         if coincide:
-            bg = "#bbf7d0"       # verde claro — coinciden
-            borde = "2px solid #16a34a"
+            bg = "#2d4f1d"       # verde/lima fuerte — coinciden
+            borde = "2px solid #d9f20f"
         elif malena_activa:
-            bg = "#fce7f3"       # rosa pastel
-            borde = "1px solid #f9a8d4"
+            bg = "#35581e"       # oliva suave
+            borde = "1px solid #b6d44a"
         elif dani_activo:
-            bg = "#bae6fd"       # azul celeste
-            borde = "1px solid #7dd3fc"
+            bg = "#1f3f34"       # verde azulado
+            borde = "1px solid #86c59c"
         else:
             bg = "#0f2b24"
             borde = "1px dashed #3a6856"
@@ -2086,9 +2191,9 @@ if menu == "Dashboard":
                 f"""<div style='background:{bg};border:{borde};border-radius:10px;
                     padding:10px 8px;min-height:120px;font-size:0.8rem;'>
                     <div style='font-weight:700;color:#d8e9db;margin-bottom:4px;'>{nombres_dias[i]}</div>
-                    <div style='color:#be185d;'>🙋‍♀️ {malena_txt[:28]}</div>
-                    <div style='color:#0369a1;margin-top:4px;'>🙋‍♂️ {dani_txt[:28]}</div>
-                    {'<div style="margin-top:6px;font-size:0.72rem;color:#15803d;font-weight:600;">✔ Juntos</div>' if coincide else ''}
+                    <div style='color:#f0ffd0;'>🙋‍♀️ {malena_txt[:28]}</div>
+                    <div style='color:#c6ebc8;margin-top:4px;'>🙋‍♂️ {dani_txt[:28]}</div>
+                    {'<div style="margin-top:6px;font-size:0.72rem;color:#f3ffd1;font-weight:600;">✔ Juntos</div>' if coincide else ''}
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -2096,7 +2201,149 @@ if menu == "Dashboard":
 # (El resto de secciones se mantienen igual...)
 
 # ==========================================
-# PESTAÑA 2: BIBLIOTECA CIENTÍFICA
+# PESTAÑA 2: PERFIL
+# ==========================================
+elif menu == "Perfil":
+    st.title("👤 Perfil")
+    st.caption("Aquí puedes ver y editar los datos que la IA usa para planificar tus entrenamientos.")
+
+    perfil_actual = obtener_perfil_cache(user_actual) or {}
+    datos_plan = resumen_usuario_para_plan(user_actual)
+
+    p1, p2, p3, p4 = st.columns(4)
+    p1.metric("Objetivo", perfil_actual.get("objetivo") or "—")
+    p2.metric("Nivel", perfil_actual.get("nivel") or "—")
+    p3.metric("Carrera/sem", perfil_actual.get("carrera") or "—")
+    p4.metric("Fuerza/sem", perfil_actual.get("fuerza") or "—")
+
+    with st.expander("Datos biométricos recientes que alimentan el plan IA"):
+        vista_ia = {
+            "HRV (actual)": datos_plan.get("hrv_actual"),
+            "Training readiness": datos_plan.get("training_readiness"),
+            "Body battery": datos_plan.get("body_battery"),
+            "FC reposo": datos_plan.get("fc_reposo"),
+            "Estrés": datos_plan.get("estres_vital"),
+            "RPE último": datos_plan.get("rpe_ultima"),
+            "Cadencia": datos_plan.get("cadencia_media"),
+            "Longitud zancada": datos_plan.get("longitud_zancada_m"),
+            "Tiempo contacto": datos_plan.get("tiempo_contacto"),
+            "Oscilación vertical": datos_plan.get("oscilacion_vertical"),
+            "Días mal sueño (7d)": datos_plan.get("dias_mal_sueno"),
+        }
+        df_vista_ia = pd.DataFrame(
+            [{"Métrica": k, "Valor": "—" if v is None else v} for k, v in vista_ia.items()]
+        )
+        st.dataframe(df_vista_ia, use_container_width=True, hide_index=True)
+
+    ritmo_actual = (perfil_actual.get("ritmo") or "4:00-4:10").split("-")
+    ritmo_rapido = ritmo_actual[0] if ritmo_actual else "4:00"
+    ritmo_lento = ritmo_actual[1] if len(ritmo_actual) > 1 else ritmo_rapido
+
+    def _ritmo_a_seg(valor):
+        try:
+            mm, ss = valor.split(":")
+            return int(mm) * 60 + int(ss)
+        except Exception:
+            return 240
+
+    def _seg_a_ritmo(seg):
+        return f"{int(seg) // 60}:{int(seg) % 60:02d}"
+
+    with st.form("perfil_edit_form"):
+        c1, c2 = st.columns(2)
+        with c1:
+            nombre = st.text_input("Nombre", value=perfil_actual.get("nombre") or "")
+            edad = st.number_input("Edad", 18, 99, int(perfil_actual.get("edad") or 25))
+            genero = st.selectbox(
+                "Fisiología",
+                ["Mujer", "Hombre"],
+                index=0 if (perfil_actual.get("genero") or "Mujer") == "Mujer" else 1,
+            )
+            peso = st.number_input("Peso actual (kg)", 35.0, 160.0, float(perfil_actual.get("peso") or 60.0))
+            objetivo = st.selectbox(
+                "Objetivo principal",
+                ["5K / 10K", "Media Maratón", "Maratón", "Trail", "HYROX"],
+                index=max(
+                    0,
+                    ["5K / 10K", "Media Maratón", "Maratón", "Trail", "HYROX"].index(
+                        perfil_actual.get("objetivo")
+                    ) if perfil_actual.get("objetivo") in ["5K / 10K", "Media Maratón", "Maratón", "Trail", "HYROX"] else 0,
+                ),
+            )
+
+        with c2:
+            st.markdown("**Ritmo objetivo estimado**")
+            seg_inf = st.select_slider(
+                "Límite superior (rápido)",
+                options=range(150, 485, 5),
+                value=_ritmo_a_seg(ritmo_rapido),
+                format_func=_seg_a_ritmo,
+            )
+            seg_sup = st.select_slider(
+                "Límite inferior (lento)",
+                options=range(150, 485, 5),
+                value=_ritmo_a_seg(ritmo_lento),
+                format_func=_seg_a_ritmo,
+            )
+
+            carrera = st.slider("Días de carrera/semana", 1, 7, int(perfil_actual.get("carrera") or 4))
+            fuerza = st.slider("Días de fuerza/semana", 0, 7, int(perfil_actual.get("fuerza") or 2))
+            nivel = st.select_slider(
+                "Nivel actual",
+                ["Principiante", "Intermedio", "Avanzado", "Élite"],
+                value=perfil_actual.get("nivel") if perfil_actual.get("nivel") in ["Principiante", "Intermedio", "Avanzado", "Élite"] else "Intermedio",
+            )
+
+            st.divider()
+            st.markdown("**🔐 Garmin Connect (opcional)**")
+            cred = obtener_credenciales_garmin(user_actual)
+            email_default = cred[0] if cred and cred[0] else ""
+            email_garmin = st.text_input("Email Garmin", value=email_default)
+            pass_garmin = st.text_input("Nueva contraseña Garmin", type="password", help="Déjala vacía para mantener la actual")
+
+        guardar = st.form_submit_button("💾 Guardar cambios de perfil", type="primary")
+
+    if guardar:
+        if seg_sup < seg_inf:
+            st.error("El límite inferior (lento) no puede ser más rápido que el límite superior.")
+        else:
+            datos = {
+                "nombre": nombre,
+                "edad": edad,
+                "genero": genero,
+                "peso": peso,
+                "objetivo": objetivo,
+                "carrera": carrera,
+                "fuerza": fuerza,
+                "nivel": nivel,
+                "ritmo": f"{_seg_a_ritmo(seg_inf)}-{_seg_a_ritmo(seg_sup)}",
+            }
+            guardar_perfil(user_actual, datos)
+
+            conn = get_db_connection()
+            try:
+                if email_garmin:
+                    if pass_garmin.strip():
+                        pass_enc = encriptar_password(pass_garmin)
+                        conn.execute(
+                            "UPDATE usuarios SET email_garmin = ?, password_garmin_enc = ? WHERE id = ?",
+                            (email_garmin, pass_enc, user_actual),
+                        )
+                    else:
+                        conn.execute(
+                            "UPDATE usuarios SET email_garmin = ? WHERE id = ?",
+                            (email_garmin, user_actual),
+                        )
+                conn.commit()
+            finally:
+                conn.close()
+
+            st.cache_data.clear()
+            st.success("Perfil actualizado. La IA usará estos datos en la próxima planificación.")
+            st.rerun()
+
+# ==========================================
+# PESTAÑA 3: BIBLIOTECA CIENTÍFICA
 # ==========================================
 elif menu == "Biblioteca Científica":
     st.title("📚 Biblioteca Científica")
@@ -2162,7 +2409,7 @@ elif menu == "Biblioteca Científica":
                 st.write(est["resumen"] or "Sin resumen disponible.")
 
 # ==========================================
-# PESTAÑA 3: CICLO MENSTRUAL
+# PESTAÑA 4: CICLO MENSTRUAL
 # ==========================================
 elif menu == "Ciclo Menstrual":
     if user_actual != 1:
@@ -2222,7 +2469,7 @@ elif menu == "Ciclo Menstrual":
             st.dataframe(prox[["fecha", "fase_ciclo"]], use_container_width=True)
 
 # ==========================================
-# PESTAÑA 4: CONSULTORIO VIRTUAL (IA)
+# PESTAÑA 5: CONSULTORIO VIRTUAL (IA)
 # ==========================================
 elif menu == "Asistente Virtual":
     st.title("Asistente Virtual")
@@ -2423,7 +2670,7 @@ elif menu == "Diario de Fuerza":
         conn.close()
 
 # ==========================================
-# PESTAÑA 5: ENTRENADOR PERSONAL
+# PESTAÑA 6: ENTRENADOR PERSONAL
 # ==========================================
 elif menu == "Entrenador Personal":
     st.title("🎯 Entrenador Personal Premium")
@@ -2721,7 +2968,7 @@ elif menu == "Entrenador Personal":
 
 
 # ==========================================
-# PESTAÑA 6: CALENDARIO
+# PESTAÑA 7: CALENDARIO
 # ==========================================
 elif menu == "Calendario":
     st.title("🗓️ Calendario de Entrenamientos")
@@ -2770,10 +3017,10 @@ elif menu == "Calendario":
                     color = colores.get(fila["tipo"], "#334155")
                     st.markdown(
                         f"""
-                        <div style='border-left:6px solid {color}; padding:8px 10px; border-radius:8px; background:#0f2b24;'>
-                            <div style='font-size:0.78rem; color:#93b4a2;'>{fila['fecha_dt'].strftime('%d/%m')}</div>
-                            <div style='font-weight:700; color:#d8e9db; margin:2px 0;'>{fila['sesion']}</div>
-                            <div style='font-size:0.82rem; color:#bfd6c8;'>{fila['duracion_min']} min · {fila['intensidad']}</div>
+                        <div style='border-left:6px solid {color}; padding:8px 10px; border-radius:8px; background:#14362c; border:1px solid rgba(217,242,15,0.22);'>
+                            <div style='font-size:0.78rem; color:#cfe4ab;'>{fila['fecha_dt'].strftime('%d/%m')}</div>
+                            <div style='font-weight:700; color:#f0ffd0; margin:2px 0;'>{fila['sesion']}</div>
+                            <div style='font-size:0.82rem; color:#d8e9db;'>{fila['duracion_min']} min · {fila['intensidad']}</div>
                         </div>
                         """,
                         unsafe_allow_html=True,
