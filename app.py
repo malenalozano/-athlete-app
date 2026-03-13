@@ -1518,6 +1518,29 @@ if "usuario_id" not in st.session_state:
         .login-badge svg { width:30px; height:30px; fill:white; }
         .login-title { font-size:1.75rem; font-weight:800; color:#d8e9db; margin:0 0 6px; letter-spacing:-0.03em; }
         .login-sub { color:#9eb8a8; font-size:0.95rem; margin:0 0 28px; }
+        .login-actions {
+            background: rgba(12, 41, 34, 0.88);
+            border: 1px solid rgba(217,242,15,0.20);
+            border-radius: 18px;
+            padding: 16px;
+            box-shadow: 0 12px 28px rgba(0,0,0,0.18);
+        }
+        .login-actions .stButton > button {
+            min-height: 48px;
+            border-radius: 12px !important;
+            font-weight: 700 !important;
+        }
+        .login-actions .stButton:nth-of-type(1) > button {
+            background: linear-gradient(135deg, #93bf16 0%, #d9f20f 100%) !important;
+            color: #102515 !important;
+            border: none !important;
+            box-shadow: 0 6px 18px rgba(217,242,15,0.26) !important;
+        }
+        .login-actions .stButton:nth-of-type(2) > button {
+            background: linear-gradient(135deg, #0d2f25 0%, #1d5844 100%) !important;
+            color: #efffd0 !important;
+            border: 1px solid rgba(131,184,132,0.40) !important;
+        }
         </style>
         <div class="login-wrap">
             <div class="login-badge">
@@ -1531,6 +1554,7 @@ if "usuario_id" not in st.session_state:
     )
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
+        st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         if st.button("Malena", use_container_width=True, type="primary"):
             st.session_state.usuario_id = 1
             _guardar_ultimo_usuario(1)
@@ -1540,6 +1564,7 @@ if "usuario_id" not in st.session_state:
             st.session_state.usuario_id = 2
             _guardar_ultimo_usuario(2)
             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 user_actual = st.session_state.usuario_id
@@ -1553,31 +1578,63 @@ if perfil is None:
     with st.form("onboarding_form"):
         col1, col2 = st.columns(2)
         with col1:
+            st.markdown('<div class="form-panel"><div class="form-title">Datos personales y objetivo</div>', unsafe_allow_html=True)
             nombre = st.text_input("Tu Nombre", placeholder="Ej: Malena")
             edad = st.number_input("Edad", 18, 99, 25)
-            genero = st.selectbox("Fisiología", ["Mujer", "Hombre"])
+            genero = st.selectbox("Sexo", ["Mujer", "Hombre"])
             peso = st.number_input("Peso actual (kg)", 40.0, 150.0, 60.0)
-            categoria = st.selectbox("Tipo de Evento", ["5K / 10K", "Media Maratón", "Maratón", "Trail", "HYROX"])
-            
+            categoria = st.selectbox("Objetivo", ["5K / 10K", "Media Maratón", "Maratón", "Trail", "HYROX"])
+            st.markdown('</div>', unsafe_allow_html=True)
+
             st.divider()
+            st.markdown('<div class="form-panel"><div class="form-title">Conexión Garmin</div>', unsafe_allow_html=True)
             st.markdown("**🔐 Conexión Garmin Connect**")
             email_garmin = st.text_input("Email Garmin")
             pass_garmin = st.text_input("Contraseña Garmin", type="password")
+            st.markdown('</div>', unsafe_allow_html=True)
         
         with col2:
-            st.markdown("**⚡ Rendimiento y Disponibilidad**")
+            st.markdown('<div class="form-panel"><div class="form-title">Ritmo objetivo</div>', unsafe_allow_html=True)
             def format_ritmo(seg): return f"{seg // 60}:{seg % 60:02d}"
             seg_inf = st.select_slider("Límite superior (Rápido)", options=range(150, 485, 5), value=240, format_func=format_ritmo)
             seg_sup = st.select_slider("Límite inferior (Lento)", options=range(150, 485, 5), value=250, format_func=format_ritmo)
-            
+            st.markdown('</div>', unsafe_allow_html=True)
+
             st.divider()
+            st.markdown('<div class="form-panel"><div class="form-title">Disponibilidad y nivel</div>', unsafe_allow_html=True)
             carrera = st.slider("Días de carrera/semana", 1, 7, 4)
             fuerza = st.slider("Días de fuerza/semana", 0, 7, 2)
             nivel = st.select_slider("Nivel actual", ["Principiante", "Intermedio", "Avanzado", "Élite"])
+            st.markdown('</div>', unsafe_allow_html=True)
             
         if st.form_submit_button("🚀 Generar mi Ecosistema"):
+            errores = []
+            if not nombre.strip():
+                errores.append("El nombre es obligatorio.")
+            if len(nombre.strip()) < 2:
+                errores.append("El nombre debe tener al menos 2 caracteres.")
+            if not categoria:
+                errores.append("Debes elegir un objetivo.")
+            if seg_sup < seg_inf:
+                errores.append("El ritmo lento no puede ser más rápido que el ritmo rápido.")
+            if not (18 <= int(edad) <= 99):
+                errores.append("La edad debe estar entre 18 y 99 años.")
+            if not (40.0 <= float(peso) <= 150.0):
+                errores.append("El peso debe estar entre 40 y 150 kg.")
+            if email_garmin and "@" not in email_garmin:
+                errores.append("El email Garmin no tiene un formato válido.")
+            if email_garmin and not pass_garmin.strip():
+                errores.append("Si indicas email Garmin, también debes indicar la contraseña.")
+            if pass_garmin and len(pass_garmin.strip()) < 6:
+                errores.append("La contraseña Garmin debe tener al menos 6 caracteres.")
+
+            if errores:
+                for err in errores:
+                    st.error(err)
+                st.stop()
+
             datos = {
-                "nombre": nombre, "edad": edad, "genero": genero, "peso": peso,
+                "nombre": nombre.strip(), "edad": edad, "genero": genero, "peso": peso,
                 "objetivo": categoria, "carrera": carrera, "fuerza": fuerza,
                 "nivel": nivel, "ritmo": f"{format_ritmo(seg_inf)}-{format_ritmo(seg_sup)}"
             }
@@ -1640,6 +1697,25 @@ st.markdown(
         margin-bottom: 16px;
         box-shadow: 0 12px 40px rgba(2,6,23,0.28);
         border: 1px solid var(--ath-lime-border);
+    }}
+    .top-nav-anchor + div[data-testid="stHorizontalBlock"] {{
+        background:
+            radial-gradient(ellipse at 8% 50%, rgba(217,242,15,0.23) 0%, transparent 55%),
+            linear-gradient(135deg, var(--ath-brand-deep) 0%, var(--ath-brand-mid) 48%, var(--ath-brand-deep) 100%);
+        border-radius: 20px;
+        padding: 10px 14px;
+        margin-bottom: 16px;
+        box-shadow: 0 12px 40px rgba(2,6,23,0.28);
+        border: 1px solid var(--ath-lime-border);
+        align-items: center;
+        gap: 0.75rem;
+    }}
+    .top-nav-anchor + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+        display: flex;
+        align-items: center;
+    }}
+    .top-nav-anchor + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div {{
+        width: 100%;
     }}
     .athlete-brand {{
         display: flex;
@@ -1734,10 +1810,61 @@ st.markdown(
         background: rgba(17, 46, 38, 0.94);
         border-radius: 10px;
         border: 1px solid rgba(196,217,130,0.55);
-        min-height: 42px;
+        min-height: 48px;
         box-shadow: inset 0 1px 0 rgba(217,242,15,0.15);
     }}
     div[data-testid="stSelectbox"] svg {{ fill: var(--ath-text); }}
+    div[data-testid="stSelectbox"] label p {{
+        color: var(--ath-text-soft) !important;
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.05em !important;
+        text-transform: uppercase !important;
+    }}
+    div[data-baseweb="slider"] [role="slider"] {{
+        background: #d9f20f !important;
+        border-color: #d9f20f !important;
+        box-shadow: 0 0 0 4px rgba(217,242,15,0.16) !important;
+    }}
+    div[data-baseweb="slider"] [role="slider"]::before {{
+        background: #d9f20f !important;
+    }}
+    div[data-baseweb="slider"] > div > div > div {{
+        background: #d9f20f !important;
+    }}
+    div[data-baseweb="slider"] > div > div:nth-child(1) {{
+        background: rgba(217,242,15,0.22) !important;
+    }}
+    div[data-baseweb="slider"] > div > div:nth-child(2),
+    div[data-baseweb="slider"] > div > div:nth-child(2) > div,
+    div[data-baseweb="slider"] > div > div:nth-child(3),
+    div[data-baseweb="slider"] > div > div:nth-child(3) > div {{
+        background: #d9f20f !important;
+        border-color: #d9f20f !important;
+    }}
+    div[data-baseweb="slider"] [data-testid="stTickBar"] div {{
+        background: linear-gradient(90deg, rgba(217,242,15,0.28) 0%, #d9f20f 100%) !important;
+    }}
+    .form-panel {{
+        background: rgba(12, 41, 34, 0.78);
+        border: 1px solid rgba(217,242,15,0.18);
+        border-radius: 16px;
+        padding: 14px 16px 6px;
+        margin-bottom: 12px;
+    }}
+    .form-panel [data-testid="stSlider"] label,
+    .form-panel [data-testid="stSelectSlider"] label {{
+        color: #eefdb2 !important;
+        font-weight: 700 !important;
+    }}
+    .form-title {{
+        color: #eefdb2;
+        font-size: 0.92rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+    }}
     /* ─── Metric cards ─── */
     [data-testid="stMetric"] {{
         background: var(--ath-card);
@@ -1796,18 +1923,44 @@ st.markdown(
         background: linear-gradient(135deg, #0c3c31 0%, #254f0a 100%) !important;
         color: #f0fdfa !important;
         border: none !important;
-        border-radius: 10px !important;
+        border-radius: 12px !important;
         font-weight: 600 !important;
-        font-size: 0.82rem !important;
+        font-size: 1rem !important;
         letter-spacing: 0.015em !important;
         box-shadow: 0 3px 12px rgba(12,60,49,0.36) !important;
         transition: all 0.2s ease !important;
-        min-height: 42px !important;
-        width: 100% !important;
+        min-height: 48px !important;
+        min-width: 48px !important;
+        width: 48px !important;
+        padding: 0 !important;
     }}
     .garmin-btn button:hover {{
         box-shadow: 0 6px 20px rgba(12,60,49,0.45) !important;
         transform: translateY(-1px) !important;
+    }}
+    .calendar-legend {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 14px;
+    }}
+    .calendar-legend-chip {{
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(12, 41, 34, 0.82);
+        border: 1px solid rgba(217,242,15,0.16);
+        border-radius: 999px;
+        padding: 0.48rem 0.82rem;
+        color: #d8e9db;
+        font-size: 0.84rem;
+        font-weight: 600;
+    }}
+    .calendar-legend-dot {{
+        width: 11px;
+        height: 11px;
+        border-radius: 999px;
+        display: inline-block;
     }}
     /* ─── Expanders ─── */
     details[data-testid="stExpander"] {{
@@ -1851,6 +2004,11 @@ st.markdown(
     /* ─── Responsive ─── */
     @media (max-width: 900px) {{
         .nav-outer {{ padding: 10px 12px 8px 12px; border-radius: 14px; }}
+        .top-nav-anchor + div[data-testid="stHorizontalBlock"] {{
+            padding: 10px 12px;
+            border-radius: 16px;
+            gap: 0.55rem;
+        }}
         .brand-text-title {{ font-size: 1.05rem; }}
         div[data-testid="stHorizontalBlock"] [role="radiogroup"] {{
             gap: 0.28rem; padding: 0.28rem;
@@ -1865,6 +2023,9 @@ st.markdown(
         [data-testid="stMetricLabel"] p {{ font-size: 0.62rem !important; }}
     }}
     @media (max-width: 600px) {{
+        .top-nav-anchor + div[data-testid="stHorizontalBlock"] {{
+            padding: 8px 10px;
+        }}
         .brand-icon {{ width:36px; height:36px; border-radius:9px; }}
         .brand-text-title {{ font-size: 0.95rem; }}
         .brand-text-sub {{ font-size: 0.70rem; }}
@@ -1893,7 +2054,8 @@ if user_actual == 1:  # Ciclo Menstrual solo para Malena
 # ── Fila nav: marca + pestañas + Garmin + selector de perfil ──────────────
 _perfiles = {"Malena": 1, "Dani": 2}
 _perfil_actual_nombre = "Malena" if user_actual == 1 else "Dani"
-_brand_col, _nav_col, _garmin_col, _sel_col = st.columns([0.22, 0.48, 0.18, 0.12])
+st.markdown('<div class="top-nav-anchor"></div>', unsafe_allow_html=True)
+_brand_col, _nav_col, _garmin_col, _sel_col = st.columns([0.24, 0.52, 0.07, 0.17])
 
 with _brand_col:
     st.markdown(
@@ -1915,7 +2077,7 @@ with _brand_col:
 
 with _garmin_col:
     st.markdown('<div class="garmin-btn">', unsafe_allow_html=True)
-    _do_sync = st.button("↺  Sincronizar Garmin", key="garmin_sync_header", use_container_width=True)
+    _do_sync = st.button("↻", key="garmin_sync_header", help="Sincronizar Garmin")
     st.markdown('</div>', unsafe_allow_html=True)
 
 with _sel_col:
@@ -2140,7 +2302,6 @@ if menu == "Dashboard":
     # ── Entrenamientos conjuntos Malena + Dani ────────────────────────────
     st.divider()
     st.subheader("👫 Entrenamientos conjuntos — Malena & Dani")
-    st.caption("Rosa: Malena · Azul celeste: Dani · Verde claro: coinciden los dos.")
 
     hoy_conj = datetime.now().date()
     semana_conj_def = hoy_conj - timedelta(days=hoy_conj.weekday())
@@ -2171,14 +2332,14 @@ if menu == "Dashboard":
         coincide = malena_activa and dani_activo
 
         if coincide:
-            bg = "#2d4f1d"       # verde/lima fuerte — coinciden
+            bg = "#93d977"       # verde claro
             borde = "2px solid #d9f20f"
         elif malena_activa:
-            bg = "#35581e"       # oliva suave
-            borde = "1px solid #b6d44a"
+            bg = "#f0b4d5"       # rosa suave
+            borde = "1px solid #d97bb0"
         elif dani_activo:
-            bg = "#1f3f34"       # verde azulado
-            borde = "1px solid #86c59c"
+            bg = "#8cd8f8"       # azul celeste
+            borde = "1px solid #54bde8"
         else:
             bg = "#0f2b24"
             borde = "1px dashed #3a6856"
@@ -2190,13 +2351,24 @@ if menu == "Dashboard":
             st.markdown(
                 f"""<div style='background:{bg};border:{borde};border-radius:10px;
                     padding:10px 8px;min-height:120px;font-size:0.8rem;'>
-                    <div style='font-weight:700;color:#d8e9db;margin-bottom:4px;'>{nombres_dias[i]}</div>
-                    <div style='color:#f0ffd0;'>🙋‍♀️ {malena_txt[:28]}</div>
-                    <div style='color:#c6ebc8;margin-top:4px;'>🙋‍♂️ {dani_txt[:28]}</div>
-                    {'<div style="margin-top:6px;font-size:0.72rem;color:#f3ffd1;font-weight:600;">✔ Juntos</div>' if coincide else ''}
+                    <div style='font-weight:800;color:{"#14311f" if coincide else "#d8e9db"};margin-bottom:4px;'>{nombres_dias[i]}</div>
+                    <div style='color:{"#3d1840" if malena_activa and not coincide else ("#14311f" if coincide else "#f0ffd0")};font-weight:600;'>🙋‍♀️ {malena_txt[:28]}</div>
+                    <div style='color:{"#124562" if dani_activo and not coincide else ("#14311f" if coincide else "#c6ebc8")};margin-top:4px;font-weight:600;'>🙋‍♂️ {dani_txt[:28]}</div>
+                    {'<div style="margin-top:6px;font-size:0.72rem;color:#14311f;font-weight:800;">✔ Juntos</div>' if coincide else ''}
                 </div>""",
                 unsafe_allow_html=True,
             )
+
+    st.markdown(
+        """
+        <div class="calendar-legend">
+            <div class="calendar-legend-chip"><span class="calendar-legend-dot" style="background:#f0b4d5;"></span>Rosa: Malena</div>
+            <div class="calendar-legend-chip"><span class="calendar-legend-dot" style="background:#8cd8f8;"></span>Azul celeste: Dani</div>
+            <div class="calendar-legend-chip"><span class="calendar-legend-dot" style="background:#93d977;"></span>Verde claro: coinciden los dos</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # (El resto de secciones se mantienen igual...)
 
@@ -2252,16 +2424,17 @@ elif menu == "Perfil":
     with st.form("perfil_edit_form"):
         c1, c2 = st.columns(2)
         with c1:
+            st.markdown('<div class="form-panel"><div class="form-title">Datos personales y objetivo</div>', unsafe_allow_html=True)
             nombre = st.text_input("Nombre", value=perfil_actual.get("nombre") or "")
             edad = st.number_input("Edad", 18, 99, int(perfil_actual.get("edad") or 25))
             genero = st.selectbox(
-                "Fisiología",
+                "Sexo",
                 ["Mujer", "Hombre"],
                 index=0 if (perfil_actual.get("genero") or "Mujer") == "Mujer" else 1,
             )
             peso = st.number_input("Peso actual (kg)", 35.0, 160.0, float(perfil_actual.get("peso") or 60.0))
             objetivo = st.selectbox(
-                "Objetivo principal",
+                "Objetivo",
                 ["5K / 10K", "Media Maratón", "Maratón", "Trail", "HYROX"],
                 index=max(
                     0,
@@ -2270,9 +2443,10 @@ elif menu == "Perfil":
                     ) if perfil_actual.get("objetivo") in ["5K / 10K", "Media Maratón", "Maratón", "Trail", "HYROX"] else 0,
                 ),
             )
+            st.markdown('</div>', unsafe_allow_html=True)
 
         with c2:
-            st.markdown("**Ritmo objetivo estimado**")
+            st.markdown('<div class="form-panel"><div class="form-title">Ritmo objetivo</div>', unsafe_allow_html=True)
             seg_inf = st.select_slider(
                 "Límite superior (rápido)",
                 options=range(150, 485, 5),
@@ -2285,7 +2459,9 @@ elif menu == "Perfil":
                 value=_ritmo_a_seg(ritmo_lento),
                 format_func=_seg_a_ritmo,
             )
+            st.markdown('</div>', unsafe_allow_html=True)
 
+            st.markdown('<div class="form-panel"><div class="form-title">Disponibilidad y nivel</div>', unsafe_allow_html=True)
             carrera = st.slider("Días de carrera/semana", 1, 7, int(perfil_actual.get("carrera") or 4))
             fuerza = st.slider("Días de fuerza/semana", 0, 7, int(perfil_actual.get("fuerza") or 2))
             nivel = st.select_slider(
@@ -2293,22 +2469,44 @@ elif menu == "Perfil":
                 ["Principiante", "Intermedio", "Avanzado", "Élite"],
                 value=perfil_actual.get("nivel") if perfil_actual.get("nivel") in ["Principiante", "Intermedio", "Avanzado", "Élite"] else "Intermedio",
             )
+            st.markdown('</div>', unsafe_allow_html=True)
 
             st.divider()
+            st.markdown('<div class="form-panel"><div class="form-title">Conexión Garmin</div>', unsafe_allow_html=True)
             st.markdown("**🔐 Garmin Connect (opcional)**")
             cred = obtener_credenciales_garmin(user_actual)
             email_default = cred[0] if cred and cred[0] else ""
             email_garmin = st.text_input("Email Garmin", value=email_default)
             pass_garmin = st.text_input("Nueva contraseña Garmin", type="password", help="Déjala vacía para mantener la actual")
+            st.markdown('</div>', unsafe_allow_html=True)
 
         guardar = st.form_submit_button("💾 Guardar cambios de perfil", type="primary")
 
     if guardar:
+        errores = []
+        if not nombre.strip():
+            errores.append("El nombre es obligatorio.")
+        if len(nombre.strip()) < 2:
+            errores.append("El nombre debe tener al menos 2 caracteres.")
         if seg_sup < seg_inf:
-            st.error("El límite inferior (lento) no puede ser más rápido que el límite superior.")
+            errores.append("El límite inferior (lento) no puede ser más rápido que el límite superior.")
+        if not (18 <= int(edad) <= 99):
+            errores.append("La edad debe estar entre 18 y 99 años.")
+        if not (35.0 <= float(peso) <= 160.0):
+            errores.append("El peso debe estar entre 35 y 160 kg.")
+        if not objetivo:
+            errores.append("Debes seleccionar un objetivo.")
+        if email_garmin and "@" not in email_garmin:
+            errores.append("El email Garmin no tiene un formato válido.")
+        if pass_garmin and len(pass_garmin.strip()) < 6:
+            errores.append("La contraseña Garmin debe tener al menos 6 caracteres.")
+
+        if errores:
+            for err in errores:
+                st.error(err)
         else:
             datos = {
-                "nombre": nombre,
+                "nombre": nombre.strip(),
                 "edad": edad,
                 "genero": genero,
                 "peso": peso,
