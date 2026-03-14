@@ -1,4 +1,5 @@
 import os
+import re
 from dotenv import load_dotenv
 import google.generativeai as genai
 
@@ -7,6 +8,110 @@ load_dotenv()
 _modelo = None
 _gemini_disponible = False
 _gemini_error = None
+
+
+def _inferir_grupo_y_musculo(ejercicio, contexto=""):
+    txt = f"{contexto} {ejercicio}".lower()
+
+    if any(k in txt for k in ["dominad", "jalon", "remo", "bicep", "bícep", "tricep", "trícep", "hombro", "press militar", "predicador"]):
+        return "Tren Superior", "Espalda/Biceps/Hombro"
+    if any(k in txt for k in ["hip", "sentadilla", "búlgar", "bulgar", "peso muerto", "isquio", "gemelo", "prensa", "zancad", "pierna"]):
+        return "Tren Inferior", "Gluteos/Cuadriceps/Isquios"
+    if any(k in txt for k in ["core", "abdominal", "planch", "pallof", "anti", "and en polea"]):
+        return "Core", "Core"
+    if any(k in txt for k in ["carrera", "run", "rodaje", "series"]):
+        return "Tren Inferior", "Cardiovascular"
+    return "Tren Inferior", "Varios"
+
+
+def _extraer_series_reps(linea):
+    m = re.search(r"(\d+)\s*[xX]\s*(\d+)", linea)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+
+    m = re.search(r"(\d+)\s*series?\s*(?:de)?\s*(\d+)\s*rep", linea.lower())
+    if m:
+        return int(m.group(1)), int(m.group(2))
+
+    return 0, 0
+
+
+def _extraer_peso(linea):
+    pesos = re.findall(r"(\d+(?:[\.,]\d+)?)\s*kg", linea.lower())
+    if not pesos:
+        return 0.0
+    vals = []
+    for p in pesos:
+        try:
+            vals.append(float(p.replace(",", ".")))
+        except Exception:
+            pass
+    if not vals:
+        return 0.0
+    return max(vals)
+
+
+def _limpiar_nombre_ejercicio(linea):
+    txt = re.sub(r"\(.*?\)", "", linea).strip()
+    txt = re.sub(r"\b\d+\s*[xX]\s*\d+\b", "", txt)
+    txt = re.sub(r"\b\d+\s*series?\b", "", txt, flags=re.IGNORECASE)
+    txt = re.sub(r"\b\d+\s*rep(?:es)?\b", "", txt, flags=re.IGNORECASE)
+    txt = re.sub(r"\b\d+(?:[\.,]\d+)?\s*kg\b", "", txt, flags=re.IGNORECASE)
+    txt = re.sub(r"\s+", " ", txt).strip(" -:;")
+    return txt or "Nota libre"
+
+
+def _parsear_nota_local(texto):
+    lineas = [l.strip() for l in (texto or "").splitlines() if l.strip()]
+    if not lineas:
+        return []
+
+    datos = []
+    contexto = ""
+    for linea in lineas:
+        low = linea.lower()
+
+        if low in {"lunes", "martes", "miercoles", "miércoles", "jueves", "viernes", "sabado", "sábado", "domingo"}:
+            continue
+
+        if low in {"espalda", "pierna", "carrera", "core", "hombro", "gluteos", "glúteos", "pecho", "biceps", "bíceps"}:
+            contexto = linea
+            continue
+
+        series, reps = _extraer_series_reps(linea)
+        peso = _extraer_peso(linea)
+
+        es_nota_lesion = any(k in low for k in ["dolor", "molest", "inflam", "tibia", "lesion", "lesión", "me ha costado", "fatiga"])
+        tiene_patron_ejercicio = any(k in low for k in [
+            "dominad", "jalon", "remo", "curl", "sentadilla", "peso muerto", "búlgar", "bulgar",
+            "hip", "press", "rodaje", "polea", "predicador", "martillo"
+        ])
+        if es_nota_lesion and not tiene_patron_ejercicio and series == 0 and reps == 0 and peso == 0:
+            continue
+
+        es_linea_util = (
+            series > 0 or reps > 0 or peso > 0 or
+            any(k in low for k in [
+                "dominad", "jalon", "remo", "curl", "sentadilla", "peso muerto", "búlgar", "bulgar",
+                "hip", "press", "carrera", "rodaje", "polea", "predicador", "martillo"
+            ])
+        )
+        if not es_linea_util:
+            continue
+
+        ejercicio = _limpiar_nombre_ejercicio(linea)
+        grupo, musculo = _inferir_grupo_y_musculo(ejercicio, contexto)
+        datos.append({
+            "ejercicio": ejercicio,
+            "peso": round(float(peso), 2),
+            "series": int(series or 1),
+            "repeticiones": int(reps or 1),
+            "grupo_muscular": grupo,
+            "musculo_principal": musculo,
+            "rpe": 6,
+        })
+
+    return datos
 
 
 def _inicializar_modelo():
@@ -45,18 +150,25 @@ def _inicializar_modelo():
 def procesar_nota_fuerza(texto):
     modelo = _inicializar_modelo()
     if modelo is None:
+        datos_locales = _parsear_nota_local(texto)
         return {
-            "exito": False,
-            "datos": [],
-            "raw": f"IA no disponible: {_gemini_error}",
+            "exito": True,
+            "datos": datos_locales,
+            "raw": f"Procesado en modo local (sin IA): {_gemini_error}",
         }
 
     prompt = f"CSV estricto (;). Cabecera: ejercicio;peso;series;repeticiones;grupo_muscular;musculo_principal;rpe\nREGLA VITAL: Infiere la anatomía. grupo_muscular = 'Tren Superior', 'Tren Inferior' o 'Core'. musculo_principal = lista de todos los músculos implicados (ej: Cuádriceps, Glúteos, Isquios, Core). Devuelve solo CSV.\nTexto: '{texto}'"
     try:
         txt = modelo.generate_content(prompt).text.replace('```csv', '').replace('```', '').strip()
         import csv
-        return {"exito": True, "datos": [f for f in csv.DictReader(txt.split('\n'), delimiter=';')], "raw": txt}
-    except Exception as e: return {"exito": False, "datos": [], "raw": str(e)}
+        datos_ia = [f for f in csv.DictReader(txt.split('\n'), delimiter=';')]
+        if datos_ia:
+            return {"exito": True, "datos": datos_ia, "raw": txt}
+        datos_locales = _parsear_nota_local(texto)
+        return {"exito": True, "datos": datos_locales, "raw": "IA sin filas validas; aplicado parser local."}
+    except Exception as e:
+        datos_locales = _parsear_nota_local(texto)
+        return {"exito": True, "datos": datos_locales, "raw": f"Fallo IA, aplicado parser local: {e}"}
 
 
 def ajustar_plan_con_feedback(plan_csv, feedback, perfil_resumen=""):

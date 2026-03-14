@@ -69,6 +69,10 @@ def init_db():
     conn.execute("CREATE TABLE IF NOT EXISTS actividades_garmin (id_actividad TEXT PRIMARY KEY, usuario_id INTEGER, fecha TEXT, tipo_deporte TEXT, distancia_m REAL, tiempo_seg REAL, ritmo_medio REAL, fc_media INTEGER, fc_max INTEGER)")
     # Tabla Fisio
     conn.execute("CREATE TABLE IF NOT EXISTS diario_fisiologia (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT, fase_ciclo TEXT, fatiga_subjetiva INTEGER, dolor_notas TEXT)")
+    _ensure_column(conn, "diario_fisiologia", "sangre", "TEXT")
+    _ensure_column(conn, "diario_fisiologia", "sintomas", "TEXT")
+    _ensure_column(conn, "diario_fisiologia", "estado_animo", "TEXT")
+    _ensure_column(conn, "diario_fisiologia", "feedback_entreno", "TEXT")
     # Tabla Fuerza (Corregida con todas las columnas)
     conn.execute('''CREATE TABLE IF NOT EXISTS entrenamientos_fuerza (
         id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, ejercicio TEXT, peso REAL, 
