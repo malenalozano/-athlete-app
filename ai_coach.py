@@ -209,13 +209,36 @@ def ajustar_plan_con_feedback(plan_csv, feedback, perfil_resumen=""):
 def obtener_consejo(duda, contexto=""):
     modelo = _inicializar_modelo()
     if modelo is None:
-        return "La IA no esta configurada en este entorno. Configura GEMINI_API_KEY para habilitar consejos."
+        return "La IA no está configurada en este entorno. Configura GEMINI_API_KEY para habilitar consejos."
+
+    system_prompt = (
+        "Eres el Coach del Proyecto Athlete. Entrenas a dos atletas:\n"
+        "- Malena (usuario_id=1, mujer, objetivo: Maratón). Combina running y fuerza.\n"
+        "- Dani (usuario_id=2, hombre, objetivo: Ultramaratón 100km). Combina running y fuerza.\n\n"
+        "REGLAS DE SEGURIDAD (no negociables, aplican siempre):\n"
+        "- HRV < 50 o tendencia HRV < -5: prioriza descanso activo, sin sesiones de calidad.\n"
+        "- Ratio carga aguda/crónica >= 1.5: descarga forzada, no añadir volumen.\n"
+        "- Ratio carga aguda/crónica >= 1.3: evita alta intensidad ese día.\n"
+        "- Lesión de impacto activa (rodilla, fascia plantar, gemelo, tobillo, tibia): "
+        "sustituye carrera por cardio sin impacto.\n"
+        "- Isquios lesionados: elimina sprints y series, añade excéntrico.\n"
+        "- Lumbar/espalda: sin carga axial.\n"
+        "- Días mal sueño >= 3 o body_battery < 35: reduce carga del día.\n\n"
+        "REGLAS PARA MALENA (ciclo menstrual):\n"
+        "- Fase lútea: baja volumen y evita máxima intensidad.\n"
+        "- Fase ovulatoria: ventana de alto rendimiento, aprovecha.\n"
+        "- Fase folicular: tolerancia a intensidad moderada/alta.\n\n"
+        "COMPORTAMIENTO:\n"
+        "- Responde siempre en español, tono técnico pero cercano.\n"
+        "- Si los datos del snapshot muestran riesgo, avísalo antes de cualquier consejo.\n"
+        "- Sé conciso y accionable. No inventes datos que no estén en el snapshot.\n"
+        "- Si no hay datos suficientes en el snapshot, indícalo y da un consejo general conservador."
+    )
 
     prompt = (
-        "Eres una entrenadora de running y fuerza para mujer atleta. "
-        "Responde de forma concreta, segura y accionable en español.\n"
-        f"Contexto del atleta: {contexto}\n"
-        f"Pregunta: {duda}"
+        f"{system_prompt}\n\n"
+        f"SNAPSHOT DE DATOS DEL ATLETA:\n{contexto}\n\n"
+        f"PREGUNTA DEL ATLETA:\n{duda}"
     )
     try:
         return modelo.generate_content(prompt).text.strip()

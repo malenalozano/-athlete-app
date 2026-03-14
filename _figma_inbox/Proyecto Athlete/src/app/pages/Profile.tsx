@@ -1,13 +1,16 @@
 import { Header } from "../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { KPICard } from "../components/KPICard";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { useUser } from "../context/UserContext";
+import { useState } from "react";
 
 export function Profile() {
   const { userName } = useUser();
+  const [activitiesToSync, setActivitiesToSync] = useState<number>(50);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState("");
 
   const kpis = [
     { label: "OBJETIVO", value: "Maratón" },
@@ -15,6 +18,22 @@ export function Profile() {
     { label: "CARRERA/SEM", value: "4 días" },
     { label: "FUERZA/SEM", value: "2 días" },
   ];
+
+  const handleManualSync = async () => {
+    if (!Number.isFinite(activitiesToSync) || activitiesToSync < 1) {
+      setSyncFeedback("Introduce un número válido (mínimo 1 actividad).");
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncFeedback("");
+
+    // Placeholder UI while backend endpoint is wired.
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    setIsSyncing(false);
+    setSyncFeedback(`Sincronización manual solicitada para ${activitiesToSync} actividades.`);
+  };
 
   return (
     <div className="min-h-screen bg-[#0E1117]">
@@ -157,6 +176,40 @@ export function Profile() {
                         className="bg-[#0E1117] border-[#C9FF00]/30 text-white"
                       />
                     </div>
+                  </div>
+
+                  <div className="mt-2 rounded-xl border border-[#C9FF00]/30 bg-[#0E1117]/70 p-4">
+                    <h5 className="text-sm font-semibold text-white">Sincronización manual de actividades</h5>
+                    <p className="mt-1 text-xs text-[#8B949E]">
+                      Indica cuántas actividades quieres sincronizar al pulsar el botón.
+                    </p>
+
+                    <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-end">
+                      <div className="w-full md:max-w-[240px]">
+                        <Label className="mb-2 block text-white">Número de actividades</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="500"
+                          value={activitiesToSync}
+                          onChange={(e) => setActivitiesToSync(Number(e.target.value || 0))}
+                          className="bg-[#0E1117] border-[#C9FF00]/30 text-white"
+                        />
+                      </div>
+
+                      <Button
+                        type="button"
+                        onClick={handleManualSync}
+                        disabled={isSyncing}
+                        className="bg-gradient-to-r from-[#C9FF00] to-[#a8d600] text-[#0E1117] hover:from-[#a8d600] hover:to-[#C9FF00] font-bold"
+                      >
+                        {isSyncing ? "Sincronizando..." : "Sincronizar ahora"}
+                      </Button>
+                    </div>
+
+                    {syncFeedback && (
+                      <p className="mt-3 text-sm text-[#C9FF00]">{syncFeedback}</p>
+                    )}
                   </div>
                 </div>
 

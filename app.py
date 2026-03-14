@@ -1,8 +1,9 @@
-﻿import streamlit as st
+import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
 import io
+import html
 import importlib
 import calendar
 import re
@@ -13,7 +14,7 @@ from seguridad import encriptar_password, desencriptar_password
 from datetime import datetime, timedelta
 
 
-# �"?�"? Persistencia de último usuario (archivo local) �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+# "?"? Persistencia de último usuario (archivo local) "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
 _LAST_USER_FILE = os.path.expanduser("~/.athlete_last_user")
 
 def _leer_ultimo_usuario():
@@ -44,7 +45,7 @@ def _ensure_column(conn, table_name, column_name, column_type):
         conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
 
-# �"?�"? Dividir notas multi-día ("hoy hice X y ayer hice Y") �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+# "?"? Dividir notas multi-día ("hoy hice X y ayer hice Y") "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
 def _dividir_nota_por_fechas(texto):
     """
     Devuelve lista de (marca_temporal_str, fragmento) para cada segmento temporal
@@ -68,7 +69,7 @@ def _dividir_nota_por_fechas(texto):
     return segmentos
 
 
-# �"?�"? Plan conjunto (Malena + Dani para semana) �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+# "?"? Plan conjunto (Malena + Dani para semana) "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
 @st.cache_data(ttl=120)
 def _cargar_plan_conjunto(semana_dt):
     """Devuelve DataFrame con planes de ambos usuarios para la semana indicada."""
@@ -476,27 +477,39 @@ def construir_checkpoints_objetivo(perfil, df_act):
             if not match.empty:
                 mejor = float(match.iloc[0]["ritmo_min_km"])
                 logrado = mejor <= cp["ritmo_max"]
+
+        if cp["dist_min"] is None:
+            estado = "Pendiente"
+        else:
+            estado = "Hecho" if logrado else "Pendiente"
+
         filas.append(
             {
                 "checkpoint": cp["nombre"],
-                "estado": "✅ Hecho" if logrado else "🟡 Pendiente",
+                "estado": estado,
                 "detalle": cp["detalle"],
-                "mejor_marca": "—" if mejor is None else f"{int(mejor)}:{int(round((mejor - int(mejor)) * 60)):02d}/km",
+                "mejor_ritmo": mejor,
             }
         )
+
     return pd.DataFrame(filas)
 
 
-def render_checkpoints_moderno(df_check, objetivo_txt):
-    """Render premium de checkpoints para reemplazar tabla plana."""
-    if df_check.empty:
-        st.info("No hay checkpoints definidos para este objetivo todavía.")
+def render_checkpoints_moderno(df_check, objetivo_txt="actual"):
+    if df_check is None or df_check.empty:
+        st.markdown(
+            "<div class='dash-panel-muted'>Aún no hay checkpoints disponibles para este objetivo.</div>",
+            unsafe_allow_html=True,
+        )
         return
 
     st.markdown(
         f"""
-        <div style='display:flex;align-items:center;gap:8px;margin:2px 0 8px;'>
-            <span style='color:#B8FF2C;font-size:0.9rem;line-height:1;'>↗</span>
+        <div class='summary7-head' style='margin-top:4px;'>
+            <svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>
+                <path d='M3 17l5-5 4 3 9-10'></path>
+                <path d='M19 5h2v2'></path>
+            </svg>
             <span style='font-size:0.98rem;font-weight:800;color:#FFFFFF;line-height:1.2;'>Objetivos checkpoints para {objetivo_txt}</span>
         </div>
         """,
@@ -508,7 +521,8 @@ def render_checkpoints_moderno(df_check, objetivo_txt):
         fila = cards[i:i + 3]
         cols = st.columns(3)
         for j, row in enumerate(fila):
-            hecho = row["estado"] == "�o. Hecho"
+            estado_raw = str(row.get("estado", "Pendiente"))
+            hecho = estado_raw in ("Hecho", "o. Hecho", "Completado")
             estado_label = "Completado" if hecho else "Pendiente"
             badge_style = (
                 "background:#C9FF00;color:#0E1117;border:1px solid #C9FF00;"
@@ -523,11 +537,11 @@ def render_checkpoints_moderno(df_check, objetivo_txt):
                     f"""
                     <div style='background:#131D2B;border:1px solid rgba(201,255,0,0.42);border-left:4px solid #7FB300;border-radius:14px;padding:10px 12px;min-height:96px;margin-bottom:8px;'>
                         <div style='display:flex;justify-content:space-between;align-items:flex-start;gap:8px;'>
-                            <div style='font-weight:800;color:#FFFFFF;font-size:0.98rem;line-height:1.2;max-width:72%;'>{row['checkpoint']}</div>
+                            <div style='font-weight:800;color:#FFFFFF;font-size:0.98rem;line-height:1.2;max-width:72%;'>{row.get('checkpoint', '-')}</div>
                             <span style='display:inline-block;{badge_style}'>{estado_label}</span>
                         </div>
                         <div style='font-size:0.79rem;color:#8B949E;margin-top:6px;line-height:1.35;'>
-                            {row['detalle']}
+                            {row.get('detalle', '')}
                         </div>
                     </div>
                     """,
@@ -734,14 +748,13 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
     entrenamiento activo con los días que la pareja también tiene sesión.
     Devuelve (DataFrame, lista_de_alertas).
     """
-    # �"?�"? Perfil �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     dias_carrera = int(perfil.get("carrera") or 3)
     dias_fuerza  = int(perfil.get("fuerza") or 2)
-    nivel    = (perfil.get("nivel")   or "Intermedio").lower()
     objetivo = (perfil.get("objetivo") or "10K").lower()
     genero   = (perfil.get("genero")  or "Mujer").lower()
 
-    # �"?�"? Señales de datos �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Señales de datos "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     hrv         = datos.get("hrv_actual")
     hrv_tend    = datos.get("hrv_tendencia", 0.0) or 0.0
     dias_mal_s  = datos.get("dias_mal_sueno", 0) or 0
@@ -760,30 +773,30 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
     fase_ciclo  = (datos.get("fase_ciclo_actual") or "").lower()
     rpe_ultimo  = datos.get("rpe_ultima")
 
-    # �"?�"? Flags de alerta �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Flags de alerta "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     alertas = []
     intensidad_bloqueada = False
     reduccion_volumen = 1.0
 
-    # HRV: indicador número uno de recuperación del SNC
+ # HRV: indicador número uno de recuperación del SNC
     hrv_bajo    = hrv is not None and hrv < 50
     hrv_cayendo = hrv_tend < -5
     if hrv_bajo or hrv_cayendo:
         intensidad_bloqueada = True
         reduccion_volumen *= 0.75
         msg = f"HRV {'bajo (' + '%.0f ms' % hrv + ')' if hrv_bajo else 'cayendo (' + '%+.1f ms' % hrv_tend + ' tendencia)'}"
-        alertas.append(f"�s�️ {msg}: sesiones de calidad canceladas �?' Z2 suave y recuperación activa.")
+        alertas.append(f"s {msg}: sesiones de calidad canceladas ?' Z2 suave y recuperación activa.")
 
-    # Sueño: 3+ días con score < 60 �?' reducción de volumen
+ # Sueño: 3+ días con score < 60 ?' reducción de volumen
     if dias_mal_s >= 3:
         intensidad_bloqueada = True
         reduccion_volumen *= 0.80
-        alertas.append(f"�Y~� {dias_mal_s} días con sleep score < 60: volumen reducido y sin intensidad alta.")
+        alertas.append(f"Y~ {dias_mal_s} días con sleep score < 60: volumen reducido y sin intensidad alta.")
 
     if training_readiness is not None and training_readiness < 40:
         intensidad_bloqueada = True
         reduccion_volumen *= 0.85
-        alertas.append(f"�Ys� Training Readiness {training_readiness}/100: hoy no toca calidad, solo rodaje regenerativo.")
+        alertas.append(f"Ys Training Readiness {training_readiness}/100: hoy no toca calidad, solo rodaje regenerativo.")
 
     if body_battery is not None and body_battery < 35:
         intensidad_bloqueada = True
@@ -796,72 +809,79 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
 
     if sueño_profundo is not None and sueño_profundo < 1.2:
         reduccion_volumen *= 0.90
-        alertas.append("�YOT Sueño profundo escaso en la última semana: baja capacidad de reparación muscular.")
+        alertas.append("YOT Sueño profundo escaso en la última semana: baja capacidad de reparación muscular.")
 
     if despertares is not None and despertares >= 3:
         reduccion_volumen *= 0.95
-        alertas.append(f"�YOT {despertares:.1f} despertares de media: posible fatiga del sistema nervioso.")
+        alertas.append(f"YOT {despertares:.1f} despertares de media: posible fatiga del sistema nervioso.")
 
-    # Carga aguda/crónica (ATL/CTL)
+ # Carga aguda/crónica (ATL/CTL)
     if ratio_carga:
         if ratio_carga >= 1.5:
             intensidad_bloqueada = True
             reduccion_volumen *= 0.70
-            alertas.append(f"⚠️ Ratio carga aguda/crónica = {ratio_carga:.2f}: riesgo de sobreentrenamiento. Semana de descarga forzada.")
+            alertas.append(f"⚠ Ratio carga aguda/crónica = {ratio_carga:.2f}: riesgo de sobreentrenamiento. Semana de descarga forzada.")
         elif ratio_carga >= 1.3:
             intensidad_bloqueada = True
-            alertas.append(f"�YY� Ratio carga = {ratio_carga:.2f}: sin series ni trabajo de alta intensidad esta semana.")
+            alertas.append(f"YY Ratio carga = {ratio_carga:.2f}: sin series ni trabajo de alta intensidad esta semana.")
 
-    # Estrés vital: el cuerpo no distingue estrés físico de mental
+ # Estrés vital: el cuerpo no distingue estrés físico de mental
     if estres >= 7:
         reduccion_volumen *= 0.85
         dias_carrera = max(1, dias_carrera - 1)
-        alertas.append(f"�Y�� Estrés vital {estres}/10: una sesión de carrera reemplazada por movilidad activa.")
+        alertas.append(f"Y Estrés vital {estres}/10: una sesión de carrera reemplazada por movilidad activa.")
 
-    # Fatiga subjetiva alta
+ # Fatiga subjetiva alta
     if fatiga >= 8:
         reduccion_volumen *= 0.80
-        alertas.append(f"�Y�? Fatiga subjetiva {fatiga}/10: volumen general reducido un 20%.")
+        alertas.append(f"Y? Fatiga subjetiva {fatiga}/10: volumen general reducido un 20%.")
 
-    # RPE muy alto en última sesión
+ # RPE muy alto en última sesión
     if rpe_ultimo and rpe_ultimo >= 9:
         intensidad_bloqueada = True
-        alertas.append(f"�YZ� RPE última sesión = {rpe_ultimo}/10: recuperación prioritaria, sin intensidad.")
+        alertas.append(f"YZ RPE última sesión = {rpe_ultimo}/10: recuperación prioritaria, sin intensidad.")
 
-    # Ciclo menstrual femenino
+ # Ciclo menstrual femenino
     if genero == "mujer" and fase_ciclo:
         if "lútea" in fase_ciclo:
             reduccion_volumen *= 0.85
-            alertas.append("�YO. Fase lútea: volumen reducido, sesiones en Z1-Z2. Evitar máxima intensidad.")
+            alertas.append("YO. Fase lútea: volumen reducido, sesiones en Z1-Z2. Evitar máxima intensidad.")
         elif "ovulat" in fase_ciclo:
-            alertas.append("�o� Fase ovulatoria: ventana de alto rendimiento. Ideal para velocidad e intensidad.")
+            alertas.append("o Fase ovulatoria: ventana de alto rendimiento. Ideal para velocidad e intensidad.")
         elif "folicular" in fase_ciclo:
-            alertas.append("�YO� Fase folicular: rendimiento en ascenso. Intensidad moderada-alta bien tolerada.")
+            alertas.append("YO Fase folicular: rendimiento en ascenso. Intensidad moderada-alta bien tolerada.")
 
-    # Lesiones activas
+ # Lesiones activas
     zonas_bajas = {"rodilla", "fascia", "gemelo", "tobillo", "plantar", "tibia"}
     sin_impacto  = any(any(z in l for z in zonas_bajas) for l in lesiones)
     sin_velocidad = any(any(z in l for z in {"isquio", "femoral", "hamstring"}) for l in lesiones)
     lumbar       = any(any(z in l for z in {"lumbar", "espalda"}) for l in lesiones)
     if sin_impacto:
-        alertas.append(f"�Y�� Lesión activa (zona de impacto): carrera sustituida por cardio sin impacto.")
+        alertas.append(f"Y Lesión activa (zona de impacto): carrera sustituida por cardio sin impacto.")
     if sin_velocidad:
-        alertas.append("�Y�� Lesión activa en isquios: sin sprints ni series. Se añade excéntrico nórdico.")
+        alertas.append("Y Lesión activa en isquios: sin sprints ni series. Se añade excéntrico nórdico.")
     if lumbar:
-        alertas.append("�Y�� Zona lumbar/espalda: sin carga axial. Ejercicios de cadera y cadena posterior.")
+        alertas.append("Y Zona lumbar/espalda: sin carga axial. Ejercicios de cadera y cadena posterior.")
 
-    # Técnica de carrera (dinámica Garmin)
+ # Técnica de carrera (dinámica Garmin)
     necesita_drills = cadencia is not None and cadencia < 170
     necesita_core   = oscilacion is not None and oscilacion > 12.0
     if necesita_drills:
-        alertas.append(f"�Y'� Cadencia {cadencia:.0f} spm (<170): se añaden drills de técnica en los rodajes.")
+        alertas.append(f"Y' Cadencia {cadencia:.0f} spm (<170): se añaden drills de técnica en los rodajes.")
     if necesita_core:
         alertas.append(f"📈 Oscilación vertical {oscilacion:.1f} cm (>12): se añade trabajo de core y estabilidad.")
     if cadencia is not None and zancada is not None and cadencia < 170 and zancada > 1.15:
-        alertas.append(f"�Y�� Cadencia baja con zancada larga ({zancada:.2f} m): posible overstride. Se prioriza técnica para proteger rodilla.")
+        alertas.append(f"Y Cadencia baja con zancada larga ({zancada:.2f} m): posible overstride. Se prioriza técnica para proteger rodilla.")
 
-    # �"?�"? Parámetros base �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
-    base_rodaje = {"principiante": 35, "intermedio": 45, "avanzado": 55, "élite": 70}.get(nivel, 45)
+ # "?"? Parámetros base "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+    base_rodaje = {
+        "5k / 10k": 40,
+        "media maratón": 50,
+        "maratón": 60,
+        "ultramaratón 100k": 70,
+        "trail": 65,
+        "hyrox": 45,
+    }.get(objetivo, 45)
     km_tirada = {
         "5k / 10k":      "8-12 km",
         "media maratón": "14-18 km",
@@ -873,11 +893,11 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
 
     rodaje_min = max(25, int(base_rodaje * reduccion_volumen))
 
-    # �"?�"? Distribución de días �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Distribución de días "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     run_idx    = _indices_distribuidos(dias_carrera)
     fuerza_idx = [d for d in _indices_distribuidos(dias_fuerza + 1) if d not in run_idx][:dias_fuerza]
 
-    # Regla premium: nunca fuerza pesada de piernas el día ANTES de series
+ # Regla premium: nunca fuerza pesada de piernas el día ANTES de series
     if run_idx and fuerza_idx:
         dia_series = min(run_idx)
         fuerza_idx = [
@@ -885,9 +905,9 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
             for d in fuerza_idx
         ]
 
-    # �"?�"? Coordinación con pareja �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
-    # Si hay plan de la pareja, intentamos mover días de entreno activo
-    # para que coincidan con los días que ella/él también entrena.
+ # "?"? Coordinación con pareja "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # Si hay plan de la pareja, intentamos mover días de entreno activo
+ # para que coincidan con los días que ella/él también entrena.
     if plan_pareja is not None and not plan_pareja.empty:
         try:
             pareja_activa = plan_pareja[plan_pareja["tipo"].isin(["Carrera", "Fuerza", "Mixto", "Cardio alternativo"])]
@@ -897,9 +917,9 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
             dias_pareja = set(pareja_activa["i"].dropna().astype(int).tolist())
             if dias_pareja:
                 dias_total_activos = set(run_idx) | set(fuerza_idx)
-                # Calcular overlap actual y ideal
+ # Calcular overlap actual y ideal
                 overlap_actual = len(dias_total_activos & dias_pareja)
-                # Intentar reasignar días de fuerza para mejorar overlap
+ # Intentar reasignar días de fuerza para mejorar overlap
                 pool_candidatos = list(dias_pareja - set(run_idx))
                 nuevos_fuerza = []
                 for d in fuerza_idx:
@@ -913,7 +933,7 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
                 coinciden = len((set(run_idx) | set(fuerza_idx)) & dias_pareja)
                 if coinciden > overlap_actual:
                     alertas.append(
-                        f"�Y'� Plan coordinado con tu pareja: {coinciden} días de entrenamiento coincidentes esta semana."
+                        f"Y' Plan coordinado con tu pareja: {coinciden} días de entrenamiento coincidentes esta semana."
                     )
         except Exception:
             pass
@@ -929,7 +949,7 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
         duracion  = 30
         intensidad = "Baja"
 
-        # �"?�"? Días de carrera �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Días de carrera "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         if i in run_idx:
             if sin_impacto:
                 tipo, sesion, intensidad, duracion = "Cardio alternativo", "Bicicleta / natación (sin impacto)", "Media", 50
@@ -939,7 +959,7 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
                 detalles = ("Ritmo muy cómodo (Z1-Z2), conversación posible todo el tiempo. "
                             "Si en los primeros 10 min el cuerpo no responde bien, para.")
                 if necesita_drills:
-                    detalles += " Incluye 3 �- 30 seg talón-glúteo y 3 �- 20 m pies rápidos."
+                    detalles += " Incluye 3 - 30 seg talón-glúteo y 3 - 20 m pies rápidos."
             else:
                 if i == max(run_idx):           # Tirada larga
                     tipo, intensidad, duracion = "Carrera", "Media", rodaje_min + 25
@@ -947,11 +967,11 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
                         sesion   = "Tirada larga de montaña"
                         detalles = (f"Tiempo sobre las piernas: {km_tirada}. "
                                     "Practica ingesta de carbohidratos (60-90 g/h). "
-                                    "�sltimo tercio con trabajo excéntrico de bajada.")
+                                    "sltimo tercio con trabajo excéntrico de bajada.")
                     elif objetivo in ("maratón", "media maratón"):
                         sesion   = "Tirada larga - umbral aeróbico"
                         detalles = (f"Ritmo Z2 sostenido. Objetivo: {km_tirada}. "
-                                    "Métrica clave: misma FC = más km cada semana �?' estás mejorando.")
+                                    "Métrica clave: misma FC = más km cada semana ?' estás mejorando.")
                     else:
                         sesion   = "Tirada larga"
                         detalles = f"Ritmo Z2 estable. Objetivo: {km_tirada}."
@@ -960,25 +980,25 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
                     if sin_velocidad:
                         sesion, intensidad = "Progresivo aeróbico - sin velocidad", "Media"
                         detalles = ("Progresión suave dentro de Z2-Z3. Sin cambios bruscos. "
-                                    "Post-carrera: 3 �- 10 nórdico excéntrico isquio.")
+                                    "Post-carrera: 3 - 10 nórdico excéntrico isquio.")
                     elif objetivo in ("maratón", "media maratón"):
                         sesion, intensidad = "Tempo / umbral de lactato", "Alta"
                         detalles = ("10' calentar + 20-30 min al ritmo umbral (Z4) + 10' enfriar. "
                                     "Anota FC media del bloque para comparar semanas.")
                     elif objetivo == "hyrox":
                         sesion, intensidad = "Series HYROX", "Alta"
-                        detalles = ("10' calentar + 5 �- (400 m ritmo alto + 20 wall-balls / 250 m row) + 10' enfriar. "
+                        detalles = ("10' calentar + 5 - (400 m ritmo alto + 20 wall-balls / 250 m row) + 10' enfriar. "
                                     "Simula las estaciones de la prueba.")
                     else:
                         sesion, intensidad = "Series: calidad aeróbica", "Alta"
-                        detalles = "10' calentar + 5 �- (3 min Z4 / 2 min Z2) + 10' enfriar. Registra RPE real."
+                        detalles = "10' calentar + 5 - (3 min Z4 / 2 min Z2) + 10' enfriar. Registra RPE real."
                 else:                           # Rodaje intermedio
                     tipo, sesion, intensidad, duracion = "Carrera", "Rodaje aeróbico Z2", "Media", rodaje_min
                     detalles = "Ritmo conversacional Z2 constante, sin picos de FC."
                     if necesita_drills:
-                        detalles += " Incluye 5 �- 20 m drills: pies rápidos, rodillas altas, talón-glúteo."
+                        detalles += " Incluye 5 - 20 m drills: pies rápidos, rodillas altas, talón-glúteo."
 
-        # �"?�"? Días de fuerza �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Días de fuerza "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         if i in fuerza_idx:
             if tipo in ("Carrera", "Cardio alternativo"):
                 tipo = "Mixto"
@@ -998,24 +1018,24 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
                 tipo, duracion, intensidad = "Fuerza", 55, "Media"
                 if objetivo == "hyrox":
                     sesion   = "Circuito de fuerza HYROX"
-                    detalles = ("4 rondas: farmer carry 2�-20 m, 15 wall-balls, 20 lunges con mancuerna, "
+                    detalles = ("4 rondas: farmer carry 2-20 m, 15 wall-balls, 20 lunges con mancuerna, "
                                 "250 m row, 10 burpees. Registra tiempo total. RPE objetivo: 7-8.")
                 elif sin_velocidad:
                     sesion   = "Fuerza - excéntrico isquios"
-                    detalles = ("Hip thrust 4�-10, RDL 3�-10 carga moderada, nórdico isquio 3�-8 excéntrico controlado, "
-                                "elevación de talón sentada 3�-15. RPE máximo 7.")
+                    detalles = ("Hip thrust 4-10, RDL 3-10 carga moderada, nórdico isquio 3-8 excéntrico controlado, "
+                                "elevación de talón sentada 3-15. RPE máximo 7.")
                 elif lumbar:
                     sesion   = "Fuerza - cadena posterior sin compresión"
-                    detalles = "Hip thrust 4�-10, remo horizontal 4�-10, pull-down 3�-12, core en suelo. RPE 7."
+                    detalles = "Hip thrust 4-10, remo horizontal 4-10, pull-down 3-12, core en suelo. RPE 7."
                 else:
                     sesion   = "Fuerza estructural full-body"
-                    detalles = ("Hip thrust 4�-10, sentadilla búlgara 3�-8, remo 4�-10, "
-                                "press hombro 3�-10, plancha con rotación 3�-30 seg. RPE 7-8.")
+                    detalles = ("Hip thrust 4-10, sentadilla búlgara 3-8, remo 4-10, "
+                                "press hombro 3-10, plancha con rotación 3-30 seg. RPE 7-8.")
 
-        # Core en días de descanso si oscilación vertical alta
+ # Core en días de descanso si oscilación vertical alta
         if tipo == "Recuperacion" and necesita_core:
             sesion  += " + Core estabilidad"
-            detalles += " Añade 15 min: dead-bug 3�-10, pallof press 3�-12, RKC plancha 3�-20 seg."
+            detalles += " Añade 15 min: dead-bug 3-10, pallof press 3-12, RKC plancha 3-20 seg."
 
         filas.append({
             "dia": nombres[i], "fecha": fecha, "tipo": tipo,
@@ -1095,7 +1115,7 @@ def resumen_usuario_para_plan(usuario_id):
     try:
         fecha_14d = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
 
-        # �"?�"? Actividades running �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Actividades running "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         act = pd.read_sql_query(
             "SELECT distancia_m, fc_media FROM actividades_garmin WHERE usuario_id = ? AND fecha >= ?",
             conn, params=(usuario_id, fecha_14d),
@@ -1105,7 +1125,7 @@ def resumen_usuario_para_plan(usuario_id):
             out["km_14d"] = float(act["distancia_m"].fillna(0).sum() / 1000)
             out["fc_media_14d"] = float(act["fc_media"].dropna().mean()) if act["fc_media"].notna().any() else None
 
-        # �"?�"? Fuerza �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Fuerza "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         try:
             f = pd.read_sql_query(
                 """
@@ -1121,7 +1141,7 @@ def resumen_usuario_para_plan(usuario_id):
         except Exception:
             pass
 
-        # �"?�"? Diario de entrenamiento (sensaciones/carrera/lesiones) �"?�"?�"?�"?�"?
+ # "?"? Diario de entrenamiento (sensaciones/carrera/lesiones) "?"?"?"?"?
         try:
             diario = pd.read_sql_query(
                 """
@@ -1149,7 +1169,7 @@ def resumen_usuario_para_plan(usuario_id):
         except Exception:
             pass
 
-        # �"?�"? Sueño �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Sueño "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         try:
             sueno = pd.read_sql_query(
                 "SELECT horas_totales, score, sleep_profundo_horas, sleep_rem_horas, sleep_vigilia_horas, despertares FROM datos_sueno WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 7",
@@ -1173,7 +1193,7 @@ def resumen_usuario_para_plan(usuario_id):
         except Exception:
             pass
 
-        # �"?�"? Fatiga subjetiva y fase del ciclo �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Fatiga subjetiva y fase del ciclo "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         try:
             fisio = pd.read_sql_query(
                 "SELECT fatiga_subjetiva, fase_ciclo FROM diario_fisiologia WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 3",
@@ -1188,7 +1208,7 @@ def resumen_usuario_para_plan(usuario_id):
         except Exception:
             pass
 
-        # �"?�"? Biométricos premium �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Biométricos premium "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         try:
             prem = pd.read_sql_query(
                 """
@@ -1204,7 +1224,28 @@ def resumen_usuario_para_plan(usuario_id):
                 conn, params=(usuario_id,),
             )
             if not prem.empty:
-                p0 = prem.iloc[0]
+ # Garmin puede crear la fila del día con nulls si aún no hay muestras.
+ # Elegimos la PRIMERA fila (más reciente) que tenga al menos 3 métricas clave útiles.
+                metricas_clave = [
+                    "hrv_ms", "training_readiness", "body_battery", "fc_reposo",
+                    "sleep_score", "estres_vital", "spo2",
+                ]
+                p0 = None
+                for idx, row in prem.iterrows():
+                    non_null_count = sum(1 for col in metricas_clave if pd.notna(row.get(col)))
+                    if non_null_count >= 3:  # Al menos 3 métricas útiles
+                        p0 = row
+                        break
+ # Si no se encuentra fila con 3 métricas, usar la primera con al menos 1
+                if p0 is None:
+                    for idx, row in prem.iterrows():
+                        non_null_count = sum(1 for col in metricas_clave if pd.notna(row.get(col)))
+                        if non_null_count >= 1:
+                            p0 = row
+                            break
+ # Fallback: primera fila si nada más funciona
+                if p0 is None:
+                    p0 = prem.iloc[0]
                 def _f(col): return float(p0[col]) if pd.notna(p0.get(col)) else None
                 def _i(col): return int(p0[col]) if pd.notna(p0.get(col)) else None
                 out["hrv_actual"]        = _f("hrv_ms")
@@ -1225,24 +1266,24 @@ def resumen_usuario_para_plan(usuario_id):
                 out["recovery_hours"]    = _f("recovery_hours")
                 out["spo2"]              = _f("spo2")
                 out["sensacion_ultima"]  = str(p0["sensacion_notas"]) if pd.notna(p0.get("sensacion_notas")) else ""
-                # Sleep score desde premium si datos_sueno no lo tiene
+ # Sleep score desde premium si datos_sueno no lo tiene
                 if out["sueno_score_7d"] is None:
                     sc = prem["sleep_score"].dropna()
                     if not sc.empty:
                         out["sueno_score_7d"] = float(sc.mean())
                         out["dias_mal_sueno"] = int((sc < 60).sum())
-                # Tendencia HRV: media últimos 7 vs anteriores
+ # Tendencia HRV: media últimos 7 vs anteriores
                 hrv_s = prem["hrv_ms"].dropna()
                 if len(hrv_s) >= 4:
                     mid = len(hrv_s) // 2
                     out["hrv_tendencia"] = float(hrv_s.iloc[:mid].mean() - hrv_s.iloc[mid:].mean())
-                # Ratio carga
+ # Ratio carga
                 if out["carga_aguda"] and out["carga_cronica"] and out["carga_cronica"] > 0:
                     out["ratio_ctl_atl"] = round(out["carga_aguda"] / out["carga_cronica"], 2)
         except Exception:
             pass
 
-        # �"?�"? Lesiones activas �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Lesiones activas "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         try:
             les = pd.read_sql_query(
                 "SELECT zona FROM historial_lesiones WHERE usuario_id = ? AND activa = 1",
@@ -1332,7 +1373,7 @@ def cargar_datos_dashboard(usuario_id):
     """Carga cacheada del dashboard para evitar SELECT pesados en cada rerun."""
     conn = get_db_connection()
     try:
-        # Evitamos SELECT * para reducir transferencia y parseo.
+ # Evitamos SELECT * para reducir transferencia y parseo.
         df_act = pd.read_sql_query(
             """
             SELECT fecha, distancia_m, ritmo_medio, fc_media
@@ -1499,7 +1540,14 @@ def predecir_fases_ciclo(df_fisio, horizonte_dias=90):
     real["fecha_dt"] = pd.to_datetime(real["fecha"]).dt.date
     real = real.sort_values("fecha_dt")
 
-    starts = real[real["fase_ciclo"] == "Fase Folicular"]["fecha_dt"].drop_duplicates().tolist()
+    # Detectar inicio de ciclo: primer dia de menstruacion (compatible con datos viejos)
+    _period_starts = real[real["fase_ciclo"].isin(["Menstruación", "Fase Folicular"])]["fecha_dt"].drop_duplicates().tolist()
+    # Agrupar dias consecutivos y quedarse con el primero de cada racha
+    starts = []
+    for _d in _period_starts:
+        if not starts or (_d - starts[-1]).days > 5:
+            starts.append(_d)
+
     ciclo_dias = 28
     if len(starts) >= 2:
         diffs = [(starts[i] - starts[i - 1]).days for i in range(1, len(starts))]
@@ -1511,13 +1559,15 @@ def predecir_fases_ciclo(df_fisio, horizonte_dias=90):
     pred = []
     for day in range(1, horizonte_dias + 1):
         fecha = base + timedelta(days=day)
-        pos = day % ciclo_dias
-        if pos <= 12:
-            fase = "Fase Folicular"
-        elif pos <= 15:
-            fase = "Fase Ovulatoria"
+        pos = ((day - 1) % ciclo_dias) + 1
+        if pos <= 5:
+            fase = "Menstruación"
+        elif pos <= 11:
+            fase = "Folicular"
+        elif pos <= 16:
+            fase = "Ovulación"
         else:
-            fase = "Fase Lútea"
+            fase = "Lútea"
         pred.append({"fecha": fecha, "fase_ciclo": fase, "origen": "Predicho"})
 
     pred_df = pd.DataFrame(pred)
@@ -1529,7 +1579,7 @@ def predecir_fases_ciclo(df_fisio, horizonte_dias=90):
     return combinado, ciclo_dias
 
 
-def render_calendario_ciclo(df_ciclo, anio, mes):
+def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
     mes_matrix = calendar.monthcalendar(anio, mes)
     fases = {}
     origen = {}
@@ -1542,12 +1592,55 @@ def render_calendario_ciclo(df_ciclo, anio, mes):
             fases[d.day] = row["fase_ciclo"]
             origen[d.day] = row["origen"]
 
-    colores = {
-        "Fase Folicular": "#fda4af",
-        "Fase Ovulatoria": "#86efac",
-        "Fase Lútea": "#93c5fd",
+    reg_por_dia = {}
+    if df_registros is not None and not df_registros.empty:
+        for _, row in df_registros.iterrows():
+            try:
+                d = pd.to_datetime(row["fecha"]).date()
+            except Exception:
+                continue
+            if d.month == mes and d.year == anio and d.day not in reg_por_dia:
+                reg_por_dia[d.day] = row
+
+    sangre_emoji = {
+        "Sin sangre": "⚪",
+        "Manchado": "🩸",
+        "Ligero": "🩸",
+        "Medio": "🩸🩸",
+        "Fuerte": "🩸🩸🩸",
+    }
+    sintomas_emoji = {
+        "Dolor de ovarios": "🥚",
+        "Dolor de senos": "💢",
+        "Antojos": "🍫",
+        "Dolor de cabeza": "🤕",
+        "Hinchazón": "🎈",
+    }
+    animo_emoji = {
+        "Ansiedad/Estrés": "😰",
+        "Triste": "😢",
+        "Enfadada": "😠",
+        "Feliz": "😄",
+        "Cansada": "😴",
+        "Energética": "⚡",
+    }
+    feedback_emoji = {
+        "A tope": "🚀",
+        "Regulero": "😐",
+        "Bajito": "🐢",
+        "No completo": "⛔",
     }
 
+    colores = {
+        "Menstruación": "#fda4af",
+        "Folicular":    "#93c5fd",
+        "Ovulación":    "rgba(201,255,0,0.55)",
+        "Lútea":        "#c4b5fd",
+        # compatibilidad datos antiguos
+        "Fase Folicular":   "#fda4af",
+        "Fase Ovulatoria":  "rgba(201,255,0,0.55)",
+        "Fase Lútea":       "#c4b5fd",
+    }
     st.markdown("**Calendario del ciclo**")
     dias_header = ["L", "M", "X", "J", "V", "S", "D"]
     cols_h = st.columns(7)
@@ -1559,18 +1652,50 @@ def render_calendario_ciclo(df_ciclo, anio, mes):
         for i, day in enumerate(semana):
             with cols[i]:
                 if day == 0:
-                    st.markdown(" ")
+                    st.markdown("<div style='height:130px;'></div>", unsafe_allow_html=True)
                     continue
                 fase = fases.get(day)
                 org = origen.get(day, "")
-                bg = colores.get(fase, "#f8fafc")
-                lbl = fase.replace("Fase ", "") if isinstance(fase, str) else "-"
+                bg = colores.get(fase, "#1E2430")
+                txt_color = "#0E1117" if fase in ("Ovulación", "Fase Ovulatoria") else "#0f172a"
                 borde = "2px solid #0f172a" if org == "Registrado" else "1px dashed #334155"
+
+                em_sangre = ""
+                em_sintomas = ""
+                em_animo = ""
+                em_feedback = ""
+                if day in reg_por_dia:
+                    r = reg_por_dia[day]
+                    sangre = str(r.get("sangre") or "Sin sangre").strip()
+                    sintomas = str(r.get("sintomas") or "").strip()
+                    animo = str(r.get("estado_animo") or "").strip()
+                    feedback = str(r.get("feedback_entreno") or "").strip()
+
+                    em_sangre = sangre_emoji.get(sangre, "")
+
+                    if sintomas and sintomas not in ("None", ""):
+                        em_sintomas = "".join(
+                            sintomas_emoji.get(x.strip(), "")
+                            for x in sintomas.split(",")
+                            if x.strip()
+                        )
+                    if animo and animo not in ("None", "", "Normal"):
+                        em_animo = "".join(
+                            animo_emoji.get(x.strip(), "")
+                            for x in animo.split(",")
+                            if x.strip()
+                        )
+                    if feedback and feedback not in ("None", ""):
+                        em_feedback = feedback_emoji.get(feedback, "")
+
                 st.markdown(
                     f"""
-                    <div style='background:{bg}; border:{borde}; border-radius:8px; padding:8px; min-height:66px;'>
-                        <div style='font-weight:700; color:#0f172a;'>{day}</div>
-                        <div style='font-size:0.75rem; color:#1e293b;'>{lbl}</div>
+                    <div style='background:{bg}; border:{borde}; border-radius:8px; padding:8px; height:130px; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-start;'>
+                        <div style='font-weight:700; color:{txt_color}; line-height:1.1;'>{day}</div>
+                        <div style='font-size:1rem; line-height:1.1; margin-top:6px;'>{em_sangre}</div>
+                        <div style='font-size:1rem; line-height:1.1; margin-top:2px;'>{em_sintomas}</div>
+                        <div style='font-size:1rem; line-height:1.1; margin-top:2px;'>{em_animo}</div>
+                        <div style='font-size:1rem; line-height:1.1; margin-top:2px;'>{em_feedback}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -1606,8 +1731,8 @@ def aplicar_tema_plotly(fig, titulo=None):
         fig.update_layout(title=titulo)
     return fig
 
-# 1. CONFIGURACI�"N DE PÁGINA
-st.set_page_config(page_title="Proyecto Athlete", page_icon="�Y�f�?��T?️", layout="wide")
+# 1. CONFIGURACI"N DE PÁGINA
+st.set_page_config(page_title="Proyecto Athlete", page_icon="Yf?T?", layout="wide")
 if "_db_setup_done" not in st.session_state:
     asegurar_tabla_plan_entrenamiento()
     asegurar_tablas_fuerza()
@@ -1624,9 +1749,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 2. L�"GICA DE LOGIN / SESI�"N
+# 2. L"GICA DE LOGIN / SESI"N
 if "usuario_id" not in st.session_state:
-    # Intentar cargar el último usuario recordado en este dispositivo
+ # Intentar cargar el último usuario recordado en este dispositivo
     ultimo = _leer_ultimo_usuario()
     if ultimo:
         st.session_state.usuario_id = ultimo
@@ -1794,13 +1919,12 @@ if perfil is None:
             st.markdown('</div>', unsafe_allow_html=True)
 
             st.divider()
-            st.markdown('<div class="form-panel"><div class="form-title">Disponibilidad y nivel</div>', unsafe_allow_html=True)
+            st.markdown('<div class="form-panel"><div class="form-title">Disponibilidad</div>', unsafe_allow_html=True)
             carrera = st.slider("Días de carrera/semana", 1, 7, 4)
             fuerza = st.slider("Días de fuerza/semana", 0, 7, 2)
-            nivel = st.select_slider("Nivel actual", ["Principiante", "Intermedio", "Avanzado", "�?lite"])
             st.markdown('</div>', unsafe_allow_html=True)
             
-        if st.form_submit_button("�Ys? Generar mi Ecosistema"):
+        if st.form_submit_button("Ys? Generar mi Ecosistema"):
             errores = []
             if not nombre.strip():
                 errores.append("El nombre es obligatorio.")
@@ -1829,7 +1953,7 @@ if perfil is None:
             datos = {
                 "nombre": nombre.strip(), "edad": edad, "genero": genero, "peso": peso,
                 "objetivo": categoria, "carrera": carrera, "fuerza": fuerza,
-                "nivel": nivel, "ritmo": f"{format_ritmo(seg_inf)}-{format_ritmo(seg_sup)}"
+                "ritmo": f"{format_ritmo(seg_inf)}-{format_ritmo(seg_sup)}"
             }
             guardar_perfil(user_actual, datos)
             
@@ -1843,7 +1967,7 @@ if perfil is None:
             st.rerun()
     st.stop()
 
-# 4. MEN�s SUPERIOR CON SELECTOR DE PERFIL
+# 4. MENs SUPERIOR CON SELECTOR DE PERFIL
 nombre_usuario = perfil.get("nombre", "Atleta") if perfil else "Atleta"
 _bienvenida = f"Bienvenida, {nombre_usuario}" if user_actual == 1 else f"Bienvenido, {nombre_usuario}"
 
@@ -1864,50 +1988,80 @@ st.markdown(
         --ath-lime-soft: #E8FF8A;
         --ath-lime-border: rgba(201,255,0,0.40);
     }}
-    /* �"?�"?�"? Global typography �"?�"?�"? */
+ /* "?"?"? Global typography "?"?"?*/
     html, body, [class*="css"] {{
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
     }}
     h1, h2, h3 {{ color: #FFFFFF !important; }}
     p, li, label, span {{ color: var(--ath-text); }}
     [data-testid="stAppViewContainer"] {{
-        background:
-            radial-gradient(circle at 8% 8%, rgba(201,255,0,0.10) 0%, transparent 36%),
-            linear-gradient(180deg, #0E1117 0%, #0A2E0A 55%, #0E1117 100%);
+        position: relative;
+        overflow-x: hidden;
+        background: #0E1117;
         color: var(--ath-text);
+    }}
+    [data-testid="stAppViewContainer"]::before {{
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 380px;
+        pointer-events: none;
+        z-index: 0;
+        background:
+            radial-gradient(85% 330px at 50% 0%, rgba(201,255,0,0.20) 0%, rgba(130,190,0,0.12) 36%, rgba(14,17,23,0.00) 72%),
+            linear-gradient(180deg, rgba(14,17,23,0.00) 0%, rgba(14,17,23,0.76) 70%, #0E1117 100%);
+    }}
+    .main,
+    [data-testid="stMain"],
+    [data-testid="stMainBlockContainer"] {{
+        position: relative;
+        z-index: 1;
+        background: #0E1117;
     }}
     [data-testid="stHeader"] {{
         background: rgba(14, 17, 23, 0.78);
         backdrop-filter: blur(8px);
     }}
-    /* �"?�"?�"? Header brand bar �"?�"?�"? */
+ /* "?"?"? Header brand bar "?"?"?*/
     .st-key-nav_shell {{
+        position: relative;
+        z-index: 3;
         background: linear-gradient(90deg, #0E1117 0%, #0A2E0A 100%);
         border: 1px solid rgba(201,255,0,0.40);
         border-radius: 20px;
         box-shadow: 0 0 30px rgba(201,255,0,0.10), inset 0 1px 0 rgba(201,255,0,0.10);
         margin-bottom: 16px;
-        padding: 16px;
+        padding: 10px 24px;
+        height: 80px;
         max-width: 100%;
         overflow-x: auto;
         overflow-y: hidden;
+        display: flex;
+        align-items: center;
     }}
     .st-key-nav_shell > div[data-testid="stHorizontalBlock"] {{
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: space-between !important;
         background: transparent;
         border: none;
         border-radius: 0;
         box-shadow: none;
         padding: 0;
         margin: 0;
-        align-items: center;
-        gap: 0.9rem;
+        align-items: center !important;
+        gap: 1rem;
         flex-wrap: nowrap !important;
-        min-width: max-content;
+        min-width: 100%;
+        width: 100%;
+        height: 100%;
     }}
     .st-key-nav_shell > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
         display: flex;
         align-items: center;
-        min-height: 50px;
+        min-height: 100%;
         flex: 0 0 auto;
     }}
     .st-key-nav_shell > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div {{
@@ -1915,15 +2069,62 @@ st.markdown(
     }}
     .st-key-nav_shell > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) {{
         justify-content: flex-start;
+        flex: 0 0 auto;
     }}
     .st-key-nav_shell > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {{
         justify-content: center;
+        flex: 1 1 auto;
+        min-width: 0;
     }}
     .st-key-nav_shell > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(3) {{
         justify-content: flex-end;
+        flex: 0 0 auto;
     }}
-    .st-key-nav_shell > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(4) {{
-        justify-content: flex-start;
+    .st-key-nav_mid_row > div[data-testid="stHorizontalBlock"] {{
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center;
+        justify-content: center !important;
+        gap: 0.8rem;
+        flex-wrap: nowrap !important;
+        width: 100%;
+    }}
+    .st-key-nav_mid_row [data-testid="element-container"],
+    .st-key-nav_mid_row [data-testid="stPills"],
+    .st-key-nav_mid_row [data-testid="stButton"] {{
+        margin: 0 !important;
+    }}
+    .st-key-nav_mid_row > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+        display: flex;
+        align-items: center;
+        min-height: 42px;
+    }}
+    .st-key-nav_mid_row > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) {{
+        justify-content: center;
+    }}
+    .st-key-nav_mid_row > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {{
+        justify-content: center;
+    }}
+    .st-key-nav_controls > div[data-testid="stHorizontalBlock"] {{
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 0.75rem;
+        flex-wrap: nowrap !important;
+        width: 100%;
+        height: 100%;
+    }}
+    .st-key-nav_controls > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+        display: flex;
+        align-items: center;
+        min-height: 100%;
+        flex: 0 0 auto;
+    }}
+    .st-key-nav_controls [data-testid="element-container"],
+    .st-key-nav_controls [data-testid="stButton"],
+    .st-key-nav_controls [data-testid="stSelectbox"] {{
+        margin: 0 !important;
     }}
     .athlete-brand {{
         display: flex;
@@ -1954,16 +2155,16 @@ st.markdown(
         line-height: 1.2;
         margin-top: 1px;
     }}
-    /* �"?�"?�"? Nav pills �"?�"?�"? */
+ /* "?"?"? Nav pills "?"?"?*/
     .st-key-nav_shell [data-testid="stPills"] [role="radiogroup"] {{
         display: flex !important;
         flex-wrap: nowrap !important;
         overflow-x: auto;
         overflow-y: hidden;
-        gap: 0.375rem;
+        gap: 0.6rem;
         background: transparent;
         border: none;
-        padding: 0;
+        padding: 0 8px;
         border-radius: 0;
         scrollbar-width: none;
         align-items: center;
@@ -2006,13 +2207,31 @@ st.markdown(
         box-shadow: 0 8px 18px rgba(201, 255, 0, 0.20);
         color: #FFFFFF !important;
     }}
-    /* �"?�"?�"? Profile selectbox �"?�"?�"? */
+
+ /* "?"?"? Global pills/chips override (selected -> amarillo) "?"?"?*/
+    [data-testid="stPills"] button[aria-pressed="true"],
+    [data-testid="stPills"] [role="radio"][aria-checked="true"],
+    [data-testid="stPills"] label[aria-checked="true"] {{
+        background: rgba(201, 255, 0, 0.16) !important;
+        border-color: rgba(201, 255, 0, 0.70) !important;
+        box-shadow: 0 6px 14px rgba(201, 255, 0, 0.18) !important;
+        color: #FFFFFF !important;
+    }}
+
+    [data-testid="stPills"] button:focus-visible,
+    [data-testid="stPills"] [role="radio"]:focus-visible,
+    [data-testid="stPills"] label:focus-visible {{
+        outline: none !important;
+        border-color: rgba(201, 255, 0, 0.75) !important;
+        box-shadow: 0 0 0 2px rgba(201, 255, 0, 0.22) !important;
+    }}
+ /* "?"?"? Profile selectbox "?"?"?*/
     .st-key-nav_shell div[data-testid="stSelectbox"] > div[data-baseweb="select"] {{
         background: rgba(22, 27, 34, 0.55);
         border-radius: 8px;
         border: 1px solid rgba(201,255,0,0.40);
         min-height: 36px;
-        width: 120px;
+        width: 132px;
         box-shadow: inset 0 1px 0 rgba(201,255,0,0.15);
     }}
     .st-key-nav_shell div[data-testid="stSelectbox"] > div[data-baseweb="select"]:hover {{
@@ -2026,34 +2245,32 @@ st.markdown(
         letter-spacing: 0.05em !important;
         text-transform: uppercase !important;
     }}
+ /* -- THUMB (bolita que arrastras) -- #C9FF00 verde lima + halo suave*/
     div[data-baseweb="slider"] [role="slider"] {{
-        background: #C9FF00 !important;
+ background: #C9FF00 !important; /* bolita -> verde lima*/
         border-color: #C9FF00 !important;
-        box-shadow: 0 0 0 4px rgba(201,255,0,0.16) !important;
     }}
-    div[data-baseweb="slider"] [role="slider"]::before {{
-        background: #C9FF00 !important;
-    }}
+
+    
+ /* -- RIEL ACTIVO (tramo izquierda hasta el thumb) -- #C9FF00 verde lima*/
     div[data-baseweb="slider"] > div > div > div {{
-        background: #C9FF00 !important;
+ background: #C9FF00 !important; /* riel activo -> verde lima*/
     }}
-    div[data-baseweb="slider"] > div > div:nth-child(1) {{
-        background: rgba(201,255,0,0.22) !important;
-    }}
+
+    
+ /* -- THUMBS 2º y 3º (select_slider tiene dos thumbs) -- #C9FF00 verde lima*/
     div[data-baseweb="slider"] > div > div:nth-child(2),
     div[data-baseweb="slider"] > div > div:nth-child(2) > div,
     div[data-baseweb="slider"] > div > div:nth-child(3),
     div[data-baseweb="slider"] > div > div:nth-child(3) > div {{
-        background: #C9FF00 !important;
         border-color: #C9FF00 !important;
     }}
-    div[data-baseweb="slider"] [data-testid="stTickBar"] div {{
-        background: linear-gradient(90deg, rgba(201,255,0,0.28) 0%, #C9FF00 100%) !important;
-    }}
-    /* Oculta números/inputs a la derecha de barras (slider/select-slider) */
+
+    
+ /* -- INPUT NUMÉRICO a la derecha del slider -- oculto*/
     [data-testid="stSlider"] div[data-baseweb="input"],
     [data-testid="stSelectSlider"] div[data-baseweb="input"] {{
-        display: none !important;
+ display: none !important; /* se oculta el número editable lateral*/
     }}
     .form-panel {{
         background: rgba(22, 27, 34, 0.90);
@@ -2063,9 +2280,12 @@ st.markdown(
         margin-bottom: 12px;
     }}
     .form-panel [data-testid="stSlider"] label,
-    .form-panel [data-testid="stSelectSlider"] label {{
-        color: #E8FF8A !important;
+    .form-panel [data-testid="stSelectSlider"] label,
+    .form-panel [data-testid="stSlider"] label *,
+    .form-panel [data-testid="stSelectSlider"] label * {{
+        color: #FFFFFF !important;
         font-weight: 700 !important;
+        text-decoration: none !important;
     }}
     .form-title {{
         color: #C9FF00;
@@ -2092,7 +2312,7 @@ st.markdown(
         border-color: #C9FF00 !important;
         box-shadow: 0 0 0 1px #C9FF00 !important;
     }}
-    /* �"?�"?�"? Metric cards �"?�"?�"? */
+ /* "?"?"? Metric cards "?"?"?*/
     [data-testid="stMetric"] {{
         background: var(--ath-card);
         border: 1px solid rgba(201,255,0,0.32);
@@ -2166,13 +2386,22 @@ st.markdown(
         font-weight: 700;
         letter-spacing: -0.01em;
     }}
-    .dash-section-dot {{
-        width: 8px;
-        height: 8px;
-        border-radius: 999px;
-        background: #C9FF00;
-        box-shadow: 0 0 10px rgba(201,255,0,0.7);
-        display: inline-block;
+    .dash-section-icon {{
+        width: 18px;
+        height: 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }}
+    .dash-section-icon svg {{
+        width: 18px;
+        height: 18px;
+        stroke: #C9FF00;
+        fill: none;
+        stroke-width: 2.1;
+        stroke-linecap: round;
+        stroke-linejoin: round;
     }}
     .dash-panel {{
         background: #161B22;
@@ -2184,6 +2413,76 @@ st.markdown(
     .dash-panel-muted {{
         color: #8B949E;
         font-size: 0.9rem;
+    }}
+    .summary7-head {{
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 4px 0 10px;
+        color: #FFFFFF;
+        font-size: 1.05rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+    }}
+    .summary7-head svg {{
+        width: 18px;
+        height: 18px;
+        stroke: #C9FF00;
+        fill: none;
+        stroke-width: 2.2;
+    }}
+    .summary7-grid {{
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 10px;
+    }}
+    .summary7-card {{
+        position: relative;
+        background: linear-gradient(130deg, rgba(22,27,34,0.96) 0%, rgba(18,28,42,0.92) 100%);
+        border: 1px solid rgba(201,255,0,0.12);
+        border-left: 4px solid #C9FF00;
+        border-radius: 14px;
+        min-height: 96px;
+        padding: 10px 12px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.22), inset 0 1px 0 rgba(201,255,0,0.08);
+    }}
+    .summary7-label {{
+        color: #A6B0BB;
+        font-size: 0.98rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.01em;
+    }}
+    .summary7-value {{
+        margin-top: 8px;
+        color: #FFFFFF;
+        font-size: 2.05rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1;
+    }}
+    .summary7-chip {{
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(116, 129, 142, 0.26);
+        border: 1px solid rgba(175, 188, 199, 0.20);
+        color: #9EA9B5;
+        border-radius: 8px;
+        padding: 3px 8px;
+        font-size: 0.72rem;
+        font-weight: 600;
+    }}
+    @media (max-width: 1200px) {{
+        .summary7-grid {{
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }}
+    }}
+    @media (max-width: 700px) {{
+        .summary7-grid {{
+            grid-template-columns: 1fr;
+        }}
     }}
     .dash-week-card {{
         background: #161B22;
@@ -2229,74 +2528,82 @@ st.markdown(
         background: rgba(14,17,23,0.55);
         font-size: 0.84rem;
     }}
-    /* �"?�"?�"? Primary buttons �"?�"?�"? */
-    .stButton > button {{
+ /* "?"?"? Primary buttons "?"?"?*/
+    .stButton > button,
+    .stFormSubmitButton > button {{
         border-radius: 10px !important;
         font-weight: 600 !important;
         font-size: 0.875rem !important;
         letter-spacing: 0.008em !important;
         transition: all 0.18s ease !important;
     }}
-    .stButton > button[kind="primary"] {{
+    .stButton > button[kind="primary"],
+    .stFormSubmitButton > button[kind="primary"] {{
         background: linear-gradient(135deg, #C9FF00 0%, #A8D600 100%) !important;
         color: #0E1117 !important;
         border: none !important;
         box-shadow: 0 3px 10px rgba(201,255,0,0.25) !important;
     }}
-    .stButton > button[kind="primary"]:hover {{
+    .stButton > button[kind="primary"]:hover,
+    .stFormSubmitButton > button[kind="primary"]:hover {{
         transform: translateY(-1px) !important;
         box-shadow: 0 6px 20px rgba(201,255,0,0.34) !important;
     }}
-    .stButton > button:not([kind="primary"]) {{
+    .stButton > button:not([kind="primary"]),
+    .stFormSubmitButton > button:not([kind="primary"]) {{
         background: #161B22 !important;
         color: var(--ath-text) !important;
         border: 1px solid rgba(201,255,0,0.30) !important;
     }}
-    .stButton > button:not([kind="primary"]):hover {{
+    .stButton > button:not([kind="primary"]):hover,
+    .stFormSubmitButton > button:not([kind="primary"]):hover {{
         background: #1E2430 !important;
         border-color: #C9FF00 !important;
         transform: translateY(-1px) !important;
     }}
-    /* �"?�"?�"? Garmin sync pill button �"?�"?�"? */
-    .garmin-btn {{
-        width: 36px;
-        min-width: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+ /* --- CONTROLES DERECHOS (Botón y Perfil) ---*/
+    .st-key-nav_controls [data-testid="stHorizontalBlock"] {{
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 8px !important;
+        flex-wrap: nowrap !important;
     }}
-    .garmin-btn button {{
+    .st-key-nav_controls [data-testid="stHorizontalBlock"] > [data-testid="column"] {{
+        display: flex !important;
+        align-items: center !important;
+        padding: 0 !important;
+        min-height: unset !important;
+    }}
+    .st-key-nav_controls [data-testid="stButton"] {{
+        margin: 0 !important;
+        padding: 0 !important;
+        width: auto !important;
+    }}
+    .st-key-nav_controls [data-testid="stButton"] button {{
         background: rgba(22, 27, 34, 0.50) !important;
         color: #C9FF00 !important;
         border: 1px solid rgba(201,255,0,0.40) !important;
         border-radius: 999px !important;
-        font-weight: 600 !important;
-        font-size: 0 !important;
-        letter-spacing: 0 !important;
-        box-shadow: 0 8px 18px rgba(201,255,0,0.10) !important;
-        transition: all 0.18s ease !important;
-        height: 36px !important;
-        min-height: 36px !important;
-        max-height: 36px !important;
-        min-width: 36px !important;
-        max-width: 36px !important;
-        width: 36px !important;
+        width: 38px !important;
+        height: 38px !important;
+        min-width: 38px !important;
         padding: 0 !important;
-        line-height: 1 !important;
-        display: inline-flex !important;
+        display: flex !important;
         align-items: center !important;
         justify-content: center !important;
+        font-size: 1.1rem !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2) !important;
     }}
-    .garmin-btn button p {{
-        margin: 0 !important;
-        font-size: 1.02rem !important;
-        line-height: 1 !important;
-        color: #C9FF00 !important;
-    }}
-    .garmin-btn button:hover {{
+    .st-key-nav_controls [data-testid="stButton"] button:hover {{
         background: rgba(201,255,0,0.20) !important;
         border-color: rgba(201,255,0,0.80) !important;
-        box-shadow: 0 10px 22px rgba(201,255,0,0.16) !important;
+        transform: translateY(-1px);
+    }}
+    .st-key-nav_controls [data-testid="stSelectbox"] {{
+        margin: 0 !important;
+        width: 125px !important;
     }}
     .calendar-legend {{
         display: flex;
@@ -2322,7 +2629,7 @@ st.markdown(
         border-radius: 999px;
         display: inline-block;
     }}
-    /* �"?�"?�"? Expanders �"?�"?�"? */
+ /* "?"?"? Expanders "?"?"?*/
     details[data-testid="stExpander"] {{
         border: 1px solid var(--ath-border) !important;
         border-radius: 12px !important;
@@ -2335,7 +2642,7 @@ st.markdown(
         color: #FFFFFF !important;
         background: #1E2430 !important;
     }}
-    /* �"?�"?�"? Tabs, tables and charts �"?�"?�"? */
+ /* "?"?"? Tabs, tables and charts "?"?"?*/
     button[data-baseweb="tab"] {{
         color: #8B949E !important;
     }}
@@ -2360,17 +2667,18 @@ st.markdown(
         border-radius: 12px !important;
         background: #161B22 !important;
     }}
-    /* �"?�"?�"? Dividers �"?�"?�"? */
+ /* "?"?"? Dividers "?"?"?*/
     hr {{
         border: none !important;
         border-top: 1px solid rgba(201,255,0,0.38) !important;
         margin: 18px 0 !important;
     }}
-    /* �"?�"?�"? Responsive �"?�"?�"? */
+ /* "?"?"? Responsive "?"?"?*/
     @media (max-width: 900px) {{
         .st-key-nav_shell {{
             border-radius: 16px;
-            padding: 10px 12px;
+            padding: 0 12px;
+            height: 74px;
         }}
         .st-key-nav_shell > div[data-testid="stHorizontalBlock"] {{
             gap: 0.55rem;
@@ -2380,6 +2688,7 @@ st.markdown(
         .st-key-nav_shell [data-testid="stPills"] [role="radiogroup"] {{
             gap: 0.2rem;
             justify-content: center;
+            padding: 0 4px;
         }}
         .st-key-nav_shell [data-testid="stPills"] button,
         .st-key-nav_shell [data-testid="stPills"] [role="radio"],
@@ -2396,7 +2705,8 @@ st.markdown(
     }}
     @media (max-width: 600px) {{
         .st-key-nav_shell {{
-            padding: 6px 8px;
+            padding: 0 8px;
+            height: 70px;
         }}
         .st-key-nav_shell > div[data-testid="stHorizontalBlock"] {{
             gap: 0.45rem;
@@ -2415,7 +2725,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# �"?�"? Opciones de menú según perfil �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+# "?"? Opciones de menú según perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
 _opciones_menu = [
     "Inicio",
     "Perfil",
@@ -2425,11 +2735,11 @@ _opciones_menu = [
 if user_actual == 1:  # Ciclo Menstrual solo para Malena
     _opciones_menu.insert(2, "Ciclo Menstrual")
 
-# �"?�"? Fila nav: marca + pestañas + Garmin + selector de perfil �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?
 _perfiles = {"Malena": 1, "Dani": 2}
 _perfil_actual_nombre = "Malena" if user_actual == 1 else "Dani"
 with st.container(key="nav_shell"):
-    _brand_col, _nav_col, _garmin_col, _sel_col = st.columns([0.24, 0.56, 0.06, 0.14])
+    _brand_col, _nav_col, _sel_col = st.columns([0.24, 0.54, 0.22])
 
     with _brand_col:
         st.markdown(
@@ -2450,46 +2760,47 @@ with st.container(key="nav_shell"):
         )
 
     with _nav_col:
-        if "menu_actual" not in st.session_state:
-            st.session_state.menu_actual = "Inicio"
-        if st.session_state.menu_actual == "Diario de Fuerza":
-            st.session_state.menu_actual = "Diario de Entrenamiento"
-        if st.session_state.menu_actual not in _opciones_menu:
-            st.session_state.menu_actual = "Inicio"
+        with st.container(key="nav_mid_row"):
+            if "menu_actual" not in st.session_state:
+                st.session_state.menu_actual = "Inicio"
+            if st.session_state.menu_actual == "Diario de Fuerza":
+                st.session_state.menu_actual = "Diario de Entrenamiento"
+            if st.session_state.menu_actual not in _opciones_menu:
+                st.session_state.menu_actual = "Inicio"
 
-        _menu_sel = st.pills(
-            "Navegación principal",
-            _opciones_menu,
-            selection_mode="single",
-            default=st.session_state.menu_actual,
-            label_visibility="collapsed",
-        )
-        if _menu_sel:
-            st.session_state.menu_actual = _menu_sel
-        menu = st.session_state.menu_actual
-
-    with _garmin_col:
-        st.markdown('<div class="garmin-btn">', unsafe_allow_html=True)
-        _do_sync = st.button("�Y�", key="garmin_sync_header", help="Sincronizar Garmin")
-        st.markdown('</div>', unsafe_allow_html=True)
+            _menu_sel = st.pills(
+                "Navegación principal",
+                _opciones_menu,
+                selection_mode="single",
+                default=st.session_state.menu_actual,
+                label_visibility="collapsed",
+            )
+            if _menu_sel:
+                st.session_state.menu_actual = _menu_sel
+            menu = st.session_state.menu_actual
 
     with _sel_col:
-        _elegido = st.selectbox(
-            "Perfil",
-            list(_perfiles.keys()),
-            index=list(_perfiles.keys()).index(_perfil_actual_nombre),
-            label_visibility="collapsed",
-        )
+        with st.container(key="nav_controls"):
+            _btn_sub, _drop_sub = st.columns([0.28, 0.72])
+            with _btn_sub:
+                _do_sync = st.button("↻", key="garmin_sync_header", help="Sincronizar Garmin")
+            with _drop_sub:
+                _elegido = st.selectbox(
+                    "Perfil",
+                    list(_perfiles.keys()),
+                    index=list(_perfiles.keys()).index(_perfil_actual_nombre),
+                    label_visibility="collapsed",
+                )
         if _perfiles[_elegido] != user_actual:
             st.session_state.usuario_id = _perfiles[_elegido]
             _guardar_ultimo_usuario(_perfiles[_elegido])
             st.rerun()
 
-# �"?�"? Lógica de sincronización Garmin �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+# "?"? Lógica de sincronización Garmin "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
 if _do_sync:
     cred = obtener_credenciales_garmin(user_actual)
     if cred and cred[0]:
-        with st.spinner("Conectando con Garmin�?�"):
+        with st.spinner("Conectando con Garmin..."):
             try:
                 email_g, p_enc_g = cred
                 pw_g = desencriptar_password(p_enc_g)
@@ -2511,26 +2822,58 @@ if _do_sync:
         st.warning("Configura tus credenciales Garmin en el perfil.")
 
 # ==========================================
-# PESTA�'A 1: DASHBOARD (Con lógica de Sueño unificada)
+# PESTA'A 1: DASHBOARD (Con lógica de Sueño unificada)
 # ==========================================
 if menu in ("Dashboard", "Inicio"):
     st.markdown("<div class='dashboard-shell'>", unsafe_allow_html=True)
 
     df_act, df_sueno, df_fuerza = cargar_datos_dashboard(user_actual)
 
-    # Resumen rápido de lo importante
+ # Resumen rápido de lo importante
     resumen = resumen_dashboard(user_actual)
-    st.markdown("<div class='dash-section-title'><span class='dash-section-dot'></span><span>Resumen ultimos 7 dias</span></div>", unsafe_allow_html=True)
-    r1, r2, r3, r4 = st.columns(4)
-    r1.metric("Km (7d)", f"{resumen['km_7d']:.1f}")
-    r2.metric("Carreras (7d)", resumen["runs_7d"])
-    r3.metric("Fuerza (7d)", resumen["fuerza_7d"])
-    r4.metric("Sueño medio (7d)", "-" if resumen["sueno_7d"] is None else f"{resumen['sueno_7d']:.1f} h")
+    km_7d_txt = f"{resumen['km_7d']:.1f}"
+    runs_7d_txt = str(resumen["runs_7d"])
+    fuerza_7d_txt = str(resumen["fuerza_7d"])
+    sueno_7d_txt = "-" if resumen["sueno_7d"] is None else f"{resumen['sueno_7d']:.1f}"
+
+    st.markdown(
+        f"""
+        <div class='summary7-head'>
+            <svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>
+                <path d='M2 12h4l2.2-6.2 4.1 12.4L15 10h7' stroke-linecap='round' stroke-linejoin='round'></path>
+            </svg>
+            <span>Resumen Últimos 7 Días</span>
+        </div>
+        <div class='summary7-grid'>
+            <div class='summary7-card'>
+                <div class='summary7-label'>KM</div>
+                <div class='summary7-chip'>Últimos 7 días</div>
+                <div class='summary7-value'>{km_7d_txt}</div>
+            </div>
+            <div class='summary7-card'>
+                <div class='summary7-label'>CARRERAS</div>
+                <div class='summary7-chip'>Últimos 7 días</div>
+                <div class='summary7-value'>{runs_7d_txt}</div>
+            </div>
+            <div class='summary7-card'>
+                <div class='summary7-label'>FUERZA</div>
+                <div class='summary7-chip'>Sesiones</div>
+                <div class='summary7-value'>{fuerza_7d_txt}</div>
+            </div>
+            <div class='summary7-card'>
+                <div class='summary7-label'>SUEÑO MEDIO</div>
+                <div class='summary7-chip'>h/noche</div>
+                <div class='summary7-value'>{sueno_7d_txt}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if user_actual == 2:
         estado_malena = obtener_estado_ciclo_malena()
         if estado_malena:
-            st.markdown("<div class='dash-section-title'><span class='dash-section-dot'></span><span>Estado del ciclo de Malena</span></div>", unsafe_allow_html=True)
+            st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><path d='M12 3C9 8 6 10 6 14a6 6 0 0 0 12 0c0-4-3-6-6-11z'></path></svg></span><span>Estado del ciclo de Malena</span></div>", unsafe_allow_html=True)
             st.markdown("<div class='cycle-panel'>", unsafe_allow_html=True)
             c1, c2 = st.columns([0.35, 0.65])
             with c1:
@@ -2547,7 +2890,7 @@ if menu in ("Dashboard", "Inicio"):
     df_check = construir_checkpoints_objetivo(perfil, df_act)
     render_checkpoints_moderno(df_check, perfil.get("objetivo", "actual"))
 
-    st.markdown("<div class='dash-section-title'><span class='dash-section-dot'></span><span>Esta semana</span></div>", unsafe_allow_html=True)
+    st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><rect x='3' y='5' width='18' height='16' rx='2'></rect><path d='M8 3v4M16 3v4M3 10h18'></path></svg></span><span>Esta semana</span></div>", unsafe_allow_html=True)
     semana = inicio_semana(datetime.now())
     cal_semana = construir_calendario_semanal_actividades(df_act, df_fuerza, semana)
     cols_sem = st.columns(7)
@@ -2568,8 +2911,7 @@ if menu in ("Dashboard", "Inicio"):
                 unsafe_allow_html=True,
             )
 
-    st.markdown("<div class='dash-section-title'><span class='dash-section-dot'></span><span>Progreso de running</span></div>", unsafe_allow_html=True)
-    st.markdown("<div class='dash-panel'>", unsafe_allow_html=True)
+    st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><path d='M3 17l5-5 4 3 9-10'></path><path d='M19 5h2v2'></path></svg></span><span>Progreso de running</span></div>", unsafe_allow_html=True)
     run_prog = progreso_running(df_act)
     if run_prog.empty:
         st.markdown("<div class='dash-panel-muted'>Sincroniza tus datos de Garmin para ver la evolucion semanal de kilometros.</div>", unsafe_allow_html=True)
@@ -2611,60 +2953,10 @@ if menu in ("Dashboard", "Inicio"):
             tickfont=dict(size=10, color="#8B949E"),
         )
         st.plotly_chart(fig_run, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='dash-section-title'><span class='dash-section-dot'></span><span>Radar antilesiones y tecnica</span></div>", unsafe_allow_html=True)
-    st.markdown("<div class='dash-panel'>", unsafe_allow_html=True)
     radar = resumen_usuario_para_plan(user_actual)
-    t1, t2, t3, t4, t5 = st.columns(5)
-    t1.metric("Cadencia", "—" if radar["cadencia_media"] is None else f"{radar['cadencia_media']:.0f} spm")
-    t2.metric("Zancada", "—" if radar["longitud_zancada_m"] is None else f"{radar['longitud_zancada_m']:.2f} m")
-    t3.metric("Contacto", "—" if radar["tiempo_contacto"] is None else f"{radar['tiempo_contacto']:.0f} ms")
-    t4.metric("Osc. vertical", "—" if radar["oscilacion_vertical"] is None else f"{radar['oscilacion_vertical']:.1f} cm")
-    t5.metric("Potencia", "—" if radar["potencia_media_w"] is None else f"{radar['potencia_media_w']:.0f} W")
 
-    avisos_radar = []
-    if radar["cadencia_media"] is not None and radar["longitud_zancada_m"] is not None and radar["cadencia_media"] < 170 and radar["longitud_zancada_m"] > 1.15:
-        avisos_radar.append("Overstride probable: cadencia baja con zancada larga. Conviene técnica y fuerza reactiva.")
-    if radar["oscilacion_vertical"] is not None and radar["oscilacion_vertical"] > 12:
-        avisos_radar.append("Rebote alto: añade core y trabajo de rigidez de tobillo para economizar carrera.")
-    if radar["tiempo_contacto"] is not None and radar["tiempo_contacto"] > 290:
-        avisos_radar.append("Tiempo de contacto elevado: señal de fatiga o pérdida de elasticidad.")
-    if avisos_radar:
-        for aviso in avisos_radar:
-            st.warning(aviso)
-    else:
-        st.caption("Sin alertas técnicas importantes en los últimos datos Garmin sincronizados.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<div class='dash-section-title'><span class='dash-section-dot'></span><span>Semaforo diario Garmin</span></div>", unsafe_allow_html=True)
-    st.markdown("<div class='dash-panel'>", unsafe_allow_html=True)
-    s1, s2, s3, s4, s5, s6 = st.columns(6)
-    s1.metric("HRV", "—" if radar["hrv_actual"] is None else f"{radar['hrv_actual']:.0f} ms")
-    s2.metric("Readiness", "—" if radar["training_readiness"] is None else f"{radar['training_readiness']}/100")
-    s3.metric("Body Battery", "—" if radar["body_battery"] is None else f"{radar['body_battery']}/100")
-    s4.metric("Recup.", "—" if radar["recovery_hours"] is None else f"{radar['recovery_hours']:.0f} h")
-    s5.metric("RHR", "—" if radar["fc_reposo"] is None else f"{radar['fc_reposo']} bpm")
-    s6.metric("SpO2", "—" if radar["spo2"] is None else f"{radar['spo2']:.0f}%")
-
-    semaforo = []
-    if radar["training_readiness"] is not None and radar["training_readiness"] < 40:
-        semaforo.append("Readiness bajo: cancela intensidad hoy.")
-    if radar["body_battery"] is not None and radar["body_battery"] < 35:
-        semaforo.append("Body Battery bajo: mejor sesión regenerativa o descanso.")
-    if radar["fc_reposo"] is not None and radar["fc_reposo"] >= 60:
-        semaforo.append("RHR alta respecto a valores normales: posible mala asimilación o fatiga.")
-    if radar["estres_vital"] is not None and radar["estres_vital"] >= 60:
-        semaforo.append("Estrés alto: la carga del día debería bajar aunque el plan dijera otra cosa.")
-    if semaforo:
-        for aviso in semaforo:
-            st.warning(aviso)
-    else:
-        st.caption("Semáforo sin banderas rojas importantes en la última sincronización.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<div class='dash-section-title'><span class='dash-section-dot'></span><span>Progreso de gimnasio por grupo muscular</span></div>", unsafe_allow_html=True)
-    st.markdown("<div class='dash-panel'>", unsafe_allow_html=True)
+    st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><path d='M4 10v4M7 9v6M17 9v6M20 10v4M7 12h10'></path></svg></span><span>Progreso de gimnasio por grupo muscular</span></div>", unsafe_allow_html=True)
     gym_prog = progreso_fuerza_grupos(df_fuerza)
     if gym_prog.empty:
         st.markdown("<div class='dash-panel-muted'>Registra entrenamientos de fuerza para activar esta grafica por grupos musculares.</div>", unsafe_allow_html=True)
@@ -2679,45 +2971,132 @@ if menu in ("Dashboard", "Inicio"):
             "hombro": "#e4f78f",
             "abdominales": "#9ccf22",
         }
-        fig_gym = px.line(
-            gym_prog,
-            x="fecha_dt",
-            y="volumen",
+        # Volumen total por grupo (suma histórica) -> barras horizontales
+        gym_totales = gym_prog.groupby("grupo", as_index=False)["volumen"].sum().sort_values("volumen", ascending=True)
+        gym_totales["color"] = gym_totales["grupo"].map(lambda g: color_map.get(g, "#C9FF00"))
+        fig_gym = px.bar(
+            gym_totales,
+            x="volumen",
+            y="grupo",
+            orientation="h",
             color="grupo",
-            markers=True,
-            title="Volumen por grupo muscular",
             color_discrete_map=color_map,
-            labels={"fecha_dt": "Fecha", "volumen": "Volumen", "grupo": "Grupo"},
+            labels={"volumen": "Volumen total (kg)", "grupo": ""},
+            text="volumen",
+        )
+        fig_gym.update_traces(
+            texttemplate="%{text:.0f} kg",
+            textposition="outside",
+            textfont_color="#FFFFFF",
+            marker_line_width=0,
         )
         fig_gym = aplicar_tema_plotly(fig_gym)
-        st.plotly_chart(fig_gym, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # Visualización de Sueño
-    if not df_sueno.empty:
-        st.markdown("<div class='dash-section-title'><span class='dash-section-dot'></span><span>Calidad del sueno (ultima semana)</span></div>", unsafe_allow_html=True)
-        st.markdown("<div class='dash-panel'>", unsafe_allow_html=True)
-        df_sueno['fecha_f'] = pd.to_datetime(df_sueno['fecha']).dt.strftime('%d-%m')
-        fig_sueno = px.bar(
-            df_sueno.sort_values('fecha'),
-            x='fecha_f',
-            y='horas_totales',
-            color='score',
-            title="Horas y Score de Sueño",
-            color_continuous_scale=["#5d7f15", "#96bf14", "#d9f20f"],
+        fig_gym.update_layout(
+            height=max(220, len(gym_totales) * 36 + 40),
+            margin=dict(l=0, r=60, t=10, b=10),
+            showlegend=False,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
         )
-        fig_sueno = aplicar_tema_plotly(fig_sueno)
+        fig_gym.update_xaxes(showgrid=True, gridcolor="rgba(201,255,0,0.07)", zeroline=False, showline=False, tickfont=dict(size=10, color="#8B949E"))
+        fig_gym.update_yaxes(showgrid=False, zeroline=False, showline=False, tickfont=dict(size=11, color="#FFFFFF"))
+        st.plotly_chart(fig_gym, use_container_width=True)
+
+ # Visualización de Sueño — barras (horas) + línea (score)
+    if not df_sueno.empty:
+        st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><path d='M14 4a7 7 0 1 0 6 11.5A8 8 0 1 1 14 4z'></path><path d='M17.5 6.5h.01'></path></svg></span><span>Calidad del sueño (última semana)</span></div>", unsafe_allow_html=True)
+
+        sueno_view = df_sueno.sort_values("fecha", ascending=True).tail(7).copy()
+        sueno_view["fecha_dt"] = pd.to_datetime(sueno_view["fecha"], errors="coerce")
+        _dias_es = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+        sueno_view["dia_lbl"] = sueno_view["fecha_dt"].apply(
+            lambda d: f"{_dias_es[d.weekday()]} {d.strftime('%d/%m')}" if pd.notna(d) else str(d)
+        )
+
+        avg_horas = sueno_view["horas_totales"].dropna().mean() if "horas_totales" in sueno_view.columns else None
+        avg_score = sueno_view["score"].dropna().mean() if "score" in sueno_view.columns else None
+        chip_h = f"{avg_horas:.1f} h" if avg_horas is not None and not pd.isna(avg_horas) else "—"
+        chip_s = f"{avg_score:.0f}" if avg_score is not None and not pd.isna(avg_score) else "—"
+        st.markdown(
+            f"""<div style='display:flex;gap:8px;margin:4px 0 10px;'>
+                <div style='background:rgba(22,27,34,0.72);border:1px solid rgba(201,255,0,0.22);border-radius:10px;padding:5px 12px;'>
+                    <span style='font-size:0.60rem;color:#8B949E;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;'>Media horas&nbsp;</span>
+                    <span style='font-size:0.95rem;font-weight:800;color:#FFFFFF;'>{chip_h}</span>
+                </div>
+                <div style='background:rgba(22,27,34,0.72);border:1px solid rgba(201,255,0,0.22);border-radius:10px;padding:5px 12px;'>
+                    <span style='font-size:0.60rem;color:#8B949E;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;'>Media score&nbsp;</span>
+                    <span style='font-size:0.95rem;font-weight:800;color:#FFFFFF;'>{chip_s}</span>
+                </div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+        import plotly.graph_objects as go
+        fig_sueno = go.Figure()
+
+        horas_vals = sueno_view["horas_totales"].tolist() if "horas_totales" in sueno_view.columns else []
+        fig_sueno.add_trace(go.Bar(
+            x=sueno_view["dia_lbl"].tolist(),
+            y=horas_vals,
+            name="Horas dormidas",
+            marker=dict(color="rgba(150,191,20,0.78)", line=dict(color="#C9FF00", width=1)),
+            yaxis="y1",
+            hovertemplate="%{x}<br>Horas: %{y:.1f} h<extra></extra>",
+            width=0.4,
+        ))
+
+        if "score" in sueno_view.columns:
+            fig_sueno.add_trace(go.Scatter(
+                x=sueno_view["dia_lbl"].tolist(),
+                y=sueno_view["score"].tolist(),
+                name="Score",
+                mode="lines+markers",
+                line=dict(color="#FFB800", width=2.5, shape="spline", smoothing=0.6),
+                marker=dict(size=7, color="#FFB800", symbol="circle",
+                            line=dict(color="#0E1117", width=1.5)),
+                yaxis="y2",
+                hovertemplate="%{x}<br>Score: %{y:.0f}<extra></extra>",
+            ))
+
+        fig_sueno.update_layout(
+            height=240,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=0, r=36, t=4, b=0),
+            font=dict(color="#8B949E", family="Inter, sans-serif", size=11),
+            legend=dict(
+                orientation="h", x=0, y=1.12, font=dict(size=10, color="#8B949E"),
+                bgcolor="rgba(0,0,0,0)", borderwidth=0,
+            ),
+            xaxis=dict(
+                type="category",
+                tickfont=dict(color="#8B949E", size=10),
+                gridcolor="rgba(0,0,0,0)",
+                zeroline=False,
+            ),
+            yaxis=dict(
+                title=dict(text="Horas", font=dict(color="#96BF14", size=10)),
+                tickfont=dict(color="#8B949E", size=10),
+                gridcolor="rgba(139,148,158,0.12)",
+                range=[0, 10],
+                showgrid=True,
+                zeroline=False,
+            ),
+            yaxis2=dict(
+                title=dict(text="Score", font=dict(color="#FFB800", size=10)),
+                tickfont=dict(color="#FFB800", size=10),
+                overlaying="y",
+                side="right",
+                range=[0, 100],
+                showgrid=False,
+                zeroline=False,
+            ),
+            bargap=0.55,
+        )
         st.plotly_chart(fig_sueno, use_container_width=True)
 
-        d1, d2, d3, d4 = st.columns(4)
-        d1.metric("Sueño profundo", "—" if radar["sleep_profundo_7d"] is None else f"{radar['sleep_profundo_7d']:.2f} h")
-        d2.metric("Sueño REM", "—" if radar["sleep_rem_7d"] is None else f"{radar['sleep_rem_7d']:.2f} h")
-        d3.metric("Vigilia", "—" if radar["sleep_vigilia_7d"] is None else f"{radar['sleep_vigilia_7d']:.2f} h")
-        d4.metric("Despertares", "—" if radar["despertares_7d"] is None else f"{radar['despertares_7d']:.1f}")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # �"?�"? Entrenamientos conjuntos Malena + Dani �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
-    st.markdown("<div class='dash-section-title'><span class='dash-section-dot'></span><span>Entrenamientos conjuntos - Malena y Dani</span></div>", unsafe_allow_html=True)
+ # "?"? Entrenamientos conjuntos Malena + Dani "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+    st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><circle cx='8' cy='8' r='2.5'></circle><circle cx='16' cy='8' r='2.5'></circle><path d='M3.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5M11.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5'></path></svg></span><span>Entrenamientos conjuntos - Malena y Dani</span></div>", unsafe_allow_html=True)
 
     hoy_conj = datetime.now().date()
     semana_conj_def = hoy_conj - timedelta(days=hoy_conj.weekday())
@@ -2732,7 +3111,6 @@ if menu in ("Dashboard", "Inicio"):
     MALENA_ID, DANI_ID = 1, 2
     TIPOS_ACTIVOS = {"Carrera", "Fuerza", "Mixto", "Cardio alternativo"}
     nombres_dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-    st.markdown("<div class='dash-panel'>", unsafe_allow_html=True)
     cols_conj = st.columns(7)
 
     for i in range(7):
@@ -2769,9 +3147,9 @@ if menu in ("Dashboard", "Inicio"):
                 f"""<div style='background:{bg};border:{borde};border-radius:10px;
                     padding:10px 8px;min-height:120px;font-size:0.8rem;'>
                     <div style='font-weight:800;color:{"#14311f" if coincide else "#d8e9db"};margin-bottom:4px;'>{nombres_dias[i]}</div>
-                    <div style='color:{"#3d1840" if malena_activa and not coincide else ("#14311f" if coincide else "#f0ffd0")};font-weight:600;'>�YT<�?��T?️ {malena_txt[:28]}</div>
-                    <div style='color:{"#124562" if dani_activo and not coincide else ("#14311f" if coincide else "#c6ebc8")};margin-top:4px;font-weight:600;'>�YT<�?��T,️ {dani_txt[:28]}</div>
-                    {'<div style="margin-top:6px;font-size:0.72rem;color:#14311f;font-weight:800;">�o" Juntos</div>' if coincide else ''}
+                    <div style='color:{"#3d1840" if malena_activa and not coincide else ("#14311f" if coincide else "#f0ffd0")};font-weight:600;'>👩🏃 {malena_txt[:28]}</div>
+                    <div style='color:{"#124562" if dani_activo and not coincide else ("#14311f" if coincide else "#c6ebc8")};margin-top:4px;font-weight:600;'>👨🏃 {dani_txt[:28]}</div>
+                    {'<div style="margin-top:6px;font-size:0.72rem;color:#14311f;font-weight:800;">💑 Juntos</div>' if coincide else ''}
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -2786,33 +3164,210 @@ if menu in ("Dashboard", "Inicio"):
         """,
         unsafe_allow_html=True,
     )
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # (El resto de secciones se mantienen igual...)
 
 # ==========================================
-# PESTA�'A 2: PERFIL
+# PESTA'A 2: PERFIL
 # ==========================================
 elif menu == "Perfil":
-    st.markdown(
-        """
-        <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
-            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>�Y'� Perfil</div>
-            <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Edita los datos que usa la IA para planificar tus entrenamientos.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     perfil_actual = obtener_perfil_cache(user_actual) or {}
     datos_plan = resumen_usuario_para_plan(user_actual)
 
     p1, p2, p3, p4 = st.columns(4)
     p1.metric("Objetivo", perfil_actual.get("objetivo") or "—")
-    p2.metric("Nivel", perfil_actual.get("nivel") or "—")
+    p2.metric("Ritmo objetivo", perfil_actual.get("ritmo") or "4:00-4:10")
     p3.metric("Carrera/sem", perfil_actual.get("carrera") or "—")
     p4.metric("Fuerza/sem", perfil_actual.get("fuerza") or "—")
+
+    ritmo_actual = (perfil_actual.get("ritmo") or "4:00-4:10").split("-")
+    ritmo_rapido = ritmo_actual[0] if ritmo_actual else "4:00"
+    ritmo_lento = ritmo_actual[1] if len(ritmo_actual) > 1 else ritmo_rapido
+
+    def _ritmo_a_seg(valor):
+        try:
+            mm, ss = valor.split(":")
+            return int(mm) * 60 + int(ss)
+        except Exception:
+            return 240
+
+    def _seg_a_ritmo(seg):
+        return f"{int(seg) // 60}:{int(seg) % 60:02d}"
+
+    guardar = False
+    with st.expander("Editar datos personales del perfil", expanded=False):
+        with st.form("perfil_edit_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown('<div class="form-panel"><div class="form-title">Datos personales y objetivo</div>', unsafe_allow_html=True)
+                nombre = st.text_input("Nombre", value=perfil_actual.get("nombre") or "")
+                edad = st.number_input("Edad", 18, 99, int(perfil_actual.get("edad") or 25))
+                genero = st.selectbox(
+                    "Sexo",
+                    ["Mujer", "Hombre"],
+                    index=0 if (perfil_actual.get("genero") or "Mujer") == "Mujer" else 1,
+                )
+                peso = st.number_input("Peso actual (kg)", 35.0, 160.0, float(perfil_actual.get("peso") or 60.0))
+                objetivo = st.selectbox(
+                    "Objetivo",
+                    ["5K / 10K", "Media Maratón", "Maratón", "Ultramaratón 100K", "HYROX"],
+                    index=max(
+                        0,
+                        ["5K / 10K", "Media Maratón", "Maratón", "Ultramaratón 100K", "HYROX"].index(
+                            perfil_actual.get("objetivo")
+                        ) if perfil_actual.get("objetivo") in ["5K / 10K", "Media Maratón", "Maratón", "Ultramaratón 100K", "HYROX"] else 0,
+                    ),
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            with c2:
+                st.markdown('<div class="form-panel"><div class="form-title">Ritmo objetivo</div>', unsafe_allow_html=True)
+                seg_inf = st.select_slider(
+                    "Límite superior",
+                    options=range(150, 485, 5),
+                    value=_ritmo_a_seg(ritmo_rapido),
+                    format_func=_seg_a_ritmo,
+                )
+                seg_sup = st.select_slider(
+                    "Límite inferior",
+                    options=range(150, 485, 5),
+                    value=_ritmo_a_seg(ritmo_lento),
+                    format_func=_seg_a_ritmo,
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                st.markdown('<div class="form-panel"><div class="form-title">Disponibilidad</div>', unsafe_allow_html=True)
+                carrera = st.slider("Días de carrera/semana", 1, 7, int(perfil_actual.get("carrera") or 4))
+                fuerza = st.slider("Días de fuerza/semana", 0, 7, int(perfil_actual.get("fuerza") or 2))
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            guardar = st.form_submit_button("Guardar cambios de perfil", type="primary")
+
+    guardar_garmin = False
+    sync_manual = False
+    with st.expander("Sincronización Garmin", expanded=False):
+        col_gc, col_sync = st.columns(2)
+
+        with col_gc:
+            with st.form("perfil_garmin_form"):
+                st.markdown("<div class='form-panel'><div class='form-title'>Garmin Connect (opcional)</div>", unsafe_allow_html=True)
+                cred = obtener_credenciales_garmin(user_actual)
+                email_default = cred[0] if cred and cred[0] else ""
+                email_garmin = st.text_input("Email Garmin", value=email_default, key="perfil_garmin_email")
+                pass_garmin = st.text_input(
+                    "Nueva contraseña Garmin",
+                    type="password",
+                    help="Déjala vacía para mantener la actual",
+                    key="perfil_garmin_password",
+                )
+                guardar_garmin = st.form_submit_button("Guardar conexión Garmin", type="primary")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+        with col_sync:
+            with st.form("perfil_manual_sync_form"):
+                st.markdown("<div class='form-panel'><div class='form-title'>Sincronización manual Garmin</div>", unsafe_allow_html=True)
+                st.caption("Elige cuántas actividades de running quieres sincronizar manualmente.")
+                n_sync = st.number_input(
+                    "Número de actividades a sincronizar",
+                    min_value=1,
+                    max_value=200,
+                    value=20,
+                    step=1,
+                    key="perfil_manual_sync_count",
+                )
+                sync_manual = st.form_submit_button("Sincronizar actividades Garmin ahora")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+    if guardar_garmin:
+        errores_garmin = []
+        if email_garmin and "@" not in email_garmin:
+            errores_garmin.append("El email Garmin no tiene un formato válido.")
+        if pass_garmin and len(pass_garmin.strip()) < 6:
+            errores_garmin.append("La contraseña Garmin debe tener al menos 6 caracteres.")
+
+        if errores_garmin:
+            for err in errores_garmin:
+                st.error(err)
+        else:
+            conn = get_db_connection()
+            try:
+                if email_garmin:
+                    if pass_garmin.strip():
+                        pass_enc = encriptar_password(pass_garmin)
+                        conn.execute(
+                            "UPDATE usuarios SET email_garmin = ?, password_garmin_enc = ? WHERE id = ?",
+                            (email_garmin, pass_enc, user_actual),
+                        )
+                    else:
+                        conn.execute(
+                            "UPDATE usuarios SET email_garmin = ? WHERE id = ?",
+                            (email_garmin, user_actual),
+                        )
+                    conn.commit()
+                else:
+                    st.warning("Introduce un email Garmin para guardar la conexión.")
+            finally:
+                conn.close()
+
+            if email_garmin:
+                st.cache_data.clear()
+                st.success("Conexión Garmin actualizada.")
+                st.rerun()
+
+    if sync_manual:
+        cred_sync = obtener_credenciales_garmin(user_actual)
+        if not cred_sync or not cred_sync[0]:
+            st.warning("Configura tus credenciales Garmin primero en esta misma pestaña.")
+        else:
+            with st.spinner("Conectando con Garmin..."):
+                try:
+                    email_sync, pass_enc_sync = cred_sync
+                    pw_sync = desencriptar_password(pass_enc_sync)
+                    n_ok = sincronizar_actividades_inteligente(
+                        email_sync,
+                        pw_sync,
+                        user_actual,
+                        num_actividades=int(n_sync),
+                    )
+                    st.cache_data.clear()
+                    st.success(f"Sincronización completada: {n_ok} actividades.")
+                except Exception as _e_sync:
+                    st.error(f"No se pudo sincronizar Garmin: {_e_sync}")
+
+    if guardar:
+        errores = []
+        if not nombre.strip():
+            errores.append("El nombre es obligatorio.")
+        if len(nombre.strip()) < 2:
+            errores.append("El nombre debe tener al menos 2 caracteres.")
+        if seg_sup < seg_inf:
+            errores.append("El límite inferior (lento) no puede ser más rápido que el límite superior.")
+        if not (18 <= int(edad) <= 99):
+            errores.append("La edad debe estar entre 18 y 99 años.")
+        if not (35.0 <= float(peso) <= 160.0):
+            errores.append("El peso debe estar entre 35 y 160 kg.")
+        if not objetivo:
+            errores.append("Debes seleccionar un objetivo.")
+
+        if errores:
+            for err in errores:
+                st.error(err)
+        else:
+            datos = {
+                "nombre": nombre.strip(),
+                "edad": edad,
+                "genero": genero,
+                "peso": peso,
+                "objetivo": objetivo,
+                "carrera": carrera,
+                "fuerza": fuerza,
+                "ritmo": f"{_seg_a_ritmo(seg_inf)}-{_seg_a_ritmo(seg_sup)}",
+            }
+            guardar_perfil(user_actual, datos)
+
+            st.cache_data.clear()
+            st.success("Perfil actualizado. La IA usará estos datos en la próxima planificación.")
+            st.rerun()
 
     with st.expander("Datos biométricos recientes que alimentan el plan IA"):
         vista_ia = {
@@ -2833,147 +3388,14 @@ elif menu == "Perfil":
         )
         st.dataframe(df_vista_ia, use_container_width=True, hide_index=True)
 
-    ritmo_actual = (perfil_actual.get("ritmo") or "4:00-4:10").split("-")
-    ritmo_rapido = ritmo_actual[0] if ritmo_actual else "4:00"
-    ritmo_lento = ritmo_actual[1] if len(ritmo_actual) > 1 else ritmo_rapido
-
-    def _ritmo_a_seg(valor):
-        try:
-            mm, ss = valor.split(":")
-            return int(mm) * 60 + int(ss)
-        except Exception:
-            return 240
-
-    def _seg_a_ritmo(seg):
-        return f"{int(seg) // 60}:{int(seg) % 60:02d}"
-
-    with st.form("perfil_edit_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown('<div class="form-panel"><div class="form-title">Datos personales y objetivo</div>', unsafe_allow_html=True)
-            nombre = st.text_input("Nombre", value=perfil_actual.get("nombre") or "")
-            edad = st.number_input("Edad", 18, 99, int(perfil_actual.get("edad") or 25))
-            genero = st.selectbox(
-                "Sexo",
-                ["Mujer", "Hombre"],
-                index=0 if (perfil_actual.get("genero") or "Mujer") == "Mujer" else 1,
-            )
-            peso = st.number_input("Peso actual (kg)", 35.0, 160.0, float(perfil_actual.get("peso") or 60.0))
-            objetivo = st.selectbox(
-                "Objetivo",
-                ["5K / 10K", "Media Maratón", "Maratón", "Ultramaratón 100K", "HYROX"],
-                index=max(
-                    0,
-                    ["5K / 10K", "Media Maratón", "Maratón", "Ultramaratón 100K", "HYROX"].index(
-                        perfil_actual.get("objetivo")
-                    ) if perfil_actual.get("objetivo") in ["5K / 10K", "Media Maratón", "Maratón", "Ultramaratón 100K", "HYROX"] else 0,
-                ),
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        with c2:
-            st.markdown('<div class="form-panel"><div class="form-title">Ritmo objetivo</div>', unsafe_allow_html=True)
-            seg_inf = st.select_slider(
-                "Límite superior (rápido)",
-                options=range(150, 485, 5),
-                value=_ritmo_a_seg(ritmo_rapido),
-                format_func=_seg_a_ritmo,
-            )
-            seg_sup = st.select_slider(
-                "Límite inferior (lento)",
-                options=range(150, 485, 5),
-                value=_ritmo_a_seg(ritmo_lento),
-                format_func=_seg_a_ritmo,
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            st.markdown('<div class="form-panel"><div class="form-title">Disponibilidad y nivel</div>', unsafe_allow_html=True)
-            carrera = st.slider("Días de carrera/semana", 1, 7, int(perfil_actual.get("carrera") or 4))
-            fuerza = st.slider("Días de fuerza/semana", 0, 7, int(perfil_actual.get("fuerza") or 2))
-            nivel = st.select_slider(
-                "Nivel actual",
-                ["Principiante", "Intermedio", "Avanzado", "Élite"],
-                value=perfil_actual.get("nivel") if perfil_actual.get("nivel") in ["Principiante", "Intermedio", "Avanzado", "Élite"] else "Intermedio",
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            st.divider()
-            st.markdown('<div class="form-panel"><div class="form-title">Conexión Garmin</div>', unsafe_allow_html=True)
-            st.markdown("**Garmin Connect (opcional)**")
-            cred = obtener_credenciales_garmin(user_actual)
-            email_default = cred[0] if cred and cred[0] else ""
-            email_garmin = st.text_input("Email Garmin", value=email_default)
-            pass_garmin = st.text_input("Nueva contraseña Garmin", type="password", help="Déjala vacía para mantener la actual")
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        guardar = st.form_submit_button("�Y'� Guardar cambios de perfil", type="primary")
-
-    if guardar:
-        errores = []
-        if not nombre.strip():
-            errores.append("El nombre es obligatorio.")
-        if len(nombre.strip()) < 2:
-            errores.append("El nombre debe tener al menos 2 caracteres.")
-        if seg_sup < seg_inf:
-            errores.append("El límite inferior (lento) no puede ser más rápido que el límite superior.")
-        if not (18 <= int(edad) <= 99):
-            errores.append("La edad debe estar entre 18 y 99 años.")
-        if not (35.0 <= float(peso) <= 160.0):
-            errores.append("El peso debe estar entre 35 y 160 kg.")
-        if not objetivo:
-            errores.append("Debes seleccionar un objetivo.")
-        if email_garmin and "@" not in email_garmin:
-            errores.append("El email Garmin no tiene un formato válido.")
-        if pass_garmin and len(pass_garmin.strip()) < 6:
-            errores.append("La contraseña Garmin debe tener al menos 6 caracteres.")
-
-        if errores:
-            for err in errores:
-                st.error(err)
-        else:
-            datos = {
-                "nombre": nombre.strip(),
-                "edad": edad,
-                "genero": genero,
-                "peso": peso,
-                "objetivo": objetivo,
-                "carrera": carrera,
-                "fuerza": fuerza,
-                "nivel": nivel,
-                "ritmo": f"{_seg_a_ritmo(seg_inf)}-{_seg_a_ritmo(seg_sup)}",
-            }
-            guardar_perfil(user_actual, datos)
-
-            conn = get_db_connection()
-            try:
-                if email_garmin:
-                    if pass_garmin.strip():
-                        pass_enc = encriptar_password(pass_garmin)
-                        conn.execute(
-                            "UPDATE usuarios SET email_garmin = ?, password_garmin_enc = ? WHERE id = ?",
-                            (email_garmin, pass_enc, user_actual),
-                        )
-                    else:
-                        conn.execute(
-                            "UPDATE usuarios SET email_garmin = ? WHERE id = ?",
-                            (email_garmin, user_actual),
-                        )
-                conn.commit()
-            finally:
-                conn.close()
-
-            st.cache_data.clear()
-            st.success("Perfil actualizado. La IA usará estos datos en la próxima planificación.")
-            st.rerun()
-
 # ==========================================
-# PESTA�'A 3: BIBLIOTECA CIENTÍFICA
+# PESTA'A 3: BIBLIOTECA CIENTÍFICA
 # ==========================================
 elif menu == "Biblioteca Científica":
     st.markdown(
         """
         <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
-            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>�Y"s Biblioteca Científica</div>
+            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>Y"s Biblioteca Científica</div>
             <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Sube estudios para que la IA los use como contexto técnico en planificación y recomendaciones.</div>
         </div>
         """,
@@ -3041,36 +3463,40 @@ elif menu == "Biblioteca Científica":
                 st.write(est["resumen"] or "Sin resumen disponible.")
 
 # ==========================================
-# PESTA�'A 4: CICLO MENSTRUAL
+# PESTA'A 4: CICLO MENSTRUAL
 # ==========================================
 elif menu == "Ciclo Menstrual":
     if user_actual != 1:
         st.info("Esta sección no está disponible para este perfil.")
         st.stop()
 
-    st.markdown(
-        """
-        <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:16px;'>
-            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>�YO� Ciclo Menstrual</div>
-            <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Registra tu ciclo diario para personalizar el entrenamiento según tu fase hormonal.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # �"?�"? Estilos para los controles �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Estilos para los controles "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     st.markdown(
         """
         <style>
-        div[data-testid="stRadio"] > label { color:#8B949E; font-size:0.78rem; }
-        div[data-testid="stRadio"] > div { gap:6px; }
-        div[data-testid="stRadio"] > div label {
-            background:#161B22; border:1px solid #30363D; border-radius:20px;
-            padding:4px 12px; font-size:0.8rem; color:#C9E1FF; cursor:pointer;
-            transition:all 0.15s;
+        /* -- Pills seleccionadas: borde lima, no rojo -- */
+        [data-testid="stPills"] button[aria-pressed="true"],
+        [data-testid="stPills"] [role="radio"][aria-checked="true"] {
+            background: rgba(201,255,0,0.15) !important;
+            border-color: #C9FF00 !important;
+            color: #C9FF00 !important;
+            font-weight: 600 !important;
+            box-shadow: 0 0 8px rgba(201,255,0,0.20) !important;
         }
-        div[data-testid="stRadio"] > div label:has(input:checked) {
-            background:rgba(201,255,0,0.15); border-color:#C9FF00; color:#C9FF00; font-weight:600;
+        [data-testid="stPills"] button,
+        [data-testid="stPills"] [role="radio"] {
+            background: #161B22 !important;
+            border: 1px solid #30363D !important;
+            border-radius: 20px !important;
+            padding: 4px 14px !important;
+            font-size: 0.8rem !important;
+            color: #C9E1FF !important;
+            transition: all 0.15s !important;
+        }
+        [data-testid="stPills"] button:hover,
+        [data-testid="stPills"] [role="radio"]:hover {
+            border-color: rgba(201,255,0,0.50) !important;
+            color: #FFFFFF !important;
         }
         div[data-testid="stMultiSelect"] > label { color:#8B949E; font-size:0.78rem; }
         </style>
@@ -3078,71 +3504,182 @@ elif menu == "Ciclo Menstrual":
         unsafe_allow_html=True,
     )
 
-    # �"?�"? Formulario �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # -- Display fase actual del ciclo --
+    _conn_fase = get_db_connection()
+    _last_bleed = pd.read_sql_query(
+        "SELECT fecha FROM diario_fisiologia WHERE usuario_id=? AND sangre IS NOT NULL AND sangre != 'Sin sangre' ORDER BY fecha DESC LIMIT 1",
+        _conn_fase, params=(user_actual,)
+    )
+    _conn_fase.close()
+
+    _FASES_INFO = [
+        ("Menstruacion",  "Sangrado",                "dias 1-5",   "#fda4af", "rgba(253,164,175,0.15)"),
+        ("Folicular",     "Desarrollo folicular",    "dias 6-11",  "#93c5fd", "rgba(147,197,253,0.15)"),
+        ("Ovulacion",     "Liberacion del ovulo",    "dias 12-16", "#C9FF00", "rgba(201,255,0,0.15)"),
+        ("Lutea",         "Preparacion endometrio",  "dias 17-28", "#c4b5fd", "rgba(196,181,253,0.15)"),
+    ]
+    _FASE_DB_MAP = {"Menstruacion": "Menstruación", "Folicular": "Folicular",
+                    "Ovulacion": "Ovulación", "Lutea": "Lútea"}
+
+    if not _last_bleed.empty:
+        _last_date = pd.to_datetime(_last_bleed.iloc[0]["fecha"]).date()
+        _cycle_day = (datetime.now().date() - _last_date).days + 1
+        if _cycle_day <= 5:
+            _fase_actual = "Menstruacion"
+        elif _cycle_day <= 11:
+            _fase_actual = "Folicular"
+        elif _cycle_day <= 16:
+            _fase_actual = "Ovulacion"
+        else:
+            _fase_actual = "Lutea"
+    else:
+        _cycle_day = None
+        _fase_actual = None
+
+    _fase_cards = ""
+    for _fn, _fd, _fdias, _fcolor, _fbg in _FASES_INFO:
+        _activa = _fase_actual == _fn
+        _border = f"2px solid {_fcolor}" if _activa else "1px solid rgba(255,255,255,0.10)"
+        _opacity = "1" if _activa else "0.45"
+        _badge = f"<span style='background:{_fcolor};color:#0E1117;font-size:0.65rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;'>HOY</span>" if _activa else ""
+        _fase_cards += f"""
+        <div style='flex:1;min-width:120px;background:{_fbg};border:{_border};border-radius:12px;padding:10px 12px;opacity:{_opacity};'>
+            <div style='font-size:0.72rem;font-weight:700;color:{_fcolor};text-transform:uppercase;letter-spacing:0.06em;'>{_fn}{_badge}</div>
+            <div style='font-size:0.78rem;color:#FFFFFF;margin-top:3px;font-weight:500;'>{_fd}</div>
+            <div style='font-size:0.72rem;color:#8B949E;margin-top:2px;'>{_fdias}</div>
+        </div>"""
+
+    _dia_txt = f"&nbsp;&middot;&nbsp;Dia {_cycle_day} del ciclo" if _cycle_day else ""
+    st.markdown(
+        f"""<div style='margin-bottom:14px;'>
+            <div style='font-size:0.72rem;font-weight:700;color:#8B949E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;'>Tu ciclo{_dia_txt}</div>
+            <div style='display:flex;gap:8px;flex-wrap:wrap;'>{_fase_cards}</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    sangre_opts = ["⚪ Sin sangre", "🩸 Manchado", "🩸 Ligero", "🩸🩸 Medio", "🩸🩸🩸 Fuerte"]
+    sangre_map = {
+        "⚪ Sin sangre": "Sin sangre",
+        "🩸 Manchado": "Manchado",
+        "🩸 Ligero": "Ligero",
+        "🩸🩸 Medio": "Medio",
+        "🩸🩸🩸 Fuerte": "Fuerte",
+    }
+    sintomas_opts = ["🥚 Dolor de ovarios", "💢 Dolor de senos", "🍫 Antojos", "🤕 Dolor de cabeza", "🎈 Hinchazón"]
+    sintomas_map = {
+        "🥚 Dolor de ovarios": "Dolor de ovarios",
+        "💢 Dolor de senos": "Dolor de senos",
+        "🍫 Antojos": "Antojos",
+        "🤕 Dolor de cabeza": "Dolor de cabeza",
+        "🎈 Hinchazón": "Hinchazón",
+    }
+    animo_opts = ["😰 Ansiedad/Estrés", "😢 Triste", "😠 Enfadada", "😄 Feliz", "😴 Cansada", "⚡ Energética"]
+    animo_map = {
+        "😰 Ansiedad/Estrés": "Ansiedad/Estrés",
+        "😢 Triste": "Triste",
+        "😠 Enfadada": "Enfadada",
+        "😄 Feliz": "Feliz",
+        "😴 Cansada": "Cansada",
+        "⚡ Energética": "Energética",
+    }
+    feedback_opts = ["🚀 A tope", "😐 Regulero", "🐢 Bajito", "⛔ No completo"]
+    feedback_map = {
+        "🚀 A tope": "A tope",
+        "😐 Regulero": "Regulero",
+        "🐢 Bajito": "Bajito",
+        "⛔ No completo": "No completo",
+    }
+
+ # -- Formulario --
     with st.form("fisio_form"):
         fecha = st.date_input("Fecha", value=datetime.now().date())
 
         st.markdown(
             "<p style='color:#C9FF00;font-size:0.78rem;font-weight:700;margin:14px 0 2px;"
-            "letter-spacing:0.06em;text-transform:uppercase;'>�Y'� Sangre</p>",
+            "letter-spacing:0.06em;text-transform:uppercase;'>Sangre</p>",
             unsafe_allow_html=True,
         )
         sangre = st.pills(
             "sangre_r",
-            ["Sin sangre", "Manchado", "Ligero", "Medio", "Fuerte"],
+            sangre_opts,
             selection_mode="single",
-            default="Sin sangre",
+            default="⚪ Sin sangre",
             label_visibility="collapsed",
         )
 
         st.markdown(
             "<p style='color:#C9FF00;font-size:0.78rem;font-weight:700;margin:14px 0 2px;"
-            "letter-spacing:0.06em;text-transform:uppercase;'>�Y�� Síntomas Físicos "
+            "letter-spacing:0.06em;text-transform:uppercase;'>Sintomas Fisicos "
             "<span style=\"font-weight:400;color:#8B949E;text-transform:none;\">"
             "(puedes elegir varios)</span></p>",
             unsafe_allow_html=True,
         )
         sintomas_sel = st.pills(
             "sintomas_ms",
-            ["Dolor de ovarios", "Dolor de senos", "Antojos", "Dolor de cabeza", "Hinchazón"],
+            sintomas_opts,
             selection_mode="multi",
             label_visibility="collapsed",
         )
 
         st.markdown(
             "<p style='color:#C9FF00;font-size:0.78rem;font-weight:700;margin:14px 0 2px;"
-            "letter-spacing:0.06em;text-transform:uppercase;'>�Y�� Estado de Ánimo "
+            "letter-spacing:0.06em;text-transform:uppercase;'>Estado de Animo "
             "<span style=\"font-weight:400;color:#8B949E;text-transform:none;\">"
-            "(vacío = Normal)</span></p>",
+            "(vacio = Normal)</span></p>",
             unsafe_allow_html=True,
         )
         estado_animo_sel = st.pills(
             "animo_r",
-            ["Ansiedad/Estrés", "Triste", "Enfadada", "Feliz", "Cansada", "Energética"],
+            animo_opts,
             selection_mode="multi",
             label_visibility="collapsed",
         )
 
         st.markdown(
             "<p style='color:#C9FF00;font-size:0.78rem;font-weight:700;margin:14px 0 2px;"
-            "letter-spacing:0.06em;text-transform:uppercase;'>�Y�<️ Feedback de Entreno</p>",
+            "letter-spacing:0.06em;text-transform:uppercase;'>Feedback de Entreno</p>",
             unsafe_allow_html=True,
         )
         feedback_entreno = st.pills(
             "feedback_r",
-            ["A tope", "Regulero", "Bajito", "No completo"],
+            feedback_opts,
             selection_mode="single",
-            default="Regulero",
+            default="😐 Regulero",
             label_visibility="collapsed",
         )
 
-        submit_fisio = st.form_submit_button("�Y'� Guardar Registro", use_container_width=True)
+        submit_fisio = st.form_submit_button("Guardar Registro", use_container_width=True)
 
     if submit_fisio:
-        sangre = sangre or "Sin sangre"
-        fase = "Fase Folicular" if sangre != "Sin sangre" else "No Aplica"
-        sintomas_str = ", ".join(sintomas_sel) if sintomas_sel else ""
-        estado_animo = ", ".join(estado_animo_sel) if estado_animo_sel else "Normal"
+        sangre = sangre_map.get(sangre or "⚪ Sin sangre", "Sin sangre")
+        sintomas_norm = [sintomas_map.get(x, x) for x in (sintomas_sel or [])]
+        estado_animo_norm = [animo_map.get(x, x) for x in (estado_animo_sel or [])]
+        feedback_entreno = feedback_map.get(feedback_entreno or "😐 Regulero", "Regulero")
+        if sangre != "Sin sangre":
+            fase = "Menstruación"
+        else:
+            _conn_tmp = get_db_connection()
+            _lb = pd.read_sql_query(
+                "SELECT fecha FROM diario_fisiologia WHERE usuario_id=? AND sangre IS NOT NULL AND sangre != 'Sin sangre' ORDER BY fecha DESC LIMIT 1",
+                _conn_tmp, params=(user_actual,)
+            )
+            _conn_tmp.close()
+            if not _lb.empty:
+                _ld = pd.to_datetime(_lb.iloc[0]["fecha"]).date()
+                _cd = (fecha - _ld).days + 1
+                if _cd <= 5:
+                    fase = "Menstruación"
+                elif _cd <= 11:
+                    fase = "Folicular"
+                elif _cd <= 16:
+                    fase = "Ovulación"
+                else:
+                    fase = "Lútea"
+            else:
+                fase = "Lútea"
+        sintomas_str = ", ".join(sintomas_norm) if sintomas_norm else ""
+        estado_animo = ", ".join(estado_animo_norm) if estado_animo_norm else "Normal"
         sangre_val = sangre if sangre != "Sin sangre" else None
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -3157,9 +3694,9 @@ elif menu == "Ciclo Menstrual":
         conn.commit()
         conn.close()
         st.cache_data.clear()
-        st.success("�o. Registro guardado correctamente.")
+        st.success("o. Registro guardado correctamente.")
 
-    # �"?�"? Historial y predicción �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Historial y predicción "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     conn = get_db_connection()
     try:
         df_fisio = pd.read_sql_query(
@@ -3183,28 +3720,7 @@ elif menu == "Ciclo Menstrual":
     if df_fisio.empty:
         st.info("Aún no hay datos. ¡Empieza registrando hoy!")
     else:
-        st.markdown(
-            "<p style='color:#C9FF00;font-size:0.78rem;font-weight:700;margin:20px 0 6px;"
-            "letter-spacing:0.06em;text-transform:uppercase;'>Últimos registros</p>",
-            unsafe_allow_html=True,
-        )
-        reciente = df_fisio.head(7).copy()
-        reciente = reciente.rename(columns={
-            "fecha": "Fecha", "fase_ciclo": "Fase",
-            "sangre": "Sangre", "sintomas": "Síntomas",
-            "estado_animo": "Ánimo", "feedback_entreno": "Entreno",
-        })
-        reciente["Sangre"] = reciente["Sangre"].fillna("—")
-        reciente["Síntomas"] = reciente["Síntomas"].fillna("").replace("", "—")
-        reciente["Ánimo"] = reciente["Ánimo"].fillna("Normal")
-        reciente["Entreno"] = reciente["Entreno"].fillna("—")
-        st.dataframe(
-            reciente[["Fecha", "Sangre", "Síntomas", "Ánimo", "Entreno"]],
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        df_valid = df_fisio[df_fisio["fase_ciclo"] == "Fase Folicular"].copy()
+        df_valid = df_fisio[df_fisio["fase_ciclo"].isin(["Menstruación", "Fase Folicular"])].copy()
         if not df_valid.empty:
             ciclo_df, ciclo_estimado = predecir_fases_ciclo(df_valid[["fecha", "fase_ciclo"]].copy(), horizonte_dias=120)
 
@@ -3216,8 +3732,47 @@ elif menu == "Ciclo Menstrual":
                 st.caption("Borde sólido: registro real. Borde discontinuo: predicción.")
 
             hoy = datetime.now().date()
-            mes_base = st.date_input("Mes del calendario", value=hoy.replace(day=1), key="mes_ciclo")
-            render_calendario_ciclo(ciclo_df, mes_base.year, mes_base.month)
+            if "mes_ciclo_cursor" not in st.session_state:
+                st.session_state.mes_ciclo_cursor = hoy.replace(day=1)
+
+            nav_l, nav_c, nav_r = st.columns([0.16, 0.68, 0.16])
+            with nav_l:
+                # Izquierda = mes anterior
+                if st.button("◀", key="mes_ciclo_prev", help="Mes anterior"):
+                    _m = st.session_state.mes_ciclo_cursor.month - 1
+                    _y = st.session_state.mes_ciclo_cursor.year
+                    if _m < 1:
+                        _m = 12
+                        _y -= 1
+                    st.session_state.mes_ciclo_cursor = st.session_state.mes_ciclo_cursor.replace(year=_y, month=_m, day=1)
+
+            with nav_c:
+                _meses_es = [
+                    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+                    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+                ]
+                _label_mes = _meses_es[st.session_state.mes_ciclo_cursor.month - 1]
+                st.markdown(
+                    f"<div style='text-align:center;color:#C9FF00;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;margin-top:6px;'>{_label_mes} {st.session_state.mes_ciclo_cursor.year}</div>",
+                    unsafe_allow_html=True,
+                )
+
+            with nav_r:
+                # Derecha = siguiente mes
+                if st.button("▶", key="mes_ciclo_next", help="Siguiente mes"):
+                    _m = st.session_state.mes_ciclo_cursor.month + 1
+                    _y = st.session_state.mes_ciclo_cursor.year
+                    if _m > 12:
+                        _m = 1
+                        _y += 1
+                    st.session_state.mes_ciclo_cursor = st.session_state.mes_ciclo_cursor.replace(year=_y, month=_m, day=1)
+
+            render_calendario_ciclo(
+                ciclo_df,
+                st.session_state.mes_ciclo_cursor.year,
+                st.session_state.mes_ciclo_cursor.month,
+                df_registros=df_fisio,
+            )
 
             st.divider()
             st.subheader("Predicción de próximos ciclos")
@@ -3230,13 +3785,13 @@ elif menu == "Ciclo Menstrual":
                 st.dataframe(prox[["fecha", "fase_ciclo"]], use_container_width=True)
 
 # ==========================================
-# PESTA�'A 5: CONSULTORIO VIRTUAL (IA)
+# PESTA'A 5: CONSULTORIO VIRTUAL (IA)
 # ==========================================
 elif menu == "Asistente Virtual":
     st.markdown(
         """
         <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
-            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>�Y'� Asistente Virtual</div>
+            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>Y' Asistente Virtual</div>
             <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Consulta dudas de entrenamiento con contexto de Garmin, fisiologia y estudios cientificos.</div>
         </div>
         """,
@@ -3245,63 +3800,87 @@ elif menu == "Asistente Virtual":
     if obtener_consejo is None:
         st.error("Error: No se ha podido cargar ai_coach.py. Revisa que el archivo exista y esté correcto.")
     else:
-        # Extraer contexto para la IA
-        conn = get_db_connection()
-        try:
-            df_actividades = pd.read_sql_query(
-                "SELECT fecha, tipo_deporte, distancia_m, ritmo_medio, fc_media FROM actividades_garmin WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 3",
-                conn,
-                params=(user_actual,),
-            )
-            df_fisio = pd.read_sql_query(
-                "SELECT fecha, fase_ciclo, fatiga_subjetiva, dolor_notas FROM diario_fisiologia WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 1",
-                conn,
-                params=(user_actual,),
-            )
-            estudios_ctx = contexto_estudios(user_actual)
-            contexto = f"�sltimas actividades: {df_actividades.to_dict('records')}. Estado fisiológico: {df_fisio.to_dict('records')}. Estudios científicos subidos: {estudios_ctx}."
-        except:
-            contexto = "Aún no hay datos suficientes registrados."
-        conn.close()
+ # Construir snapshot completo para la IA
+        snap = resumen_usuario_para_plan(user_actual)
+        perfil_snap = obtener_perfil_cache(user_actual) or {}
+        _fmt = lambda v, unit="", fallback="—": f"{round(float(v), 1)}{unit}" if v is not None else fallback
 
-        # Interfaz de Chat
+        nombre_snap = perfil_snap.get("nombre") or ("Malena" if user_actual == 1 else "Dani")
+        objetivo_snap = perfil_snap.get("objetivo") or "—"
+        nivel_snap = perfil_snap.get("nivel") or "—"
+        genero_snap = perfil_snap.get("genero") or "—"
+        lesiones_txt = ", ".join(snap["lesiones_activas"]) if snap["lesiones_activas"] else "ninguna"
+
+        ratio_txt = _fmt(snap["ratio_ctl_atl"])
+        ratio_alerta = ""
+        if snap["ratio_ctl_atl"] is not None:
+            if snap["ratio_ctl_atl"] >= 1.5:
+                ratio_alerta = " [RIESGO ALTO: descarga forzada]"
+            elif snap["ratio_ctl_atl"] >= 1.3:
+                ratio_alerta = " [ATENCION: evitar alta intensidad]"
+
+        hrv_alerta = ""
+        if snap["hrv_actual"] is not None and snap["hrv_actual"] < 50:
+            hrv_alerta = " [RIESGO: HRV bajo, priorizar descanso]"
+        elif snap["hrv_tendencia"] is not None and snap["hrv_tendencia"] < -5:
+            hrv_alerta = " [ATENCION: tendencia HRV negativa]"
+
+        contexto = (
+            f"=== SNAPSHOT DEL ATLETA ===\n"
+            f"Atleta: {nombre_snap} | Objetivo: {objetivo_snap} | Nivel: {nivel_snap} | Género: {genero_snap}\n"
+            f"Disponibilidad: {perfil_snap.get('carrera', '—')} días carrera / {perfil_snap.get('fuerza', '—')} días fuerza\n\n"
+            f"--- CARGA (14 días) ---\n"
+            f"Carreras: {snap['carreras_14d']} | Km totales: {_fmt(snap['km_14d'], ' km')} | FC media: {_fmt(snap['fc_media_14d'], ' bpm')}\n"
+            f"Sesiones fuerza: {snap['fuerza_14d']}\n"
+            f"Ratio carga aguda/crónica: {ratio_txt}{ratio_alerta}\n\n"
+            f"--- RECUPERACIÓN Y SISTEMA NERVIOSO ---\n"
+            f"HRV actual: {_fmt(snap['hrv_actual'], ' ms')}{hrv_alerta} | Tendencia HRV: {_fmt(snap['hrv_tendencia'])}\n"
+            f"Sueño medio: {_fmt(snap['sueno_horas_7d'], 'h')} | Sleep score: {_fmt(snap['sueno_score_7d'])} | Días mal sueño: {snap['dias_mal_sueno']}\n"
+            f"Sueño profundo: {_fmt(snap['sleep_profundo_7d'], 'h')} | REM: {_fmt(snap['sleep_rem_7d'], 'h')}\n"
+            f"Body Battery: {_fmt(snap['body_battery'])} | Training Readiness: {_fmt(snap['training_readiness'])} | Recovery: {_fmt(snap['recovery_hours'], 'h')}\n\n"
+            f"--- SALUD ---\n"
+            f"Lesiones activas: {lesiones_txt}\n"
+            f"Fase ciclo (Malena): {snap['fase_ciclo_actual'] or 'no registrada'}\n"
+            f"Estrés vital: {snap['estres_vital']}/10 | RPE última sesión: {_fmt(snap['rpe_ultima'])} | Sensación: {snap['sensacion_ultima'] or '—'}\n\n"
+            f"--- BIOMECÁNICA RUNNING ---\n"
+            f"Cadencia: {_fmt(snap['cadencia_media'], ' spm')} | Potencia: {_fmt(snap['potencia_media_w'], ' W')} | "
+            f"Oscilación vertical: {_fmt(snap['oscilacion_vertical'], ' cm')} | Contacto suelo: {_fmt(snap['tiempo_contacto'], ' ms')}\n"
+        )
+        try:
+            estudios_ctx = contexto_estudios(user_actual)
+            if estudios_ctx:
+                contexto += f"\n=== ESTUDIOS CIENTÍFICOS SUBIDOS ===\n{estudios_ctx}"
+        except Exception:
+            pass
+
+ # Interfaz de Chat
         if "mensajes" not in st.session_state:
             st.session_state.mensajes = []
 
-        # Mostrar historial de mensajes
+ # Mostrar historial de mensajes
         for msg in st.session_state.mensajes:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        # Input del usuario
+ # Input del usuario
         duda = st.chat_input("Escribe tu duda (ej. ¿Cómo ves mi carga de entrenamiento en esta fase de mi ciclo?)...")
         if duda:
-            # Mostrar lo que escribió el usuario
+ # Mostrar lo que escribió el usuario
             with st.chat_message("user"):
                 st.markdown(duda)
             st.session_state.mensajes.append({"role": "user", "content": duda})
             
-            # Mostrar la respuesta de la IA
+ # Mostrar la respuesta de la IA
             with st.chat_message("assistant"):
                 with st.spinner("Analizando tus datos biométricos..."):
                     try:
-                        # Ojo: pasamos duda y contexto. Si tu ai_coach pide más parámetros, avisame.
+ # Ojo: pasamos duda y contexto. Si tu ai_coach pide más parámetros, avisame.
                         respuesta = obtener_consejo(duda, contexto) 
                         st.markdown(respuesta)
                         st.session_state.mensajes.append({"role": "assistant", "content": respuesta})
                     except Exception as e:
                         st.error(f"Error al procesar la respuesta: {e}")
 elif menu == "Diario de Entrenamiento":
-    st.markdown(
-        """
-        <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
-            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>�Y"� Diario de Entrenamiento</div>
-            <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Registra fuerza, carrera, molestias o sensaciones. Si mencionas carrera, se intentará enlazar automáticamente con Garmin.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     if "resultado_ia" not in st.session_state:
         st.session_state.resultado_ia = None
     if "nota_fuerza" not in st.session_state:
@@ -3322,7 +3901,7 @@ elif menu == "Diario de Entrenamiento":
             st.info(f"📌 Se detectaron **{len(segmentos)} bloques temporales** en tu texto. Se guardarán como sesiones separadas:")
             for marca, frag in segmentos:
                 fecha_seg, motivo_seg = extraer_fecha_historica(frag if marca else nota_fuerza)
-                st.caption(f"�?� **{fecha_seg.strftime('%d-%m-%Y')}** ({motivo_seg}): _{frag[:80]}�?�_" if len(frag) > 80 else f"�?� **{fecha_seg.strftime('%d-%m-%Y')}**: _{frag}_")
+                st.caption(f"? **{fecha_seg.strftime('%d-%m-%Y')}** ({motivo_seg}): _{frag[:80]}?_" if len(frag) > 80 else f"? **{fecha_seg.strftime('%d-%m-%Y')}**: _{frag}_")
         else:
             fecha_auto, motivo = extraer_fecha_historica(nota_fuerza)
             st.caption(f"📅 Fecha detectada: **{fecha_auto.strftime('%d-%m-%Y')}** - {motivo}")
@@ -3367,7 +3946,7 @@ elif menu == "Diario de Entrenamiento":
             for ses in st.session_state.sesiones_detectadas:
                 if not ses["res"]["exito"]:
                     fecha_s = ses["fecha"]
-                    st.error(f"�O No se pudo procesar el bloque del {fecha_s.strftime('%d-%m-%Y')}:")
+                    st.error(f"O No se pudo procesar el bloque del {fecha_s.strftime('%d-%m-%Y')}:")
                     st.code(ses["res"]["raw"])
         else:
             for ses in st.session_state.sesiones_detectadas:
@@ -3389,7 +3968,7 @@ elif menu == "Diario de Entrenamiento":
                     st.caption(f"🏃 Vinculada a Garmin ({v['id_actividad']}) · {km:.2f} km")
 
                 if ses["nota_estado"]:
-                    st.warning(f"�Y�� Estado reportado: {ses['nota_estado']}")
+                    st.warning(f"Y Estado reportado: {ses['nota_estado']}")
 
                 if res_s["datos"]:
                     vista = pd.DataFrame(res_s["datos"])
@@ -3399,7 +3978,7 @@ elif menu == "Diario de Entrenamiento":
                     st.caption("Sin ejercicios de fuerza en este bloque. Se guardará como nota de entrenamiento.")
 
             n_sesiones = len(st.session_state.sesiones_detectadas)
-            etiqueta = f"�Ys? Guardar {n_sesiones} sesión{'es' if n_sesiones > 1 else ''}"
+            etiqueta = f"Ys? Guardar {n_sesiones} sesión{'es' if n_sesiones > 1 else ''}"
             if st.button(etiqueta):
                 conn = get_db_connection()
                 try:
@@ -3470,7 +4049,7 @@ elif menu == "Diario de Entrenamiento":
                             )
                     conn.commit()
                     st.cache_data.clear()
-                    st.success(f"�o. {n_sesiones} sesión{'es' if n_sesiones > 1 else ''} guardada{'s' if n_sesiones > 1 else ''} correctamente.")
+                    st.success(f"o. {n_sesiones} sesión{'es' if n_sesiones > 1 else ''} guardada{'s' if n_sesiones > 1 else ''} correctamente.")
                     st.session_state.resultado_ia = None
                     st.session_state.sesiones_detectadas = []
                     st.rerun()
@@ -3480,7 +4059,42 @@ elif menu == "Diario de Entrenamiento":
                     conn.close()
 
     st.divider()
-    st.subheader("Historial por entrenamientos")
+    st.subheader("Calendario mensual")
+
+    if "cal_mes" not in st.session_state or "cal_anio" not in st.session_state:
+        hoy = datetime.now()
+        st.session_state.cal_mes = hoy.month
+        st.session_state.cal_anio = hoy.year
+
+    nav_prev, nav_title, nav_next = st.columns([1, 2.5, 1])
+    with nav_prev:
+        if st.button("◀ Mes anterior", key="cal_prev_mes"):
+            if st.session_state.cal_mes == 1:
+                st.session_state.cal_mes = 12
+                st.session_state.cal_anio -= 1
+            else:
+                st.session_state.cal_mes -= 1
+            st.rerun()
+    with nav_title:
+        _meses_es = [
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+        ]
+        st.markdown(
+            f"<div style='text-align:center;font-weight:700;font-size:1.05rem;'>"
+            f"{_meses_es[st.session_state.cal_mes - 1].capitalize()} {st.session_state.cal_anio}"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with nav_next:
+        if st.button("Mes siguiente ▶", key="cal_next_mes"):
+            if st.session_state.cal_mes == 12:
+                st.session_state.cal_mes = 1
+                st.session_state.cal_anio += 1
+            else:
+                st.session_state.cal_mes += 1
+            st.rerun()
+
     conn = get_db_connection()
     try:
         sesiones = pd.read_sql_query(
@@ -3489,11 +4103,197 @@ elif menu == "Diario de Entrenamiento":
             FROM sesiones_fuerza
             WHERE usuario_id = ?
             ORDER BY fecha DESC, id DESC
-            LIMIT 25
+            LIMIT 400
             """,
             conn,
             params=(user_actual,),
         )
+
+        sesiones_mes = pd.DataFrame(columns=["id", "fecha", "resumen", "created_at", "tipo_registro", "actividad_garmin_id"])
+
+        def _normalizar_etiqueta_musculo(valor):
+            t = str(valor or "").strip().lower()
+            if not t:
+                return None
+            if any(k in t for k in ["tren inferior", "pierna", "cuadrice", "isquio", "glute", "gemelo", "femoral"]):
+                return "Tren inferior"
+            if any(k in t for k in ["espalda", "dorsal", "bicep", "remo", "dominada"]):
+                return "Espalda + biceps"
+            if any(k in t for k in ["pecho", "tricep", "banca", "press"]):
+                return "Pecho + triceps"
+            if any(k in t for k in ["hombro", "delto"]):
+                return "Hombros"
+            if any(k in t for k in ["core", "abdominal", "abs", "lumbar"]):
+                return "Core"
+            return t.capitalize()
+
+        dias_con_entreno = {}
+        if not sesiones.empty:
+            sesiones["fecha_dt"] = pd.to_datetime(sesiones["fecha"], errors="coerce").dt.date
+            sesiones = sesiones[sesiones["fecha_dt"].notna()].copy()
+            sesiones_mes = sesiones[
+                sesiones["fecha_dt"].apply(
+                    lambda d: d.year == st.session_state.cal_anio and d.month == st.session_state.cal_mes
+                )
+            ].copy()
+
+            etiquetas_por_sesion = {}
+            if not sesiones_mes.empty:
+                ids_sesion = [int(x) for x in sesiones_mes["id"].dropna().tolist()]
+                if ids_sesion:
+                    placeholders = ",".join(["?"] * len(ids_sesion))
+                    detalle_mes = pd.read_sql_query(
+                        f"""
+                        SELECT sesion_id, grupo_muscular, musculo_principal
+                        FROM ejercicios_fuerza
+                        WHERE sesion_id IN ({placeholders})
+                        ORDER BY id
+                        """,
+                        conn,
+                        params=ids_sesion,
+                    )
+                    if not detalle_mes.empty:
+                        for ses_id, grp in detalle_mes.groupby("sesion_id"):
+                            etiquetas = []
+                            for _, fila_det in grp.iterrows():
+                                etiqueta = _normalizar_etiqueta_musculo(fila_det.get("grupo_muscular"))
+                                if not etiqueta:
+                                    etiqueta = _normalizar_etiqueta_musculo(fila_det.get("musculo_principal"))
+                                if etiqueta and etiqueta not in etiquetas:
+                                    etiquetas.append(etiqueta)
+                            if etiquetas:
+                                etiquetas_por_sesion[int(ses_id)] = " + ".join(etiquetas[:2])
+
+            for _, fila in sesiones_mes.iterrows():
+                dia = int(fila["fecha_dt"].day)
+                tipo_reg = str(fila.get("tipo_registro") or "").strip().lower()
+                es_carrera = tipo_reg == "carrera" or (
+                    tipo_reg == "mixto" and str(fila.get("actividad_garmin_id") or "").strip() != ""
+                )
+                if es_carrera:
+                    etiqueta_sesion = "Carrera"
+                else:
+                    etiqueta_sesion = etiquetas_por_sesion.get(int(fila["id"]), "Entrenamiento")
+                dias_con_entreno.setdefault(dia, []).append(etiqueta_sesion)
+
+        semanas = calendar.monthcalendar(st.session_state.cal_anio, st.session_state.cal_mes)
+        dias_semana = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
+        celdas = []
+        for d in dias_semana:
+            celdas.append(
+                f"<div class='cal-head'>{d}</div>"
+            )
+
+        for semana in semanas:
+            for dia in semana:
+                if dia == 0:
+                    celdas.append("<div class='cal-day cal-empty'></div>")
+                    continue
+
+                if dia in dias_con_entreno:
+                    nombres = dias_con_entreno[dia][:2]
+                    extra = max(0, len(dias_con_entreno[dia]) - 2)
+                    nombres_html = "".join(
+                        f"<div class='cal-item'>{html.escape(n[:42])}</div>" for n in nombres
+                    )
+                    extra_html = f"<div class='cal-more'>+{extra} mas</div>" if extra > 0 else ""
+                    celdas.append(
+                        f"<div class='cal-day cal-trained'>"
+                        f"<div class='cal-num'>{dia}</div>"
+                        f"{nombres_html}{extra_html}"
+                        f"</div>"
+                    )
+                else:
+                    celdas.append(
+                        f"<div class='cal-day'>"
+                        f"<div class='cal-num'>{dia}</div>"
+                        f"<div class='cal-rest'>Descanso</div>"
+                        f"</div>"
+                    )
+
+        st.markdown(
+            """
+            <style>
+            .cal-grid {
+                display: grid;
+                grid-template-columns: repeat(7, minmax(0, 1fr));
+                gap: 8px;
+                margin-top: 10px;
+            }
+            .cal-head {
+                text-align: center;
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: #8B949E;
+                background: #161B22;
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 10px;
+                padding: 8px 6px;
+            }
+            .cal-day {
+                min-height: 114px;
+                background: #161B22;
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 12px;
+                padding: 8px;
+            }
+            .cal-empty {
+                background: transparent;
+                border: 1px dashed rgba(255,255,255,0.06);
+            }
+            .cal-trained {
+                border: 1px solid rgba(201,255,0,0.65);
+                background: linear-gradient(180deg, rgba(201,255,0,0.22), rgba(201,255,0,0.09));
+            }
+            .cal-num {
+                width: 28px;
+                height: 28px;
+                border-radius: 999px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.86rem;
+                font-weight: 700;
+                color: #E6EDF3;
+                background: rgba(255,255,255,0.08);
+                margin-bottom: 7px;
+            }
+            .cal-trained .cal-num {
+                background: #C9FF00;
+                color: #0E1117;
+            }
+            .cal-item {
+                font-size: 0.72rem;
+                color: #0E1117;
+                font-weight: 600;
+                background: rgba(201,255,0,0.85);
+                border-radius: 8px;
+                padding: 3px 6px;
+                margin-bottom: 4px;
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+            }
+            .cal-more {
+                font-size: 0.70rem;
+                color: #D4F77C;
+                margin-top: 2px;
+            }
+            .cal-rest {
+                font-size: 0.72rem;
+                color: #8B949E;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(f"<div class='cal-grid'>{''.join(celdas)}</div>", unsafe_allow_html=True)
+
+        st.caption(
+            f"Días entrenados este mes: {len(dias_con_entreno)}"
+        )
+
+        st.subheader("Historial por entrenamientos")
 
         if sesiones.empty:
             st.info("Aún no hay sesiones guardadas.")
@@ -3581,30 +4381,21 @@ elif menu == "Diario de Entrenamiento":
         conn.close()
 
 # ==========================================
-# PESTA�'A 6: ENTRENADOR PERSONAL
+# PESTA'A 6: ENTRENADOR PERSONAL
 # ==========================================
 elif menu == "Entrenador Personal":
-    st.markdown(
-        """
-        <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
-            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>�YZ� Entrenador Personal Premium</div>
-            <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Control diario, planificacion semanal adaptativa y gestion de lesiones en una sola vista.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     tab_checkin, tab_plan, tab_lesiones = st.tabs(
         ["Check-in Diario", "Generar Plan Semanal", "Lesiones y Prevención"]
     )
 
-    # �"?�"? Tab 1: Check-in diario �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Tab 1: Check-in diario "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     with tab_checkin:
         st.subheader("Semáforo diario Garmin")
         st.caption(
             "Estos datos se sincronizan directamente desde Garmin. "
             "No hace falta que el usuario los meta a mano."
         )
+        st.caption(f"Perfil activo: {perfil.get('nombre', 'Atleta')} (ID {user_actual})")
         cred = obtener_credenciales_garmin(user_actual)
         if cred and cred[0]:
             if st.button("Sincronizar biométricos Garmin", key="sync_garmin_semáforo"):
@@ -3612,8 +4403,9 @@ elif menu == "Entrenador Personal":
                     try:
                         email, p_enc = cred
                         pw = desencriptar_password(p_enc)
-                        sincronizar_biometricos_garmin(email, pw, user_actual, dias=7)
-                        st.success("Datos Garmin actualizados.")
+                        n_bio = sincronizar_biometricos_garmin(email, pw, user_actual, dias=7)
+                        st.cache_data.clear()
+                        st.success(f"Datos Garmin actualizados ({n_bio} días procesados).")
                         st.rerun()
                     except Exception as e:
                         st.error(f"No se pudo sincronizar Garmin: {e}")
@@ -3641,60 +4433,101 @@ elif menu == "Entrenador Personal":
 
         conn = get_db_connection()
         try:
-            histo = pd.read_sql_query(
+            diag_usuarios = pd.read_sql_query(
                 """
-                SELECT fecha,
-                       hrv_ms AS "HRV",
-                       training_readiness AS "Readiness",
-                       body_battery AS "Body Battery",
-                       recovery_hours AS "Recuperación h",
-                       fc_reposo AS "FC reposo",
-                       estres_vital AS "Estrés",
-                       spo2 AS "SpO2",
-                       sleep_score AS "Sleep score",
-                       cadencia_media AS "Cadencia",
-                       longitud_zancada_m AS "Zancada m",
-                       tiempo_contacto_ms AS "Contacto ms",
-                       oscilacion_vertical_cm AS "Osc. vertical cm",
-                       potencia_media_w AS "Potencia W"
+                SELECT usuario_id, COUNT(*) AS registros, MAX(fecha) AS ultima_fecha
                 FROM datos_biometricos_premium
-                WHERE usuario_id = ?
-                ORDER BY fecha DESC LIMIT 7
+                GROUP BY usuario_id
+                ORDER BY usuario_id
                 """,
-                conn, params=(user_actual,),
+                conn,
             )
-            if not histo.empty:
-                st.markdown("##### �sltimos 7 días sincronizados")
-                st.dataframe(histo, use_container_width=True, hide_index=True)
 
-            sueno_det = pd.read_sql_query(
-                """
-                SELECT fecha,
-                       horas_totales AS "Sueño total h",
-                       sleep_profundo_horas AS "Profundo h",
-                       sleep_rem_horas AS "REM h",
-                       sleep_vigilia_horas AS "Vigilia h",
-                       despertares AS "Despertares",
-                       score AS "Sleep score"
-                FROM datos_sueno
-                WHERE usuario_id = ?
-                ORDER BY fecha DESC LIMIT 7
-                """,
-                conn, params=(user_actual,),
+            cols_bio = {row[1] for row in conn.execute("PRAGMA table_info(datos_biometricos_premium)").fetchall()}
+            bio_map = [
+                ("fecha", "Fecha"),
+                ("hrv_ms", "HRV"),
+                ("training_readiness", "Readiness"),
+                ("body_battery", "Body Battery"),
+                ("recovery_hours", "Recuperación h"),
+                ("fc_reposo", "FC reposo"),
+                ("estres_vital", "Estrés"),
+                ("spo2", "SpO2"),
+                ("sleep_score", "Sleep score"),
+                ("cadencia_media", "Cadencia"),
+                ("longitud_zancada_m", "Zancada m"),
+                ("tiempo_contacto_ms", "Contacto ms"),
+                ("oscilacion_vertical_cm", "Osc. vertical cm"),
+                ("potencia_media_w", "Potencia W"),
+            ]
+            select_bio = ", ".join(
+                [f'{col} AS "{alias}"' for col, alias in bio_map if col in cols_bio]
             )
-            if not sueno_det.empty:
-                st.markdown("##### Reparación nocturna Garmin")
-                st.dataframe(sueno_det, use_container_width=True, hide_index=True)
-        except Exception:
-            pass
+            histo = pd.DataFrame()
+            if select_bio:
+                histo = pd.read_sql_query(
+                    f"""
+                    SELECT {select_bio}
+                    FROM datos_biometricos_premium
+                    WHERE usuario_id = ?
+                    ORDER BY fecha DESC LIMIT 7
+                    """,
+                    conn,
+                    params=(user_actual,),
+                )
+            with st.expander("Últimos 7 días sincronizados", expanded=False):
+                if histo.empty:
+                    st.info("Aún no hay datos biométricos sincronizados de Garmin en los últimos 7 días.")
+                    if not diag_usuarios.empty:
+                        st.caption("Diagnóstico por usuario (tabla biométricos):")
+                        st.dataframe(diag_usuarios, use_container_width=True, hide_index=True)
+                else:
+                    st.dataframe(histo, use_container_width=True, hide_index=True)
+
+            cols_sueno = {row[1] for row in conn.execute("PRAGMA table_info(datos_sueno)").fetchall()}
+            sueno_map = [
+                ("fecha", "Fecha"),
+                ("horas_totales", "Sueño total h"),
+                ("sleep_profundo_horas", "Profundo h"),
+                ("sleep_rem_horas", "REM h"),
+                ("sleep_vigilia_horas", "Vigilia h"),
+                ("despertares", "Despertares"),
+                ("score", "Sleep score"),
+            ]
+            select_sueno = ", ".join(
+                [f'{col} AS "{alias}"' for col, alias in sueno_map if col in cols_sueno]
+            )
+            sueno_det = pd.DataFrame()
+            if select_sueno:
+                sueno_det = pd.read_sql_query(
+                    f"""
+                    SELECT {select_sueno}
+                    FROM datos_sueno
+                    WHERE usuario_id = ?
+                    ORDER BY fecha DESC LIMIT 7
+                    """,
+                    conn,
+                    params=(user_actual,),
+                )
+            with st.expander("Reparación nocturna Garmin", expanded=False):
+                if sueno_det.empty:
+                    st.info("Aún no hay datos de sueño sincronizados de Garmin para mostrar esta sección.")
+                else:
+                    st.dataframe(sueno_det, use_container_width=True, hide_index=True)
+
+            st.caption(
+                f"Check-in cargado: biométricos={len(histo)} filas, sueño={len(sueno_det)} filas para usuario_id={user_actual}."
+            )
+        except Exception as e:
+            st.warning(f"No se pudieron cargar datos del check-in: {e}")
         finally:
             conn.close()
 
-    # �"?�"? Tab 2: Generar plan semanal �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Tab 2: Generar plan semanal "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     with tab_plan:
         datos_premium = resumen_usuario_para_plan(user_actual)
 
-        # Dashboard de señales
+ # Dashboard de señales
         a1, a2, a3, a4, a5 = st.columns(5)
         hrv_val = datos_premium["hrv_actual"]
         hrv_t   = datos_premium["hrv_tendencia"] or 0.0
@@ -3719,28 +4552,28 @@ elif menu == "Entrenador Personal":
 
         fase = datos_premium.get("fase_ciclo_actual")
         if fase:
-            st.caption(f"�T?️ Fase del ciclo: **{fase}**")
+            st.caption(f"T? Fase del ciclo: **{fase}**")
 
         lesiones_act = datos_premium.get("lesiones_activas") or []
         if lesiones_act:
-            st.caption(f"�Y�� Lesiones activas: **{', '.join(lesiones_act)}**")
+            st.caption(f"Y Lesiones activas: **{', '.join(lesiones_act)}**")
 
         st.divider()
         hoy = datetime.now().date()
         inicio_default = hoy - timedelta(days=hoy.weekday())
         semana_inicio = st.date_input("Semana a planificar (inicio lunes)", value=inicio_default)
 
-        # Opción de coordinar con la pareja
+ # Opción de coordinar con la pareja
         otro_uid = 2 if user_actual == 1 else 1
         otro_nombre = "Dani" if otro_uid == 2 else "Malena"
         coordinar = st.checkbox(
-            f"�Y'� Coordinar con el plan de {otro_nombre} (intentar coincidir días de entreno)",
+            f"Y' Coordinar con el plan de {otro_nombre} (intentar coincidir días de entreno)",
             value=True,
         )
 
         col_a, col_b = st.columns([0.35, 0.65])
         with col_a:
-            generar = st.button("�Y�� Generar plan premium", use_container_width=True)
+            generar = st.button("Y Generar plan premium", use_container_width=True)
         with col_b:
             st.info("El plan se adapta a tu HRV, sueño, carga, lesiones, ciclo menstrual, estrés vital y RPE.")
 
@@ -3756,7 +4589,7 @@ elif menu == "Entrenador Personal":
             st.session_state["alertas_plan"] = alertas
             st.session_state["plan_generado_csv"] = plan.to_csv(index=False, sep=";")
             st.session_state["semana_plan_dt"] = semana_dt
-            st.success("�o. Plan semanal guardado.")
+            st.success("o. Plan semanal guardado.")
             st.rerun()
 
         if st.session_state.get("alertas_plan"):
@@ -3773,9 +4606,9 @@ elif menu == "Entrenador Personal":
             plan_view["fecha"] = pd.to_datetime(plan_view["fecha"]).dt.strftime("%d-%m-%Y")
             st.dataframe(plan_view, use_container_width=True, hide_index=True)
 
-            # �"?�"? Feedback post-generación �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Feedback post-generación "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
             st.divider()
-            st.markdown("##### �Y'� ¿Quieres cambiar algo del plan?")
+            st.markdown("##### Y' ¿Quieres cambiar algo del plan?")
             st.caption(
                 "Dile a la IA en texto libre qué quieres ajustar: "
                 "'ese día no me viene bien hacer pierna, cámbialo al martes' o "
@@ -3787,13 +4620,13 @@ elif menu == "Entrenador Personal":
                 height=80,
                 key="feedback_plan",
             )
-            if st.button("�Y"" Aplicar cambios con IA", key="btn_feedback"):
+            if st.button("Y"" Aplicar cambios con IA", key="btn_feedback"):
                 if feedback_txt.strip():
                     from ai_coach import ajustar_plan_con_feedback
                     plan_csv = st.session_state.get("plan_generado_csv") or plan_guardado.to_csv(index=False, sep=";")
                     estudios_ctx = contexto_estudios(user_actual)
                     resumen_perf = (
-                        f"Objetivo: {perfil.get('objetivo')}, nivel: {perfil.get('nivel')}, "
+                        f"Objetivo: {perfil.get('objetivo')}, "
                         f"días carrera: {perfil.get('carrera')}, días fuerza: {perfil.get('fuerza')}. "
                         f"Estudios científicos relevantes: {estudios_ctx}"
                     )
@@ -3801,7 +4634,7 @@ elif menu == "Entrenador Personal":
                         resultado = ajustar_plan_con_feedback(plan_csv, feedback_txt, resumen_perf)
                     if resultado["exito"] and resultado["datos"]:
                         nuevo_plan = pd.DataFrame(resultado["datos"])
-                        # Normalizar columnas al esquema esperado
+ # Normalizar columnas al esquema esperado
                         col_map = {
                             "dia": "dia", "fecha": "fecha", "tipo": "tipo",
                             "sesion": "sesion", "detalles": "detalles",
@@ -3816,14 +4649,14 @@ elif menu == "Entrenador Personal":
                         )
                         guardar_plan_semanal(user_actual, semana_fb_dt, nuevo_plan[list(col_map.keys())])
                         st.session_state["plan_generado_csv"] = nuevo_plan.to_csv(index=False, sep=";")
-                        st.success("�o. Plan actualizado con tu feedback.")
+                        st.success("o. Plan actualizado con tu feedback.")
                         st.rerun()
                     else:
                         st.error("La IA no pudo procesar el feedback. Inténtalo de nuevo.")
                         if resultado.get("raw"):
                             st.code(resultado["raw"])
 
-    # �"?�"? Tab 3: Lesiones �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+ # "?"? Tab 3: Lesiones "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     with tab_lesiones:
         st.subheader("Historial y prevención de lesiones")
         st.caption(
@@ -3839,7 +4672,7 @@ elif menu == "Entrenador Personal":
             with lc2:
                 fecha_les = st.date_input("Fecha inicio", value=datetime.now().date())
                 notas_les = st.text_area("Notas / contexto", height=70)
-            if st.form_submit_button("�z. Registrar lesión"):
+            if st.form_submit_button("z. Registrar lesión"):
                 if zona_les.strip():
                     conn = get_db_connection()
                     conn.execute(
@@ -3850,7 +4683,7 @@ elif menu == "Entrenador Personal":
                     conn.commit()
                     conn.close()
                     st.cache_data.clear()
-                    st.success("�o. Lesión registrada.")
+                    st.success("o. Lesión registrada.")
                     st.rerun()
                 else:
                     st.error("Indica la zona lesionada.")
@@ -3886,13 +4719,13 @@ elif menu == "Entrenador Personal":
 
 
 # ==========================================
-# PESTA�'A 7: CALENDARIO
+# PESTA'A 7: CALENDARIO
 # ==========================================
 elif menu == "Calendario":
     st.markdown(
         """
         <div style='background:linear-gradient(135deg,#161B22 0%,#0A2E0A 100%);border:1px solid rgba(201,255,0,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px;'>
-            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>�Y-"️ Calendario de Entrenamientos</div>
+            <div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;line-height:1.15;'>Y-" Calendario de Entrenamientos</div>
             <div style='font-size:0.88rem;color:#8B949E;margin-top:4px;'>Vista semanal de tus sesiones planificadas con detalle por dia e intensidad.</div>
         </div>
         """,

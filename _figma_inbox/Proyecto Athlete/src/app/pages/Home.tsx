@@ -9,7 +9,6 @@ import {
   Heart, 
   Moon, 
   Dumbbell, 
-  AlertCircle,
   TrendingUp,
   Calendar as CalendarIcon
 } from "lucide-react";
@@ -64,15 +63,6 @@ export function Home() {
     { label: "RECUPERACIÓN", value: "-", status: "neutral" },
     { label: "FC REPOSO", value: "-", status: "neutral" },
     { label: "SpO2", value: "-", status: "neutral" },
-  ];
-
-  // Datos de técnica de carrera
-  const runningTechnique = [
-    { label: "Cadencia", value: "-", unit: "spm" },
-    { label: "Zancada", value: "-", unit: "cm" },
-    { label: "Tiempo Contacto", value: "-", unit: "ms" },
-    { label: "Oscilación Vertical", value: "-", unit: "cm" },
-    { label: "Potencia", value: "-", unit: "W" },
   ];
 
   const completedCheckpoints = checkpoints.filter(
@@ -208,32 +198,6 @@ export function Home() {
               <div className="h-64 flex items-center justify-center">
                 <p className="text-[#8B949E]">
                   Sincroniza tus datos de Garmin para ver el gráfico de kilómetros semanales
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-
-        {/* Radar Antilesiones y Técnica */}
-        <section>
-          <h2 className="text-xl font-semibold mb-4 text-white flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-[#C9FF00]" />
-            Radar Antilesiones y Técnica
-          </h2>
-          <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
-            <CardContent className="pt-6">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                {runningTechnique.map((metric, index) => (
-                  <div key={index} className="text-center">
-                    <p className="text-sm text-[#8B949E] mb-2">{metric.label}</p>
-                    <p className="text-2xl font-bold text-white">{metric.value}</p>
-                    <p className="text-xs text-[#8B949E] mt-1">{metric.unit}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-6 pt-6 border-t border-[#C9FF00]/20">
-                <p className="text-sm text-[#8B949E] text-center">
-                  No hay alertas de técnica registradas
                 </p>
               </div>
             </CardContent>

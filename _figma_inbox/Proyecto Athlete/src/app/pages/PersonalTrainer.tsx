@@ -1,7 +1,8 @@
 import { Header } from "../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Activity, Brain, HeartPulse, MessageSquare } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/ui/collapsible";
+import { Activity, Brain, ChevronDown, HeartPulse, MessageSquare } from "lucide-react";
 import { KPICard } from "../components/KPICard";
 
 export function PersonalTrainer() {
@@ -21,31 +22,31 @@ export function PersonalTrainer() {
         <h2 className="text-2xl font-semibold mb-6 text-white">Entrenador Personal Premium</h2>
 
         <Tabs defaultValue="checkin" className="space-y-6">
-          <TabsList className="bg-[#161B22] border border-[#C9FF00]/30 p-1 rounded-xl">
+          <TabsList className="w-full justify-start overflow-x-auto bg-[#161B22] border border-[#C9FF00]/30 p-1 rounded-xl">
             <TabsTrigger 
               value="checkin"
-              className="data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
+              className="shrink-0 data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
             >
               <Activity className="h-4 w-4 mr-2" />
               Check-in Diario
             </TabsTrigger>
             <TabsTrigger 
               value="plan"
-              className="data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
+              className="shrink-0 data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
             >
               <Brain className="h-4 w-4 mr-2" />
               Generar Plan Semanal
             </TabsTrigger>
             <TabsTrigger 
               value="lesiones"
-              className="data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
+              className="shrink-0 data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
             >
               <HeartPulse className="h-4 w-4 mr-2" />
               Lesiones y Prevención
             </TabsTrigger>
             <TabsTrigger 
               value="asistente"
-              className="data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
+              className="shrink-0 data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
             >
               <MessageSquare className="h-4 w-4 mr-2" />
               Asistente Virtual
@@ -72,28 +73,46 @@ export function PersonalTrainer() {
               </CardContent>
             </Card>
 
-            <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
-              <CardHeader>
-                <CardTitle className="text-white">Últimos 7 Días - Biométricos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-[#8B949E]">
-                  Sincroniza tus datos de Garmin para ver el historial completo
-                  de HRV, readiness, body battery, recuperación y más.
-                </p>
-              </CardContent>
-            </Card>
+            <Collapsible className="group">
+              <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer">
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle className="text-white">Últimos 7 días sincronizados</CardTitle>
+                      <ChevronDown className="h-4 w-4 text-[#8B949E] transition-transform group-data-[state=open]:rotate-180" />
+                    </div>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent>
+                    <p className="text-[#8B949E]">
+                      Sincroniza tus datos de Garmin para ver el historial completo
+                      de HRV, readiness, body battery, recuperación y más.
+                    </p>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
 
-            <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
-              <CardHeader>
-                <CardTitle className="text-white">Calidad del Sueño</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-[#8B949E]">
-                  Los datos de sueño detallado se mostrarán aquí una vez sincronizado.
-                </p>
-              </CardContent>
-            </Card>
+            <Collapsible className="group">
+              <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer">
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle className="text-white">Reparación nocturna Garmin</CardTitle>
+                      <ChevronDown className="h-4 w-4 text-[#8B949E] transition-transform group-data-[state=open]:rotate-180" />
+                    </div>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent>
+                    <p className="text-[#8B949E]">
+                      Los datos de sueño detallado se mostrarán aquí una vez sincronizado.
+                    </p>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
           </TabsContent>
 
           {/* Tab: Generar Plan Semanal */}
