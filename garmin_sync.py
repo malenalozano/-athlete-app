@@ -1,4 +1,5 @@
 import os
+import logging
 from datetime import datetime, timedelta
 from garminconnect import Garmin, GarminConnectConnectionError, GarminConnectAuthenticationError
 from dotenv import load_dotenv
@@ -6,6 +7,10 @@ from db_manager import get_db_connection
 
 # Cargar variables de entorno
 load_dotenv()
+
+# Configurar logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 def _column_exists(conn, table_name, column_name):
@@ -139,9 +144,23 @@ def _last_number(obj, keys):
 
 
 def _safe_api_call(fn, *args, **kwargs):
+    """
+    Ejecuta una llamada API de Garmin de forma segura, registrando errores.
+    Retorna None si la llamada falla, pero registra qué pasó.
+    """
+    fn_name = getattr(fn, '__name__', str(fn))
     try:
-        return fn(*args, **kwargs)
-    except Exception:
+        result = fn(*args, **kwargs)
+        logger.debug(f"✅ {fn_name}({args}, {kwargs}) - OK")
+        return result
+    except GarminConnectAuthenticationError as e:
+        logger.error(f"❌ {fn_name}: ERROR DE AUTENTICACIÓN - {e}")
+        return None
+    except GarminConnectConnectionError as e:
+        logger.error(f"❌ {fn_name}: ERROR DE CONEXIÓN - {e}")
+        return None
+    except Exception as e:
+        logger.warning(f"⚠️  {fn_name}({args}): {type(e).__name__}: {e}")
         return None
 
 
@@ -186,28 +205,97 @@ def _extract_sleep_metrics(data, fecha_iso):
 
 
 def _extract_daily_metrics(client, fecha_iso):
+    """
+    Extrae métricas diarias de Garmin para una fecha específica.
+    Registra el estado de cada métrica mientras la obtiene.
+    """
+    logger.info(f"\n{'='*70}")
+    logger.info(f"EXTRAYENDO MÉTRICAS PARA {fecha_iso}")
+    logger.info(f"{'='*70}")
+    
+    # HRV
+    logger.debug(f"  → Obteniendo HRV...")
     hrv_data = _safe_api_call(client.get_hrv_data, fecha_iso) or {}
+    hrv_ms = _first_number(hrv_data, ["lastNightAverage", "averageHrv", "weeklyAverage", "hrvValue"])
+    logger.info(f"  ✓ HRV: {hrv_ms} ms" if hrv_ms else f"  ✗ HRV: No encontrado")
+    
+    # Training Readiness
+    logger.debug(f"  → Obteniendo Training Readiness...")
     readiness_data = _safe_api_call(client.get_training_readiness, fecha_iso) or {}
     if not readiness_data:
+        logger.debug(f"  → Fallback: Obteniendo Morning Training Readiness...")
         readiness_data = _safe_api_call(client.get_morning_training_readiness, fecha_iso) or {}
+    training_readiness = _to_int(_first_number(readiness_data, ["trainingReadiness", "readinessScore", "score"]))
+    logger.info(f"  ✓ Training Readiness: {training_readiness}" if training_readiness else f"  ✗ Training Readiness: No encontrado")
+    
+    # Body Battery
+    logger.debug(f"  → Obteniendo Body Battery...")
     body_battery_data = _safe_api_call(client.get_body_battery, fecha_iso, fecha_iso) or []
+    body_battery = _to_int(_last_number(body_battery_data, ["bodyBattery", "bodyBatteryLevel", "chargedValue"]))
+    logger.info(f"  ✓ Body Battery: {body_battery}" if body_battery else f"  ✗ Body Battery: No encontrado")
+    
+    # Recovery Hours
+    recovery_hours = _first_number(readiness_data, ["recoveryTime", "recoveryTimeHours", "recoveryHours"])
+    logger.info(f"  ✓ Recovery Hours: {recovery_hours}" if recovery_hours else f"  ✗ Recovery Hours: No encontrado")
+    
+    # Stress Data
+    logger.debug(f"  → Obteniendo Stress Data...")
     stress_data = _safe_api_call(client.get_stress_data, fecha_iso) or {}
     if not stress_data:
+        logger.debug(f"  → Fallback: Obteniendo All Day Stress...")
         stress_data = _safe_api_call(client.get_all_day_stress, fecha_iso) or {}
+    estres_vital = _to_int(_first_number(stress_data, ["overallStressLevel", "averageStressLevel", "stressScore", "calendarDateStressValue"]))
+    logger.info(f"  ✓ Stress: {estres_vital}" if estres_vital else f"  ✗ Stress: No encontrado")
+    
+    # SpO2
+    logger.debug(f"  → Obteniendo SpO2...")
     spo2_data = _safe_api_call(client.get_spo2_data, fecha_iso) or {}
+    spo2 = _first_number(spo2_data, ["averageSpo2", "avgSpo2", "spo2"])
+    logger.info(f"  ✓ SpO2: {spo2}" if spo2 else f"  ✗ SpO2: No encontrado")
+    
+    # Heart Rates
+    logger.debug(f"  → Obteniendo Heart Rates...")
     heart_rates = _safe_api_call(client.get_heart_rates, fecha_iso) or {}
-
+    fc_reposo = _to_int(_first_number(heart_rates, ["restingHeartRate", "restHeartRate", "restingHR"]))
+    fc_maxima = _to_int(_first_number(heart_rates, ["maxHeartRate", "maxHeartRateInBeatsPerMinute"]))
+    logger.info(f"  ✓ FC Reposo: {fc_reposo}, FC Máxima: {fc_maxima}" if fc_reposo or fc_maxima else f"  ✗ Heart Rates: No encontrado")
+    
+    logger.info(f"{'='*70}\n")
+    
     return {
         "fecha": fecha_iso,
-        "hrv_ms": _first_number(hrv_data, ["lastNightAverage", "averageHrv", "weeklyAverage", "hrvValue"]),
-        "training_readiness": _to_int(_first_number(readiness_data, ["trainingReadiness", "readinessScore", "score"])),
-        "body_battery": _to_int(_last_number(body_battery_data, ["bodyBattery", "bodyBatteryLevel", "chargedValue"])),
-        "recovery_hours": _first_number(readiness_data, ["recoveryTime", "recoveryTimeHours", "recoveryHours"]),
-        "fc_reposo": _to_int(_first_number(heart_rates, ["restingHeartRate", "restHeartRate", "restingHR"])),
-        "fc_maxima": _to_int(_first_number(heart_rates, ["maxHeartRate", "maxHeartRateInBeatsPerMinute"])),
-        "estres_vital": _to_int(_first_number(stress_data, ["overallStressLevel", "averageStressLevel", "stressScore", "calendarDateStressValue"])),
-        "spo2": _first_number(spo2_data, ["averageSpo2", "avgSpo2", "spo2"]),
+        "hrv_ms": hrv_ms,
+        "training_readiness": training_readiness,
+        "body_battery": body_battery,
+        "recovery_hours": recovery_hours,
+        "fc_reposo": fc_reposo,
+        "fc_maxima": fc_maxima,
+        "estres_vital": estres_vital,
+        "spo2": spo2,
     }
+
+
+def _has_useful_daily_metrics(metrics):
+    if not metrics:
+        return False
+
+    useful_keys = [
+        "hrv_ms",
+        "training_readiness",
+        "body_battery",
+        "recovery_hours",
+        "fc_reposo",
+        "fc_maxima",
+        "estres_vital",
+        "spo2",
+        "sleep_score",
+        "potencia_media_w",
+        "cadencia_media",
+        "longitud_zancada_m",
+        "tiempo_contacto_ms",
+        "oscilacion_vertical_cm",
+    ]
+    return any(metrics.get(key) is not None for key in useful_keys)
 
 
 def _latest_running_metrics(client, num_actividades=10):
@@ -362,22 +450,47 @@ def sincronizar_actividades_inteligente(email, password, usuario_id, num_activid
 
 
 def iniciar_sesion_garmin(email, password):
-    client = Garmin(email, password)
-    client.login()
-    return client
+    """Inicia sesión en Garmin Connect con manejo de errores."""
+    logger.debug("→ Iniciando línea Garmin...")
+    try:
+        client = Garmin(email, password)
+        logger.debug("  → Ejecutando login()...")
+        client.login()
+        logger.debug("  ✓ Login exitoso")
+        return client
+    except GarminConnectAuthenticationError as e:
+        logger.error(f"  ❌ Error de autenticación: {e}")
+        raise
+    except GarminConnectConnectionError as e:
+        logger.error(f"  ❌ Error de conexión: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"  ❌ Error inesperado: {type(e).__name__}: {e}")
+        raise
 
 
 def obtener_datos_sueno(client, fecha):
     """
-    Recupera datos de sueno para una fecha dada. Si no hay datos o falla, devuelve None.
+    Recupera datos de sueño para una fecha dada. Si no hay datos o falla, devuelve None.
+    Con logging detallado.
     """
     fecha_iso = fecha.strftime("%Y-%m-%d")
+    logger.debug(f"  → Obteniendo datos de sueño para {fecha_iso}...")
     try:
-        # Algunas versiones de la libreria exponen get_sleep_data.
         data = client.get_sleep_data(fecha_iso)
-    except Exception:
+        if data:
+            logger.debug(f"    ✓ Datos de sueño recibidos (keys: {list(data.keys())[:5]}...)")
+        else:
+            logger.debug(f"    ℹ Sin datos de sueño para esta fecha")
+    except Exception as e:
+        logger.warning(f"    ⚠️  Error al obtener datos de sueño: {type(e).__name__}: {e}")
         return None
-    return _extract_sleep_metrics(data, fecha_iso)
+    
+    result = _extract_sleep_metrics(data, fecha_iso)
+    if result:
+        logger.debug(f"    ✓ Sueño extraído: {result.get('horas_totales')} h, Score: {result.get('score')}")
+    return result
+
 
 
 def guardar_sueno_db(usuario_id, datos_sueno):
@@ -416,40 +529,119 @@ def guardar_sueno_db(usuario_id, datos_sueno):
 def sincronizar_biometricos_garmin(email, password, usuario_id, dias=7):
     """
     Sincroniza biométricos y recuperación directamente desde Garmin para los últimos `dias`.
+    Con logging detallado para diagnosticar problemas.
     """
-    _ensure_garmin_schema()
-    client = iniciar_sesion_garmin(email, password)
-    dias_sincronizados = 0
+    logger.info(f"\n{'#'*80}")
+    logger.info(f"INICIANDO SINCRONIZACIÓN BIOMÉTRICA - usuario_id={usuario_id}, días={dias}")
+    logger.info(f"{'#'*80}")
+    
+    try:
+        _ensure_garmin_schema()
+        logger.info("✓ Schema Garmin verificado")
+        
+        logger.info("→ Iniciando sesión en Garmin...")
+        client = iniciar_sesion_garmin(email, password)
+        logger.info("✓ Sesión iniciada exitosamente")
+        
+        logger.info("→ Buscando actividades de running recientes...")
+        latest_running = _latest_running_metrics(client, num_actividades=12)
+        if latest_running and latest_running.get("fecha"):
+            logger.info(f"  ✓ Actividad running encontrada: {latest_running.get('fecha')}")
+        else:
+            logger.info(f"  ℹ No hay actividades de running recientes")
+        
+        target_days = max(1, int(dias))
+        max_scan_days = min(60, max(14, target_days * 4))
+        dias_sincronizados = 0
+        dias_vacios = 0
 
-    latest_running = _latest_running_metrics(client, num_actividades=12)
+        for i in range(max_scan_days):
+            if dias_sincronizados >= target_days:
+                break
 
-    for i in range(max(1, int(dias))):
-        fecha = (datetime.now() - timedelta(days=i)).date()
-        fecha_iso = fecha.strftime("%Y-%m-%d")
-        sleep_metrics = obtener_datos_sueno(client, fecha)
-        if sleep_metrics:
-            guardar_sueno_db(usuario_id, sleep_metrics)
+            fecha = (datetime.now() - timedelta(days=i)).date()
+            fecha_iso = fecha.strftime("%Y-%m-%d")
+            logger.info(f"\n[{i+1}/{max_scan_days}] Procesando {fecha_iso}...")
+            
+            # Obtener y guardar sueño
+            try:
+                sleep_metrics = obtener_datos_sueno(client, fecha)
+                if sleep_metrics:
+                    guardar_sueno_db(usuario_id, sleep_metrics)
+                    logger.info(f"  ✓ Sueño: {sleep_metrics.get('horas_totales')} h, Score: {sleep_metrics.get('score')}")
+                else:
+                    logger.info(f"  ℹ Sueño: No hay datos")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Error al obtener sueño: {e}")
+                sleep_metrics = None
+            
+            # Obtener métricas diarias
+            try:
+                daily_metrics = _extract_daily_metrics(client, fecha_iso)
+                if sleep_metrics:
+                    daily_metrics["sleep_score"] = sleep_metrics.get("score")
+                
+                # Agregar métricas de running si coinciden la fecha
+                if latest_running and latest_running.get("fecha") == fecha_iso:
+                    logger.info(f"  ↳ Agregando métricas de actividad running")
+                    daily_metrics.update({
+                        "potencia_media_w": latest_running.get("potencia_media_w"),
+                        "cadencia_media": latest_running.get("cadencia_media"),
+                        "longitud_zancada_m": latest_running.get("longitud_zancada_m"),
+                        "tiempo_contacto_ms": latest_running.get("tiempo_contacto_ms"),
+                        "oscilacion_vertical_cm": latest_running.get("oscilacion_vertical_cm"),
+                    })
+                
+                if not _has_useful_daily_metrics(daily_metrics):
+                    dias_vacios += 1
+                    logger.info("  ℹ Día sin métricas útiles (todo nulo): se omite para evitar ruido en el entrenador.")
+                    continue
 
-        daily_metrics = _extract_daily_metrics(client, fecha_iso)
-        if sleep_metrics:
-            daily_metrics["sleep_score"] = sleep_metrics.get("score")
+                # Guardar en BD
+                guardar_metricas_premium_db(usuario_id, daily_metrics)
+                logger.info(f"  ✓ Métricas guardadas en BD")
+                dias_sincronizados += 1
+                
+            except Exception as e:
+                logger.error(f"  ✗ Error al guardar métricas: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
+        
+        # Guardar última actividad running si aplica
+        if latest_running and latest_running.get("fecha"):
+            try:
+                guardar_metricas_premium_db(usuario_id, latest_running)
+                logger.info(f"✓ Última actividad running guardada")
+            except Exception as e:
+                logger.warning(f"⚠️  Error al guardar última actividad: {e}")
+        
+        if dias_sincronizados < target_days:
+            logger.warning(
+                f"⚠ Solo se encontraron {dias_sincronizados}/{target_days} días con datos útiles "
+                f"(días vacíos omitidos: {dias_vacios})."
+            )
 
-        if latest_running and latest_running.get("fecha") == fecha_iso:
-            daily_metrics.update({
-                "potencia_media_w": latest_running.get("potencia_media_w"),
-                "cadencia_media": latest_running.get("cadencia_media"),
-                "longitud_zancada_m": latest_running.get("longitud_zancada_m"),
-                "tiempo_contacto_ms": latest_running.get("tiempo_contacto_ms"),
-                "oscilacion_vertical_cm": latest_running.get("oscilacion_vertical_cm"),
-            })
+        logger.info(f"\n{'#'*80}")
+        logger.info(
+            f"✓ SINCRONIZACIÓN COMPLETADA: {dias_sincronizados} días útiles guardados "
+            f"(objetivo={target_days}, vacíos={dias_vacios})"
+        )
+        logger.info(f"{'#'*80}\n")
+        
+        return dias_sincronizados
+        
+    except GarminConnectAuthenticationError as e:
+        logger.error(f"\n❌ ERROR DE AUTENTICACIÓN: {e}\n")
+        raise RuntimeError(f"Error de autenticación Garmin: {e}")
+    except GarminConnectConnectionError as e:
+        logger.error(f"\n❌ ERROR DE CONEXIÓN: {e}\n")
+        raise RuntimeError(f"Error de conexión con Garmin: {e}")
+    except Exception as e:
+        logger.error(f"\n❌ ERROR INESPERADO: {e}\n")
+        import traceback
+        logger.debug(traceback.format_exc())
+        raise
 
-        guardar_metricas_premium_db(usuario_id, daily_metrics)
-        dias_sincronizados += 1
-
-    if latest_running and latest_running.get("fecha"):
-        guardar_metricas_premium_db(usuario_id, latest_running)
-
-    return dias_sincronizados
 
 if __name__ == "__main__":
     # Ejemplo de uso

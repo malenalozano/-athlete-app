@@ -28,10 +28,12 @@ export function Header() {
     : [];
 
   const restNavItems = [
+    { path: "/nutricion", label: "Nutrición" },
     { path: "/biblioteca", label: "Biblioteca Científica" },
     { path: "/diario-fuerza", label: "Diario de Fuerza" },
     { path: "/entrenador", label: "Entrenador Personal" },
     { path: "/calendario", label: "Calendario" },
+    { path: "/habit-tracker", label: "Habit Tracker" },
   ];
 
   const navItems = [...baseNavItems, ...cycleItem, ...restNavItems];

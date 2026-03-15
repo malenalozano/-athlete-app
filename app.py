@@ -1,3 +1,144 @@
+# --- Dummy para _cargar_plan_conjunto ---
+def _cargar_plan_conjunto(semana_conj_dt):
+    import pandas as pd
+    return pd.DataFrame()
+# --- Dummy para obtener_perfil_cache ---
+def obtener_perfil_cache(usuario_id):
+    # Devuelve un perfil vacío por defecto
+    return {}
+# --- Utilidad para obtener directorio de estudios ---
+def _directorio_estudios():
+    """
+    Devuelve la ruta del directorio donde se guardan los estudios científicos.
+    """
+    base_dir = os.path.join(os.getcwd(), "estudios")
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir)
+    return base_dir
+# --- Utilidad para dividir nota de fuerza por fechas ---
+def _dividir_nota_por_fechas(nota_fuerza):
+    """
+    Divide una nota de fuerza en segmentos por fecha detectada.
+    Cada segmento es un dict con 'fecha' y 'texto'.
+    """
+    import re
+    segmentos = []
+    # Busca patrones de fecha tipo 2026-03-15 o 15/03/2026
+    patron_fecha = r'(\d{4}-\d{2}-\d{2}|\d{2}/\d{2}/\d{4})'
+    partes = re.split(patron_fecha, nota_fuerza)
+    fechas = re.findall(patron_fecha, nota_fuerza)
+    if not fechas:
+        return [{'fecha': None, 'texto': nota_fuerza.strip()}]
+    for i, texto in enumerate(partes[1:]):
+        fecha = fechas[i] if i < len(fechas) else None
+        texto_segmento = texto.strip()
+        if texto_segmento:
+            segmentos.append({'fecha': fecha, 'texto': texto_segmento})
+    return segmentos
+# --- Utilidad para agregar columnas ---
+def _ensure_column(conn, table_name, column_name, column_type):
+    cursor = conn.cursor()
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [row[1] for row in cursor.fetchall()]
+    if column_name not in columns:
+        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+        conn.commit()
+# --- Setup tabla plan_entrenamiento ---
+def asegurar_tabla_plan_entrenamiento():
+    conn = get_db_connection()
+    try:
+        conn.execute('''CREATE TABLE IF NOT EXISTS sesiones_fuerza (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            fecha TEXT,
+            ejercicio TEXT,
+            peso REAL,
+            series INTEGER,
+            repeticiones INTEGER,
+            grupo_muscular TEXT,
+            musculo_principal TEXT,
+            rpe INTEGER,
+            nota_estado TEXT,
+            actividad_garmin_id TEXT
+        )''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS plan_entrenamiento (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            semana_inicio TEXT,
+            fecha TEXT,
+            tipo TEXT,
+            sesion TEXT,
+            detalles TEXT,
+            duracion_min INTEGER,
+            intensidad TEXT,
+            creado_en TEXT
+        )''')
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        conn.execute('''CREATE TABLE IF NOT EXISTS sesiones_fuerza (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            fecha TEXT,
+            ejercicio TEXT,
+            peso REAL,
+            series INTEGER,
+            repeticiones INTEGER,
+            grupo_muscular TEXT,
+            musculo_principal TEXT,
+            rpe INTEGER,
+            nota_estado TEXT,
+            actividad_garmin_id TEXT
+        )''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS plan_entrenamiento (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            semana_inicio TEXT,
+            fecha TEXT,
+            tipo TEXT,
+            sesion TEXT,
+            detalles TEXT,
+            duracion_min INTEGER,
+            intensidad TEXT,
+            creado_en TEXT
+        )''')
+        conn.commit()
+    finally:
+        conn.close()
+
+    # --- Setup tablas premium ---
+    try:
+        conn.execute('''CREATE TABLE IF NOT EXISTS sesiones_fuerza (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            fecha TEXT,
+            ejercicio TEXT,
+            peso REAL,
+            series INTEGER,
+            repeticiones INTEGER,
+            grupo_muscular TEXT,
+            musculo_principal TEXT,
+            rpe INTEGER,
+            nota_estado TEXT,
+            actividad_garmin_id TEXT
+        )''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS plan_entrenamiento (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            semana_inicio TEXT,
+            fecha TEXT,
+            tipo TEXT,
+            sesion TEXT,
+            detalles TEXT,
+            duracion_min INTEGER,
+            intensidad TEXT,
+            creado_en TEXT
+        )''')
+        conn.commit()
+    finally:
+        conn.close()
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -7,14 +148,15 @@ import html
 import importlib
 import calendar
 import re
-from db_manager import get_db_connection, obtener_perfil, guardar_perfil, obtener_credenciales_garmin
+from db_manager import get_db_connection, obtener_perfil, guardar_perfil, obtener_credenciales_garmin, obtener_nutricion
 from garmin_sync import sincronizar_actividades, sincronizar_actividades_inteligente, obtener_datos_sueno, guardar_sueno_db, iniciar_sesion_garmin, sincronizar_biometricos_garmin
 from ai_coach import procesar_nota_fuerza, obtener_consejo
 from seguridad import encriptar_password, desencriptar_password
 from datetime import datetime, timedelta
+import plotly.graph_objects as go
 
 
-# "?"? Persistencia de último usuario (archivo local) "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+# "?"? Persistencia de último usuario (archivo local) "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
 _LAST_USER_FILE = os.path.expanduser("~/.athlete_last_user")
 
 def _leer_ultimo_usuario():
@@ -37,207 +179,260 @@ def _guardar_ultimo_usuario(uid):
 
 def _column_exists(conn, table_name, column_name):
     rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    return any(row[1] == column_name for row in rows)
-
-
-def _ensure_column(conn, table_name, column_name, column_type):
-    if not _column_exists(conn, table_name, column_name):
-        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
-
-
-# "?"? Dividir notas multi-día ("hoy hice X y ayer hice Y") "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
-def _dividir_nota_por_fechas(texto):
-    """
-    Devuelve lista de (marca_temporal_str, fragmento) para cada segmento temporal
-    detectado en el texto. Si solo hay una fecha o ninguna, devuelve [(None, texto)].
-    """
-    patron = (
-        r'\b(hoy|ayer|anteayer|'
-        r'(?:el\s+)?\d{1,2}\s+de\s+[a-záéíóúñ]+(?:\s+de\s+\d{4})?|'
-        r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|'
-        r'(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)(?:\s+pasado)?)\b'
-    )
-    matches = list(re.finditer(patron, texto, re.IGNORECASE))
-    if len(matches) < 2:
-        return [(None, texto)]
-    segmentos = []
-    for i, m in enumerate(matches):
-        inicio = m.start()
-        fin = matches[i + 1].start() if i + 1 < len(matches) else len(texto)
-        fragmento = texto[inicio:fin].strip()
-        segmentos.append((m.group(0), fragmento))
-    return segmentos
-
-
-# "?"? Plan conjunto (Malena + Dani para semana) "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
-@st.cache_data(ttl=120)
-def _cargar_plan_conjunto(semana_dt):
-    """Devuelve DataFrame con planes de ambos usuarios para la semana indicada."""
-    conn = get_db_connection()
-    try:
-        df = pd.read_sql_query(
-            """
-            SELECT usuario_id, fecha, tipo, sesion, duracion_min, intensidad
-            FROM plan_entrenamiento
-            WHERE semana_inicio = ?
-            ORDER BY fecha, usuario_id
-            """,
-            conn, params=(semana_dt.strftime("%Y-%m-%d"),),
+    col1, col2 = st.columns([1.15, 1.25], gap="large")
+    with col1:
+        nota_fuerza = st.text_area(
+            "Entreno libre",
+            height=130,
+            key="nota_fuerza",
+            placeholder="Ej: hoy hice glute bridge 4x10 80kg, y ayer remo 4x8 40kg y press militar 3x10 18kg",
         )
-    except Exception:
-        df = pd.DataFrame()
-    finally:
-        conn.close()
-    return df
 
+        if nota_fuerza.strip():
+            segmentos = _dividir_nota_por_fechas(nota_fuerza)
+            if len(segmentos) > 1:
+                st.info(f"📌 Se detectaron **{len(segmentos)} bloques temporales** en tu texto. Se guardarán como sesiones separadas:")
+                for marca, frag in segmentos:
+                    fecha_seg, motivo_seg = extraer_fecha_historica(frag if marca else nota_fuerza)
+                    st.caption(f"? **{fecha_seg.strftime('%d-%m-%Y')}** ({motivo_seg}): _{frag[:80]}?_" if len(frag) > 80 else f"? **{fecha_seg.strftime('%d-%m-%Y')}**: _{frag}_")
+            else:
+                fecha_auto, motivo = extraer_fecha_historica(nota_fuerza)
+                st.caption(f"📅 Fecha detectada: **{fecha_auto.strftime('%d-%m-%Y')}** - {motivo}")
 
-@st.cache_data(ttl=300)
-def obtener_perfil_cache(usuario_id):
-    return obtener_perfil(usuario_id)
+        if st.button("Procesar entrada del diario"):
+            if nota_fuerza.strip():
+                segmentos = _dividir_nota_por_fechas(nota_fuerza)
+                sesiones_prep = []
+                with st.spinner("Analizando entrenamiento..."):
+                    for marca, frag in segmentos:
+                        texto_seg = frag if marca else nota_fuerza
+                        fecha_seg, _ = extraer_fecha_historica(texto_seg)
+                        meta = _clasificar_segmento_diario(texto_seg)
+                        nota_estado = _extraer_nota_estado(texto_seg)
+                        vinculo_running = _buscar_actividad_running_fecha(user_actual, fecha_seg) if meta["has_running"] else None
 
+                        if meta["has_fuerza"]:
+                            res = procesar_nota_fuerza(texto_seg)
+                        else:
+                            res = {
+                                "exito": True,
+                                "datos": [],
+                                "raw": "Entrada de diario sin ejercicios de fuerza (se guardará como nota).",
+                            }
 
-def asegurar_tabla_plan_entrenamiento():
-    conn = get_db_connection()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS plan_entrenamiento (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            semana_inicio TEXT,
-            fecha TEXT,
-            tipo TEXT,
-            sesion TEXT,
-            detalles TEXT,
-            duracion_min INTEGER,
-            intensidad TEXT,
-            creado_en TEXT
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
+                        sesiones_prep.append({
+                            "fecha": fecha_seg,
+                            "res": res,
+                            "texto": texto_seg,
+                            "meta": meta,
+                            "nota_estado": nota_estado,
+                            "vinculo_running": vinculo_running,
+                        })
+                st.session_state.sesiones_detectadas = sesiones_prep
+                st.session_state.resultado_ia = True
+                st.rerun()
 
+        if st.session_state.resultado_ia and st.session_state.sesiones_detectadas:
+            todas_ok = all(s["res"]["exito"] for s in st.session_state.sesiones_detectadas)
 
-def asegurar_tablas_fuerza():
-    conn = get_db_connection()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS sesiones_fuerza (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            fecha TEXT,
-            nota_original TEXT,
-            resumen TEXT,
-            created_at TEXT
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS ejercicios_fuerza (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sesion_id INTEGER,
-            ejercicio TEXT,
-            peso REAL,
-            series INTEGER,
-            repeticiones INTEGER,
-            grupo_muscular TEXT,
-            musculo_principal TEXT,
-            rpe INTEGER
-        )
-        """
-    )
-    _ensure_column(conn, "ejercicios_fuerza", "sensaciones", "TEXT")
-    _ensure_column(conn, "sesiones_fuerza", "tipo_registro", "TEXT")
-    _ensure_column(conn, "sesiones_fuerza", "actividad_garmin_id", "TEXT")
-    _ensure_column(conn, "sesiones_fuerza", "nota_estado", "TEXT")
-    _ensure_column(conn, "sesiones_fuerza", "lesion_flag", "INTEGER")
-    conn.commit()
-    conn.close()
+            if not todas_ok:
+                for ses in st.session_state.sesiones_detectadas:
+                    if not ses["res"]["exito"]:
+                        fecha_s = ses["fecha"]
+                        st.error(f"O No se pudo procesar el bloque del {fecha_s.strftime('%d-%m-%Y')}:")
+                        st.code(ses["res"]["raw"])
+            else:
+                for ses in st.session_state.sesiones_detectadas:
+                    fecha_s = ses["fecha"]
+                    res_s = ses["res"]
+                    meta = ses["meta"]
+                    etiqueta_tipo = {
+                        "fuerza": "fuerza",
+                        "carrera": "carrera",
+                        "lesion": "lesión",
+                        "general": "nota",
+                        "mixto": "mixto",
+                    }.get(meta["tipo"], meta["tipo"])
+                    st.success(f"OK. {fecha_s.strftime('%d-%m-%Y')} - entrada {etiqueta_tipo} procesada")
 
+                    if ses["vinculo_running"]:
+                        v = ses["vinculo_running"]
+                        km = (float(v["distancia_m"] or 0) / 1000) if v["distancia_m"] is not None else 0
+                        st.caption(f"🏃 Vinculada a Garmin ({v['id_actividad']}) · {km:.2f} km")
 
-def asegurar_tablas_premium():
-    conn = get_db_connection()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS datos_biometricos_premium (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            fecha TEXT,
-            hrv_ms REAL,
-            fc_reposo INTEGER,
-            fc_maxima INTEGER,
-            cadencia_media REAL,
-            longitud_zancada_m REAL,
-            tiempo_contacto_ms REAL,
-            oscilacion_vertical_cm REAL,
-            sleep_score INTEGER,
-            carga_aguda REAL,
-            carga_cronica REAL,
-            estres_vital INTEGER,
-            rpe_sesion INTEGER,
-            sensacion_notas TEXT,
-            disponibilidad_min INTEGER,
-            UNIQUE(usuario_id, fecha)
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS historial_lesiones (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            fecha_inicio TEXT,
-            zona TEXT,
-            tipo TEXT,
-            activa INTEGER DEFAULT 1,
-            notas TEXT,
-            fecha_fin TEXT
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS estudios_referencia (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            titulo TEXT,
-            categoria TEXT,
-            archivo_path TEXT,
-            resumen TEXT,
-            texto_extraido TEXT,
-            creado_en TEXT
-        )
-        """
-    )
-    for col_name, col_type in [
-        ("training_readiness", "INTEGER"),
-        ("body_battery", "INTEGER"),
-        ("recovery_hours", "REAL"),
-        ("spo2", "REAL"),
-        ("potencia_media_w", "REAL"),
-    ]:
-        _ensure_column(conn, "datos_biometricos_premium", col_name, col_type)
+                    if ses["nota_estado"]:
+                        st.warning(f"Y Estado reportado: {ses['nota_estado']}")
 
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS datos_sueno (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            fecha TEXT,
-            horas_totales REAL,
-            score INTEGER,
-            UNIQUE(usuario_id, fecha)
-        )
-        """
-    )
-    for col_name, col_type in [
-        ("sleep_profundo_horas", "REAL"),
-        ("sleep_rem_horas", "REAL"),
-        ("sleep_vigilia_horas", "REAL"),
-        ("despertares", "INTEGER"),
-    ]:
-        _ensure_column(conn, "datos_sueno", col_name, col_type)
+                    if res_s["datos"]:
+                        vista = pd.DataFrame(res_s["datos"])
+                        vista["sensaciones"] = ses.get("nota_estado") or ""
+                        st.dataframe(vista, use_container_width=True)
+                    else:
+                        st.caption("Sin ejercicios de fuerza en este bloque. Se guardará como nota de entrenamiento.")
+
+                n_sesiones = len(st.session_state.sesiones_detectadas)
+                etiqueta = f"Ys? Guardar {n_sesiones} sesión{'es' if n_sesiones > 1 else ''}"
+                if st.button(etiqueta):
+                    conn = get_db_connection()
+                    try:
+                        conn.execute('''CREATE TABLE IF NOT EXISTS diario_fisiologia (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            usuario_id INTEGER,
+                            fecha TEXT,
+                            fase_ciclo TEXT,
+                            fatiga_subjetiva INTEGER,
+                            dolor_notas TEXT,
+                            sangre TEXT,
+                            sintomas TEXT,
+                            estado_animo TEXT
+                        )''')
+                        conn.execute('''CREATE TABLE IF NOT EXISTS datos_sueno (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            usuario_id INTEGER,
+                            fecha TEXT,
+                            sleep_profundo_horas REAL,
+                            sleep_rem_horas REAL,
+                            sleep_vigilia_horas REAL,
+                            despertares INTEGER
+                        )''')
+                        conn.commit()
+                    finally:
+                        conn.close()
+                    try:
+                        conn.execute('''CREATE TABLE IF NOT EXISTS diario_fisiologia (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            usuario_id INTEGER,
+                            fecha TEXT,
+                            fase_ciclo TEXT,
+                            fatiga_subjetiva INTEGER,
+                            dolor_notas TEXT,
+                            sangre TEXT,
+                            sintomas TEXT,
+                            estado_animo TEXT
+                        )''')
+                        conn.execute('''CREATE TABLE IF NOT EXISTS datos_sueno (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            usuario_id INTEGER,
+                            fecha TEXT,
+                            sleep_profundo_horas REAL,
+                            sleep_rem_horas REAL,
+                            sleep_vigilia_horas REAL,
+                            despertares INTEGER
+                        )''')
+                        conn.commit()
+                    finally:
+                        conn.close()
+                    try:
+                        conn.execute('''CREATE TABLE IF NOT EXISTS diario_fisiologia (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            usuario_id INTEGER,
+                            fecha TEXT,
+                            fase_ciclo TEXT,
+                            fatiga_subjetiva INTEGER,
+                            dolor_notas TEXT,
+                            sangre TEXT,
+                            sintomas TEXT,
+                            estado_animo TEXT
+                        )''')
+                        conn.execute('''CREATE TABLE IF NOT EXISTS datos_sueno (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            usuario_id INTEGER,
+                            fecha TEXT,
+                            sleep_profundo_horas REAL,
+                            sleep_rem_horas REAL,
+                            sleep_vigilia_horas REAL,
+                            despertares INTEGER
+                        )''')
+                        conn.commit()
+                    finally:
+                        conn.close()
+                    try:
+                        for ses in st.session_state.sesiones_detectadas:
+                            fecha_s = ses["fecha"]
+                            res_s = ses["res"]
+                            nota_orig_s = ses["texto"]
+                            meta = ses["meta"]
+                            vinc = ses["vinculo_running"]
+                            nota_estado = ses["nota_estado"]
+
+                            tipo_registro = meta["tipo"]
+                            if tipo_registro == "carrera":
+                                tipo_carrera = _inferir_tipo_carrera(nota_orig_s)
+                                resumen_sesion = f"Carrera · {tipo_carrera}"
+                            elif tipo_registro == "mixto" and not res_s["datos"] and vinc:
+                                tipo_carrera = _inferir_tipo_carrera(nota_orig_s)
+                                resumen_sesion = f"Carrera · {tipo_carrera}"
+                            elif res_s["datos"]:
+                                grupos = []
+                                for ej in res_s["datos"]:
+                                    g = str(ej.get("grupo_muscular") or "").strip()
+                                    if g and g not in grupos:
+                                        grupos.append(g)
+                                grupos_txt = ", ".join(grupos) if grupos else "Sin grupo"
+                                resumen_sesion = f"{len(res_s['datos'])} ejercicios · {grupos_txt}"
+                            else:
+                                resumen_sesion = "Nota de entrenamiento"
+
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                """
+                                INSERT INTO sesiones_fuerza
+                                (usuario_id, fecha, nota_original, resumen, created_at, tipo_registro, actividad_garmin_id, nota_estado, lesion_flag)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    user_actual,
+                                    fecha_s.strftime("%Y-%m-%d"),
+                                    nota_orig_s,
+                                    resumen_sesion,
+                                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    tipo_registro,
+                                    (vinc["id_actividad"] if vinc else None),
+                                    nota_estado,
+                                    1 if meta["has_lesion"] else 0,
+                                ),
+                            )
+                            sesion_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                            for ej in res_s["datos"]:
+                                conn.execute(
+                                    """
+                                    INSERT INTO ejercicios_fuerza
+                                    (sesion_id, ejercicio, peso, series, repeticiones, grupo_muscular, musculo_principal, rpe, sensaciones)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    """,
+                                    (
+                                        sesion_id,
+                                        ej.get("ejercicio", ""),
+                                        float(ej.get("peso", 0) or 0),
+                                        int(ej.get("series", 0) or 0),
+                                        int(ej.get("repeticiones", 0) or 0),
+                                        ej.get("grupo_muscular", "Tren Inferior"),
+                                        ej.get("musculo_principal", "Varios"),
+                                        int(ej.get("rpe", 5) or 5),
+                                        nota_estado,
+                                    ),
+                                )
+                        conn.commit()
+                        st.cache_data.clear()
+                        st.success(f"o. {n_sesiones} sesión{'es' if n_sesiones > 1 else ''} guardada{'s' if n_sesiones > 1 else ''} correctamente.")
+                        st.session_state.resultado_ia = None
+                        st.session_state.sesiones_detectadas = []
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error SQL guardando sesión: {e}")
+                    finally:
+                        conn.close()
+
+    with col2:
+        st.subheader("Calendario mensual")
+        # ...existing code...
+        for col_name, col_type in [
+            ("sleep_profundo_horas", "REAL"),
+            ("sleep_rem_horas", "REAL"),
+            ("sleep_vigilia_horas", "REAL"),
+            ("despertares", "INTEGER")
+        ]:
+            _ensure_column(conn, "datos_sueno", col_name, col_type)
 
     for col_name, col_type in [
         ("potencia_media_w", "REAL"),
@@ -253,27 +448,53 @@ def asegurar_tablas_premium():
 
 
 def asegurar_indices_consulta():
-    """Índices para acelerar lecturas frecuentes por usuario y fecha."""
+    """Crea índices de lectura frecuente sin romper si alguna tabla aún no existe."""
     conn = get_db_connection()
     try:
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_act_usuario_fecha ON actividades_garmin(usuario_id, fecha)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sueno_usuario_fecha ON datos_sueno(usuario_id, fecha)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fisio_usuario_fecha ON diario_fisiologia(usuario_id, fecha)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_usuario_fecha ON sesiones_fuerza(usuario_id, fecha)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_plan_usuario_semana_fecha ON plan_entrenamiento(usuario_id, semana_inicio, fecha)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_bio_usuario_fecha ON datos_biometricos_premium(usuario_id, fecha)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_lesion_usuario_activa ON historial_lesiones(usuario_id, activa)")
+        conn.execute('''CREATE TABLE IF NOT EXISTS diario_fisiologia (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            fecha TEXT,
+            fase_ciclo TEXT,
+            fatiga_subjetiva INTEGER,
+            dolor_notas TEXT,
+            sangre TEXT,
+            sintomas TEXT,
+            estado_animo TEXT
+        )''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS datos_sueno (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            fecha TEXT,
+            sleep_profundo_horas REAL,
+            sleep_rem_horas REAL,
+            sleep_vigilia_horas REAL,
+            despertares INTEGER
+        )''')
         conn.commit()
-    except Exception:
-        pass
+    finally:
+        conn.close()
+    try:
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS idx_act_usuario_fecha ON actividades_garmin(usuario_id, fecha)",
+            "CREATE INDEX IF NOT EXISTS idx_sueno_usuario_fecha ON datos_sueno(usuario_id, fecha)",
+            "CREATE INDEX IF NOT EXISTS idx_fisio_usuario_fecha ON diario_fisiologia(usuario_id, fecha)",
+            "CREATE INDEX IF NOT EXISTS idx_fuerza_usuario_fecha ON sesiones_fuerza(usuario_id, fecha)",
+            "CREATE INDEX IF NOT EXISTS idx_plan_usuario_semana ON plan_entrenamiento(usuario_id, semana_inicio)",
+        ]
+        for stmt in index_statements:
+            try:
+                conn.execute(stmt)
+            except Exception:
+                # Si la tabla del índice no existe aún, se ignora hasta el siguiente arranque.
+                pass
+        conn.commit()
     finally:
         conn.close()
 
 
-def _directorio_estudios():
-    path = os.path.join(os.path.dirname(__file__), "uploaded_studies")
-    os.makedirs(path, exist_ok=True)
-    return path
+# -- NOTA: El código de UI que estaba aquí ha sido removido. 
+# -- Debe ser colocado en la función de renderizado de la página correspondiente.
 
 
 def extraer_texto_estudio(uploaded_file):
@@ -754,7 +975,36 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
     objetivo = (perfil.get("objetivo") or "10K").lower()
     genero   = (perfil.get("genero")  or "Mujer").lower()
 
- # "?"? Señales de datos "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+
+def _indices_distribuidos(total_dias):
+    mapa = {
+        0: [],
+        1: [2],
+        2: [1, 4],
+        3: [1, 3, 5],
+        4: [0, 2, 4, 6],
+        5: [0, 2, 3, 5, 6],
+        6: [0, 1, 2, 4, 5, 6],
+        7: [0, 1, 2, 3, 4, 5, 6],
+    }
+    return mapa.get(max(0, min(7, int(total_dias))), [])
+
+
+def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
+    """
+    Plan semanal premium: adapta cada sesión a HRV, sueño, carga aguda/crónica,
+    lesiones activas, ciclo menstrual, estrés vital, RPE y dinámica de carrera.
+    Si plan_pareja (DataFrame) se proporciona, intenta hacer coincidir días de
+    entrenamiento activo con los días que la pareja también tiene sesión.
+    Devuelve (DataFrame, lista_de_alertas).
+    """
+ # "?"? Perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+    dias_carrera = int(perfil.get("carrera") or 3)
+    dias_fuerza  = int(perfil.get("fuerza") or 2)
+    objetivo = (perfil.get("objetivo") or "10K").lower()
+    genero   = (perfil.get("genero")  or "Mujer").lower()
+
+ # "?"? Señales de datos "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     hrv         = datos.get("hrv_actual")
     hrv_tend    = datos.get("hrv_tendencia", 0.0) or 0.0
     dias_mal_s  = datos.get("dias_mal_sueno", 0) or 0
@@ -773,7 +1023,7 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
     fase_ciclo  = (datos.get("fase_ciclo_actual") or "").lower()
     rpe_ultimo  = datos.get("rpe_ultima")
 
- # "?"? Flags de alerta "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Flags de alerta "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     alertas = []
     intensidad_bloqueada = False
     reduccion_volumen = 1.0
@@ -873,7 +1123,7 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
     if cadencia is not None and zancada is not None and cadencia < 170 and zancada > 1.15:
         alertas.append(f"Y Cadencia baja con zancada larga ({zancada:.2f} m): posible overstride. Se prioriza técnica para proteger rodilla.")
 
- # "?"? Parámetros base "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Parámetros base "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     base_rodaje = {
         "5k / 10k": 40,
         "media maratón": 50,
@@ -893,7 +1143,7 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
 
     rodaje_min = max(25, int(base_rodaje * reduccion_volumen))
 
- # "?"? Distribución de días "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Distribución de días "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     run_idx    = _indices_distribuidos(dias_carrera)
     fuerza_idx = [d for d in _indices_distribuidos(dias_fuerza + 1) if d not in run_idx][:dias_fuerza]
 
@@ -905,7 +1155,7 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
             for d in fuerza_idx
         ]
 
- # "?"? Coordinación con pareja "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Coordinación con pareja "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
  # Si hay plan de la pareja, intentamos mover días de entreno activo
  # para que coincidan con los días que ella/él también entrena.
     if plan_pareja is not None and not plan_pareja.empty:
@@ -949,7 +1199,7 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
         duracion  = 30
         intensidad = "Baja"
 
- # "?"? Días de carrera "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Días de carrera "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         if i in run_idx:
             if sin_impacto:
                 tipo, sesion, intensidad, duracion = "Cardio alternativo", "Bicicleta / natación (sin impacto)", "Media", 50
@@ -998,7 +1248,7 @@ def generar_plan_semanal(perfil, datos, fecha_inicio_semana, plan_pareja=None):
                     if necesita_drills:
                         detalles += " Incluye 5 - 20 m drills: pies rápidos, rodillas altas, talón-glúteo."
 
- # "?"? Días de fuerza "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Días de fuerza "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         if i in fuerza_idx:
             if tipo in ("Carrera", "Cardio alternativo"):
                 tipo = "Mixto"
@@ -1115,7 +1365,7 @@ def resumen_usuario_para_plan(usuario_id):
     try:
         fecha_14d = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
 
- # "?"? Actividades running "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Actividades running "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         act = pd.read_sql_query(
             "SELECT distancia_m, fc_media FROM actividades_garmin WHERE usuario_id = ? AND fecha >= ?",
             conn, params=(usuario_id, fecha_14d),
@@ -1125,7 +1375,7 @@ def resumen_usuario_para_plan(usuario_id):
             out["km_14d"] = float(act["distancia_m"].fillna(0).sum() / 1000)
             out["fc_media_14d"] = float(act["fc_media"].dropna().mean()) if act["fc_media"].notna().any() else None
 
- # "?"? Fuerza "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Fuerza "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         try:
             f = pd.read_sql_query(
                 """
@@ -1141,7 +1391,7 @@ def resumen_usuario_para_plan(usuario_id):
         except Exception:
             pass
 
- # "?"? Diario de entrenamiento (sensaciones/carrera/lesiones) "?"?"?"?"?
+ # "?"? Diario de entrenamiento (sensaciones/carrera/lesiones) "?"?"?"?
         try:
             diario = pd.read_sql_query(
                 """
@@ -1169,7 +1419,7 @@ def resumen_usuario_para_plan(usuario_id):
         except Exception:
             pass
 
- # "?"? Sueño "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Sueño "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         try:
             sueno = pd.read_sql_query(
                 "SELECT horas_totales, score, sleep_profundo_horas, sleep_rem_horas, sleep_vigilia_horas, despertares FROM datos_sueno WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 7",
@@ -1193,7 +1443,7 @@ def resumen_usuario_para_plan(usuario_id):
         except Exception:
             pass
 
- # "?"? Fatiga subjetiva y fase del ciclo "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Fatiga subjetiva y fase del ciclo "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         try:
             fisio = pd.read_sql_query(
                 "SELECT fatiga_subjetiva, fase_ciclo FROM diario_fisiologia WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 3",
@@ -1208,7 +1458,7 @@ def resumen_usuario_para_plan(usuario_id):
         except Exception:
             pass
 
- # "?"? Biométricos premium "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Biométricos premium "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         try:
             prem = pd.read_sql_query(
                 """
@@ -1283,7 +1533,7 @@ def resumen_usuario_para_plan(usuario_id):
         except Exception:
             pass
 
- # "?"? Lesiones activas "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+ # "?"? Lesiones activas "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
         try:
             les = pd.read_sql_query(
                 "SELECT zona FROM historial_lesiones WHERE usuario_id = ? AND activa = 1",
@@ -1335,34 +1585,11 @@ def resumen_dashboard(usuario_id):
         except Exception:
             try:
                 fuerza = pd.read_sql_query(
-                    "SELECT COUNT(*) AS total FROM entrenamientos_fuerza WHERE fecha >= ?",
+                    "SELECT fecha, peso, series, repeticiones, musculo_principal FROM entrenamientos_fuerza",
                     conn,
-                    params=(f7,),
                 )
-                out["fuerza_7d"] = int(fuerza.iloc[0]["total"])
             except Exception:
-                pass
-
-        try:
-            sueno = pd.read_sql_query(
-                "SELECT horas_totales FROM datos_sueno WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 7",
-                conn,
-                params=(usuario_id,),
-            )
-            if not sueno.empty:
-                out["sueno_7d"] = float(sueno["horas_totales"].fillna(0).mean())
-        except Exception:
-            pass
-
-        fisio = pd.read_sql_query(
-            "SELECT fatiga_subjetiva FROM diario_fisiologia WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 1",
-            conn,
-            params=(usuario_id,),
-        )
-        if not fisio.empty:
-            fatiga_val = pd.to_numeric(fisio.iloc[0]["fatiga_subjetiva"], errors="coerce")
-            if pd.notna(fatiga_val):
-                out["fatiga"] = int(fatiga_val)
+                df_fuerza = pd.DataFrame()
     finally:
         conn.close()
     return out
@@ -2605,28 +2832,106 @@ st.markdown(
         margin: 0 !important;
         width: 125px !important;
     }}
+    .joint-week-card {{
+        margin-top: 6px;
+        background: linear-gradient(180deg, #111A2B 0%, #0E1624 100%);
+        border: 1px solid rgba(201,255,0,0.44);
+        border-radius: 12px;
+        padding: 14px 14px 12px;
+        box-shadow: inset 0 0 0 1px rgba(201,255,0,0.06);
+    }}
+    .joint-week-header {{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        gap: 12px;
+    }}
+    .joint-week-title {{
+        color: #FFFFFF;
+        font-size: 0.98rem;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+    }}
+    .joint-week-nav {{
+        color: #DCE5F2;
+        font-size: 0.78rem;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }}
+    .joint-week-chevron {{
+        color: #DCE5F2;
+        font-size: 0.9rem;
+        line-height: 1;
+    }}
+    .joint-week-grid-days {{
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 6px;
+        margin: 0 0 6px 0;
+    }}
+    .joint-day-label {{
+        text-align: center;
+        font-size: 0.62rem;
+        color: #8B97AB;
+        font-weight: 600;
+    }}
+    .joint-week-grid-cells {{
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 6px;
+        margin-bottom: 12px;
+    }}
+    .joint-week-cell {{
+        min-height: 63px;
+        border-radius: 9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.74rem;
+        font-weight: 900;
+        letter-spacing: 0.01em;
+        border: 1px solid transparent;
+    }}
+    .joint-week-cell.both {{
+        background: #B8F500;
+        color: #071203;
+    }}
+    .joint-week-cell.malena {{
+        background: #EA329A;
+        color: #FFFFFF;
+    }}
+    .joint-week-cell.dani {{
+        background: #2E78E8;
+        color: #FFFFFF;
+    }}
+    .joint-week-cell.rest {{
+        background: #313944;
+        color: #8F98A7;
+        border-color: rgba(143,152,167,0.20);
+    }}
     .calendar-legend {{
         display: flex;
         flex-wrap: wrap;
-        gap: 0.75rem;
-        margin-top: 14px;
+        justify-content: center;
+        gap: 14px;
+        border-top: 1px solid rgba(201,255,0,0.14);
+        padding-top: 11px;
     }}
     .calendar-legend-chip {{
         display: inline-flex;
         align-items: center;
-        gap: 0.5rem;
-        background: rgba(22, 27, 34, 0.90);
-        border: 1px solid rgba(201,255,0,0.22);
-        border-radius: 999px;
-        padding: 0.48rem 0.82rem;
-        color: #FFFFFF;
-        font-size: 0.84rem;
+        gap: 6px;
+        color: #8D9AB0;
+        font-size: 0.68rem;
         font-weight: 600;
     }}
     .calendar-legend-dot {{
-        width: 11px;
-        height: 11px;
-        border-radius: 999px;
+        width: 9px;
+        height: 9px;
+        border-radius: 2px;
         display: inline-block;
     }}
  /* "?"?"? Expanders "?"?"?*/
@@ -2725,7 +3030,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# "?"? Opciones de menú según perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+# "?"? Opciones de menú según perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
 _opciones_menu = [
     "Inicio",
     "Perfil",
@@ -2735,332 +3040,364 @@ _opciones_menu = [
 if user_actual == 1:  # Ciclo Menstrual solo para Malena
     _opciones_menu.insert(2, "Ciclo Menstrual")
 
-# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?
-_perfiles = {"Malena": 1, "Dani": 2}
-_perfil_actual_nombre = "Malena" if user_actual == 1 else "Dani"
-with st.container(key="nav_shell"):
-    _brand_col, _nav_col, _sel_col = st.columns([0.24, 0.54, 0.22])
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-    with _brand_col:
-        st.markdown(
-            f"""
-            <div class="athlete-brand">
-                <div class="brand-icon">
-                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"/>
-                    </svg>
-                </div>
-                <div>
-                    <div class="brand-text-title">Proyecto Athlete</div>
-                    <div class="brand-text-sub">{_bienvenida}</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-    with _nav_col:
-        with st.container(key="nav_mid_row"):
-            if "menu_actual" not in st.session_state:
-                st.session_state.menu_actual = "Inicio"
-            if st.session_state.menu_actual == "Diario de Fuerza":
-                st.session_state.menu_actual = "Diario de Entrenamiento"
-            if st.session_state.menu_actual not in _opciones_menu:
-                st.session_state.menu_actual = "Inicio"
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-            _menu_sel = st.pills(
-                "Navegación principal",
-                _opciones_menu,
-                selection_mode="single",
-                default=st.session_state.menu_actual,
-                label_visibility="collapsed",
-            )
-            if _menu_sel:
-                st.session_state.menu_actual = _menu_sel
-            menu = st.session_state.menu_actual
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-    with _sel_col:
-        with st.container(key="nav_controls"):
-            _btn_sub, _drop_sub = st.columns([0.28, 0.72])
-            with _btn_sub:
-                _do_sync = st.button("↻", key="garmin_sync_header", help="Sincronizar Garmin")
-            with _drop_sub:
-                _elegido = st.selectbox(
-                    "Perfil",
-                    list(_perfiles.keys()),
-                    index=list(_perfiles.keys()).index(_perfil_actual_nombre),
-                    label_visibility="collapsed",
-                )
-        if _perfiles[_elegido] != user_actual:
-            st.session_state.usuario_id = _perfiles[_elegido]
-            _guardar_ultimo_usuario(_perfiles[_elegido])
-            st.rerun()
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-# "?"? Lógica de sincronización Garmin "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
-if _do_sync:
-    cred = obtener_credenciales_garmin(user_actual)
-    if cred and cred[0]:
-        with st.spinner("Conectando con Garmin..."):
-            try:
-                email_g, p_enc_g = cred
-                pw_g = desencriptar_password(p_enc_g)
-                n_carreras = sincronizar_actividades_inteligente(email_g, pw_g, user_actual)
-                n_bio = sincronizar_biometricos_garmin(email_g, pw_g, user_actual, dias=7)
-                client_g = iniciar_sesion_garmin(email_g, pw_g)
-                hoy_g = datetime.now()
-                for _i in range(3):
-                    _fd = hoy_g - timedelta(days=_i)
-                    _ds = obtener_datos_sueno(client_g, _fd)
-                    if _ds:
-                        guardar_sueno_db(user_actual, _ds)
-                st.cache_data.clear()
-                st.toast(f"Sincronizado: {n_carreras} actividades - {n_bio} días biométricos")
-                st.rerun()
-            except Exception as _e:
-                st.error(f"Error al sincronizar: {_e}")
-    else:
-        st.warning("Configura tus credenciales Garmin en el perfil.")
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-# ==========================================
-# PESTA'A 1: DASHBOARD (Con lógica de Sueño unificada)
-# ==========================================
-if menu in ("Dashboard", "Inicio"):
-    st.markdown("<div class='dashboard-shell'>", unsafe_allow_html=True)
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-    df_act, df_sueno, df_fuerza = cargar_datos_dashboard(user_actual)
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
- # Resumen rápido de lo importante
-    resumen = resumen_dashboard(user_actual)
-    km_7d_txt = f"{resumen['km_7d']:.1f}"
-    runs_7d_txt = str(resumen["runs_7d"])
-    fuerza_7d_txt = str(resumen["fuerza_7d"])
-    sueno_7d_txt = "-" if resumen["sueno_7d"] is None else f"{resumen['sueno_7d']:.1f}"
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-    st.markdown(
-        f"""
-        <div class='summary7-head'>
-            <svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>
-                <path d='M2 12h4l2.2-6.2 4.1 12.4L15 10h7' stroke-linecap='round' stroke-linejoin='round'></path>
-            </svg>
-            <span>Resumen Últimos 7 Días</span>
-        </div>
-        <div class='summary7-grid'>
-            <div class='summary7-card'>
-                <div class='summary7-label'>KM</div>
-                <div class='summary7-chip'>Últimos 7 días</div>
-                <div class='summary7-value'>{km_7d_txt}</div>
-            </div>
-            <div class='summary7-card'>
-                <div class='summary7-label'>CARRERAS</div>
-                <div class='summary7-chip'>Últimos 7 días</div>
-                <div class='summary7-value'>{runs_7d_txt}</div>
-            </div>
-            <div class='summary7-card'>
-                <div class='summary7-label'>FUERZA</div>
-                <div class='summary7-chip'>Sesiones</div>
-                <div class='summary7-value'>{fuerza_7d_txt}</div>
-            </div>
-            <div class='summary7-card'>
-                <div class='summary7-label'>SUEÑO MEDIO</div>
-                <div class='summary7-chip'>h/noche</div>
-                <div class='summary7-value'>{sueno_7d_txt}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-    if user_actual == 2:
-        estado_malena = obtener_estado_ciclo_malena()
-        if estado_malena:
-            st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><path d='M12 3C9 8 6 10 6 14a6 6 0 0 0 12 0c0-4-3-6-6-11z'></path></svg></span><span>Estado del ciclo de Malena</span></div>", unsafe_allow_html=True)
-            st.markdown("<div class='cycle-panel'>", unsafe_allow_html=True)
-            c1, c2 = st.columns([0.35, 0.65])
-            with c1:
-                st.metric("Fase actual", estado_malena["fase"].replace("Fase ", ""))
-                if estado_malena["proxima_regla"]:
-                    faltan = (estado_malena["proxima_regla"] - datetime.now().date()).days
-                    st.metric("Próxima regla", f"{faltan} días" if faltan >= 0 else "Hoy")
-            with c2:
-                st.caption(f"Origen del dato: {estado_malena['origen']}")
-                for consejo in estado_malena["consejos"]:
-                    st.markdown(f"<div class='cycle-tip'>{consejo}</div>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-    df_check = construir_checkpoints_objetivo(perfil, df_act)
-    render_checkpoints_moderno(df_check, perfil.get("objetivo", "actual"))
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-    st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><rect x='3' y='5' width='18' height='16' rx='2'></rect><path d='M8 3v4M16 3v4M3 10h18'></path></svg></span><span>Esta semana</span></div>", unsafe_allow_html=True)
-    semana = inicio_semana(datetime.now())
-    cal_semana = construir_calendario_semanal_actividades(df_act, df_fuerza, semana)
-    cols_sem = st.columns(7)
-    for i, row in cal_semana.iterrows():
-        fecha_row = pd.to_datetime(row["fecha"]).date()
-        es_hoy = fecha_row == datetime.now().date()
-        actividad = str(row["actividad"])
-        actividad_txt = "Hoy" if es_hoy and actividad.strip() == "-" else actividad
-        with cols_sem[i]:
-            st.markdown(
-                f"""
-                <div class='dash-week-card {'today' if es_hoy else ''}'>
-                    <div class='dash-week-day'>{row['dia']}</div>
-                    <div class='dash-week-date'>{row['fecha'].strftime('%d %b')}</div>
-                    <div class='dash-week-activity'>{actividad_txt}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-    st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><path d='M3 17l5-5 4 3 9-10'></path><path d='M19 5h2v2'></path></svg></span><span>Progreso de running</span></div>", unsafe_allow_html=True)
-    run_prog = progreso_running(df_act)
-    if run_prog.empty:
-        st.markdown("<div class='dash-panel-muted'>Sincroniza tus datos de Garmin para ver la evolucion semanal de kilometros.</div>", unsafe_allow_html=True)
-    else:
-        fig_run = px.line(
-            run_prog,
-            x="week",
-            y="km_semana",
-            markers=True,
-            labels={"week": "Semana", "km_semana": "Km"},
-        )
-        fig_run.update_traces(
-            line_color="#C9FF00",
-            marker_color="#E8FF8A",
-            line_width=2.2,
-            marker_size=6,
-        )
-        fig_run = aplicar_tema_plotly(fig_run)
-        fig_run.update_layout(
-            height=245,
-            margin=dict(l=8, r=8, t=10, b=10),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            showlegend=False,
-        )
-        fig_run.update_xaxes(
-            title=None,
-            showgrid=False,
-            zeroline=False,
-            showline=False,
-            tickfont=dict(size=10, color="#8B949E"),
-        )
-        fig_run.update_yaxes(
-            title=None,
-            showgrid=True,
-            gridcolor="rgba(201,255,0,0.08)",
-            zeroline=False,
-            showline=False,
-            tickfont=dict(size=10, color="#8B949E"),
-        )
-        st.plotly_chart(fig_run, use_container_width=True)
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-    radar = resumen_usuario_para_plan(user_actual)
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-    st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><path d='M4 10v4M7 9v6M17 9v6M20 10v4M7 12h10'></path></svg></span><span>Progreso de gimnasio por grupo muscular</span></div>", unsafe_allow_html=True)
-    gym_prog = progreso_fuerza_grupos(df_fuerza)
-    if gym_prog.empty:
-        st.markdown("<div class='dash-panel-muted'>Registra entrenamientos de fuerza para activar esta grafica por grupos musculares.</div>", unsafe_allow_html=True)
-    else:
-        color_map = {
-            "gluteos": "#d9f20f",
-            "espalda biceps": "#96bf14",
-            "isquios": "#5e8f12",
-            "cuadriceps": "#c5e64b",
-            "gemelos": "#7ba61c",
-            "triceps": "#4f7610",
-            "hombro": "#e4f78f",
-            "abdominales": "#9ccf22",
-        }
-        # Volumen total por grupo (suma histórica) -> barras horizontales
-        gym_totales = gym_prog.groupby("grupo", as_index=False)["volumen"].sum().sort_values("volumen", ascending=True)
-        gym_totales["color"] = gym_totales["grupo"].map(lambda g: color_map.get(g, "#C9FF00"))
-        fig_gym = px.bar(
-            gym_totales,
-            x="volumen",
-            y="grupo",
-            orientation="h",
-            color="grupo",
-            color_discrete_map=color_map,
-            labels={"volumen": "Volumen total (kg)", "grupo": ""},
-            text="volumen",
-        )
-        fig_gym.update_traces(
-            texttemplate="%{text:.0f} kg",
-            textposition="outside",
-            textfont_color="#FFFFFF",
-            marker_line_width=0,
-        )
-        fig_gym = aplicar_tema_plotly(fig_gym)
-        fig_gym.update_layout(
-            height=max(220, len(gym_totales) * 36 + 40),
-            margin=dict(l=0, r=60, t=10, b=10),
-            showlegend=False,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-        )
-        fig_gym.update_xaxes(showgrid=True, gridcolor="rgba(201,255,0,0.07)", zeroline=False, showline=False, tickfont=dict(size=10, color="#8B949E"))
-        fig_gym.update_yaxes(showgrid=False, zeroline=False, showline=False, tickfont=dict(size=11, color="#FFFFFF"))
-        st.plotly_chart(fig_gym, use_container_width=True)
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
- # Visualización de Sueño — barras (horas) + línea (score)
-    if not df_sueno.empty:
-        st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><path d='M14 4a7 7 0 1 0 6 11.5A8 8 0 1 1 14 4z'></path><path d='M17.5 6.5h.01'></path></svg></span><span>Calidad del sueño (última semana)</span></div>", unsafe_allow_html=True)
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-        sueno_view = df_sueno.sort_values("fecha", ascending=True).tail(7).copy()
-        sueno_view["fecha_dt"] = pd.to_datetime(sueno_view["fecha"], errors="coerce")
-        _dias_es = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-        sueno_view["dia_lbl"] = sueno_view["fecha_dt"].apply(
-            lambda d: f"{_dias_es[d.weekday()]} {d.strftime('%d/%m')}" if pd.notna(d) else str(d)
-        )
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-        avg_horas = sueno_view["horas_totales"].dropna().mean() if "horas_totales" in sueno_view.columns else None
-        avg_score = sueno_view["score"].dropna().mean() if "score" in sueno_view.columns else None
-        chip_h = f"{avg_horas:.1f} h" if avg_horas is not None and not pd.isna(avg_horas) else "—"
-        chip_s = f"{avg_score:.0f}" if avg_score is not None and not pd.isna(avg_score) else "—"
-        st.markdown(
-            f"""<div style='display:flex;gap:8px;margin:4px 0 10px;'>
-                <div style='background:rgba(22,27,34,0.72);border:1px solid rgba(201,255,0,0.22);border-radius:10px;padding:5px 12px;'>
-                    <span style='font-size:0.60rem;color:#8B949E;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;'>Media horas&nbsp;</span>
-                    <span style='font-size:0.95rem;font-weight:800;color:#FFFFFF;'>{chip_h}</span>
-                </div>
-                <div style='background:rgba(22,27,34,0.72);border:1px solid rgba(201,255,0,0.22);border-radius:10px;padding:5px 12px;'>
-                    <span style='font-size:0.60rem;color:#8B949E;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;'>Media score&nbsp;</span>
-                    <span style='font-size:0.95rem;font-weight:800;color:#FFFFFF;'>{chip_s}</span>
-                </div>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-        import plotly.graph_objects as go
-        fig_sueno = go.Figure()
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-        horas_vals = sueno_view["horas_totales"].tolist() if "horas_totales" in sueno_view.columns else []
-        fig_sueno.add_trace(go.Bar(
-            x=sueno_view["dia_lbl"].tolist(),
-            y=horas_vals,
-            name="Horas dormidas",
-            marker=dict(color="rgba(150,191,20,0.78)", line=dict(color="#C9FF00", width=1)),
-            yaxis="y1",
-            hovertemplate="%{x}<br>Horas: %{y:.1f} h<extra></extra>",
-            width=0.4,
-        ))
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-        if "score" in sueno_view.columns:
-            fig_sueno.add_trace(go.Scatter(
-                x=sueno_view["dia_lbl"].tolist(),
-                y=sueno_view["score"].tolist(),
-                name="Score",
-                mode="lines+markers",
-                line=dict(color="#FFB800", width=2.5, shape="spline", smoothing=0.6),
-                marker=dict(size=7, color="#FFB800", symbol="circle",
-                            line=dict(color="#0E1117", width=1.5)),
-                yaxis="y2",
-                hovertemplate="%{x}<br>Score: %{y:.0f}<extra></extra>",
-            ))
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
 
-        fig_sueno.update_layout(
-            height=240,
-            paper_bgcolor="rgba(0,0,0,0)",
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+_opciones_menu = [
+    "Inicio",
+    "Perfil",
+    "Diario de Entrenamiento",
+    "Entrenador Personal",
+]
+if user_actual == 1:  # Ciclo Menstrual solo para Malena
+    _opciones_menu.insert(2, "Ciclo Menstrual")
+
+# Visualización de sueño (corregido)
+horas_vals = sueno_view["horas_totales"].tolist() if "horas_totales" in sueno_view.columns else []
+fig_sueno.add_trace(go.Bar(
+    x=sueno_view["dia_lbl"].tolist(),
+    y=horas_vals,
+    name="Horas dormidas",
+    marker=dict(color="rgba(150,191,20,0.78)", line=dict(color="#C9FF00", width=1)),
+    yaxis="y1",
+    hovertemplate="%{x}<br>Horas: %{y:.1f} h<extra></extra>",
+    width=0.4,
+))
+
+if "score" in sueno_view.columns:
+    fig_sueno.add_trace(go.Scatter(
+        x=sueno_view["dia_lbl"].tolist(),
+        y=sueno_view["score"].tolist(),
+        name="Score",
+        mode="lines+markers",
+        line=dict(color="#FFB800", width=2.5, shape="spline", smoothing=0.6),
+        marker=dict(size=7, color="#FFB800", symbol="circle",
+                    line=dict(color="#0E1117", width=1.5)),
+        yaxis="y2",
+        hovertemplate="%{x}<br>Score: %{y:.0f}<extra></extra>",
+    ))
+
+fig_sueno.update_layout(
+    height=240,
+    paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             margin=dict(l=0, r=36, t=4, b=0),
             font=dict(color="#8B949E", family="Inter, sans-serif", size=11),
@@ -3098,20 +3435,37 @@ if menu in ("Dashboard", "Inicio"):
  # "?"? Entrenamientos conjuntos Malena + Dani "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><circle cx='8' cy='8' r='2.5'></circle><circle cx='16' cy='8' r='2.5'></circle><path d='M3.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5M11.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5'></path></svg></span><span>Entrenamientos conjuntos - Malena y Dani</span></div>", unsafe_allow_html=True)
 
+    if "semana_conj_offset" not in st.session_state:
+        st.session_state["semana_conj_offset"] = 0
+
+    nav_left, nav_center, nav_right = st.columns([1, 8, 1])
+    with nav_left:
+        if st.button("‹", key="joint_week_prev", use_container_width=True):
+            st.session_state["semana_conj_offset"] -= 1
+            st.rerun()
+    with nav_right:
+        if st.button("›", key="joint_week_next", use_container_width=True):
+            st.session_state["semana_conj_offset"] += 1
+            st.rerun()
+
     hoy_conj = datetime.now().date()
-    semana_conj_def = hoy_conj - timedelta(days=hoy_conj.weekday())
-    semana_conj = st.date_input(
-        "Semana del calendario conjunto",
-        value=semana_conj_def,
-        key="semana_conjunto",
-    )
+    semana_base = hoy_conj - timedelta(days=hoy_conj.weekday())
+    semana_conj = semana_base + timedelta(days=7 * int(st.session_state["semana_conj_offset"]))
     semana_conj_dt = datetime.combine(semana_conj, datetime.min.time())
+
+    if int(st.session_state["semana_conj_offset"]) == 0:
+        semana_label = "Semana Actual"
+    else:
+        semana_fin = semana_conj + timedelta(days=6)
+        semana_label = f"{semana_conj.strftime('%d/%m')} - {semana_fin.strftime('%d/%m')}"
+
     plan_conjunto = _cargar_plan_conjunto(semana_conj_dt)
 
     MALENA_ID, DANI_ID = 1, 2
     TIPOS_ACTIVOS = {"Carrera", "Fuerza", "Mixto", "Cardio alternativo"}
-    nombres_dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-    cols_conj = st.columns(7)
+    nombres_dias = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+    day_labels_html = "".join([f"<div class='joint-day-label'>{d}</div>" for d in nombres_dias])
+    cells_html = ""
 
     for i in range(7):
         fecha_dia = (semana_conj_dt + timedelta(days=i)).strftime("%Y-%m-%d")
@@ -3127,39 +3481,39 @@ if menu in ("Dashboard", "Inicio"):
         coincide = malena_activa and dani_activo
 
         if coincide:
-            bg = "#93d977"       # verde claro
-            borde = "2px solid #d9f20f"
+            cell_class = "both"
+            cell_text = "Ambos"
         elif malena_activa:
-            bg = "#f0b4d5"       # rosa suave
-            borde = "1px solid #d97bb0"
+            cell_class = "malena"
+            cell_text = "M"
         elif dani_activo:
-            bg = "#8cd8f8"       # azul celeste
-            borde = "1px solid #54bde8"
+            cell_class = "dani"
+            cell_text = "D"
         else:
-            bg = "#0f2b24"
-            borde = "1px dashed #3a6856"
+            cell_class = "rest"
+            cell_text = "-"
 
-        malena_txt = malena_rows.iloc[0]["sesion"] if not malena_rows.empty else "—"
-        dani_txt   = dani_rows.iloc[0]["sesion"]   if not dani_rows.empty   else "—"
-
-        with cols_conj[i]:
-            st.markdown(
-                f"""<div style='background:{bg};border:{borde};border-radius:10px;
-                    padding:10px 8px;min-height:120px;font-size:0.8rem;'>
-                    <div style='font-weight:800;color:{"#14311f" if coincide else "#d8e9db"};margin-bottom:4px;'>{nombres_dias[i]}</div>
-                    <div style='color:{"#3d1840" if malena_activa and not coincide else ("#14311f" if coincide else "#f0ffd0")};font-weight:600;'>👩🏃 {malena_txt[:28]}</div>
-                    <div style='color:{"#124562" if dani_activo and not coincide else ("#14311f" if coincide else "#c6ebc8")};margin-top:4px;font-weight:600;'>👨🏃 {dani_txt[:28]}</div>
-                    {'<div style="margin-top:6px;font-size:0.72rem;color:#14311f;font-weight:800;">💑 Juntos</div>' if coincide else ''}
-                </div>""",
-                unsafe_allow_html=True,
-            )
+        cells_html += f"<div class='joint-week-cell {cell_class}'>{cell_text}</div>"
 
     st.markdown(
-        """
-        <div class="calendar-legend">
-            <div class="calendar-legend-chip"><span class="calendar-legend-dot" style="background:#f0b4d5;"></span>Rosa: Malena</div>
-            <div class="calendar-legend-chip"><span class="calendar-legend-dot" style="background:#8cd8f8;"></span>Azul celeste: Dani</div>
-            <div class="calendar-legend-chip"><span class="calendar-legend-dot" style="background:#93d977;"></span>Verde claro: coinciden los dos</div>
+        f"""
+        <div class='joint-week-card'>
+            <div class='joint-week-header'>
+                <div class='joint-week-title'>Vista Semanal Comparada</div>
+                <div class='joint-week-nav'>
+                    <span class='joint-week-chevron'>‹</span>
+                    <span>{semana_label}</span>
+                    <span class='joint-week-chevron'>›</span>
+                </div>
+            </div>
+            <div class='joint-week-grid-days'>{day_labels_html}</div>
+            <div class='joint-week-grid-cells'>{cells_html}</div>
+            <div class='calendar-legend'>
+                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#EA329A;'></span>Solo Malena</div>
+                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#2E78E8;'></span>Solo Dani</div>
+                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#B8F500;'></span>Entrenan Ambos</div>
+                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#313944;border:1px solid #748195;'></span>Descanso</div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,

@@ -7,6 +7,9 @@ import { BibliotecaCientifica } from "./pages/BibliotecaCientifica";
 import { DiarioFuerza } from "./pages/DiarioFuerza";
 import { Calendario } from "./pages/Calendario";
 
+import HabitTracker from "./pages/HabitTracker";
+import NutritionPage from "./pages/Nutricion";
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -35,5 +38,13 @@ export const router = createBrowserRouter([
   {
     path: "/calendario",
     Component: Calendario,
+  },
+  {
+    path: "/habit-tracker",
+    Component: HabitTracker,
+  },
+  {
+    path: "/nutricion",
+    Component: NutritionPage,
   },
 ]);

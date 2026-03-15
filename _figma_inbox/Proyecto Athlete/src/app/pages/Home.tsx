@@ -3,6 +3,7 @@ import { KPICard } from "../components/KPICard";
 import { CheckpointCard } from "../components/CheckpointCard";
 import { Progress } from "../components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { RadarTechnique, MetricsDetail } from "../components/RadarTechnique";
 import { useUser } from "../context/UserContext";
 import { 
   Activity, 
@@ -190,7 +191,7 @@ export function Home() {
 
         {/* Progreso de Running */}
         <section>
-          <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
+          <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl mb-8">
             <CardHeader>
               <CardTitle className="text-white">Progreso de Running</CardTitle>
             </CardHeader>
@@ -202,7 +203,65 @@ export function Home() {
               </div>
             </CardContent>
           </Card>
+          {/* Radar Antilesiones y Técnica y Métricas Detalladas */}
+          <div className="flex flex-col md:flex-row gap-6">
+            <RadarTechnique />
+            <MetricsDetail />
+          </div>
         </section>
+          {/* Radar Antilesiones y Técnica */}
+          <section className="mt-8">
+            <div className="flex flex-col md:flex-row gap-6">
+              {/* Radar Chart */}
+              <div className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl p-6 flex-1 flex flex-col items-center">
+                <h3 className="text-lg font-semibold text-[#C9FF00] mb-4">Radar Antilesiones y Técnica</h3>
+                {/* Aquí iría el componente de radar chart, por ahora placeholder */}
+                <div className="w-72 h-72 bg-[#23272F] rounded-full flex items-center justify-center mb-4">
+                  <span className="text-[#C9FF00] text-sm">Radar Chart Placeholder</span>
+                </div>
+                <p className="text-xs text-[#8B949E]">Análisis Técnico</p>
+              </div>
+              {/* Métricas Detalladas */}
+              <div className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl p-6 flex-1">
+                <h3 className="text-lg font-semibold text-[#C9FF00] mb-4">Métricas Detalladas</h3>
+                <ul className="space-y-3">
+                  <li className="flex justify-between items-center">
+                    <span className="text-white font-bold">Cadencia</span>
+                    <span className="text-[#C9FF00] font-bold">172 spm</span>
+                    <span className="ml-2 text-xs text-green-400">✓ OK</span>
+                  </li>
+                  <li className="flex justify-between items-center">
+                    <span className="text-white font-bold">Zancada</span>
+                    <span className="text-[#C9FF00] font-bold">118 cm</span>
+                    <span className="ml-2 text-xs text-yellow-400">⚠ Revisar</span>
+                  </li>
+                  <li className="flex justify-between items-center">
+                    <span className="text-white font-bold">Tiempo Contacto</span>
+                    <span className="text-[#C9FF00] font-bold">248 ms</span>
+                    <span className="ml-2 text-xs text-green-400">✓ OK</span>
+                  </li>
+                  <li className="flex justify-between items-center">
+                    <span className="text-white font-bold">Oscilación Vertical</span>
+                    <span className="text-[#C9FF00] font-bold">8.2 cm</span>
+                    <span className="ml-2 text-xs text-green-400">✓ OK</span>
+                  </li>
+                  <li className="flex justify-between items-center">
+                    <span className="text-white font-bold">Potencia</span>
+                    <span className="text-[#C9FF00] font-bold">245 W</span>
+                    <span className="ml-2 text-xs text-green-400">✓ OK</span>
+                  </li>
+                </ul>
+                <div className="mt-6">
+                  <div className="bg-yellow-900 border border-yellow-400 rounded-lg p-3 mb-2 text-yellow-200 text-sm">
+                    ⚠ Zancada ligeramente larga - Riesgo de overstride
+                  </div>
+                  <div className="bg-[#23272F] border border-[#C9FF00]/30 rounded-lg p-3 text-[#C9FF00] text-sm">
+                    ✓ Cadencia óptima mantenida
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
 
         {/* Semáforo Diario Garmin */}
         <section>

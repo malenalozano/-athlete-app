@@ -165,4 +165,25 @@ def obtener_credenciales_garmin(usuario_id):
     return row
 
 
+def obtener_nutricion(usuario_id, fecha):
+    conn = get_db_connection()
+    row = conn.execute(
+        """
+        SELECT kcal, protes, carbs, grasas
+        FROM diario_nutricion
+        WHERE usuario_id = ? AND fecha = ?
+        """,
+        (usuario_id, fecha),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {
+        "kcal": row[0],
+        "protes": row[1],
+        "carbs": row[2],
+        "grasas": row[3],
+    }
+
+
 init_db()
