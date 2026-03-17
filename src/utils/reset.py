@@ -1,5 +1,5 @@
 from pathlib import Path
-from db_manager import get_db_connection, init_db
+from db.db_manager import get_db_connection, init_db
 
 
 def reset_total_datos():

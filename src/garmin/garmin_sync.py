@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta
 from garminconnect import Garmin, GarminConnectConnectionError, GarminConnectAuthenticationError
 from dotenv import load_dotenv
-from db_manager import get_db_connection
+from db.db_manager import get_db_connection
 
 # Cargar variables de entorno
 load_dotenv()
@@ -283,10 +283,9 @@ def _has_useful_daily_metrics(metrics):
 
 def _latest_running_metrics(client, num_actividades=10):
     actividades = _safe_api_call(client.get_activities, 0, num_actividades) or []
+    resultados = []
     for actividad in actividades:
         tipo = str((actividad.get("activityType") or {}).get("typeKey", "")).lower()
-        if not any(token in tipo for token in ["running", "trail", "treadmill"]):
-            continue
         activity_id = str(actividad.get("activityId"))
         if not activity_id:
             continue
@@ -295,8 +294,9 @@ def _latest_running_metrics(client, num_actividades=10):
         metrics = _extract_activity_metrics(actividad, summary, details)
         fecha = str(actividad.get("startTimeLocal", "")).split(" ", 1)[0]
         metrics["fecha"] = fecha
-        return metrics
-    return {}
+        metrics["tipo_deporte"] = tipo
+        resultados.append(metrics)
+    return resultados
 
 
 def guardar_metricas_premium_db(usuario_id, datos):

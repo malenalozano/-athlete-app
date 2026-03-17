@@ -39,10 +39,10 @@ import html
 import importlib
 import calendar
 import re
-from src.db.db_manager import get_db_connection, obtener_perfil, guardar_perfil, obtener_credenciales_garmin
-from src.garmin.garmin_sync import sincronizar_actividades, sincronizar_actividades_inteligente, obtener_datos_sueno, guardar_sueno_db, iniciar_sesion_garmin, sincronizar_biometricos_garmin
-from src.core.ai_coach import procesar_nota_fuerza, obtener_consejo
-from src.core.seguridad import encriptar_password, desencriptar_password
+from db.db_manager import get_db_connection, obtener_perfil, guardar_perfil, obtener_credenciales_garmin
+from garmin.garmin_sync import sincronizar_actividades, sincronizar_actividades_inteligente, obtener_datos_sueno, guardar_sueno_db, iniciar_sesion_garmin, sincronizar_biometricos_garmin
+from core.ai_coach import procesar_nota_fuerza, obtener_consejo
+from core.seguridad import encriptar_password, desencriptar_password
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 
@@ -1459,36 +1459,34 @@ def construir_calendario_semanal_actividades(df_act, df_fuerza, semana_inicio):
             "Sunday": "Domingo",
         }
     )
-    out["run_desc"] = ""
-    out["gym_desc"] = ""
-
+    out["actividad_desc"] = ""
     if not df_act.empty:
         act = df_act.copy()
         act["fecha_dt"] = pd.to_datetime(act["fecha"]).dt.tz_localize(None).dt.date
-        act["km"] = act["distancia_m"].fillna(0) / 1000
         semana_act = act[(act["fecha_dt"] >= semana_inicio.date()) & (act["fecha_dt"] <= semana_fin.date())]
         if not semana_act.empty:
-            agg = semana_act.groupby("fecha_dt", as_index=False).agg(km=("km", "sum"), total=("km", "size"))
-            for _, r in agg.iterrows():
-                idx = out[out["fecha"].dt.date == r["fecha_dt"]].index
-                if len(idx):
-                    out.loc[idx[0], "run_desc"] = f"{r['total']} run · {r['km']:.1f} km"
+            for fecha in out["fecha"].dt.date:
+                actividades_dia = semana_act[semana_act["fecha_dt"] == fecha]
+                if not actividades_dia.empty:
+                    tipos = actividades_dia["tipo_deporte"].value_counts().to_dict()
+                    descs = [f"{tipos[t]} {t}" for t in tipos]
+                    out.loc[out["fecha"].dt.date == fecha, "actividad_desc"] = " | ".join(descs)
 
     if not df_fuerza.empty:
         fuer = df_fuerza.copy()
         fuer["fecha_dt"] = pd.to_datetime(fuer["fecha"]).dt.date
         semana_f = fuer[(fuer["fecha_dt"] >= semana_inicio.date()) & (fuer["fecha_dt"] <= semana_fin.date())]
         if not semana_f.empty:
-            agg_f = semana_f.groupby("fecha_dt", as_index=False).agg(total=("fecha", "size"))
-            for _, r in agg_f.iterrows():
-                idx = out[out["fecha"].dt.date == r["fecha_dt"]].index
-                if len(idx):
-                    out.loc[idx[0], "gym_desc"] = f"{r['total']} sesion fuerza"
+            for fecha in out["fecha"].dt.date:
+                sesiones = semana_f[semana_f["fecha_dt"] == fecha]
+                if not sesiones.empty:
+                    fuerza_desc = f"{len(sesiones)} sesión fuerza"
+                    if out.loc[out["fecha"].dt.date == fecha, "actividad_desc"].values[0]:
+                        out.loc[out["fecha"].dt.date == fecha, "actividad_desc"] += f" | {fuerza_desc}"
+                    else:
+                        out.loc[out["fecha"].dt.date == fecha, "actividad_desc"] = fuerza_desc
 
-    out["actividad"] = out.apply(
-        lambda r: " | ".join([x for x in [r["run_desc"], r["gym_desc"]] if x]) if (r["run_desc"] or r["gym_desc"]) else "Descanso / movilidad",
-        axis=1,
-    )
+    out["actividad"] = out["actividad_desc"].apply(lambda x: x if x else "Descanso / movilidad")
     return out
 
 
@@ -3258,92 +3256,92 @@ if menu in ("Dashboard", "Inicio"):
         )
         st.plotly_chart(fig_sueno, width="stretch")
 
-    # "?"? Entrenamientos conjuntos Malena + Dani "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
-    st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><circle cx='8' cy='8' r='2.5'></circle><circle cx='16' cy='8' r='2.5'></circle><path d='M3.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5M11.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5'></path></svg></span><span>Entrenamientos conjuntos - Malena y Dani</span></div>", unsafe_allow_html=True)
+ # "?"? Entrenamientos conjuntos Malena + Dani "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><circle cx='8' cy='8' r='2.5'></circle><circle cx='16' cy='8' r='2.5'></circle><path d='M3.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5M11.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5'></path></svg></span><span>Entrenamientos conjuntos - Malena y Dani</span></div>", unsafe_allow_html=True)
 
-    if "semana_conj_offset" not in st.session_state:
-        st.session_state["semana_conj_offset"] = 0
+if "semana_conj_offset" not in st.session_state:
+    st.session_state["semana_conj_offset"] = 0
 
-        nav_left, nav_center, nav_right = st.columns([1, 8, 1])
-        with nav_left:
-            if st.button("‹", key="joint_week_prev", width="stretch"):
-                st.session_state["semana_conj_offset"] -= 1
-                st.rerun()
-        with nav_right:
-            if st.button("›", key="joint_week_next", width="stretch"):
-                st.session_state["semana_conj_offset"] += 1
-                st.rerun()
+    nav_left, nav_center, nav_right = st.columns([1, 8, 1])
+    with nav_left:
+        if st.button("‹", key="joint_week_prev", width="stretch"):
+            st.session_state["semana_conj_offset"] -= 1
+            st.rerun()
+    with nav_right:
+        if st.button("›", key="joint_week_next", width="stretch"):
+            st.session_state["semana_conj_offset"] += 1
+            st.rerun()
 
-    hoy_conj = datetime.now().date()
-    semana_base = hoy_conj - timedelta(days=hoy_conj.weekday())
-    semana_conj = semana_base + timedelta(days=7 * int(st.session_state["semana_conj_offset"]))
-    semana_conj_dt = datetime.combine(semana_conj, datetime.min.time())
+hoy_conj = datetime.now().date()
+semana_base = hoy_conj - timedelta(days=hoy_conj.weekday())
+semana_conj = semana_base + timedelta(days=7 * int(st.session_state["semana_conj_offset"]))
+semana_conj_dt = datetime.combine(semana_conj, datetime.min.time())
 
-    if int(st.session_state["semana_conj_offset"]) == 0:
-        semana_label = "Semana Actual"
+if int(st.session_state["semana_conj_offset"]) == 0:
+    semana_label = "Semana Actual"
+else:
+    semana_fin = semana_conj + timedelta(days=6)
+    semana_label = f"{semana_conj.strftime('%d/%m')} - {semana_fin.strftime('%d/%m')}"
+
+plan_conjunto = _cargar_plan_conjunto(semana_conj_dt)
+
+MALENA_ID, DANI_ID = 1, 2
+TIPOS_ACTIVOS = {"Carrera", "Fuerza", "Mixto", "Cardio alternativo"}
+nombres_dias = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+day_labels_html = "".join([f"<div class='joint-day-label'>{d}</div>" for d in nombres_dias])
+cells_html = ""
+
+for i in range(7):
+    fecha_dia = (semana_conj_dt + timedelta(days=i)).strftime("%Y-%m-%d")
+    malena_rows = plan_conjunto[
+        (plan_conjunto["usuario_id"] == MALENA_ID) & (plan_conjunto["fecha"] == fecha_dia)
+    ] if not plan_conjunto.empty else pd.DataFrame()
+    dani_rows = plan_conjunto[
+        (plan_conjunto["usuario_id"] == DANI_ID) & (plan_conjunto["fecha"] == fecha_dia)
+    ] if not plan_conjunto.empty else pd.DataFrame()
+
+    malena_activa = not malena_rows.empty and malena_rows.iloc[0]["tipo"] in TIPOS_ACTIVOS
+    dani_activo   = not dani_rows.empty   and dani_rows.iloc[0]["tipo"] in TIPOS_ACTIVOS
+    coincide = malena_activa and dani_activo
+
+    if coincide:
+        cell_class = "both"
+        cell_text = "Ambos"
+    elif malena_activa:
+        cell_class = "malena"
+        cell_text = "M"
+    elif dani_activo:
+        cell_class = "dani"
+        cell_text = "D"
     else:
-        semana_fin = semana_conj + timedelta(days=6)
-        semana_label = f"{semana_conj.strftime('%d/%m')} - {semana_fin.strftime('%d/%m')}"
+        cell_class = "rest"
+        cell_text = "-"
 
-    plan_conjunto = _cargar_plan_conjunto(semana_conj_dt)
+    cells_html += f"<div class='joint-week-cell {cell_class}'>{cell_text}</div>"
 
-    MALENA_ID, DANI_ID = 1, 2
-    TIPOS_ACTIVOS = {"Carrera", "Fuerza", "Mixto", "Cardio alternativo"}
-    nombres_dias = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-    day_labels_html = "".join([f"<div class='joint-day-label'>{d}</div>" for d in nombres_dias])
-    cells_html = ""
-
-    for i in range(7):
-        fecha_dia = (semana_conj_dt + timedelta(days=i)).strftime("%Y-%m-%d")
-        malena_rows = plan_conjunto[
-            (plan_conjunto["usuario_id"] == MALENA_ID) & (plan_conjunto["fecha"] == fecha_dia)
-        ] if not plan_conjunto.empty else pd.DataFrame()
-        dani_rows = plan_conjunto[
-            (plan_conjunto["usuario_id"] == DANI_ID) & (plan_conjunto["fecha"] == fecha_dia)
-        ] if not plan_conjunto.empty else pd.DataFrame()
-
-        malena_activa = not malena_rows.empty and malena_rows.iloc[0]["tipo"] in TIPOS_ACTIVOS
-        dani_activo   = not dani_rows.empty   and dani_rows.iloc[0]["tipo"] in TIPOS_ACTIVOS
-        coincide = malena_activa and dani_activo
-
-        if coincide:
-            cell_class = "both"
-            cell_text = "Ambos"
-        elif malena_activa:
-            cell_class = "malena"
-            cell_text = "M"
-        elif dani_activo:
-            cell_class = "dani"
-            cell_text = "D"
-        else:
-            cell_class = "rest"
-            cell_text = "-"
-
-        cells_html += f"<div class='joint-week-cell {cell_class}'>{cell_text}</div>"
-
-    st.markdown(
-        f"""
-        <div class='joint-week-card'>
-            <div class='joint-week-header'>
-                <div class='joint-week-title'>Vista Semanal Comparada</div>
-                <div class='joint-week-nav'>
-                    <span class='joint-week-chevron'>‹</span>
-                    <span>{semana_label}</span>
-                    <span class='joint-week-chevron'>›</span>
-                </div>
-            </div>
-            <div class='joint-week-grid-days'>{day_labels_html}</div>
-            <div class='joint-week-grid-cells'>{cells_html}</div>
-            <div class='calendar-legend'>
-                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#EA329A;'></span>Solo Malena</div>
-                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#2E78E8;'></span>Solo Dani</div>
-                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#B8F500;'></span>Entrenan Ambos</div>
-                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#313944;border:1px solid #748195;'></span>Descanso</div>
+st.markdown(
+    f"""
+    <div class='joint-week-card'>
+        <div class='joint-week-header'>
+            <div class='joint-week-title'>Vista Semanal Comparada</div>
+            <div class='joint-week-nav'>
+                <span class='joint-week-chevron'>‹</span>
+                <span>{semana_label}</span>
+                <span class='joint-week-chevron'>›</span>
             </div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        <div class='joint-week-grid-days'>{day_labels_html}</div>
+        <div class='joint-week-grid-cells'>{cells_html}</div>
+        <div class='calendar-legend'>
+            <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#EA329A;'></span>Solo Malena</div>
+            <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#2E78E8;'></span>Solo Dani</div>
+            <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#B8F500;'></span>Entrenan Ambos</div>
+            <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#313944;border:1px solid #748195;'></span>Descanso</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # (El resto de secciones se mantienen igual...)
 
@@ -4533,7 +4531,7 @@ elif menu == "Entrenador Personal":
     # --- Función para mostrar el plan de maratón ---
     def render_plan_maraton(usuario_id):
         import streamlit as st
-        from src.core.atleta_core import calcular_tiempo_maraton
+        from core.atleta_core import calcular_tiempo_maraton
         st.subheader("Plan de Maratón")
         st.markdown("""
         Este es tu plan de maratón personalizado. Aquí puedes ver el tiempo estimado para completar un maratón según tu ritmo objetivo y recomendaciones generales.
@@ -4865,7 +4863,7 @@ elif menu == "Entrenador Personal":
             )
             if st.button("Y"" Aplicar cambios con IA", key="btn_feedback"):
                 if feedback_txt.strip():
-                    from src.core.ai_coach import ajustar_plan_con_feedback
+                    from core.ai_coach import ajustar_plan_con_feedback
                     plan_csv = st.session_state.get("plan_generado_csv") or plan_guardado.to_csv(index=False, sep=";")
                     estudios_ctx = contexto_estudios(user_actual)
                     resumen_perf = (

@@ -1,7 +1,7 @@
 import argparse
 from datetime import datetime
 
-from db_manager import get_db_connection
+from db.db_manager import get_db_connection
 from garmin_sync import sincronizar_actividades_inteligente, sincronizar_biometricos_garmin
 from seguridad import desencriptar_password
 

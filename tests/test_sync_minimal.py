@@ -18,7 +18,7 @@ logging.basicConfig(
 
 # Importar exactamente lo que usa app.py
 from garmin_sync import sincronizar_biometricos_garmin, iniciar_sesion_garmin, obtener_datos_sueno
-from db_manager import obtener_credenciales_garmin
+from db.db_manager import obtener_credenciales_garmin
 from seguridad import desencriptar_password
 from datetime import datetime, timedelta
 

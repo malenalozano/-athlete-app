@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Script de diagnóstico para verificar que el código está correctamente estructurado.
-No necesita credenciales de Garmin.
+Verifica que todas las funciones clave de garmin_sync.py se pueden importar correctamente.
+Comprueba que el logger está bien configurado.
+Revisa que las funciones principales usan el logger para registrar información y errores.
+Comprueba que la base de datos tiene las tablas necesarias y muestra si faltan.
 """
 
 import sys
@@ -71,7 +73,7 @@ for func, name in funcs_to_check:
 # Verificar estructura de BD
 print("\n4️⃣  VERIFICANDO BASE DE DATOS...")
 try:
-    from db_manager import get_db_connection
+    from db.db_manager import get_db_connection
     
     conn = get_db_connection()
     
