@@ -3259,10 +3259,10 @@ if menu in ("Dashboard", "Inicio"):
         st.plotly_chart(fig_sueno, width="stretch")
 
  # "?"? Entrenamientos conjuntos Malena + Dani "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
-    st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><circle cx='8' cy='8' r='2.5'></circle><circle cx='16' cy='8' r='2.5'></circle><path d='M3.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5M11.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5'></path></svg></span><span>Entrenamientos conjuntos - Malena y Dani</span></div>", unsafe_allow_html=True)
+st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><circle cx='8' cy='8' r='2.5'></circle><circle cx='16' cy='8' r='2.5'></circle><path d='M3.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5M11.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5'></path></svg></span><span>Entrenamientos conjuntos - Malena y Dani</span></div>", unsafe_allow_html=True)
 
-    if "semana_conj_offset" not in st.session_state:
-        st.session_state["semana_conj_offset"] = 0
+if "semana_conj_offset" not in st.session_state:
+    st.session_state["semana_conj_offset"] = 0
 
     nav_left, nav_center, nav_right = st.columns([1, 8, 1])
     with nav_left:
@@ -3274,83 +3274,83 @@ if menu in ("Dashboard", "Inicio"):
             st.session_state["semana_conj_offset"] += 1
             st.rerun()
 
-    hoy_conj = datetime.now().date()
-    semana_base = hoy_conj - timedelta(days=hoy_conj.weekday())
-    semana_conj = semana_base + timedelta(days=7 * int(st.session_state["semana_conj_offset"]))
-    semana_conj_dt = datetime.combine(semana_conj, datetime.min.time())
+hoy_conj = datetime.now().date()
+semana_base = hoy_conj - timedelta(days=hoy_conj.weekday())
+semana_conj = semana_base + timedelta(days=7 * int(st.session_state["semana_conj_offset"]))
+semana_conj_dt = datetime.combine(semana_conj, datetime.min.time())
 
-    if int(st.session_state["semana_conj_offset"]) == 0:
-        semana_label = "Semana Actual"
+if int(st.session_state["semana_conj_offset"]) == 0:
+    semana_label = "Semana Actual"
+else:
+    semana_fin = semana_conj + timedelta(days=6)
+    semana_label = f"{semana_conj.strftime('%d/%m')} - {semana_fin.strftime('%d/%m')}"
+
+plan_conjunto = _cargar_plan_conjunto(semana_conj_dt)
+
+MALENA_ID, DANI_ID = 1, 2
+TIPOS_ACTIVOS = {"Carrera", "Fuerza", "Mixto", "Cardio alternativo"}
+nombres_dias = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+day_labels_html = "".join([f"<div class='joint-day-label'>{d}</div>" for d in nombres_dias])
+cells_html = ""
+
+for i in range(7):
+    fecha_dia = (semana_conj_dt + timedelta(days=i)).strftime("%Y-%m-%d")
+    malena_rows = plan_conjunto[
+        (plan_conjunto["usuario_id"] == MALENA_ID) & (plan_conjunto["fecha"] == fecha_dia)
+    ] if not plan_conjunto.empty else pd.DataFrame()
+    dani_rows = plan_conjunto[
+        (plan_conjunto["usuario_id"] == DANI_ID) & (plan_conjunto["fecha"] == fecha_dia)
+    ] if not plan_conjunto.empty else pd.DataFrame()
+
+    malena_activa = not malena_rows.empty and malena_rows.iloc[0]["tipo"] in TIPOS_ACTIVOS
+    dani_activo   = not dani_rows.empty   and dani_rows.iloc[0]["tipo"] in TIPOS_ACTIVOS
+    coincide = malena_activa and dani_activo
+
+    if coincide:
+        cell_class = "both"
+        cell_text = "Ambos"
+    elif malena_activa:
+        cell_class = "malena"
+        cell_text = "M"
+    elif dani_activo:
+        cell_class = "dani"
+        cell_text = "D"
     else:
-        semana_fin = semana_conj + timedelta(days=6)
-        semana_label = f"{semana_conj.strftime('%d/%m')} - {semana_fin.strftime('%d/%m')}"
+        cell_class = "rest"
+        cell_text = "-"
 
-    plan_conjunto = _cargar_plan_conjunto(semana_conj_dt)
+    cells_html += f"<div class='joint-week-cell {cell_class}'>{cell_text}</div>"
 
-    MALENA_ID, DANI_ID = 1, 2
-    TIPOS_ACTIVOS = {"Carrera", "Fuerza", "Mixto", "Cardio alternativo"}
-    nombres_dias = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-    day_labels_html = "".join([f"<div class='joint-day-label'>{d}</div>" for d in nombres_dias])
-    cells_html = ""
-
-    for i in range(7):
-        fecha_dia = (semana_conj_dt + timedelta(days=i)).strftime("%Y-%m-%d")
-        malena_rows = plan_conjunto[
-            (plan_conjunto["usuario_id"] == MALENA_ID) & (plan_conjunto["fecha"] == fecha_dia)
-        ] if not plan_conjunto.empty else pd.DataFrame()
-        dani_rows = plan_conjunto[
-            (plan_conjunto["usuario_id"] == DANI_ID) & (plan_conjunto["fecha"] == fecha_dia)
-        ] if not plan_conjunto.empty else pd.DataFrame()
-
-        malena_activa = not malena_rows.empty and malena_rows.iloc[0]["tipo"] in TIPOS_ACTIVOS
-        dani_activo   = not dani_rows.empty   and dani_rows.iloc[0]["tipo"] in TIPOS_ACTIVOS
-        coincide = malena_activa and dani_activo
-
-        if coincide:
-            cell_class = "both"
-            cell_text = "Ambos"
-        elif malena_activa:
-            cell_class = "malena"
-            cell_text = "M"
-        elif dani_activo:
-            cell_class = "dani"
-            cell_text = "D"
-        else:
-            cell_class = "rest"
-            cell_text = "-"
-
-        cells_html += f"<div class='joint-week-cell {cell_class}'>{cell_text}</div>"
-
-    st.markdown(
-        f"""
-        <div class='joint-week-card'>
-            <div class='joint-week-header'>
-                <div class='joint-week-title'>Vista Semanal Comparada</div>
-                <div class='joint-week-nav'>
-                    <span class='joint-week-chevron'>‹</span>
-                    <span>{semana_label}</span>
-                    <span class='joint-week-chevron'>›</span>
-                </div>
-            </div>
-            <div class='joint-week-grid-days'>{day_labels_html}</div>
-            <div class='joint-week-grid-cells'>{cells_html}</div>
-            <div class='calendar-legend'>
-                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#EA329A;'></span>Solo Malena</div>
-                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#2E78E8;'></span>Solo Dani</div>
-                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#B8F500;'></span>Entrenan Ambos</div>
-                <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#313944;border:1px solid #748195;'></span>Descanso</div>
+st.markdown(
+    f"""
+    <div class='joint-week-card'>
+        <div class='joint-week-header'>
+            <div class='joint-week-title'>Vista Semanal Comparada</div>
+            <div class='joint-week-nav'>
+                <span class='joint-week-chevron'>‹</span>
+                <span>{semana_label}</span>
+                <span class='joint-week-chevron'>›</span>
             </div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        <div class='joint-week-grid-days'>{day_labels_html}</div>
+        <div class='joint-week-grid-cells'>{cells_html}</div>
+        <div class='calendar-legend'>
+            <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#EA329A;'></span>Solo Malena</div>
+            <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#2E78E8;'></span>Solo Dani</div>
+            <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#B8F500;'></span>Entrenan Ambos</div>
+            <div class='calendar-legend-chip'><span class='calendar-legend-dot' style='background:#313944;border:1px solid #748195;'></span>Descanso</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # (El resto de secciones se mantienen igual...)
 
 # ==========================================
 # PESTA'A 2: PERFIL
 # ==========================================
-elif menu == "Perfil":
+if menu == "Perfil":
     perfil_actual = obtener_perfil_cache(user_actual) or {}
     datos_plan = resumen_usuario_para_plan(user_actual)
 
@@ -3642,15 +3642,15 @@ elif menu == "Biblioteca Científica":
                 st.caption(str(est["creado_en"]))
                 st.write(est["resumen"] or "Sin resumen disponible.")
 
-# ==========================================
-# PESTA'A 4: CICLO MENSTRUAL
-# ==========================================
+    # ==========================================
+    # PESTA'A 4: CICLO MENSTRUAL
+    # ==========================================
 elif menu == "Ciclo Menstrual":
     if user_actual != 1:
         st.info("Esta sección no está disponible para este perfil.")
         st.stop()
 
- # "?"? Estilos para los controles "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+    # "?"? Estilos para los controles "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     st.markdown(
         """
         <style>
@@ -3684,7 +3684,7 @@ elif menu == "Ciclo Menstrual":
         unsafe_allow_html=True,
     )
 
- # -- Display fase actual del ciclo --
+    # -- Display fase actual del ciclo --
     _conn_fase = get_db_connection()
     _last_bleed = pd.read_sql_query(
         "SELECT fecha FROM diario_fisiologia WHERE usuario_id=? AND sangre IS NOT NULL AND sangre != 'Sin sangre' ORDER BY fecha DESC LIMIT 1",
@@ -3945,7 +3945,7 @@ elif menu == "Asistente Virtual":
     if obtener_consejo is None:
         st.error("Error: No se ha podido cargar ai_coach.py. Revisa que el archivo exista y esté correcto.")
     else:
- # Construir snapshot completo para la IA
+    # Construir snapshot completo para la IA
         snap = resumen_usuario_para_plan(user_actual)
         perfil_snap = obtener_perfil_cache(user_actual) or {}
         _fmt = lambda v, unit="", fallback="—": f"{round(float(v), 1)}{unit}" if v is not None else fallback
@@ -3998,28 +3998,28 @@ elif menu == "Asistente Virtual":
         except Exception:
             pass
 
- # Interfaz de Chat
+    # Interfaz de Chat
         if "mensajes" not in st.session_state:
             st.session_state.mensajes = []
 
- # Mostrar historial de mensajes
+    # Mostrar historial de mensajes
         for msg in st.session_state.mensajes:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
- # Input del usuario
+    # Input del usuario
         duda = st.chat_input("Escribe tu duda (ej. ¿Cómo ves mi carga de entrenamiento en esta fase de mi ciclo?)...")
         if duda:
- # Mostrar lo que escribió el usuario
+    # Mostrar lo que escribió el usuario
             with st.chat_message("user"):
                 st.markdown(duda)
             st.session_state.mensajes.append({"role": "user", "content": duda})
             
- # Mostrar la respuesta de la IA
+    # Mostrar la respuesta de la IA
             with st.chat_message("assistant"):
                 with st.spinner("Analizando tus datos biométricos..."):
                     try:
- # Ojo: pasamos duda y contexto. Si tu ai_coach pide más parámetros, avisame.
+    # Ojo: pasamos duda y contexto. Si tu ai_coach pide más parámetros, avisame.
                         respuesta = obtener_consejo(duda, contexto) 
                         st.markdown(respuesta)
                         st.session_state.mensajes.append({"role": "assistant", "content": respuesta})
@@ -4475,8 +4475,8 @@ elif menu == "Diario de Entrenamiento":
                         garmin = pd.read_sql_query(
                             """
                             SELECT id_actividad, fecha, tipo_deporte, distancia_m, tiempo_seg, ritmo_medio,
-                                   fc_media, fc_max, potencia_media_w, cadencia_media,
-                                   longitud_zancada_m, tiempo_contacto_ms, oscilacion_vertical_cm
+                                    fc_media, fc_max, potencia_media_w, cadencia_media,
+                                    longitud_zancada_m, tiempo_contacto_ms, oscilacion_vertical_cm
                             FROM actividades_garmin
                             WHERE usuario_id = ? AND id_actividad = ?
                             LIMIT 1
@@ -4526,9 +4526,9 @@ elif menu == "Diario de Entrenamiento":
     finally:
         conn.close()
 
-# ==========================================
-# PESTA'A 6: ENTRENADOR PERSONAL
-# ==========================================
+    # ==========================================
+    # PESTA'A 6: ENTRENADOR PERSONAL
+    # ==========================================
 elif menu == "Entrenador Personal":
     # --- Función para mostrar el plan de maratón ---
     def render_plan_maraton(usuario_id):
@@ -4591,7 +4591,7 @@ elif menu == "Entrenador Personal":
             st.dataframe(df_superior, width="stretch", hide_index=True)
         conn.close()
 
- # "?"? Tab 1: Check-in diario "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+    # "?"? Tab 1: Check-in diario "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     with tab_checkin:
         st.subheader("Semáforo diario Garmin")
         st.caption(
@@ -4769,7 +4769,7 @@ elif menu == "Entrenador Personal":
         finally:
             conn.close()
 
- # "?"? Tab 2: Generar plan semanal "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+    # "?"? Tab 2: Generar plan semanal "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     with tab_plan:
 
         # Mostrar tabla con todos los datos enviados a la IA para generar el plan
@@ -4849,7 +4849,7 @@ elif menu == "Entrenador Personal":
             plan_view["fecha"] = pd.to_datetime(plan_view["fecha"]).dt.strftime("%d-%m-%Y")
             st.dataframe(plan_view, width="stretch", hide_index=True)
 
- # "?"? Feedback post-generación "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+    # "?"? Feedback post-generación "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
             st.divider()
             st.markdown("##### Y' ¿Quieres cambiar algo del plan?")
             st.caption(
@@ -4877,7 +4877,7 @@ elif menu == "Entrenador Personal":
                         resultado = ajustar_plan_con_feedback(plan_csv, feedback_txt, resumen_perf)
                     if resultado["exito"] and resultado["datos"]:
                         nuevo_plan = pd.DataFrame(resultado["datos"])
- # Normalizar columnas al esquema esperado
+    # Normalizar columnas al esquema esperado
                         col_map = {
                             "dia": "dia", "fecha": "fecha", "tipo": "tipo",
                             "sesion": "sesion", "detalles": "detalles",
@@ -4899,7 +4899,7 @@ elif menu == "Entrenador Personal":
                         if resultado.get("raw"):
                             st.code(resultado["raw"])
 
- # "?"? Tab 3: Lesiones "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
+    # "?"? Tab 3: Lesiones "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     with tab_lesiones:
         st.subheader("Historial y prevención de lesiones")
         st.caption(
@@ -4961,9 +4961,9 @@ elif menu == "Entrenador Personal":
             conn.close()
 
 
-# ==========================================
-# PESTA'A 7: CALENDARIO
-# ==========================================
+    # ==========================================
+    # PESTA'A 7: CALENDARIO
+    # ==========================================
 elif menu == "Calendario":
     st.markdown(
         """
