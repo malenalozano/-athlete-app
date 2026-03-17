@@ -223,7 +223,7 @@ def obtener_consejo(duda, contexto=""):
         "sustituye carrera por cardio sin impacto.\n"
         "- Isquios lesionados: elimina sprints y series, añade excéntrico.\n"
         "- Lumbar/espalda: sin carga axial.\n"
-        "- Días mal sueño >= 3 o body_battery < 35: reduce carga del día.\n\n"
+        # ...existing code...
         "REGLAS PARA MALENA (ciclo menstrual):\n"
         "- Fase lútea: baja volumen y evita máxima intensidad.\n"
         "- Fase ovulatoria: ventana de alto rendimiento, aprovecha.\n"

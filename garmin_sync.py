@@ -81,9 +81,6 @@ def _ensure_garmin_schema():
             _ensure_column(conn, "datos_sueno", col_name, col_type)
 
         for col_name, col_type in [
-            ("training_readiness", "INTEGER"),
-            ("body_battery", "INTEGER"),
-            ("recovery_hours", "REAL"),
             ("spo2", "REAL"),
             ("potencia_media_w", "REAL"),
         ]:
@@ -220,19 +217,8 @@ def _extract_daily_metrics(client, fecha_iso):
     logger.info(f"  ✓ HRV: {hrv_ms} ms" if hrv_ms else f"  ✗ HRV: No encontrado")
     
     # Training Readiness
-    logger.debug(f"  → Obteniendo Training Readiness...")
-    readiness_data = _safe_api_call(client.get_training_readiness, fecha_iso) or {}
-    if not readiness_data:
-        logger.debug(f"  → Fallback: Obteniendo Morning Training Readiness...")
-        readiness_data = _safe_api_call(client.get_morning_training_readiness, fecha_iso) or {}
-    training_readiness = _to_int(_first_number(readiness_data, ["trainingReadiness", "readinessScore", "score"]))
-    logger.info(f"  ✓ Training Readiness: {training_readiness}" if training_readiness else f"  ✗ Training Readiness: No encontrado")
     
     # Body Battery
-    logger.debug(f"  → Obteniendo Body Battery...")
-    body_battery_data = _safe_api_call(client.get_body_battery, fecha_iso, fecha_iso) or []
-    body_battery = _to_int(_last_number(body_battery_data, ["bodyBattery", "bodyBatteryLevel", "chargedValue"]))
-    logger.info(f"  ✓ Body Battery: {body_battery}" if body_battery else f"  ✗ Body Battery: No encontrado")
     
     # Recovery Hours
     recovery_hours = _first_number(readiness_data, ["recoveryTime", "recoveryTimeHours", "recoveryHours"])
@@ -244,8 +230,7 @@ def _extract_daily_metrics(client, fecha_iso):
     if not stress_data:
         logger.debug(f"  → Fallback: Obteniendo All Day Stress...")
         stress_data = _safe_api_call(client.get_all_day_stress, fecha_iso) or {}
-    estres_vital = _to_int(_first_number(stress_data, ["overallStressLevel", "averageStressLevel", "stressScore", "calendarDateStressValue"]))
-    logger.info(f"  ✓ Stress: {estres_vital}" if estres_vital else f"  ✗ Stress: No encontrado")
+    # Eliminados: training_readiness, body_battery, estres_vital
     
     # SpO2
     logger.debug(f"  → Obteniendo SpO2...")
@@ -265,12 +250,8 @@ def _extract_daily_metrics(client, fecha_iso):
     return {
         "fecha": fecha_iso,
         "hrv_ms": hrv_ms,
-        "training_readiness": training_readiness,
-        "body_battery": body_battery,
-        "recovery_hours": recovery_hours,
         "fc_reposo": fc_reposo,
         "fc_maxima": fc_maxima,
-        "estres_vital": estres_vital,
         "spo2": spo2,
     }
 
@@ -328,10 +309,9 @@ def guardar_metricas_premium_db(usuario_id, datos):
             INSERT INTO datos_biometricos_premium (
                 usuario_id, fecha, hrv_ms, fc_reposo, fc_maxima,
                 cadencia_media, longitud_zancada_m, tiempo_contacto_ms,
-                oscilacion_vertical_cm, sleep_score, estres_vital,
-                training_readiness, body_battery, recovery_hours,
+                oscilacion_vertical_cm, sleep_score,
                 spo2, potencia_media_w
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(usuario_id, fecha) DO UPDATE SET
                 hrv_ms = COALESCE(excluded.hrv_ms, datos_biometricos_premium.hrv_ms),
                 fc_reposo = COALESCE(excluded.fc_reposo, datos_biometricos_premium.fc_reposo),
@@ -341,10 +321,6 @@ def guardar_metricas_premium_db(usuario_id, datos):
                 tiempo_contacto_ms = COALESCE(excluded.tiempo_contacto_ms, datos_biometricos_premium.tiempo_contacto_ms),
                 oscilacion_vertical_cm = COALESCE(excluded.oscilacion_vertical_cm, datos_biometricos_premium.oscilacion_vertical_cm),
                 sleep_score = COALESCE(excluded.sleep_score, datos_biometricos_premium.sleep_score),
-                estres_vital = COALESCE(excluded.estres_vital, datos_biometricos_premium.estres_vital),
-                training_readiness = COALESCE(excluded.training_readiness, datos_biometricos_premium.training_readiness),
-                body_battery = COALESCE(excluded.body_battery, datos_biometricos_premium.body_battery),
-                recovery_hours = COALESCE(excluded.recovery_hours, datos_biometricos_premium.recovery_hours),
                 spo2 = COALESCE(excluded.spo2, datos_biometricos_premium.spo2),
                 potencia_media_w = COALESCE(excluded.potencia_media_w, datos_biometricos_premium.potencia_media_w)
             """,
@@ -359,10 +335,6 @@ def guardar_metricas_premium_db(usuario_id, datos):
                 datos.get("tiempo_contacto_ms"),
                 datos.get("oscilacion_vertical_cm"),
                 datos.get("sleep_score"),
-                datos.get("estres_vital"),
-                datos.get("training_readiness"),
-                datos.get("body_battery"),
-                datos.get("recovery_hours"),
                 datos.get("spo2"),
                 datos.get("potencia_media_w"),
             ),

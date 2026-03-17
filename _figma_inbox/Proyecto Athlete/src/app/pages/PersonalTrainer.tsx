@@ -45,6 +45,13 @@ export function PersonalTrainer() {
               Lesiones y Prevención
             </TabsTrigger>
             <TabsTrigger 
+              value="ejercicios"
+              className="shrink-0 data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
+            >
+              <Activity className="h-4 w-4 mr-2" />
+              Ejercicios
+            </TabsTrigger>
+            <TabsTrigger 
               value="asistente"
               className="shrink-0 data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
             >
@@ -182,6 +189,78 @@ export function PersonalTrainer() {
                 <p className="text-[#8B949E]">
                   No hay lesiones registradas actualmente.
                 </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          {/* Tab: Ejercicios */}
+          <TabsContent value="ejercicios" className="space-y-6">
+            <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
+              <CardHeader>
+                <CardTitle className="text-white">Ejercicios - Tren Inferior</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-[#8B949E]">
+                    <thead>
+                      <tr>
+                        <th className="px-4 py-2">Grupo Muscular</th>
+                        <th className="px-4 py-2">Ejercicio</th>
+                        <th className="px-4 py-2">Kg Máximos</th>
+                        <th className="px-4 py-2">Anotaciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Aquí se mostrarán los datos de la última vez que se realizó cada ejercicio */}
+                      {/* Ejemplo mock */}
+                      <tr>
+                        <td className="px-4 py-2">Cuádriceps</td>
+                        <td className="px-4 py-2">Sentadilla</td>
+                        <td className="px-4 py-2">80</td>
+                        <td className="px-4 py-2">Buena técnica</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2">Isquiotibiales</td>
+                        <td className="px-4 py-2">Peso muerto</td>
+                        <td className="px-4 py-2">70</td>
+                        <td className="px-4 py-2">Sin molestias</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
+              <CardHeader>
+                <CardTitle className="text-white">Ejercicios - Tren Superior</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-[#8B949E]">
+                    <thead>
+                      <tr>
+                        <th className="px-4 py-2">Grupo Muscular</th>
+                        <th className="px-4 py-2">Ejercicio</th>
+                        <th className="px-4 py-2">Kg Máximos</th>
+                        <th className="px-4 py-2">Anotaciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Ejemplo mock */}
+                      <tr>
+                        <td className="px-4 py-2">Pectoral</td>
+                        <td className="px-4 py-2">Press banca</td>
+                        <td className="px-4 py-2">60</td>
+                        <td className="px-4 py-2">Última serie con ayuda</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2">Espalda</td>
+                        <td className="px-4 py-2">Dominadas</td>
+                        <td className="px-4 py-2">Corporal</td>
+                        <td className="px-4 py-2">Sin asistencia</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
