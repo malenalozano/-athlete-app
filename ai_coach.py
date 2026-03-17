@@ -68,47 +68,59 @@ def _parsear_nota_local(texto):
 
     datos = []
     contexto = ""
+    contexto_fecha = None
+    dias_semana = {"lunes", "martes", "miercoles", "miércoles", "jueves", "viernes", "sabado", "sábado", "domingo"}
+    import datetime
     for linea in lineas:
         low = linea.lower()
-
-        if low in {"lunes", "martes", "miercoles", "miércoles", "jueves", "viernes", "sabado", "sábado", "domingo"}:
+        if low in dias_semana:
+            contexto_fecha = low
             continue
-
-        if low in {"espalda", "pierna", "carrera", "core", "hombro", "gluteos", "glúteos", "pecho", "biceps", "bíceps"}:
-            contexto = linea
-            continue
-
-        series, reps = _extraer_series_reps(linea)
-        peso = _extraer_peso(linea)
-
-        es_nota_lesion = any(k in low for k in ["dolor", "molest", "inflam", "tibia", "lesion", "lesión", "me ha costado", "fatiga"])
-        tiene_patron_ejercicio = any(k in low for k in [
-            "dominad", "jalon", "remo", "curl", "sentadilla", "peso muerto", "búlgar", "bulgar",
-            "hip", "press", "rodaje", "polea", "predicador", "martillo"
-        ])
-        if es_nota_lesion and not tiene_patron_ejercicio and series == 0 and reps == 0 and peso == 0:
-            continue
-
-        es_linea_util = (
-            series > 0 or reps > 0 or peso > 0 or
-            any(k in low for k in [
-                "dominad", "jalon", "remo", "curl", "sentadilla", "peso muerto", "búlgar", "bulgar",
-                "hip", "press", "carrera", "rodaje", "polea", "predicador", "martillo"
-            ])
-        )
-        if not es_linea_util:
-            continue
-
-        ejercicio = _limpiar_nombre_ejercicio(linea)
-        grupo, musculo = _inferir_grupo_y_musculo(ejercicio, contexto)
+        # Detectar 'carrera hoy' y vincular Garmin
+        vinculo_garmin = None
+        if 'carrera' in low and 'hoy' in low:
+            # Buscar actividad Garmin de hoy
+            today = datetime.datetime.now().date()
+            vinculo_garmin = {'tipo': 'carrera', 'fecha': today}
+        # Formato esperado: ejercicio kg repes notas
+        partes = linea.split()
+        ejercicio = []
+        peso = 0.0
+        series = 0
+        repes = 0
+        notas = ""
+        for i, p in enumerate(partes):
+            if re.match(r"\d+(?:[\.,]\d+)?kg", p.lower()):
+                peso = float(p.lower().replace("kg","" ).replace(",",".").strip())
+                ejercicio = partes[:i]
+                resto = partes[i+1:]
+                break
+        else:
+            ejercicio = partes
+            resto = []
+        # Buscar series x repes
+        for j, p in enumerate(resto):
+            m = re.match(r"(\d+)x(\d+)", p)
+            if m:
+                series = int(m.group(1))
+                repes = int(m.group(2))
+                notas = " ".join(resto[j+1:])
+                break
+        else:
+            notas = " ".join(resto)
+        nombre_ejercicio = " ".join(ejercicio).strip()
+        grupo, musculo = _inferir_grupo_y_musculo(nombre_ejercicio)
         datos.append({
-            "ejercicio": ejercicio,
+            "ejercicio": nombre_ejercicio,
             "peso": round(float(peso), 2),
             "series": int(series or 1),
-            "repeticiones": int(reps or 1),
+            "repeticiones": int(repes or 1),
             "grupo_muscular": grupo,
             "musculo_principal": musculo,
             "rpe": 6,
+            "notas": notas.strip(),
+            "fecha": contexto_fecha,
+            "vinculo_garmin": vinculo_garmin,
         })
 
     return datos

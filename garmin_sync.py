@@ -215,11 +215,13 @@ def _extract_daily_metrics(client, fecha_iso):
     hrv_data = _safe_api_call(client.get_hrv_data, fecha_iso) or {}
     hrv_ms = _first_number(hrv_data, ["lastNightAverage", "averageHrv", "weeklyAverage", "hrvValue"])
     logger.info(f"  ✓ HRV: {hrv_ms} ms" if hrv_ms else f"  ✗ HRV: No encontrado")
-    
+
     # Training Readiness
-    
+    logger.debug(f"  → Obteniendo Training Readiness...")
+    readiness_data = _safe_api_call(getattr(client, 'get_training_readiness', lambda x: None), fecha_iso) or {}
+
     # Body Battery
-    
+
     # Recovery Hours
     recovery_hours = _first_number(readiness_data, ["recoveryTime", "recoveryTimeHours", "recoveryHours"])
     logger.info(f"  ✓ Recovery Hours: {recovery_hours}" if recovery_hours else f"  ✗ Recovery Hours: No encontrado")
@@ -309,9 +311,8 @@ def guardar_metricas_premium_db(usuario_id, datos):
             INSERT INTO datos_biometricos_premium (
                 usuario_id, fecha, hrv_ms, fc_reposo, fc_maxima,
                 cadencia_media, longitud_zancada_m, tiempo_contacto_ms,
-                oscilacion_vertical_cm, sleep_score,
-                spo2, potencia_media_w
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                oscilacion_vertical_cm, sleep_score, spo2, potencia_media_w
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(usuario_id, fecha) DO UPDATE SET
                 hrv_ms = COALESCE(excluded.hrv_ms, datos_biometricos_premium.hrv_ms),
                 fc_reposo = COALESCE(excluded.fc_reposo, datos_biometricos_premium.fc_reposo),

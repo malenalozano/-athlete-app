@@ -704,7 +704,6 @@ def _buscar_actividad_running_fecha(usuario_id, fecha_obj):
             FROM actividades_garmin
             WHERE usuario_id = ?
               AND fecha LIKE ?
-              AND (LOWER(tipo_deporte) LIKE '%run%' OR LOWER(tipo_deporte) LIKE '%carrera%')
             ORDER BY distancia_m DESC
             LIMIT 1
             """,
@@ -1419,7 +1418,7 @@ def cargar_datos_dashboard(usuario_id):
         try:
             df_fuerza = pd.read_sql_query(
                 """
-                SELECT s.fecha, e.peso, e.series, e.repeticiones, e.musculo_principal
+                SELECT s.fecha, e.ejercicio, e.peso, e.series, e.repeticiones, e.musculo_principal
                 FROM ejercicios_fuerza e
                 INNER JOIN sesiones_fuerza s ON s.id = e.sesion_id
                 WHERE s.usuario_id = ?
@@ -1431,7 +1430,7 @@ def cargar_datos_dashboard(usuario_id):
         except Exception:
             try:
                 df_fuerza = pd.read_sql_query(
-                    "SELECT fecha, peso, series, repeticiones, musculo_principal FROM entrenamientos_fuerza",
+                    "SELECT fecha, ejercicio, peso, series, repeticiones, musculo_principal FROM entrenamientos_fuerza",
                     conn,
                 )
             except Exception:
@@ -1537,14 +1536,15 @@ def progreso_fuerza_grupos(df_fuerza):
     filas = []
     for _, row in df.iterrows():
         grupos = _mapear_grupos_musculares(row.get("musculo_principal", ""))
+        ejercicio = row.get("ejercicio", "")
         for g in grupos:
-            filas.append({"fecha_dt": row["fecha_dt"], "grupo": g, "volumen": row["volumen"]})
+            filas.append({"fecha_dt": row["fecha_dt"], "grupo": g, "volumen": row["volumen"], "ejercicio": ejercicio})
 
     if not filas:
         return pd.DataFrame()
 
     out = pd.DataFrame(filas)
-    out = out.groupby(["fecha_dt", "grupo"], as_index=False).agg(volumen=("volumen", "sum"))
+    out = out.groupby(["fecha_dt", "grupo", "ejercicio"], as_index=False).agg(volumen=("volumen", "sum"))
     return out.sort_values("fecha_dt")
 
 
@@ -1596,7 +1596,56 @@ def predecir_fases_ciclo(df_fisio, horizonte_dias=90):
 
 
 def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
+    import calendar as _calendar
+    # Mostrar todas las filas del mes (4, 5 o 6 según el mes)
     mes_matrix = calendar.monthcalendar(anio, mes)
+    # Obtener días del mes anterior y siguiente
+    if mes == 1:
+        prev_month = 12
+        prev_year = anio - 1
+    else:
+        prev_month = mes - 1
+        prev_year = anio
+    prev_last_day = _calendar.monthrange(prev_year, prev_month)[1]
+    if mes == 12:
+        next_month = 1
+        next_year = anio + 1
+    else:
+        next_month = mes + 1
+        next_year = anio
+
+    # Rellenar los ceros de la primera fila con días del mes anterior
+    for d, day in enumerate(mes_matrix[0]):
+        if day == 0:
+            mes_matrix[0][d] = prev_last_day - (mes_matrix[0][:d].count(0) - 1 - d) if mes_matrix[0][:d].count(0) > 0 else prev_last_day - (d - 1)
+            mes_matrix[0][d] = prev_last_day - (len([x for x in mes_matrix[0][:d] if x == 0]) - 1 - d) if len([x for x in mes_matrix[0][:d] if x == 0]) > 0 else prev_last_day - (d - 1)
+            # Mejor: simplemente contar hacia atrás
+            mes_matrix[0][d] = prev_last_day - (mes_matrix[0][:d].count(0) + (d - mes_matrix[0][:d].count(0)))
+
+    # Rellenar los ceros de la última fila con días del mes siguiente
+    for d, day in enumerate(mes_matrix[-1]):
+        if day == 0:
+            # El primer cero es el día 1 del mes siguiente, el segundo es el 2, etc.
+            mes_matrix[-1][d] = d - mes_matrix[-1][:d].count(0) + 1
+
+    # Guardar info de a qué mes pertenece cada celda
+    mes_info = []
+    for w, semana in enumerate(mes_matrix):
+        semana_info = []
+        for d, day in enumerate(semana):
+            if w == 0 and day > 7:
+                semana_info.append('prev')
+            elif w == len(mes_matrix) - 1 and day < 15:
+                semana_info.append('next')
+            elif (w == 0 and day > 20):
+                semana_info.append('prev')
+            elif (w == len(mes_matrix) - 1 and day < 7):
+                semana_info.append('next')
+            elif (w == 0 and mes == 1 and day > 15):
+                semana_info.append('prev')
+            else:
+                semana_info.append('curr')
+        mes_info.append(semana_info)
     fases = {}
     origen = {}
     for _, row in df_ciclo.iterrows():
@@ -1648,39 +1697,42 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
     }
 
     colores = {
-        "Menstruación": "#fda4af",
-        "Folicular":    "#93c5fd",
-        "Ovulación":    "rgba(201,255,0,0.55)",
-        "Lútea":        "#c4b5fd",
+        "Menstruación": "#fad2e1",
+        "Folicular":    "#cddafd",
+        "Ovulación":    "#fff1e6",
+        "Lútea":        "#bee1e6",
         # compatibilidad datos antiguos
-        "Fase Folicular":   "#fda4af",
-        "Fase Ovulatoria":  "rgba(201,255,0,0.55)",
-        "Fase Lútea":       "#c4b5fd",
+        "Fase Folicular":   "#cddafd",
+        "Fase Ovulatoria":  "#fff1e6",
+        "Fase Lútea":       "#bee1e6",
     }
-    st.markdown("**Calendario del ciclo**")
     dias_header = ["L", "M", "X", "J", "V", "S", "D"]
     cols_h = st.columns(7)
     for i, d in enumerate(dias_header):
         cols_h[i].markdown(f"**{d}**")
 
-    for semana in mes_matrix:
+    for w, semana in enumerate(mes_matrix):
         cols = st.columns(7)
         for i, day in enumerate(semana):
             with cols[i]:
-                if day == 0:
-                    st.markdown("<div style='height:130px;'></div>", unsafe_allow_html=True)
-                    continue
-                fase = fases.get(day)
-                org = origen.get(day, "")
-                bg = colores.get(fase, "#1E2430")
-                txt_color = "#0E1117" if fase in ("Ovulación", "Fase Ovulatoria") else "#0f172a"
-                borde = "2px solid #0f172a" if org == "Registrado" else "1px dashed #334155"
+                tipo = mes_info[w][i]
+                # Color y opacidad según el mes al que pertenece
+                if tipo == 'prev' or tipo == 'next':
+                    bg = '#232a36'
+                    txt_color = '#3a4150'
+                    borde = '1px dashed #334155'
+                else:
+                    fase = fases.get(day)
+                    org = origen.get(day, "")
+                    bg = colores.get(fase, "#1E2430")
+                    txt_color = "#0E1117" if fase in ("Ovulación", "Fase Ovulatoria") else "#0f172a"
+                    borde = "2px solid #0f172a" if org == "Registrado" else "1px dashed #334155"
 
                 em_sangre = ""
                 em_sintomas = ""
                 em_animo = ""
                 em_feedback = ""
-                if day in reg_por_dia:
+                if tipo == 'curr' and day in reg_por_dia:
                     r = reg_por_dia[day]
                     sangre = str(r.get("sangre") or "Sin sangre").strip()
                     sintomas = str(r.get("sintomas") or "").strip()
@@ -1887,12 +1939,12 @@ if "usuario_id" not in st.session_state:
                     """,
                     unsafe_allow_html=True,
                 )
-                if st.button("Malena", key="btn_malena", use_container_width=True):
+                if st.button("Malena", key="btn_malena", width="stretch"):
                     st.session_state.usuario_id = 1
                     _guardar_ultimo_usuario(1)
                     st.rerun()
                 st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-                if st.button("Dani", key="btn_dani", use_container_width=True):
+                if st.button("Dani", key="btn_dani", width="stretch"):
                     st.session_state.usuario_id = 2
                     _guardar_ultimo_usuario(2)
                     st.rerun()
@@ -2824,12 +2876,12 @@ st.markdown(
 # "?"? Opciones de menú según perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
 _opciones_menu = [
     "Inicio",
-    "Perfil",
     "Diario de Entrenamiento",
     "Entrenador Personal",
+    "Perfil",
 ]
 if user_actual == 1:  # Ciclo Menstrual solo para Malena
-    _opciones_menu.insert(2, "Ciclo Menstrual")
+    _opciones_menu.insert(1, "Ciclo Menstrual")
 
 # "?"? Fila nav: marca + pestañas + Garmin + selector de perfil "?"?"?"?"?"?"?"?"?"?"?"?"?"?
 _perfiles = {"Malena": 1, "Dani": 2}
@@ -3054,7 +3106,7 @@ if menu in ("Dashboard", "Inicio"):
             showline=False,
             tickfont=dict(size=10, color="#8B949E"),
         )
-        st.plotly_chart(fig_run, use_container_width=True)
+        st.plotly_chart(fig_run, width="stretch")
 
     radar = resumen_usuario_para_plan(user_actual)
     def obtener_ultima_actividad(df_act):
@@ -3084,17 +3136,15 @@ if menu in ("Dashboard", "Inicio"):
             "hombro": "#e4f78f",
             "abdominales": "#9ccf22",
         }
-        # Volumen total por grupo (suma histórica) -> barras horizontales
-        gym_totales = gym_prog.groupby("grupo", as_index=False)["volumen"].sum().sort_values("volumen", ascending=True)
-        gym_totales["color"] = gym_totales["grupo"].map(lambda g: color_map.get(g, "#C9FF00"))
+        # Volumen total por ejercicio (suma histórica) -> barras horizontales
+        gym_totales = gym_prog.groupby("ejercicio", as_index=False)["volumen"].sum().sort_values("volumen", ascending=True)
         fig_gym = px.bar(
             gym_totales,
             x="volumen",
-            y="grupo",
+            y="ejercicio",
             orientation="h",
-            color="grupo",
-            color_discrete_map=color_map,
-            labels={"volumen": "Volumen total (kg)", "grupo": ""},
+            color="ejercicio",
+            labels={"volumen": "Volumen total (kg)", "ejercicio": "Ejercicio"},
             text="volumen",
         )
         fig_gym.update_traces(
@@ -3113,7 +3163,7 @@ if menu in ("Dashboard", "Inicio"):
         )
         fig_gym.update_xaxes(showgrid=True, gridcolor="rgba(201,255,0,0.07)", zeroline=False, showline=False, tickfont=dict(size=10, color="#8B949E"))
         fig_gym.update_yaxes(showgrid=False, zeroline=False, showline=False, tickfont=dict(size=11, color="#FFFFFF"))
-        st.plotly_chart(fig_gym, use_container_width=True)
+        st.plotly_chart(fig_gym, width="stretch")
 
  # Visualización de Sueño — barras (horas) + línea (score)
     if not df_sueno.empty:
@@ -3206,7 +3256,7 @@ if menu in ("Dashboard", "Inicio"):
             ),
             bargap=0.55,
         )
-        st.plotly_chart(fig_sueno, use_container_width=True)
+        st.plotly_chart(fig_sueno, width="stretch")
 
  # "?"? Entrenamientos conjuntos Malena + Dani "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><circle cx='8' cy='8' r='2.5'></circle><circle cx='16' cy='8' r='2.5'></circle><path d='M3.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5M11.5 19c.6-3 2.6-4.5 4.5-4.5s3.9 1.5 4.5 4.5'></path></svg></span><span>Entrenamientos conjuntos - Malena y Dani</span></div>", unsafe_allow_html=True)
@@ -3216,11 +3266,11 @@ if menu in ("Dashboard", "Inicio"):
 
     nav_left, nav_center, nav_right = st.columns([1, 8, 1])
     with nav_left:
-        if st.button("‹", key="joint_week_prev", use_container_width=True):
+        if st.button("‹", key="joint_week_prev", width="stretch"):
             st.session_state["semana_conj_offset"] -= 1
             st.rerun()
     with nav_right:
-        if st.button("›", key="joint_week_next", use_container_width=True):
+        if st.button("›", key="joint_week_next", width="stretch"):
             st.session_state["semana_conj_offset"] += 1
             st.rerun()
 
@@ -3516,7 +3566,7 @@ elif menu == "Perfil":
         df_vista_ia = pd.DataFrame(
             [{"Métrica": k, "Valor": "—" if v is None else v} for k, v in vista_ia.items()]
         )
-        st.dataframe(df_vista_ia, use_container_width=True, hide_index=True)
+        st.dataframe(df_vista_ia, width="stretch", hide_index=True)
 
 # ==========================================
 # PESTA'A 3: BIBLIOTECA CIENTÍFICA
@@ -3761,7 +3811,7 @@ elif menu == "Ciclo Menstrual":
                 label_visibility="collapsed",
             )
 
-            submit_fisio = st.form_submit_button("Guardar Registro", use_container_width=True)
+            submit_fisio = st.form_submit_button("Guardar Registro", width="stretch")
 
             if submit_fisio:
                 sangre = sangre_map.get(sangre or "\u26aa Sin sangre", "Sin sangre")
@@ -3837,7 +3887,6 @@ elif menu == "Ciclo Menstrual":
                 if not df_valid.empty:
                     ciclo_df, ciclo_estimado = predecir_fases_ciclo(df_valid[["fecha", "fase_ciclo"]].copy(), horizonte_dias=120)
 
-                    st.divider()
                     # Eliminada la caption de borde
 
                     hoy = datetime.now().date()
@@ -3856,15 +3905,11 @@ elif menu == "Ciclo Menstrual":
                             st.session_state.mes_ciclo_cursor = st.session_state.mes_ciclo_cursor.replace(year=_y, month=_m, day=1)
 
                     with nav_c:
-                        _meses_es = [
-                            "enero", "febrero", "marzo", "abril", "mayo", "junio",
-                            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-                        ]
-                        _label_mes = _meses_es[st.session_state.mes_ciclo_cursor.month - 1]
-                        st.markdown(
-                            f"<div style='text-align:center;color:#C9FF00;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;margin-top:6px;'>{_label_mes} {st.session_state.mes_ciclo_cursor.year}</div>",
-                            unsafe_allow_html=True,
-                        )
+                        # Mostrar el nombre del mes y año en el centro
+                        mes_actual = st.session_state.mes_ciclo_cursor.month
+                        anio_actual = st.session_state.mes_ciclo_cursor.year
+                        nombre_mes = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][mes_actual-1]
+                        st.markdown(f"<div style='text-align:center;font-weight:700;font-size:1.1rem;color:#C9E1FF;margin-top:2px;margin-bottom:2px;'>{nombre_mes} {anio_actual}</div>", unsafe_allow_html=True)
 
                     with nav_r:
                         # Derecha = siguiente mes
@@ -3992,7 +4037,7 @@ elif menu == "Diario de Entrenamiento":
         "Entreno libre",
         height=130,
         key="nota_fuerza",
-        placeholder="Ej: hoy hice glute bridge 4x10 80kg, y ayer remo 4x8 40kg y press militar 3x10 18kg",
+        placeholder="Lunes\nHipTrust 30kg  3x8 no he terminado la serie\nBúlgaras 14kg  3x8 me he sentido débil",
     )
 
     if nota_fuerza.strip():
@@ -4016,7 +4061,8 @@ elif menu == "Diario de Entrenamiento":
                     fecha_seg, _ = extraer_fecha_historica(texto_seg)
                     meta = _clasificar_segmento_diario(texto_seg)
                     nota_estado = _extraer_nota_estado(texto_seg)
-                    vinculo_running = _buscar_actividad_running_fecha(user_actual, fecha_seg) if meta["has_running"] else None
+                    # Vincular con cualquier actividad de Garmin en la fecha
+                    vinculo_actividad = _buscar_actividad_running_fecha(user_actual, fecha_seg)
 
                     if meta["has_fuerza"]:
                         res = procesar_nota_fuerza(texto_seg)
@@ -4033,7 +4079,7 @@ elif menu == "Diario de Entrenamiento":
                         "texto": texto_seg,
                         "meta": meta,
                         "nota_estado": nota_estado,
-                        "vinculo_running": vinculo_running,
+                        "vinculo_running": vinculo_actividad,
                     })
             st.session_state.sesiones_detectadas = sesiones_prep
             st.session_state.resultado_ia = True
@@ -4073,7 +4119,7 @@ elif menu == "Diario de Entrenamiento":
                 if res_s["datos"]:
                     vista = pd.DataFrame(res_s["datos"])
                     vista["sensaciones"] = ses.get("nota_estado") or ""
-                    st.dataframe(vista, use_container_width=True)
+                    st.dataframe(vista, width="stretch")
                 else:
                     st.caption("Sin ejercicios de fuerza en este bloque. Se guardará como nota de entrenamiento.")
 
@@ -4132,7 +4178,7 @@ elif menu == "Diario de Entrenamiento":
                             conn.execute(
                                 """
                                 INSERT INTO ejercicios_fuerza
-                                (sesion_id, ejercicio, peso, series, repeticiones, grupo_muscular, musculo_principal, rpe, sensaciones)
+                                (sesion_id, ejercicio, peso, series, repeticiones, grupo_muscular, musculo_principal, rpe, notas)
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """,
                                 (
@@ -4144,7 +4190,7 @@ elif menu == "Diario de Entrenamiento":
                                     ej.get("grupo_muscular", "Tren Inferior"),
                                     ej.get("musculo_principal", "Varios"),
                                     int(ej.get("rpe", 5) or 5),
-                                    nota_estado,
+                                    ej.get("notas", ""),
                                 ),
                             )
                     conn.commit()
@@ -4423,7 +4469,7 @@ elif menu == "Diario de Entrenamiento":
 
                 with st.expander(f"{fecha_txt} · {titulo_resumen}"):
                     if not detalle.empty:
-                        st.dataframe(detalle, use_container_width=True)
+                        st.dataframe(detalle, width="stretch")
 
                     if ses.get("actividad_garmin_id"):
                         garmin = pd.read_sql_query(
@@ -4474,7 +4520,7 @@ elif menu == "Diario de Entrenamiento":
                             if not nota_ses.empty and pd.notna(nota_ses.iloc[0].get("nota_estado")):
                                 sens_txt = str(nota_ses.iloc[0]["nota_estado"])
                             g["Sensaciones"] = sens_txt
-                            st.dataframe(g, use_container_width=True, hide_index=True)
+                            st.dataframe(g, width="stretch", hide_index=True)
     except Exception as e:
         st.error(f"No se pudo cargar historial de sesiones: {e}")
     finally:
@@ -4484,9 +4530,28 @@ elif menu == "Diario de Entrenamiento":
 # PESTA'A 6: ENTRENADOR PERSONAL
 # ==========================================
 elif menu == "Entrenador Personal":
-    tab_checkin, tab_plan, tab_lesiones, tab_ejercicios = st.tabs(
-        ["Check-in Diario", "Generar Plan Semanal", "Lesiones y Prevención", "Ejercicios"]
+    # --- Función para mostrar el plan de maratón ---
+    def render_plan_maraton(usuario_id):
+        import streamlit as st
+        from atleta_core import calcular_tiempo_maraton
+        st.subheader("Plan de Maratón")
+        st.markdown("""
+        Este es tu plan de maratón personalizado. Aquí puedes ver el tiempo estimado para completar un maratón según tu ritmo objetivo y recomendaciones generales.
+        """)
+        tiempo_estimado = calcular_tiempo_maraton()
+        st.info(f"Tiempo estimado para completar un maratón: **{tiempo_estimado}**")
+        st.markdown("""
+        - Sigue el plan semanal generado en la pestaña correspondiente.
+        - Ajusta tu entrenamiento según las recomendaciones de la IA y tu estado físico.
+        - Recuerda priorizar la recuperación y la nutrición adecuada.
+        """)
+    tab_plan, tab_lesiones, tab_maraton, tab_ejercicios, tab_checkin = st.tabs(
+        ["Generar Plan Semanal", "Lesiones y Prevención", "Plan de Maratón", "Ejercicios", "Check-in Diario"]
     )
+
+    # --- Tab Plan de Maratón ---
+    with tab_maraton:
+        render_plan_maraton(user_actual)
 # Nueva pestaña: Ejercicios
     with tab_ejercicios:
         st.subheader("Registro de Ejercicios de Fuerza")
@@ -4507,7 +4572,7 @@ elif menu == "Entrenador Personal":
         if df_inferior.empty:
             st.info("No hay registros de tren inferior.")
         else:
-            st.dataframe(df_inferior, use_container_width=True, hide_index=True)
+            st.dataframe(df_inferior, width="stretch", hide_index=True)
         # Tren superior
         st.markdown("### Tren Superior")
         df_superior = pd.read_sql_query(
@@ -4523,7 +4588,7 @@ elif menu == "Entrenador Personal":
         if df_superior.empty:
             st.info("No hay registros de tren superior.")
         else:
-            st.dataframe(df_superior, use_container_width=True, hide_index=True)
+            st.dataframe(df_superior, width="stretch", hide_index=True)
         conn.close()
 
  # "?"? Tab 1: Check-in diario "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
@@ -4661,9 +4726,9 @@ elif menu == "Entrenador Personal":
                     st.info("Aún no hay datos biométricos sincronizados de Garmin en los últimos 7 días.")
                     if not diag_usuarios.empty:
                         st.caption("Diagnóstico por usuario (tabla biométricos):")
-                        st.dataframe(diag_usuarios, use_container_width=True, hide_index=True)
+                        st.dataframe(diag_usuarios, width="stretch", hide_index=True)
                 else:
-                    st.dataframe(histo, use_container_width=True, hide_index=True)
+                    st.dataframe(histo, width="stretch", hide_index=True)
 
             cols_sueno = {row[1] for row in conn.execute("PRAGMA table_info(datos_sueno)").fetchall()}
             sueno_map = [
@@ -4694,7 +4759,7 @@ elif menu == "Entrenador Personal":
                 if sueno_det.empty:
                     st.info("Aún no hay datos de sueño sincronizados de Garmin para mostrar esta sección.")
                 else:
-                    st.dataframe(sueno_det, use_container_width=True, hide_index=True)
+                    st.dataframe(sueno_det, width="stretch", hide_index=True)
 
             st.caption(
                 f"Check-in cargado: biométricos={len(histo)} filas, sueño={len(sueno_det)} filas para usuario_id={user_actual}."
@@ -4733,7 +4798,7 @@ elif menu == "Entrenador Personal":
                 "Notas": st.session_state.get("notas_ia", ""),
             }
             df_ia = pd.DataFrame(list(dict_ia.items()), columns=["Variable", "Valor"])
-            st.dataframe(df_ia, use_container_width=True, hide_index=True)
+            st.dataframe(df_ia, width="stretch", hide_index=True)
         with col2:
 
             st.subheader("Añadir información extra")
@@ -4751,27 +4816,9 @@ elif menu == "Entrenador Personal":
             semana_inicio = st.date_input("Semana a planificar (inicio lunes)", value=inicio_default, key="semana_inicio_col1")
 
             st.markdown(f"**{semana_inicio.strftime('%Y/%m/%d')}**")
-            st.info("El plan se adapta a los datos mostrados arriba.")
-            generar = st.button("Generar plan", use_container_width=True, key="btn_generar_plan_col2")
+            generar = st.button("Generar plan", width="stretch", key="btn_generar_plan_col2")
 
         st.divider()
-        hoy = datetime.now().date()
-        inicio_default = hoy - timedelta(days=hoy.weekday())
-        semana_inicio = st.date_input("Semana a planificar (inicio lunes)", value=inicio_default, key="semana_inicio_col2")
-
-
-        otro_uid = 2 if user_actual == 1 else 1
-        otro_nombre = "Dani" if otro_uid == 2 else "Malena"
-        coordinar = st.checkbox(
-            f"Y' Coordinar con el plan de {otro_nombre} (intentar coincidir días de entreno)",
-            value=True,
-        )
-
-        col_a, col_b = st.columns([0.35, 0.65])
-        with col_a:
-            generar = st.button("Y Generar plan premium", use_container_width=True)
-        with col_b:
-            st.info("El plan se adapta a los datos mostrados arriba.")
 
         if generar:
             semana_dt = datetime.combine(semana_inicio, datetime.min.time())
@@ -4800,7 +4847,7 @@ elif menu == "Entrenador Personal":
         else:
             plan_view = plan_guardado.copy()
             plan_view["fecha"] = pd.to_datetime(plan_view["fecha"]).dt.strftime("%d-%m-%Y")
-            st.dataframe(plan_view, use_container_width=True, hide_index=True)
+            st.dataframe(plan_view, width="stretch", hide_index=True)
 
  # "?"? Feedback post-generación "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
             st.divider()
@@ -4984,6 +5031,6 @@ elif menu == "Calendario":
         st.markdown("### Vista detallada")
         plan_out = plan_cal[["fecha", "tipo", "sesion", "duracion_min", "intensidad", "detalles"]].copy()
         plan_out["fecha"] = pd.to_datetime(plan_out["fecha"]).dt.strftime("%d-%m-%Y")
-        st.dataframe(plan_out, use_container_width=True)
+        st.dataframe(plan_out, width="stretch")
 
 
