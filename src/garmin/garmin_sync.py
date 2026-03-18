@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta
 from garminconnect import Garmin, GarminConnectConnectionError, GarminConnectAuthenticationError
 from dotenv import load_dotenv
-from db.db_manager import get_db_connection
+from src.db.db_manager import get_db_connection
 
 # Cargar variables de entorno
 load_dotenv()
@@ -373,7 +373,13 @@ def sincronizar_actividades(email, password, usuario_id, num_actividades=20):
             # Extraer y mapear campos clave
             id_actividad = actividad["activityId"]
             fecha = actividad["startTimeLocal"]
-            tipo_deporte = actividad["activityType"]["typeKey"]
+            tipo_deporte_raw = actividad.get("activityType")
+            if isinstance(tipo_deporte_raw, dict):
+                tipo_deporte = tipo_deporte_raw.get("typeKey", "")
+            elif isinstance(tipo_deporte_raw, list) and tipo_deporte_raw:
+                tipo_deporte = tipo_deporte_raw[0].get("typeKey", "")
+            else:
+                tipo_deporte = ""
             distancia_m = actividad.get("distance", 0)
             tiempo_seg = actividad.get("duration", 0)
             ritmo_medio = 1000 / (actividad.get("averageSpeed", 1) * 60) if actividad.get("averageSpeed") else None

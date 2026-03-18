@@ -195,17 +195,18 @@ def asegurar_tablas_premium():
     )
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS historial_lesiones (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            fecha_inicio TEXT,
-            zona TEXT,
-            tipo TEXT,
-            activa INTEGER DEFAULT 1,
-            notas TEXT,
-            fecha_fin TEXT
-        )
-        """
+            CREATE TABLE IF NOT EXISTS historial_lesiones (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER,
+                fecha_inicio TEXT,
+                zona TEXT,
+                tipo TEXT,
+                nivel INTEGER DEFAULT 1,
+                activa INTEGER DEFAULT 1,
+                notas TEXT,
+                fecha_fin TEXT
+            )
+            """
     )
     conn.execute(
         """
@@ -1391,7 +1392,8 @@ def cargar_datos_dashboard(usuario_id):
  # Evitamos SELECT * para reducir transferencia y parseo.
         df_act = pd.read_sql_query(
             """
-            SELECT fecha, distancia_m, ritmo_medio, fc_media
+            SELECT id_actividad, fecha, tipo_deporte, distancia_m, tiempo_seg, ritmo_medio, fc_media, fc_max,
+                   potencia_media_w, cadencia_media, longitud_zancada_m, tiempo_contacto_ms, oscilacion_vertical_cm
             FROM actividades_garmin
             WHERE usuario_id = ?
             ORDER BY fecha DESC
@@ -3564,6 +3566,7 @@ if menu == "Perfil":
         df_vista_ia = pd.DataFrame(
             [{"Métrica": k, "Valor": "—" if v is None else v} for k, v in vista_ia.items()]
         )
+        df_vista_ia["Valor"] = df_vista_ia["Valor"].astype(str)
         st.dataframe(df_vista_ia, width="stretch", hide_index=True)
 
 # ==========================================
@@ -4086,192 +4089,37 @@ elif menu == "Diario de Entrenamiento":
     if st.session_state.resultado_ia and st.session_state.sesiones_detectadas:
         todas_ok = all(s["res"]["exito"] for s in st.session_state.sesiones_detectadas)
 
-        if not todas_ok:
-            for ses in st.session_state.sesiones_detectadas:
-                if not ses["res"]["exito"]:
-                    fecha_s = ses["fecha"]
-                    st.error(f"O No se pudo procesar el bloque del {fecha_s.strftime('%d-%m-%Y')}:")
-                    st.code(ses["res"]["raw"])
-        else:
-            for ses in st.session_state.sesiones_detectadas:
-                fecha_s = ses["fecha"]
-                res_s = ses["res"]
-                meta = ses["meta"]
-                etiqueta_tipo = {
-                    "fuerza": "fuerza",
-                    "carrera": "carrera",
-                    "lesion": "lesión",
-                    "general": "nota",
-                    "mixto": "mixto",
-                }.get(meta["tipo"], meta["tipo"])
-                st.success(f"OK. {fecha_s.strftime('%d-%m-%Y')} - entrada {etiqueta_tipo} procesada")
 
-                if ses["vinculo_running"]:
-                    v = ses["vinculo_running"]
-                    km = (float(v["distancia_m"] or 0) / 1000) if v["distancia_m"] is not None else 0
-                    st.caption(f"🏃 Vinculada a Garmin ({v['id_actividad']}) · {km:.2f} km")
-
-                if ses["nota_estado"]:
-                    st.warning(f"Y Estado reportado: {ses['nota_estado']}")
-
-                if res_s["datos"]:
-                    vista = pd.DataFrame(res_s["datos"])
-                    vista["sensaciones"] = ses.get("nota_estado") or ""
-                    st.dataframe(vista, width="stretch")
-                else:
-                    st.caption("Sin ejercicios de fuerza en este bloque. Se guardará como nota de entrenamiento.")
-
-            n_sesiones = len(st.session_state.sesiones_detectadas)
-            etiqueta = f"Ys? Guardar {n_sesiones} sesión{'es' if n_sesiones > 1 else ''}"
-            if st.button(etiqueta):
-                conn = get_db_connection()
-                try:
-                    for ses in st.session_state.sesiones_detectadas:
-                        fecha_s = ses["fecha"]
-                        res_s = ses["res"]
-                        nota_orig_s = ses["texto"]
-                        meta = ses["meta"]
-                        vinc = ses["vinculo_running"]
-                        nota_estado = ses["nota_estado"]
-
-                        tipo_registro = meta["tipo"]
-                        if tipo_registro == "carrera":
-                            tipo_carrera = _inferir_tipo_carrera(nota_orig_s)
-                            resumen_sesion = f"Carrera · {tipo_carrera}"
-                        elif tipo_registro == "mixto" and not res_s["datos"] and vinc:
-                            tipo_carrera = _inferir_tipo_carrera(nota_orig_s)
-                            resumen_sesion = f"Carrera · {tipo_carrera}"
-                        elif res_s["datos"]:
-                            grupos = []
-                            for ej in res_s["datos"]:
-                                g = str(ej.get("grupo_muscular") or "").strip()
-                                if g and g not in grupos:
-                                    grupos.append(g)
-                            grupos_txt = ", ".join(grupos) if grupos else "Sin grupo"
-                            resumen_sesion = f"{len(res_s['datos'])} ejercicios · {grupos_txt}"
-                        else:
-                            resumen_sesion = "Nota de entrenamiento"
-
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            """
-                            INSERT INTO sesiones_fuerza
-                            (usuario_id, fecha, nota_original, resumen, created_at, tipo_registro, actividad_garmin_id, nota_estado, lesion_flag)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                user_actual,
-                                fecha_s.strftime("%Y-%m-%d"),
-                                nota_orig_s,
-                                resumen_sesion,
-                                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                tipo_registro,
-                                (vinc["id_actividad"] if vinc else None),
-                                nota_estado,
-                                1 if meta["has_lesion"] else 0,
-                            ),
-                        )
-                        sesion_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-                        for ej in res_s["datos"]:
-                            conn.execute(
-                                """
-                                INSERT INTO ejercicios_fuerza
-                                (sesion_id, ejercicio, peso, series, repeticiones, grupo_muscular, musculo_principal, rpe, notas)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """,
-                                (
-                                    sesion_id,
-                                    ej.get("ejercicio", ""),
-                                    float(ej.get("peso", 0) or 0),
-                                    int(ej.get("series", 0) or 0),
-                                    int(ej.get("repeticiones", 0) or 0),
-                                    ej.get("grupo_muscular", "Tren Inferior"),
-                                    ej.get("musculo_principal", "Varios"),
-                                    int(ej.get("rpe", 5) or 5),
-                                    ej.get("notas", ""),
-                                ),
-                            )
-                    conn.commit()
-                    st.cache_data.clear()
-                    st.success(f"o. {n_sesiones} sesión{'es' if n_sesiones > 1 else ''} guardada{'s' if n_sesiones > 1 else ''} correctamente.")
-                    st.session_state.resultado_ia = None
-                    st.session_state.sesiones_detectadas = []
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error SQL guardando sesión: {e}")
-                finally:
-                    conn.close()
-
-    st.divider()
-    st.subheader("Calendario mensual")
-
-    if "cal_mes" not in st.session_state or "cal_anio" not in st.session_state:
-        hoy = datetime.now()
-        st.session_state.cal_mes = hoy.month
-        st.session_state.cal_anio = hoy.year
-
-    nav_prev, nav_title, nav_next = st.columns([1, 2.5, 1])
-    with nav_prev:
-        if st.button("◀ Mes anterior", key="cal_prev_mes"):
-            if st.session_state.cal_mes == 1:
-                st.session_state.cal_mes = 12
-                st.session_state.cal_anio -= 1
-            else:
-                st.session_state.cal_mes -= 1
-            st.rerun()
-    with nav_title:
-        _meses_es = [
-            "enero", "febrero", "marzo", "abril", "mayo", "junio",
-            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-        ]
-        st.markdown(
-            f"<div style='text-align:center;font-weight:700;font-size:1.05rem;'>"
-            f"{_meses_es[st.session_state.cal_mes - 1].capitalize()} {st.session_state.cal_anio}"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-    with nav_next:
-        if st.button("Mes siguiente ▶", key="cal_next_mes"):
-            if st.session_state.cal_mes == 12:
-                st.session_state.cal_mes = 1
-                st.session_state.cal_anio += 1
-            else:
-                st.session_state.cal_mes += 1
-            st.rerun()
-
-    conn = get_db_connection()
-    try:
-        sesiones = pd.read_sql_query(
-            """
-            SELECT id, fecha, resumen, created_at, tipo_registro, actividad_garmin_id
-            FROM sesiones_fuerza
-            WHERE usuario_id = ?
-            ORDER BY fecha DESC, id DESC
-            LIMIT 400
-            """,
-            conn,
-            params=(user_actual,),
-        )
-
-        sesiones_mes = pd.DataFrame(columns=["id", "fecha", "resumen", "created_at", "tipo_registro", "actividad_garmin_id"])
-
-        def _normalizar_etiqueta_musculo(valor):
-            t = str(valor or "").strip().lower()
-            if not t:
-                return None
-            if any(k in t for k in ["tren inferior", "pierna", "cuadrice", "isquio", "glute", "gemelo", "femoral"]):
-                return "Tren inferior"
-            if any(k in t for k in ["espalda", "dorsal", "bicep", "remo", "dominada"]):
-                return "Espalda + biceps"
-            if any(k in t for k in ["pecho", "tricep", "banca", "press"]):
-                return "Pecho + triceps"
-            if any(k in t for k in ["hombro", "delto"]):
-                return "Hombros"
-            if any(k in t for k in ["core", "abdominal", "abs", "lumbar"]):
-                return "Core"
-            return t.capitalize()
-
-        dias_con_entreno = {}
+        # Mostrar actividades Garmin sincronizadas (running) aunque no estén vinculadas a sesiones de fuerza
+        df_act, _, _ = cargar_datos_dashboard(user_actual)
+        if not df_act.empty:
+            st.subheader("Actividades Garmin sincronizadas (Running)")
+            df_run = df_act.copy()
+            # Filtrar solo running si hay columna tipo_deporte
+            if "tipo_deporte" in df_run.columns:
+                df_run = df_run[df_run["tipo_deporte"].str.lower().str.contains("run")]
+            df_run["fecha"] = pd.to_datetime(df_run["fecha"])
+            df_run = df_run.sort_values("fecha", ascending=False)
+            cols_show = [c for c in ["fecha", "distancia_m", "ritmo_medio", "fc_media"] if c in df_run.columns]
+            if not df_act.empty:
+                act = df_act.copy()
+                act["fecha_dt"] = pd.to_datetime(act["fecha"]).dt.tz_localize(None).dt.date
+                act["km"] = act["distancia_m"].fillna(0) / 1000
+                semana_act = act[(act["fecha_dt"] >= semana_inicio.date()) & (act["fecha_dt"] <= semana_fin.date())]
+                if not semana_act.empty:
+                    agg = semana_act.groupby("fecha_dt", as_index=False).agg(km=("km", "sum"), total=("km", "size"))
+                    for _, r in agg.iterrows():
+                        idx = out[out["fecha"].dt.date == r["fecha_dt"]].index
+                        if len(idx):
+                            # Show activity type and distance for each Garmin activity
+                            actividades_dia = semana_act[semana_act["fecha_dt"] == r["fecha_dt"]]
+                            if "tipo_deporte" in actividades_dia.columns:
+                                tipos_count = actividades_dia["tipo_deporte"].value_counts().to_dict()
+                                tipos_desc = [f"{tipos_count[t]} {t}" for t in tipos_count]
+                                tipo_str = " | ".join(tipos_desc)
+                                out.loc[idx[0], "run_desc"] = f"{tipo_str} · {r['km']:.1f} km"
+                            else:
+                                out.loc[idx[0], "run_desc"] = f"{r['total']} run · {r['km']:.1f} km"
         if not sesiones.empty:
             sesiones["fecha_dt"] = pd.to_datetime(sesiones["fecha"], errors="coerce").dt.date
             sesiones = sesiones[sesiones["fecha_dt"].notna()].copy()
@@ -4438,6 +4286,50 @@ elif menu == "Diario de Entrenamiento":
         )
 
         st.subheader("Historial por entrenamientos")
+        st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><path d='M3 17l5-5 4 3 9-10'></path><path d='M19 5h2v2'></path></svg></span><span>Actividades Garmin sincronizadas</span></div>", unsafe_allow_html=True)
+        try:
+            garmin_all = pd.read_sql_query(
+                """
+                SELECT id_actividad, fecha, tipo_deporte, distancia_m, tiempo_seg, ritmo_medio,
+                        fc_media, fc_max, potencia_media_w, cadencia_media,
+                        longitud_zancada_m, tiempo_contacto_ms, oscilacion_vertical_cm
+                FROM actividades_garmin
+                WHERE usuario_id = ?
+                ORDER BY fecha DESC
+                LIMIT 1500
+                """,
+                conn,
+                params=(user_actual,),
+            )
+            if not garmin_all.empty:
+                garmin_all["distancia_km"] = (pd.to_numeric(garmin_all["distancia_m"], errors="coerce") / 1000).round(2)
+                garmin_all["tiempo_min"] = (pd.to_numeric(garmin_all["tiempo_seg"], errors="coerce") / 60).round(1)
+                cols = [
+                    "id_actividad", "fecha", "tipo_deporte", "distancia_km", "tiempo_min", "ritmo_medio",
+                    "fc_media", "fc_max", "potencia_media_w", "cadencia_media",
+                    "longitud_zancada_m", "tiempo_contacto_ms", "oscilacion_vertical_cm",
+                ]
+                cols = [c for c in cols if c in garmin_all.columns]
+                garmin_all = garmin_all[cols].rename(columns={
+                    "id_actividad": "Actividad Garmin",
+                    "fecha": "Fecha",
+                    "tipo_deporte": "Deporte",
+                    "distancia_km": "Distancia (km)",
+                    "tiempo_min": "Tiempo (min)",
+                    "ritmo_medio": "Ritmo medio",
+                    "fc_media": "FC media",
+                    "fc_max": "FC max",
+                    "potencia_media_w": "Potencia media (W)",
+                    "cadencia_media": "Cadencia media",
+                    "longitud_zancada_m": "Zancada (m)",
+                    "tiempo_contacto_ms": "Contacto suelo (ms)",
+                    "oscilacion_vertical_cm": "Osc. vertical (cm)",
+                })
+                st.dataframe(garmin_all, width="stretch", hide_index=True)
+            else:
+                st.info("No hay actividades Garmin sincronizadas.")
+        except Exception as e:
+            st.error(f"No se pudo cargar el historial de actividades Garmin: {e}")
 
         if sesiones.empty:
             st.info("Aún no hay sesiones guardadas.")
@@ -4905,54 +4797,74 @@ elif menu == "Entrenador Personal":
             "sustituye carreras, elimina cargas de impacto y añade trabajo preventivo."
         )
         with st.form("lesion_form"):
-            lc1, lc2 = st.columns(2)
-            with lc1:
-                zona_les = st.text_input(
-                    "Zona lesionada", placeholder="Ej: rodilla izquierda, fascia plantar, isquio derecho"
-                )
-            with lc2:
-                fecha_les = st.date_input("Fecha inicio", value=datetime.now().date())
-                notas_les = st.text_area("Notas / contexto", height=70)
-            if st.form_submit_button("z. Registrar lesión"):
-                if zona_les.strip():
+                lc1, lc2 = st.columns(2)
+                with lc1:
+                    zonas_opciones = [
+                        "Rodilla", "Fascia plantar", "Isquio", "Gemelo", "Tobillo", "Espalda", "Lumbar", "Cuádriceps", "Cadera", "Otro"
+                    ]
+                    zona_les = st.selectbox("Zona lesionada", zonas_opciones)
+                    nivel_les = st.slider("Nivel de lesión", min_value=1, max_value=10, value=1, step=1, help="1 = leve, 10 = grave")
+                with lc2:
+                    fecha_les = st.date_input("Fecha inicio", value=datetime.now().date())
+                    notas_les = st.text_area("Notas / contexto", height=70)
+                if st.form_submit_button("z. Registrar lesión"):
                     conn = get_db_connection()
                     conn.execute(
-                        "INSERT INTO historial_lesiones (usuario_id, fecha_inicio, zona, tipo, activa, notas) "
-                        "VALUES (?, ?, ?, ?, 1, ?)",
-                        (user_actual, str(fecha_les), zona_les.strip(), "registro", notas_les),
+                        "INSERT INTO historial_lesiones (usuario_id, fecha_inicio, zona, tipo, nivel, activa, notas) "
+                        "VALUES (?, ?, ?, ?, ?, 1, ?)",
+                        (user_actual, str(fecha_les), zona_les, "registro", nivel_les, notas_les),
                     )
                     conn.commit()
                     conn.close()
                     st.cache_data.clear()
                     st.success("o. Lesión registrada.")
                     st.rerun()
-                else:
-                    st.error("Indica la zona lesionada.")
 
         conn = get_db_connection()
         try:
             les_df = pd.read_sql_query(
-                "SELECT id, fecha_inicio, zona, tipo, activa, notas "
-                "FROM historial_lesiones WHERE usuario_id = ? "
-                "ORDER BY activa DESC, fecha_inicio DESC",
-                conn, params=(user_actual,),
+                 "SELECT id, fecha_inicio, zona, tipo, nivel, activa, notas "
+                 "FROM historial_lesiones WHERE usuario_id = ? "
+                 "ORDER BY activa DESC, fecha_inicio DESC",
+                 conn, params=(user_actual,),
             )
             if les_df.empty:
                 st.info("Sin lesiones registradas.")
             else:
                 for _, row in les_df.iterrows():
-                    estado = "Activa" if row["activa"] else "Resuelta"
-                    with st.expander(f"{estado} · {row['zona']} ({row['fecha_inicio']})"):
-                        st.write(f"**Notas:** {row['notas'] or '—'}")
-                        if row["activa"]:
-                            if st.button("Marcar como resuelta", key=f"resol_{row['id']}"):
-                                conn.execute(
-                                    "UPDATE historial_lesiones SET activa = 0, fecha_fin = ? WHERE id = ?",
-                                    (str(datetime.now().date()), int(row["id"])),
-                                )
-                                conn.commit()
-                                st.cache_data.clear()
-                                st.rerun()
+                        estado = "Activa" if row["activa"] else "Resuelta"
+                        with st.expander(f"{estado} · {row['zona']} ({row['fecha_inicio']})"):
+                            st.write(f"**Nivel de lesión:** {row['nivel']} / 10")
+                            st.write(f"**Notas:** {row['notas'] or '—'}")
+                            if row["activa"]:
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if st.button("Marcar como resuelta", key=f"resol_{row['id']}"):
+                                        conn.execute(
+                                            "UPDATE historial_lesiones SET activa = 0, fecha_fin = ? WHERE id = ?",
+                                            (str(datetime.now().date()), int(row["id"])),
+                                        )
+                                        conn.commit()
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                with col2:
+                                    if st.button("Desactivar lesión", key=f"desact_{row['id']}"):
+                                        conn.execute(
+                                            "UPDATE historial_lesiones SET activa = 0 WHERE id = ?",
+                                            (int(row["id"]),),
+                                        )
+                                        conn.commit()
+                                        st.cache_data.clear()
+                                        st.rerun()
+                            else:
+                                if st.button("Reactivar lesión", key=f"react_{row['id']}"):
+                                    conn.execute(
+                                        "UPDATE historial_lesiones SET activa = 1 WHERE id = ?",
+                                        (int(row["id"]),),
+                                    )
+                                    conn.commit()
+                                    st.cache_data.clear()
+                                    st.rerun()
         except Exception as e:
             st.error(f"Error cargando lesiones: {e}")
         finally:
