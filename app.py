@@ -2965,8 +2965,12 @@ if menu in ("Dashboard", "Inicio"):
 
     # Widget de tarjetas de fases de macrociclo
     from src.core.marathon_planner import generar_plan_maraton, analizar_estado_atleta, cargar_historial_garmin, resumen_fases_plan
-    df_all = pd.read_csv(os.path.join('data', 'historial_entrenamientos.csv'))
-    tipos = df_all['tipo'].str.lower().unique()
+    from src.core.marathon_planner import generar_plan_maraton, analizar_estado_atleta, cargar_historial_garmin, resumen_fases_plan
+    csv_path = os.path.join('data', 'historial_entrenamientos.csv')
+    df_running = cargar_historial_garmin(csv_path)
+    estado = analizar_estado_atleta(df_running)
+    plan = generar_plan_maraton(estado)
+    tarjetas = resumen_fases_plan(plan)
     colores = [
         "linear-gradient(130deg, #C9FF00 0%, #161B22 100%)",
         "linear-gradient(130deg, #00FFD0 0%, #161B22 100%)",
@@ -2980,66 +2984,21 @@ if menu in ("Dashboard", "Inicio"):
                 <rect x='3' y='5' width='18' height='16' rx='2'></rect>
                 <path d='M8 3v4M16 3v4M3 10h18'></path>
             </svg>
-            <span>Progreso por tipo de actividad</span>
+            <span>Macrociclo Maratón</span>
         </div>
-        <div class='macro-grid'>
     """, unsafe_allow_html=True)
-    for i, tipo in enumerate(tipos):
+    cols_fases = st.columns(len(tarjetas))
+    for i, tarjeta in enumerate(tarjetas):
         color = colores[i % len(colores)]
-        df_tipo = df_all[df_all['tipo'].str.lower() == tipo]
-        if tipo == 'running':
-            estado = analizar_estado_atleta(df_tipo)
-            plan = generar_plan_maraton(estado)
-            tarjetas = resumen_fases_plan(plan)
+        with cols_fases[i]:
             st.markdown(f"""
-                <div class='macro-card' style='background: {color}; border-left: 4px solid #C9FF00; border-radius: 14px; min-height: 96px; padding: 10px 12px; display: flex; flex-direction: column; justify-content: center; margin-right: 12px;'>
-                    <div class='summary7-label'>Maratón ({tipo.title()})</div>
-                    <div class='summary7-chip'>Fase</div>
-                    <div class='summary7-value'>{tarjetas[0]['porcentaje']}%</div>
-                    <div class='summary7-desc'>{tarjetas[0]['resumen']}</div>
+                <div style='background: {color}; border-left: 4px solid #C9FF00; border-radius: 14px; min-height: 96px; padding: 10px 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.22), inset 0 1px 0 rgba(201,255,0,0.08); display: flex; flex-direction: column; justify-content: center;'>
+                    <div style='color:#A6B0BB;font-size:0.98rem;font-weight:700;text-transform:uppercase;letter-spacing:0.01em;'>{tarjeta['fase']}</div>
+                    <div style='position:absolute;top:10px;right:10px;background:rgba(116,129,142,0.26);border:1px solid rgba(175,188,199,0.20);color:#9EA9B5;border-radius:8px;padding:3px 8px;font-size:0.72rem;font-weight:600;'>Fase</div>
+                    <div style='margin-top:8px;color:#FFFFFF;font-size:2.05rem;font-weight:800;letter-spacing:-0.03em;line-height:1;'>{tarjeta['porcentaje']}%</div>
+                    <div style='margin-top:8px;color:#A6B0BB;font-size:0.92rem;'>{tarjeta['resumen']}</div>
                 </div>
             """, unsafe_allow_html=True)
-        else:
-            total = len(df_tipo)
-            ultima = df_tipo['fecha'].max() if not df_tipo.empty else 'N/A'
-            st.markdown(f"""
-                <div class='macro-card' style='background: {color}; border-left: 4px solid #C9FF00; border-radius: 14px; min-height: 96px; padding: 10px 12px; display: flex; flex-direction: column; justify-content: center; margin-right: 12px;'>
-                    <div class='summary7-label'>{tipo.title()}</div>
-                    <div class='summary7-chip'>Sesiones</div>
-                    <div class='summary7-value'>{total}</div>
-                    <div class='summary7-desc'>Última: {ultima}</div>
-                </div>
-            """, unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("""
-        <style>
-        .macro-grid {
-            display: flex;
-            flex-direction: row;
-            flex-wrap: nowrap;
-            gap: 12px;
-            margin-bottom: 18px;
-            overflow-x: auto;
-            width: 100%;
-        }
-        .macro-card {
-            flex: 0 0 320px;
-            min-width: 320px;
-            max-width: 340px;
-            transition: box-shadow 0.2s;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.22), inset 0 1px 0 rgba(201,255,0,0.08);
-            margin-right: 0;
-        }
-        .macro-card:hover {
-            box-shadow: 0 8px 24px rgba(201,255,0,0.18);
-        }
-        .summary7-desc {
-            margin-top: 8px;
-            color: #A6B0BB;
-            font-size: 0.92rem;
-        }
-        </style>
-    """, unsafe_allow_html=True)
 
     if user_actual == 2:
         estado_malena = obtener_estado_ciclo_malena()
@@ -4923,13 +4882,14 @@ elif menu == "Entrenador Personal":
         with st.form("lesion_form"):
             lc1, lc2 = st.columns(2)
             with lc1:
-                zona_les = st.text_input(
-                    "Zona lesionada", placeholder="Ej: rodilla izquierda, fascia plantar, isquio derecho"
+                zona_les = st.selectbox(
+                    "Zona lesionada",
+                    ["Periostitis (Tibia)", "Tendón de Aquiles","Fascitis Plantar","Rodilla Corredor","Tendinitis Rotuliana","Lesión","Lumbalgia","Poleas (Dedos)","Hombro (Pinzamiento)","Agujetas (DOMS)"]
                 )
             with lc2:
                 fecha_les = st.date_input("Fecha inicio", value=datetime.now().date())
                 notas_les = st.text_area("Notas / contexto", height=70)
-            if st.form_submit_button("z. Registrar lesión"):
+            if st.form_submit_button("Registrar lesión"):
                 if zona_les.strip():
                     conn = get_db_connection()
                     conn.execute(

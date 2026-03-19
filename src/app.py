@@ -1803,19 +1803,12 @@ def aplicar_tema_plotly(fig, titulo=None):
 st.set_page_config(page_title="Proyecto Athlete", page_icon="Yf?T?", layout="wide")
 if "_db_setup_done" not in st.session_state:
     asegurar_tabla_plan_entrenamiento()
-    asegurar_tablas_fuerza()
+    
     asegurar_tablas_premium()
     asegurar_indices_consulta()
     st.session_state._db_setup_done = True
 
-# Ocultar sidebar completa
-st.markdown(
-    """<style>
-    [data-testid="stSidebar"] { display: none; }
-    [data-testid="collapsedControl"] { display: none; }
-    </style>""",
-    unsafe_allow_html=True,
-)
+
 
 # 2. L"GICA DE LOGIN / SESI"N
 if "usuario_id" not in st.session_state:
@@ -3824,20 +3817,24 @@ elif menu == "Ciclo Menstrual":
                 else:
                     _conn_tmp = get_db_connection()
                     _lb = pd.read_sql_query(
-                        "SELECT fecha FROM diario_fisiologia WHERE usuario_id=? AND sangre IS NOT NULL AND sangre != 'Sin sangre' ORDER BY fecha DESC LIMIT 1",
-                        _conn_tmp, params=(user_actual,)
-                    )
-                    _conn_tmp.close()
-                    if not _lb.empty:
-                        _ld = pd.to_datetime(_lb.iloc[0]["fecha"]).date()
-                        _cd = (fecha - _ld).days + 1
-                        if _cd <= 5:
-                            fase = "Menstruaci\u00f3n"
-                        elif _cd <= 11:
-                            fase = "Folicular"
-                        elif _cd <= 16:
-                            fase = "Ovulaci\u00f3n"
-                        else:
+                                        nota_ses = pd.read_sql_query(
+                                            "SELECT nota_estado FROM sesiones_fuerza WHERE id = ? LIMIT 1",
+                                            conn,
+                                            params=(int(ses["id"]),),
+                                        )
+                                        sens_txt = ""
+                                        if not nota_ses.empty and pd.notna(nota_ses.iloc[0].get("nota_estado")):
+                                            sens_txt = str(nota_ses.iloc[0]["nota_estado"])
+                                        g["Sensaciones"] = sens_txt
+                                        st.dataframe(g, width="stretch", hide_index=True)
+                                    # ...existing code...
+                                # ...existing code...
+                            # ...existing code...
+                        # ...existing code...
+                    except Exception as e:
+                        st.error(f"No se pudo cargar historial de sesiones: {e}")
+                    finally:
+                        conn.close()
                             fase = "L\u00fatea"
                     else:
                         fase = "L\u00fatea"
@@ -4168,168 +4165,161 @@ elif menu == "Diario de Entrenamiento":
                     etiqueta_sesion = etiquetas_por_sesion.get(int(fila["id"]), "Entrenamiento")
                 dias_con_entreno.setdefault(dia, []).append(etiqueta_sesion)
 
-        semanas = calendar.monthcalendar(st.session_state.cal_anio, st.session_state.cal_mes)
-        dias_semana = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
-        celdas = []
-        for d in dias_semana:
-            celdas.append(
-                f"<div class='cal-head'>{d}</div>"
-            )
-
-        for semana in semanas:
-            for dia in semana:
-                if dia == 0:
-                    celdas.append("<div class='cal-day cal-empty'></div>")
-                    continue
-
-                if dia in dias_con_entreno:
-                    nombres = dias_con_entreno[dia][:2]
-                    extra = max(0, len(dias_con_entreno[dia]) - 2)
-                    nombres_html = "".join(
-                        f"<div class='cal-item'>{html.escape(n[:42])}</div>" for n in nombres
-                    )
-                    extra_html = f"<div class='cal-more'>+{extra} mas</div>" if extra > 0 else ""
-                    celdas.append(
-                        f"<div class='cal-day cal-trained'>"
-                        f"<div class='cal-num'>{dia}</div>"
-                        f"{nombres_html}{extra_html}"
-                        f"</div>"
-                    )
-                else:
+        # Calendario mensual solo si hay datos válidos
+        try:
+            dias_con_entreno = {}
+            semanas = calendar.monthcalendar(st.session_state.cal_anio, st.session_state.cal_mes)
+            dias_semana = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
+            celdas = []
+            for d in dias_semana:
+                celdas.append(f"<div class='cal-head'>{d}</div>")
+            for semana in semanas:
+                for dia in semana:
+                    if dia == 0:
+                        celdas.append("<div class='cal-day cal-empty'></div>")
+                        continue
                     celdas.append(
                         f"<div class='cal-day'>"
                         f"<div class='cal-num'>{dia}</div>"
                         f"<div class='cal-rest'>Descanso</div>"
                         f"</div>"
                     )
-
-        st.markdown(
-            """
-            <style>
-            .cal-grid {
-                display: grid;
-                grid-template-columns: repeat(7, minmax(0, 1fr));
-                gap: 8px;
-                margin-top: 10px;
-            }
-            .cal-head {
-                text-align: center;
-                font-size: 0.78rem;
-                font-weight: 700;
-                color: #8B949E;
-                background: #161B22;
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 10px;
-                padding: 8px 6px;
-            }
-            .cal-day {
-                min-height: 114px;
-                background: #161B22;
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 12px;
-                padding: 8px;
-            }
-            .cal-empty {
-                background: transparent;
-                border: 1px dashed rgba(255,255,255,0.06);
-            }
-            .cal-trained {
-                border: 1px solid rgba(201,255,0,0.65);
-                background: linear-gradient(180deg, rgba(201,255,0,0.22), rgba(201,255,0,0.09));
-            }
-            .cal-num {
-                width: 28px;
-                height: 28px;
-                border-radius: 999px;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 0.86rem;
-                font-weight: 700;
-                color: #E6EDF3;
-                background: rgba(255,255,255,0.08);
-                margin-bottom: 7px;
-            }
-            .cal-trained .cal-num {
-                background: #C9FF00;
-                color: #0E1117;
-            }
-            .cal-item {
-                font-size: 0.72rem;
-                color: #0E1117;
-                font-weight: 600;
-                background: rgba(201,255,0,0.85);
-                border-radius: 8px;
-                padding: 3px 6px;
-                margin-bottom: 4px;
-                overflow: hidden;
-                white-space: nowrap;
-                text-overflow: ellipsis;
-            }
-            .cal-more {
-                font-size: 0.70rem;
-                color: #D4F77C;
-                margin-top: 2px;
-            }
-            .cal-rest {
-                font-size: 0.72rem;
-                color: #8B949E;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(f"<div class='cal-grid'>{''.join(celdas)}</div>", unsafe_allow_html=True)
-
-        st.caption(
-            f"Días entrenados este mes: {len(dias_con_entreno)}"
-        )
+            st.markdown(
+                """
+                <style>
+                .cal-grid {
+                    display: grid;
+                    grid-template-columns: repeat(7, minmax(0, 1fr));
+                    gap: 8px;
+                    margin-top: 10px;
+                }
+                .cal-head {
+                    text-align: center;
+                    font-size: 0.78rem;
+                    font-weight: 700;
+                    color: #8B949E;
+                    background: #161B22;
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 10px;
+                    padding: 8px 6px;
+                }
+                .cal-day {
+                    min-height: 114px;
+                    background: #161B22;
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 12px;
+                    padding: 8px;
+                }
+                .cal-empty {
+                    background: transparent;
+                    border: 1px dashed rgba(255,255,255,0.06);
+                }
+                .cal-num {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 999px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 0.86rem;
+                    font-weight: 700;
+                    color: #E6EDF3;
+                    background: rgba(255,255,255,0.08);
+                    margin-bottom: 7px;
+                }
+                .cal-rest {
+                    font-size: 0.72rem;
+                    color: #8B949E;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown(f"<div class='cal-grid'>{''.join(celdas)}</div>", unsafe_allow_html=True)
+            st.caption("Días entrenados este mes: 0")
+        except Exception:
+            pass
 
         st.subheader("Historial por entrenamientos")
         st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><path d='M3 17l5-5 4 3 9-10'></path><path d='M19 5h2v2'></path></svg></span><span>Actividades Garmin sincronizadas</span></div>", unsafe_allow_html=True)
-        try:
-            garmin_all = pd.read_sql_query(
-                """
-                SELECT id_actividad, fecha, tipo_deporte, distancia_m, tiempo_seg, ritmo_medio,
-                        fc_media, fc_max, potencia_media_w, cadencia_media,
-                        longitud_zancada_m, tiempo_contacto_ms, oscilacion_vertical_cm
-                FROM actividades_garmin
-                WHERE usuario_id = ?
-                ORDER BY fecha DESC
-                LIMIT 1500
-                """,
-                conn,
-                params=(user_actual,),
-            )
-            if not garmin_all.empty:
-                garmin_all["distancia_km"] = (pd.to_numeric(garmin_all["distancia_m"], errors="coerce") / 1000).round(2)
-                garmin_all["tiempo_min"] = (pd.to_numeric(garmin_all["tiempo_seg"], errors="coerce") / 60).round(1)
-                cols = [
-                    "id_actividad", "fecha", "tipo_deporte", "distancia_km", "tiempo_min", "ritmo_medio",
-                    "fc_media", "fc_max", "potencia_media_w", "cadencia_media",
-                    "longitud_zancada_m", "tiempo_contacto_ms", "oscilacion_vertical_cm",
-                ]
-                cols = [c for c in cols if c in garmin_all.columns]
-                garmin_all = garmin_all[cols].rename(columns={
-                    "id_actividad": "Actividad Garmin",
-                    "fecha": "Fecha",
-                    "tipo_deporte": "Deporte",
-                    "distancia_km": "Distancia (km)",
-                    "tiempo_min": "Tiempo (min)",
-                    "ritmo_medio": "Ritmo medio",
-                    "fc_media": "FC media",
-                    "fc_max": "FC max",
-                    "potencia_media_w": "Potencia media (W)",
-                    "cadencia_media": "Cadencia media",
-                    "longitud_zancada_m": "Zancada (m)",
-                    "tiempo_contacto_ms": "Contacto suelo (ms)",
-                    "oscilacion_vertical_cm": "Osc. vertical (cm)",
-                })
-                st.dataframe(garmin_all, width="stretch", hide_index=True)
-            else:
-                st.info("No hay actividades Garmin sincronizadas.")
-        except Exception as e:
-            st.error(f"No se pudo cargar el historial de actividades Garmin: {e}")
+        # Mostrar siempre los desplegables de actividades Garmin justo debajo del título
+        garmin_all = pd.read_sql_query(
+            """
+            SELECT id_actividad, fecha, tipo_deporte, distancia_m, tiempo_seg, ritmo_medio,
+                    fc_media, fc_max, potencia_media_w, cadencia_media,
+                    longitud_zancada_m, tiempo_contacto_ms, oscilacion_vertical_cm
+            FROM actividades_garmin
+            WHERE usuario_id = ?
+            ORDER BY fecha DESC
+            LIMIT 1500
+            """,
+            conn,
+            params=(user_actual,),
+        )
+        if not garmin_all.empty:
+            garmin_all["distancia_km"] = (pd.to_numeric(garmin_all["distancia_m"], errors="coerce") / 1000).round(2)
+            garmin_all["tiempo_min"] = (pd.to_numeric(garmin_all["tiempo_seg"], errors="coerce") / 60).round(1)
+            cols = [
+                "id_actividad", "fecha", "tipo_deporte", "distancia_km", "tiempo_min", "ritmo_medio",
+                "fc_media", "fc_max", "potencia_media_w", "cadencia_media",
+                "longitud_zancada_m", "tiempo_contacto_ms", "oscilacion_vertical_cm",
+            ]
+            cols = [c for c in cols if c in garmin_all.columns]
+            garmin_all = garmin_all[cols]
+            for _, actividad in garmin_all.iterrows():
+                fecha_txt = pd.to_datetime(actividad["fecha"]).strftime("%d-%m-%Y")
+                titulo = f"{fecha_txt} · {actividad['tipo_deporte']} · {actividad['distancia_km']} km"
+                with st.expander(titulo):
+                    st.write(f"**Tiempo:** {actividad['tiempo_min']} min")
+                    st.write(f"**Ritmo medio:** {actividad['ritmo_medio']}")
+                    st.write(f"**FC media:** {actividad['fc_media']}")
+                    st.write(f"**FC max:** {actividad['fc_max']}")
+                    st.write(f"**Potencia media (W):** {actividad['potencia_media_w']}")
+                    st.write(f"**Cadencia media:** {actividad['cadencia_media']}")
+                    st.write(f"**Zancada (m):** {actividad['longitud_zancada_m']}")
+                    st.write(f"**Contacto suelo (ms):** {actividad['tiempo_contacto_ms']}")
+                    st.write(f"**Osc. vertical (cm):** {actividad['oscilacion_vertical_cm']}")
+        else:
+            st.info("No hay actividades Garmin sincronizadas.")
+        # Mostrar solo los desplegables de actividades Garmin
+        garmin_all = pd.read_sql_query(
+            """
+            SELECT id_actividad, fecha, tipo_deporte, distancia_m, tiempo_seg, ritmo_medio,
+                    fc_media, fc_max, potencia_media_w, cadencia_media,
+                    longitud_zancada_m, tiempo_contacto_ms, oscilacion_vertical_cm
+            FROM actividades_garmin
+            WHERE usuario_id = ?
+            ORDER BY fecha DESC
+            LIMIT 1500
+            """,
+            conn,
+            params=(user_actual,),
+        )
+        if not garmin_all.empty:
+            garmin_all["distancia_km"] = (pd.to_numeric(garmin_all["distancia_m"], errors="coerce") / 1000).round(2)
+            garmin_all["tiempo_min"] = (pd.to_numeric(garmin_all["tiempo_seg"], errors="coerce") / 60).round(1)
+            cols = [
+                "id_actividad", "fecha", "tipo_deporte", "distancia_km", "tiempo_min", "ritmo_medio",
+                "fc_media", "fc_max", "potencia_media_w", "cadencia_media",
+                "longitud_zancada_m", "tiempo_contacto_ms", "oscilacion_vertical_cm",
+            ]
+            cols = [c for c in cols if c in garmin_all.columns]
+            garmin_all = garmin_all[cols]
+            for _, actividad in garmin_all.iterrows():
+                fecha_txt = pd.to_datetime(actividad["fecha"]).strftime("%d-%m-%Y")
+                titulo = f"{fecha_txt} · {actividad['tipo_deporte']} · {actividad['distancia_km']} km"
+                with st.expander(titulo):
+                    st.write(f"**Tiempo:** {actividad['tiempo_min']} min")
+                    st.write(f"**Ritmo medio:** {actividad['ritmo_medio']}")
+                    st.write(f"**FC media:** {actividad['fc_media']}")
+                    st.write(f"**FC max:** {actividad['fc_max']}")
+                    st.write(f"**Potencia media (W):** {actividad['potencia_media_w']}")
+                    st.write(f"**Cadencia media:** {actividad['cadencia_media']}")
+                    st.write(f"**Zancada (m):** {actividad['longitud_zancada_m']}")
+                    st.write(f"**Contacto suelo (ms):** {actividad['tiempo_contacto_ms']}")
+                    st.write(f"**Osc. vertical (cm):** {actividad['oscilacion_vertical_cm']}")
+        else:
+            st.info("No hay actividades Garmin sincronizadas.")
 
         if sesiones.empty:
             st.info("Aún no hay sesiones guardadas.")
@@ -4346,7 +4336,6 @@ elif menu == "Diario de Entrenamiento":
                     conn,
                     params=(int(ses["id"]),),
                 )
-
                 titulo_resumen = str(ses.get("resumen") or "")
                 if not detalle.empty and "grupo_muscular" in detalle.columns:
                     grupos = []
@@ -4356,8 +4345,9 @@ elif menu == "Diario de Entrenamiento":
                             grupos.append(gg)
                     if grupos and "·" not in titulo_resumen.split("ejercicios", 1)[-1]:
                         titulo_resumen = f"{titulo_resumen} · {', '.join(grupos)}"
-
+                # ...existing code...
                 with st.expander(f"{fecha_txt} · {titulo_resumen}"):
+                    # ...existing code...
                     if not detalle.empty:
                         st.dataframe(detalle, width="stretch")
 
@@ -4411,10 +4401,10 @@ elif menu == "Diario de Entrenamiento":
                                 sens_txt = str(nota_ses.iloc[0]["nota_estado"])
                             g["Sensaciones"] = sens_txt
                             st.dataframe(g, width="stretch", hide_index=True)
-    except Exception as e:
-        st.error(f"No se pudo cargar historial de sesiones: {e}")
-    finally:
-        conn.close()
+        except Exception as e:
+            st.error(f"No se pudo cargar historial de sesiones: {e}")
+        finally:
+            conn.close()
 
     # ==========================================
     # PESTA'A 6: ENTRENADOR PERSONAL
@@ -4435,14 +4425,14 @@ elif menu == "Entrenador Personal":
         - Ajusta tu entrenamiento según las recomendaciones de la IA y tu estado físico.
         - Recuerda priorizar la recuperación y la nutrición adecuada.
         """)
-    tab_plan, tab_lesiones, tab_maraton, tab_ejercicios, tab_checkin = st.tabs(
+        tab_plan, tab_lesiones, tab_maraton, tab_ejercicios, tab_checkin = st.tabs(
         ["Generar Plan Semanal", "Lesiones y Prevención", "Plan de Maratón", "Ejercicios", "Check-in Diario"]
     )
 
     # --- Tab Plan de Maratón ---
     with tab_maraton:
         render_plan_maraton(user_actual)
-# Nueva pestaña: Ejercicios
+        # Nueva pestaña: Ejercicios
     with tab_ejercicios:
         st.subheader("Registro de Ejercicios de Fuerza")
         st.caption("Consulta los datos de la última vez que realizaste cada ejercicio.")
@@ -4712,12 +4702,7 @@ elif menu == "Entrenador Personal":
 
         if generar:
             semana_dt = datetime.combine(semana_inicio, datetime.min.time())
-            plan_pareja_df = None
-            if coordinar:
-                plan_pareja_df = cargar_plan_semanal(otro_uid, semana_dt)
-                if plan_pareja_df.empty:
-                    plan_pareja_df = None
-            plan, alertas = generar_plan_semanal(perfil, datos_premium, semana_dt, plan_pareja=plan_pareja_df)
+            plan, alertas = generar_plan_semanal(perfil, datos_premium, semana_dt)
             guardar_plan_semanal(user_actual, semana_dt, plan)
             st.session_state["alertas_plan"] = alertas
             st.session_state["plan_generado_csv"] = plan.to_csv(index=False, sep=";")
@@ -4797,74 +4782,79 @@ elif menu == "Entrenador Personal":
             "sustituye carreras, elimina cargas de impacto y añade trabajo preventivo."
         )
         with st.form("lesion_form"):
-                lc1, lc2 = st.columns(2)
-                with lc1:
-                    zonas_opciones = [
-                        "Rodilla", "Fascia plantar", "Isquio", "Gemelo", "Tobillo", "Espalda", "Lumbar", "Cuádriceps", "Cadera", "Otro"
-                    ]
-                    zona_les = st.selectbox("Zona lesionada", zonas_opciones)
-                    nivel_les = st.slider("Nivel de lesión", min_value=1, max_value=10, value=1, step=1, help="1 = leve, 10 = grave")
-                with lc2:
-                    fecha_les = st.date_input("Fecha inicio", value=datetime.now().date())
-                    notas_les = st.text_area("Notas / contexto", height=70)
-                if st.form_submit_button("z. Registrar lesión"):
-                    conn = get_db_connection()
-                    conn.execute(
-                        "INSERT INTO historial_lesiones (usuario_id, fecha_inicio, zona, tipo, nivel, activa, notas) "
-                        "VALUES (?, ?, ?, ?, ?, 1, ?)",
-                        (user_actual, str(fecha_les), zona_les, "registro", nivel_les, notas_les),
-                    )
-                    conn.commit()
-                    conn.close()
-                    st.cache_data.clear()
-                    st.success("o. Lesión registrada.")
-                    st.rerun()
+            zonas_opciones = [
+                "Periostitis (Tibia)",
+                "Tendón de Aquiles",
+                "Fascitis Plantar",
+                "Rodilla Corredor",
+                "Tendinitis Rotuliana",
+                "Lesión",
+                "Lumbalgia",
+                "Poleas (Dedos)",
+                "Hombro (Pinzamiento)",
+                "Agujetas (DOMS)"
+            ]
+            zona_les = st.selectbox("Zona lesionada", zonas_opciones)
+            fecha_les = st.date_input("Fecha inicio", value=datetime.now().date())
+            nivel_les = st.slider("Nivel de lesión (gravedad)", min_value=1, max_value=10, value=1, step=1, help="1 = leve, 10 = grave")
+            # Elimina el campo de notas y la lógica asociada
+            if st.form_submit_button("Registrar lesión"):
+                conn = get_db_connection()
+                conn.execute(
+                    "INSERT INTO historial_lesiones (usuario_id, fecha_inicio, zona, tipo, nivel, activa, notas) "
+                    "VALUES (?, ?, ?, ?, ?, 1, '')",
+                    (user_actual, str(fecha_les), zona_les, "registro", nivel_les),
+                )
+                conn.commit()
+                conn.close()
+                st.cache_data.clear()
+                st.success("o. Lesión registrada.")
+                st.rerun()
 
         conn = get_db_connection()
         try:
             les_df = pd.read_sql_query(
-                 "SELECT id, fecha_inicio, zona, tipo, nivel, activa, notas "
-                 "FROM historial_lesiones WHERE usuario_id = ? "
-                 "ORDER BY activa DESC, fecha_inicio DESC",
-                 conn, params=(user_actual,),
+                "SELECT id, fecha_inicio, zona, tipo, nivel, activa "
+                "FROM historial_lesiones WHERE usuario_id = ? "
+                "ORDER BY activa DESC, fecha_inicio DESC",
+                conn, params=(user_actual,),
             )
             if les_df.empty:
                 st.info("Sin lesiones registradas.")
             else:
                 for _, row in les_df.iterrows():
-                        estado = "Activa" if row["activa"] else "Resuelta"
-                        with st.expander(f"{estado} · {row['zona']} ({row['fecha_inicio']})"):
-                            st.write(f"**Nivel de lesión:** {row['nivel']} / 10")
-                            st.write(f"**Notas:** {row['notas'] or '—'}")
-                            if row["activa"]:
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    if st.button("Marcar como resuelta", key=f"resol_{row['id']}"):
-                                        conn.execute(
-                                            "UPDATE historial_lesiones SET activa = 0, fecha_fin = ? WHERE id = ?",
-                                            (str(datetime.now().date()), int(row["id"])),
-                                        )
-                                        conn.commit()
-                                        st.cache_data.clear()
-                                        st.rerun()
-                                with col2:
-                                    if st.button("Desactivar lesión", key=f"desact_{row['id']}"):
-                                        conn.execute(
-                                            "UPDATE historial_lesiones SET activa = 0 WHERE id = ?",
-                                            (int(row["id"]),),
-                                        )
-                                        conn.commit()
-                                        st.cache_data.clear()
-                                        st.rerun()
-                            else:
-                                if st.button("Reactivar lesión", key=f"react_{row['id']}"):
+                    estado = "Activa" if row["activa"] else "Resuelta"
+                    with st.expander(f"{estado} · {row['zona']} ({row['fecha_inicio']})"):
+                        st.write(f"**Nivel de lesión (gravedad):** {row['nivel']} / 10")
+                        if row["activa"]:
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if st.button("Marcar como resuelta", key=f"resol_{row['id']}"):
                                     conn.execute(
-                                        "UPDATE historial_lesiones SET activa = 1 WHERE id = ?",
+                                        "UPDATE historial_lesiones SET activa = 0, fecha_fin = ? WHERE id = ?",
+                                        (str(datetime.now().date()), int(row["id"])),
+                                    )
+                                    conn.commit()
+                                    st.cache_data.clear()
+                                    st.rerun()
+                            with col2:
+                                if st.button("Desactivar lesión", key=f"desact_{row['id']}"):
+                                    conn.execute(
+                                        "UPDATE historial_lesiones SET activa = 0 WHERE id = ?",
                                         (int(row["id"]),),
                                     )
                                     conn.commit()
                                     st.cache_data.clear()
                                     st.rerun()
+                        else:
+                            if st.button("Reactivar lesión", key=f"react_{row['id']}"):
+                                conn.execute(
+                                    "UPDATE historial_lesiones SET activa = 1 WHERE id = ?",
+                                    (int(row["id"]),),
+                                )
+                                conn.commit()
+                                st.cache_data.clear()
+                                st.rerun()
         except Exception as e:
             st.error(f"Error cargando lesiones: {e}")
         finally:

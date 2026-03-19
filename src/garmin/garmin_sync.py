@@ -523,7 +523,8 @@ def sincronizar_biometricos_garmin(email, password, usuario_id, dias=7):
         logger.info("✓ Sesión iniciada exitosamente")
         
         logger.info("→ Buscando actividades de running recientes...")
-        latest_running = _latest_running_metrics(client, num_actividades=12)
+        latest_running_list = _latest_running_metrics(client, num_actividades=12)
+        latest_running = latest_running_list[0] if latest_running_list and isinstance(latest_running_list, list) and len(latest_running_list) > 0 else None
         if latest_running and latest_running.get("fecha"):
             logger.info(f"  ✓ Actividad running encontrada: {latest_running.get('fecha')}")
         else:
