@@ -3815,29 +3815,29 @@ elif menu == "Ciclo Menstrual":
                 if sangre != "Sin sangre":
                     fase = "Menstruaci\u00f3n"
                 else:
-                    _conn_tmp = get_db_connection()
-                    _lb = pd.read_sql_query(
-                                        nota_ses = pd.read_sql_query(
-                                            "SELECT nota_estado FROM sesiones_fuerza WHERE id = ? LIMIT 1",
-                                            conn,
-                                            params=(int(ses["id"]),),
-                                        )
-                                        sens_txt = ""
-                                        if not nota_ses.empty and pd.notna(nota_ses.iloc[0].get("nota_estado")):
-                                            sens_txt = str(nota_ses.iloc[0]["nota_estado"])
-                                        g["Sensaciones"] = sens_txt
-                                        st.dataframe(g, width="stretch", hide_index=True)
-                                    # ...existing code...
-                                # ...existing code...
-                            # ...existing code...
-                        # ...existing code...
+                    # Mostrar sensaciones de todas las sesiones
+                    conn = get_db_connection()
+                    try:
+                        sesiones = pd.read_sql_query(
+                            "SELECT id FROM sesiones_fuerza WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 5",
+                            conn,
+                            params=(user_actual,),
+                        )
+                        for _, ses in sesiones.iterrows():
+                            nota_ses = pd.read_sql_query(
+                                "SELECT nota_estado FROM sesiones_fuerza WHERE id = ? LIMIT 1",
+                                conn,
+                                params=(int(ses["id"]),),
+                            )
+                            sens_txt = ""
+                            if not nota_ses.empty and pd.notna(nota_ses.iloc[0].get("nota_estado")):
+                                sens_txt = str(nota_ses.iloc[0]["nota_estado"])
+                            st.write(f"Sesión {ses['id']} - Sensaciones: {sens_txt}")
                     except Exception as e:
                         st.error(f"No se pudo cargar historial de sesiones: {e}")
                     finally:
                         conn.close()
-                            fase = "L\u00fatea"
-                    else:
-                        fase = "L\u00fatea"
+                    fase = "L\u00fatea"
                 sintomas_str = ", ".join(sintomas_norm) if sintomas_norm else ""
                 estado_animo = ", ".join(estado_animo_norm) if estado_animo_norm else "Normal"
                 sangre_val = sangre if sangre != "Sin sangre" else None
@@ -4085,8 +4085,6 @@ elif menu == "Diario de Entrenamiento":
 
     if st.session_state.resultado_ia and st.session_state.sesiones_detectadas:
         todas_ok = all(s["res"]["exito"] for s in st.session_state.sesiones_detectadas)
-
-
         # Mostrar actividades Garmin sincronizadas (running) aunque no estén vinculadas a sesiones de fuerza
         df_act, _, _ = cargar_datos_dashboard(user_actual)
         if not df_act.empty:
@@ -4104,6 +4102,9 @@ elif menu == "Diario de Entrenamiento":
                 act["km"] = act["distancia_m"].fillna(0) / 1000
                 semana_act = act[(act["fecha_dt"] >= semana_inicio.date()) & (act["fecha_dt"] <= semana_fin.date())]
                 if not semana_act.empty:
+                    # Definir 'out' como una copia de act para guardar descripciones
+                    out = act.copy()
+                    out["run_desc"] = ""
                     agg = semana_act.groupby("fecha_dt", as_index=False).agg(km=("km", "sum"), total=("km", "size"))
                     for _, r in agg.iterrows():
                         idx = out[out["fecha"].dt.date == r["fecha_dt"]].index
@@ -4117,6 +4118,8 @@ elif menu == "Diario de Entrenamiento":
                                 out.loc[idx[0], "run_desc"] = f"{tipo_str} · {r['km']:.1f} km"
                             else:
                                 out.loc[idx[0], "run_desc"] = f"{r['total']} run · {r['km']:.1f} km"
+                    # Puedes mostrar 'out' si lo necesitas
+                    # st.dataframe(out, width="stretch")
         if not sesiones.empty:
             sesiones["fecha_dt"] = pd.to_datetime(sesiones["fecha"], errors="coerce").dt.date
             sesiones = sesiones[sesiones["fecha_dt"].notna()].copy()
@@ -4141,6 +4144,11 @@ elif menu == "Diario de Entrenamiento":
                         conn,
                         params=ids_sesion,
                     )
+                    # Definir función básica para normalizar etiquetas
+                    def _normalizar_etiqueta_musculo(valor):
+                        if not valor:
+                            return None
+                        return str(valor).strip().capitalize()
                     if not detalle_mes.empty:
                         for ses_id, grp in detalle_mes.groupby("sesion_id"):
                             etiquetas = []
@@ -4400,11 +4408,12 @@ elif menu == "Diario de Entrenamiento":
                             if not nota_ses.empty and pd.notna(nota_ses.iloc[0].get("nota_estado")):
                                 sens_txt = str(nota_ses.iloc[0]["nota_estado"])
                             g["Sensaciones"] = sens_txt
-                            st.dataframe(g, width="stretch", hide_index=True)
-        except Exception as e:
-            st.error(f"No se pudo cargar historial de sesiones: {e}")
-        finally:
-            conn.close()
+                            try:
+                                st.dataframe(g, width="stretch", hide_index=True)
+                            except Exception as e:
+                                st.error(f"No se pudo cargar historial de sesiones: {e}")
+                            finally:
+                                conn.close()
 
     # ==========================================
     # PESTA'A 6: ENTRENADOR PERSONAL
@@ -4425,14 +4434,14 @@ elif menu == "Entrenador Personal":
         - Ajusta tu entrenamiento según las recomendaciones de la IA y tu estado físico.
         - Recuerda priorizar la recuperación y la nutrición adecuada.
         """)
-        tab_plan, tab_lesiones, tab_maraton, tab_ejercicios, tab_checkin = st.tabs(
+    tab_plan, tab_lesiones, tab_maraton, tab_ejercicios, tab_checkin = st.tabs(
         ["Generar Plan Semanal", "Lesiones y Prevención", "Plan de Maratón", "Ejercicios", "Check-in Diario"]
     )
 
     # --- Tab Plan de Maratón ---
     with tab_maraton:
         render_plan_maraton(user_actual)
-        # Nueva pestaña: Ejercicios
+# Nueva pestaña: Ejercicios
     with tab_ejercicios:
         st.subheader("Registro de Ejercicios de Fuerza")
         st.caption("Consulta los datos de la última vez que realizaste cada ejercicio.")
@@ -4517,7 +4526,7 @@ elif menu == "Entrenador Personal":
                     params=(user_actual, f7),
                 )
                 st.markdown("<hr />", unsafe_allow_html=True)
-                st.subheader("Promedios de la semana")
+                
             except Exception:
                 pass
             # Mostrar promedios en formato grid igual que dashboard
@@ -4932,5 +4941,3 @@ elif menu == "Calendario":
         plan_out = plan_cal[["fecha", "tipo", "sesion", "duracion_min", "intensidad", "detalles"]].copy()
         plan_out["fecha"] = pd.to_datetime(plan_out["fecha"]).dt.strftime("%d-%m-%Y")
         st.dataframe(plan_out, width="stretch")
-
-
