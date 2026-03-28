@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta
 from garminconnect import Garmin, GarminConnectConnectionError, GarminConnectAuthenticationError
 from dotenv import load_dotenv
-from src.db.db_manager import get_db_connection
+from db.db_manager import get_db_connection
 
 # Cargar variables de entorno
 load_dotenv()

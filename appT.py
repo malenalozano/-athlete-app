@@ -2,6 +2,11 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import os
+import sys
+
+# Ensure 'src' is importable regardless of working directory
+if os.path.basename(os.getcwd()) != 'src':
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 
 # ...existing dashboard code...
 
@@ -20,13 +25,6 @@ from src.db.db_manager import init_db
 init_db()
 # ...existing code...
 
-# Depuración: mostrar todas las actividades Garmin
-if st.sidebar.checkbox('Mostrar tabla de depuración Garmin'):
-    conn = sqlite3.connect(os.getenv("LOCAL_DB_PATH", "atleta.db"))
-    df_garmin = pd.read_sql_query("SELECT * FROM actividades_garmin", conn)
-    conn.close()
-    st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><rect x='3' y='5' width='18' height='16' rx='2'></rect><path d='M8 3v4M16 3v4M3 10h18'></path></svg></span><span>Debug: Todas las actividades Garmin</span></div>", unsafe_allow_html=True)
-    st.dataframe(df_garmin)
 # --- Funciones mínimas para dashboard ---
 def resumen_dashboard(usuario_id):
     """Devuelve resumen de los últimos 7 días para el usuario."""

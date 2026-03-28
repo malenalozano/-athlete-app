@@ -1,3 +1,7 @@
+streamlit run src/app.py
+
+
+
 src/core/: Lógica de negocio (ai_coach.py, atleta_core.py, historial_manager.py, seguridad.py)
 src/db/: Base de datos y gestor (db_manager.py, athlete.db, atleta.db)
 src/garmin/: Integración Garmin (garmin_sync.py, garmin_worker.py, diagnose_garmin.py, garmin_sync_test.log)

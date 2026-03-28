@@ -69,17 +69,54 @@ def _parsear_nota_local(texto):
     datos = []
     contexto = ""
     contexto_fecha = None
-    dias_semana = {"lunes", "martes", "miercoles", "miércoles", "jueves", "viernes", "sabado", "sábado", "domingo"}
+    dias_semana = ["lunes", "martes", "miercoles", "miércoles", "jueves", "viernes", "sabado", "sábado", "domingo"]
+    dias_semana_map = {d: i for i, d in enumerate(["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"])}
     import datetime
+    # --- NUEVO: obtener lista de ejercicios por defecto del usuario (si posible) ---
+    ejercicios_predeterminados = set()
+    try:
+        import sqlite3, os
+        db_path = os.getenv("LOCAL_DB_PATH", "atleta.db")
+        conn = sqlite3.connect(db_path)
+        # Si hay contexto global de usuario, úsalo; si no, solo filtra por nombre
+        user_id = None
+        try:
+            from src.app import user_actual
+            user_id = user_actual
+        except Exception:
+            pass
+        if user_id:
+            rows = conn.execute("SELECT LOWER(ejercicio) FROM ejercicios_por_defecto WHERE usuario_id=?", (user_id,)).fetchall()
+        else:
+            rows = conn.execute("SELECT LOWER(ejercicio) FROM ejercicios_por_defecto", ()).fetchall()
+        ejercicios_predeterminados = set(r[0] for r in rows)
+        conn.close()
+    except Exception:
+        ejercicios_predeterminados = set()
+
     for linea in lineas:
         low = linea.lower()
         if low in dias_semana:
-            contexto_fecha = low
+            # Calcular la fecha real del último día de la semana mencionado
+            import unicodedata
+            hoy = datetime.datetime.now().date()
+            # Normalizar acentos
+            dia_norm = unicodedata.normalize('NFKD', low).encode('ascii', 'ignore').decode('ascii')
+            # Mapear a índice de día (lunes=0)
+            idx_dia = dias_semana_map.get(dia_norm, None)
+            if idx_dia is not None:
+                idx_hoy = hoy.weekday()  # lunes=0
+                delta = (idx_hoy - idx_dia) % 7
+                if delta == 0:
+                    delta = 7  # Si es hoy, se refiere al viernes pasado
+                fecha_dia = hoy - datetime.timedelta(days=delta)
+                contexto_fecha = fecha_dia
+            else:
+                contexto_fecha = low
             continue
         # Detectar 'carrera hoy' y vincular Garmin
         vinculo_garmin = None
         if 'carrera' in low and 'hoy' in low:
-            # Buscar actividad Garmin de hoy
             today = datetime.datetime.now().date()
             vinculo_garmin = {'tipo': 'carrera', 'fecha': today}
         # Formato esperado: ejercicio kg repes notas
@@ -109,6 +146,10 @@ def _parsear_nota_local(texto):
         else:
             notas = " ".join(resto)
         nombre_ejercicio = " ".join(ejercicio).strip()
+        # --- SOLO AÑADIR SI ESTÁ EN PREDETERMINADOS (o si no hay predeterminados definidos) ---
+        if ejercicios_predeterminados:
+            if nombre_ejercicio.lower() not in ejercicios_predeterminados:
+                continue
         grupo, musculo = _inferir_grupo_y_musculo(nombre_ejercicio)
         datos.append({
             "ejercicio": nombre_ejercicio,

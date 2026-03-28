@@ -65,6 +65,16 @@ def init_db():
     _ensure_column(conn, "usuarios", "ritmo", "TEXT")
     _ensure_column(conn, "usuarios", "password_garmin_enc", "TEXT")
 
+    # Tabla de ejercicios por defecto (personalizados por usuario)
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS ejercicios_por_defecto (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            ejercicio TEXT,
+            grupo_muscular TEXT,
+            musculo_principal TEXT
+        )''')
+
     # Tabla Garmin
     conn.execute("CREATE TABLE IF NOT EXISTS actividades_garmin (id_actividad TEXT PRIMARY KEY, usuario_id INTEGER, fecha TEXT, tipo_deporte TEXT, distancia_m REAL, tiempo_seg REAL, ritmo_medio REAL, fc_media INTEGER, fc_max INTEGER)")
     # Tabla Fisio

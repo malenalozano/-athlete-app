@@ -15,5 +15,5 @@ Mantener siempre la coherencia visual y de experiencia de usuario entre las dife
 
 ## Lógica de Negocio Específica
 1. **No Duplicados:** Al insertar actividades de Garmin, usar siempre el `activityId` de Garmin como referencia para evitar repeticiones.
-2. **Filtro de Deporte:** solo cargar las actividades de running desde garmin.
+2. **Filtro de Deporte:** (Regla eliminada, ahora se cargan todas las actividades desde Garmin).
 3. **Sincronización:** La sincronización debe ser manual mediante el botón 🔄 del Dashboard, nunca automática al cargar la página.
