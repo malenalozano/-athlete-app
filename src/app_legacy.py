@@ -6,25 +6,23 @@ import sys
 
 # Ensure 'src' is importable regardless of working directory
 if os.path.basename(os.getcwd()) != 'src':
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # ...existing dashboard code...
 
-# Diario de entrenamiento: combinar actividades_garmin y sesiones_fuerza
-conn = sqlite3.connect(os.getenv("LOCAL_DB_PATH", "atleta.db"))
-df_garmin = pd.read_sql_query("SELECT fecha, tipo_deporte AS tipo, distancia_m, tiempo_seg, ritmo_medio, fc_media, fc_max FROM actividades_garmin", conn)
-df_fuerza = pd.read_sql_query("SELECT fecha, tipo_registro AS tipo, nota_original, nota_estado, actividad_garmin_id FROM sesiones_fuerza", conn)
-conn.close()
-df_diario = pd.concat([df_garmin, df_fuerza], ignore_index=True, sort=False)
-df_diario = df_diario.sort_values('fecha', ascending=False)
-st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><rect x='3' y='5' width='18' height='16' rx='2'></rect><path d='M8 3v4M16 3v4M3 10h18'></path></svg></span><span>Diario de entrenamiento</span></div>", unsafe_allow_html=True)
-st.dataframe(df_diario)
 import sqlite3
 import streamlit as st
 from src.db.db_manager import init_db
 init_db()
 # ...existing code...
 
+# Depuración: mostrar todas las actividades Garmin
+if st.sidebar.checkbox('Mostrar tabla de depuración Garmin'):
+    conn = sqlite3.connect(os.getenv("LOCAL_DB_PATH", "atleta.db"))
+    df_garmin = pd.read_sql_query("SELECT * FROM actividades_garmin", conn)
+    conn.close()
+    st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><rect x='3' y='5' width='18' height='16' rx='2'></rect><path d='M8 3v4M16 3v4M3 10h18'></path></svg></span><span>Debug: Todas las actividades Garmin</span></div>", unsafe_allow_html=True)
+    st.dataframe(df_garmin)
 # --- Funciones mínimas para dashboard ---
 def resumen_dashboard(usuario_id):
     """Devuelve resumen de los últimos 7 días para el usuario."""
@@ -3437,35 +3435,35 @@ if menu == "Perfil":
             errores_garmin.append("La contraseña Garmin debe tener al menos 6 caracteres.")
 
         if errores_garmin:
-            for err in errores_garmin:
-                st.error(err)
-        else:
-            conn = get_db_connection()
-            try:
-                if email_garmin:
-                    if pass_garmin.strip():
-                        pass_enc = encriptar_password(pass_garmin)
-                        conn.execute(
-                            "UPDATE usuarios SET email_garmin = ?, password_garmin_enc = ? WHERE id = ?",
-                            (email_garmin, pass_enc, user_actual),
-                        )
+            if errores_garmin:
+                for err in errores_garmin:
+                    st.error(err)
+            else:
+                conn = get_db_connection()
+                try:
+                    if email_garmin:
+                        if pass_garmin.strip():
+                            pass_enc = encriptar_password(pass_garmin)
+                            conn.execute(
+                                "UPDATE usuarios SET email_garmin = ?, password_garmin_enc = ? WHERE id = ?",
+                                (email_garmin, pass_enc, user_actual),
+                            )
+                            conn.commit()
+                            st.success("Contraseña de Garmin leída y guardada correctamente.")
+                        else:
+                            conn.execute(
+                                "UPDATE usuarios SET email_garmin = ? WHERE id = ?",
+                                (email_garmin, user_actual),
+                            )
+                            conn.commit()
+                            st.success("Email de Garmin actualizado correctamente.")
                     else:
-                        conn.execute(
-                            "UPDATE usuarios SET email_garmin = ? WHERE id = ?",
-                            (email_garmin, user_actual),
-                        )
-                    conn.commit()
-                else:
-                    st.warning("Introduce un email Garmin para guardar la conexión.")
-            finally:
-                conn.close()
-
-            if email_garmin:
-                st.cache_data.clear()
-                st.success("Conexión Garmin actualizada.")
-                st.rerun()
-
-    if sync_manual:
+                        st.warning("Introduce un email Garmin para guardar la conexión.")
+                finally:
+                    conn.close()
+                if email_garmin:
+                    st.cache_data.clear()
+                    st.rerun()
         cred_sync = obtener_credenciales_garmin(user_actual)
         if not cred_sync or not cred_sync[0]:
             st.warning("Configura tus credenciales Garmin primero en esta misma pestaña.")
@@ -4017,7 +4015,10 @@ elif menu == "Diario de Entrenamiento":
             st.info(f"📌 Se detectaron **{len(segmentos)} bloques temporales** en tu texto. Se guardarán como sesiones separadas:")
             for marca, frag in segmentos:
                 fecha_seg, motivo_seg = extraer_fecha_historica(frag if marca else nota_fuerza)
-                st.caption(f"? **{fecha_seg.strftime('%d-%m-%Y')}** ({motivo_seg}): _{frag[:80]}?_" if len(frag) > 80 else f"? **{fecha_seg.strftime('%d-%m-%Y')}**: _{frag}_")
+                if len(frag) > 80:
+                    st.caption(f"📅 **{fecha_seg.strftime('%d-%m-%Y')}** ({motivo_seg}): _{frag[:80]}..._" )
+                else:
+                    st.caption(f"📅 **{fecha_seg.strftime('%d-%m-%Y')}**: _{frag}_")
         else:
             fecha_auto, motivo = extraer_fecha_historica(nota_fuerza)
             st.caption(f"📅 Fecha detectada: **{fecha_auto.strftime('%d-%m-%Y')}** - {motivo}")
@@ -4525,9 +4526,72 @@ elif menu == "Entrenador Personal":
         render_plan_maraton(user_actual)
 # Nueva pestaña: Ejercicios
     with tab_ejercicios:
+        # Botón para borrar todos los ejercicios predeterminados del usuario con confirmación
+        if "confirmar_borrado_ejercicios" not in st.session_state:
+            st.session_state.confirmar_borrado_ejercicios = False
+
+        if not st.session_state.confirmar_borrado_ejercicios:
+            if st.button("Borrar todos mis ejercicios predeterminados", type="primary"):
+                st.session_state.confirmar_borrado_ejercicios = True
+                st.rerun()
+        else:
+            st.warning("¿Estás seguro de que quieres borrar **todos** tus ejercicios predeterminados? Esta acción no se puede deshacer.")
+            col_conf1, col_conf2 = st.columns([1,1])
+            with col_conf1:
+                if st.button("Sí, borrar todos", key="confirmar_borrado_si", type="primary"):
+                    conn.execute("DELETE FROM ejercicios_por_defecto WHERE usuario_id=?", (user_actual,))
+                    conn.commit()
+                    st.success("Todos tus ejercicios predeterminados han sido eliminados.")
+                    st.session_state.confirmar_borrado_ejercicios = False
+                    st.rerun()
+            with col_conf2:
+                if st.button("Cancelar", key="confirmar_borrado_no"):
+                    st.session_state.confirmar_borrado_ejercicios = False
+                    st.rerun()
         st.subheader("Registro de Ejercicios de Fuerza")
         st.caption("Consulta los datos de la última vez que realizaste cada ejercicio.")
         conn = get_db_connection()
+
+        # --- Ejercicios por defecto personalizados ---
+        st.markdown("#### Tus ejercicios por defecto")
+        with st.form("add_ejercicio_defecto_form"):
+            nuevo_ejercicio = st.text_input("Nombre del ejercicio (nuevo)", max_chars=40)
+            grupo_muscular = st.selectbox("Grupo muscular", ["Tren Inferior", "Tren Superior", "Core", "Otro"])
+            musculo_principal = st.text_input("Músculo principal (opcional)", max_chars=30)
+            submitted = st.form_submit_button("Añadir ejercicio por defecto")
+            if submitted and nuevo_ejercicio.strip():
+                # Evitar duplicados por usuario y nombre
+                existe = conn.execute(
+                    "SELECT 1 FROM ejercicios_por_defecto WHERE usuario_id=? AND LOWER(ejercicio)=?",
+                    (user_actual, nuevo_ejercicio.strip().lower())
+                ).fetchone()
+                if not existe:
+                    conn.execute(
+                        "INSERT INTO ejercicios_por_defecto (usuario_id, ejercicio, grupo_muscular, musculo_principal) VALUES (?, ?, ?, ?)",
+                        (user_actual, nuevo_ejercicio.strip(), grupo_muscular, musculo_principal.strip())
+                    )
+                    conn.commit()
+                    st.success(f"Ejercicio '{nuevo_ejercicio.strip()}' añadido.")
+                else:
+                    st.warning("Ese ejercicio ya existe en tus ejercicios por defecto.")
+
+        # Mostrar ejercicios por defecto agrupados por grupo muscular
+        df_defecto = pd.read_sql_query(
+            "SELECT ejercicio, grupo_muscular, musculo_principal FROM ejercicios_por_defecto WHERE usuario_id=? ORDER BY grupo_muscular, ejercicio",
+            conn, params=(user_actual,)
+        )
+        grupos = ["Tren Inferior", "Tren Superior", "Core", "Otro"]
+        for grupo in grupos:
+            df_g = df_defecto[df_defecto["grupo_muscular"] == grupo]
+            if not df_g.empty:
+                st.markdown(f"**{grupo}**")
+                cols = st.columns(min(4, len(df_g)))
+                for idx, row in df_g.iterrows():
+                    with cols[idx % len(cols)]:
+                        st.markdown(f"<div style='background:#222;border-radius:10px;padding:10px 8px;margin-bottom:8px;'>"
+                                    f"<b>{row['ejercicio']}</b>"
+                                    + (f"<br><span style='font-size:0.8em;color:#8B949E'>{row['musculo_principal']}</span>" if row['musculo_principal'] else "")
+                                    + "</div>", unsafe_allow_html=True)
         # Tren inferior
         st.markdown("### Tren Inferior")
         df_inferior = pd.read_sql_query(
@@ -4565,6 +4629,21 @@ elif menu == "Entrenador Personal":
     # "?"? Tab 1: Check-in diario "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     with tab_checkin:
         st.subheader("Semáforo diario Garmin")
+        # Tabla con TODO lo importado de Garmin para el usuario actual (en un desplegable)
+        with st.expander("Tabla completa de actividades importadas de Garmin", expanded=False):
+            conn = get_db_connection()
+            try:
+                df_garmin_full = pd.read_sql_query(
+                    "SELECT * FROM actividades_garmin WHERE usuario_id = ? ORDER BY fecha DESC",
+                    conn,
+                    params=(user_actual,)
+                )
+            except Exception as e:
+                st.warning(f"No se pudo cargar la tabla completa de Garmin: {e}")
+                df_garmin_full = pd.DataFrame()
+            finally:
+                conn.close()
+            st.dataframe(df_garmin_full, width="stretch", hide_index=True)
         st.caption(
             "Estos datos se sincronizan directamente desde Garmin. "
             "No hace falta que el usuario los meta a mano."
@@ -4572,17 +4651,8 @@ elif menu == "Entrenador Personal":
         st.caption(f"Perfil activo: {perfil.get('nombre', 'Atleta')} (ID {user_actual})")
         cred = obtener_credenciales_garmin(user_actual)
         if cred and cred[0]:
-            if st.button("Sincronizar biométricos Garmin", key="sync_garmin_semáforo"):
-                with st.spinner("Sincronizando HRV, readiness, body battery, sueño y técnica..."):
-                    try:
-                        email, p_enc = cred
-                        pw = desencriptar_password(p_enc)
-                        n_bio = sincronizar_biometricos_garmin(email, pw, user_actual, dias=7)
-                        st.cache_data.clear()
-                        st.success(f"Datos Garmin actualizados ({n_bio} días procesados).")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"No se pudo sincronizar Garmin: {e}")
+            # Botón de sincronizar biométricos Garmin eliminado por limpieza de UI
+            pass
         else:
             # Mostrar promedios semanales
             conn = get_db_connection()
@@ -4886,14 +4956,19 @@ elif menu == "Entrenador Personal":
                 )
             with lc2:
                 fecha_les = st.date_input("Fecha inicio", value=datetime.now().date())
-                notas_les = st.text_area("Notas / contexto", height=70)
+                dolor_les = st.slider("Grado de dolor", min_value=0, max_value=10, value=0, step=1, help="0 = sin dolor, 10 = dolor máximo")
             if st.form_submit_button("Registrar lesión"):
                 if zona_les.strip():
                     conn = get_db_connection()
+                    # Añadir columna dolor si no existe
+                    try:
+                        conn.execute("ALTER TABLE historial_lesiones ADD COLUMN dolor INTEGER")
+                    except Exception:
+                        pass
                     conn.execute(
-                        "INSERT INTO historial_lesiones (usuario_id, fecha_inicio, zona, tipo, activa, notas) "
+                        "INSERT INTO historial_lesiones (usuario_id, fecha_inicio, zona, tipo, activa, dolor) "
                         "VALUES (?, ?, ?, ?, 1, ?)",
-                        (user_actual, str(fecha_les), zona_les.strip(), "registro", notas_les),
+                        (user_actual, str(fecha_les), zona_les.strip(), "registro", dolor_les),
                     )
                     conn.commit()
                     conn.close()
@@ -4905,8 +4980,13 @@ elif menu == "Entrenador Personal":
 
         conn = get_db_connection()
         try:
+            # Asegura que la columna 'dolor' existe antes de la consulta
+            try:
+                conn.execute("ALTER TABLE historial_lesiones ADD COLUMN dolor INTEGER")
+            except Exception:
+                pass
             les_df = pd.read_sql_query(
-                "SELECT id, fecha_inicio, zona, tipo, activa, notas "
+                "SELECT id, fecha_inicio, zona, tipo, activa, dolor "
                 "FROM historial_lesiones WHERE usuario_id = ? "
                 "ORDER BY activa DESC, fecha_inicio DESC",
                 conn, params=(user_actual,),
@@ -4917,7 +4997,7 @@ elif menu == "Entrenador Personal":
                 for _, row in les_df.iterrows():
                     estado = "Activa" if row["activa"] else "Resuelta"
                     with st.expander(f"{estado} · {row['zona']} ({row['fecha_inicio']})"):
-                        st.write(f"**Notas:** {row['notas'] or '—'}")
+                        st.write(f"**Grado de dolor:** {row['dolor'] if not pd.isna(row['dolor']) else '—'} / 10")
                         if row["activa"]:
                             if st.button("Marcar como resuelta", key=f"resol_{row['id']}"):
                                 conn.execute(

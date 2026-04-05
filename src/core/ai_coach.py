@@ -61,107 +61,129 @@ def _limpiar_nombre_ejercicio(linea):
     return txt or "Nota libre"
 
 
-def _parsear_nota_local(texto):
+_STOP_WORDS = {
+    "sola","solo","asistida","asistido","asistidas","asistidos",
+    "parcial","parciales","sin","con","bilateral","unilateral",
+    "terminar","terminado","pesado","ligero","mantener","subir","bajar",
+}
+
+
+def _limpiar_nombre_v2(linea: str) -> str:
+    txt = re.sub(r'\b\d+(?:[\.,]\d+)?\s*kg\b', '', linea, flags=re.IGNORECASE)
+    txt = re.sub(r'\b\d+\s*[xX]\s*\d+\b', '', txt)
+    txt = re.sub(r'\b\d+\s*series?\b', '', txt, flags=re.IGNORECASE)
+    txt = re.sub(r'\b\d+\s*rep(?:eticiones|es)?\b', '', txt, flags=re.IGNORECASE)
+    txt = re.sub(r'\b\d+\b', '', txt)
+    txt = re.sub(r'\s+', ' ', txt).strip(' -:;·')
+    words = []
+    for w in txt.split():
+        if w.lower() in _STOP_WORDS:
+            break
+        words.append(w)
+    return ' '.join(words).strip() or "Nota libre"
+
+
+def _parsear_nota_local(texto: str, catalogo: dict | None = None) -> list:
+    import datetime as dt
+    import unicodedata
+
     lineas = [l.strip() for l in (texto or "").splitlines() if l.strip()]
     if not lineas:
         return []
 
-    datos = []
-    contexto = ""
-    contexto_fecha = None
-    dias_semana = ["lunes", "martes", "miercoles", "miércoles", "jueves", "viernes", "sabado", "sábado", "domingo"]
-    dias_semana_map = {d: i for i, d in enumerate(["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"])}
-    import datetime
-    # --- NUEVO: obtener lista de ejercicios por defecto del usuario (si posible) ---
-    ejercicios_predeterminados = set()
-    try:
-        import sqlite3, os
-        db_path = os.getenv("LOCAL_DB_PATH", "atleta.db")
-        conn = sqlite3.connect(db_path)
-        # Si hay contexto global de usuario, úsalo; si no, solo filtra por nombre
-        user_id = None
+    # Cargar catálogo personal (para ENRIQUECER, nunca para filtrar)
+    if catalogo is None:
+        catalogo = {}
         try:
-            from src.app import user_actual
-            user_id = user_actual
+            import sqlite3
+            db_path = os.getenv("LOCAL_DB_PATH", "atleta.db")
+            cc = sqlite3.connect(db_path)
+            rows = cc.execute(
+                "SELECT LOWER(nombre), grupo_muscular, musculo_principal, peso_actual "
+                "FROM ejercicios_catalogo").fetchall()
+            catalogo = {r[0]: {"grupo_muscular": r[1], "musculo_principal": r[2],
+                                "peso_actual": r[3] or 0} for r in rows}
+            cc.close()
         except Exception:
-            pass
-        if user_id:
-            rows = conn.execute("SELECT LOWER(ejercicio) FROM ejercicios_por_defecto WHERE usuario_id=?", (user_id,)).fetchall()
-        else:
-            rows = conn.execute("SELECT LOWER(ejercicio) FROM ejercicios_por_defecto", ()).fetchall()
-        ejercicios_predeterminados = set(r[0] for r in rows)
-        conn.close()
-    except Exception:
-        ejercicios_predeterminados = set()
+            catalogo = {}
+
+    datos = []
+    contexto_fecha = None
+    dias_map = {
+        "lunes":0,"martes":1,"miercoles":2,"miércoles":2,
+        "jueves":3,"viernes":4,"sabado":5,"sábado":5,"domingo":6,
+    }
 
     for linea in lineas:
-        low = linea.lower()
-        if low in dias_semana:
-            # Calcular la fecha real del último día de la semana mencionado
-            import unicodedata
-            hoy = datetime.datetime.now().date()
-            # Normalizar acentos
-            dia_norm = unicodedata.normalize('NFKD', low).encode('ascii', 'ignore').decode('ascii')
-            # Mapear a índice de día (lunes=0)
-            idx_dia = dias_semana_map.get(dia_norm, None)
-            if idx_dia is not None:
-                idx_hoy = hoy.weekday()  # lunes=0
-                delta = (idx_hoy - idx_dia) % 7
-                if delta == 0:
-                    delta = 7  # Si es hoy, se refiere al viernes pasado
-                fecha_dia = hoy - datetime.timedelta(days=delta)
-                contexto_fecha = fecha_dia
-            else:
-                contexto_fecha = low
+        # Saltar separadores
+        if re.match(r'^[-=_\s]+$', linea):
             continue
-        # Detectar 'carrera hoy' y vincular Garmin
-        vinculo_garmin = None
-        if 'carrera' in low and 'hoy' in low:
-            today = datetime.datetime.now().date()
-            vinculo_garmin = {'tipo': 'carrera', 'fecha': today}
-        # Formato esperado: ejercicio kg repes notas
-        partes = linea.split()
-        ejercicio = []
-        peso = 0.0
-        series = 0
-        repes = 0
+
+        low = linea.lower()
+        low_n = unicodedata.normalize('NFKD', low).encode('ascii','ignore').decode('ascii')
+
+        # Detectar día de semana (ej: "Viernes 27")
+        dia_idx = None
+        for dia, idx in dias_map.items():
+            dn = unicodedata.normalize('NFKD', dia).encode('ascii','ignore').decode('ascii')
+            if low_n.startswith(dn):
+                dia_idx = idx; break
+        if dia_idx is not None:
+            hoy = dt.datetime.now().date()
+            delta = (hoy.weekday() - dia_idx) % 7 or 7
+            contexto_fecha = hoy - dt.timedelta(days=delta)
+            continue
+
+        # Saltar líneas de continuación tipo "X2", "X2-3"
+        if re.match(r'^[xX]\d', linea.lstrip('- ')):
+            continue
+
+        # Formato "-N ejercicio …": reps explícitas al inicio
+        reps_prefix = 0
+        linea_t = linea
+        m_pref = re.match(r'^-(\d+)\s+(.+)', linea)
+        if m_pref:
+            reps_prefix = int(m_pref.group(1))
+            linea_t = m_pref.group(2)
+
+        peso   = _extraer_peso(linea_t)
+        series, reps = _extraer_series_reps(linea_t)
+        if reps_prefix > 0 and reps == 0:
+            reps = reps_prefix; series = 1
+
+        nombre = _limpiar_nombre_v2(linea_t.lstrip('- '))
+        if not nombre or nombre == "Nota libre" or len(nombre) < 2:
+            continue
+
+        # Extraer nota de percepción (texto después de · o ,)
         notas = ""
-        for i, p in enumerate(partes):
-            if re.match(r"\d+(?:[\.,]\d+)?kg", p.lower()):
-                peso = float(p.lower().replace("kg","" ).replace(",",".").strip())
-                ejercicio = partes[:i]
-                resto = partes[i+1:]
-                break
-        else:
-            ejercicio = partes
-            resto = []
-        # Buscar series x repes
-        for j, p in enumerate(resto):
-            m = re.match(r"(\d+)x(\d+)", p)
-            if m:
-                series = int(m.group(1))
-                repes = int(m.group(2))
-                notas = " ".join(resto[j+1:])
-                break
-        else:
-            notas = " ".join(resto)
-        nombre_ejercicio = " ".join(ejercicio).strip()
-        # --- SOLO AÑADIR SI ESTÁ EN PREDETERMINADOS (o si no hay predeterminados definidos) ---
-        if ejercicios_predeterminados:
-            if nombre_ejercicio.lower() not in ejercicios_predeterminados:
-                continue
-        grupo, musculo = _inferir_grupo_y_musculo(nombre_ejercicio)
+        m_nota = re.search(r'[·,]\s*(.+)$', linea_t)
+        if m_nota:
+            notas = m_nota.group(1).strip()
+
+        grupo, musculo = _inferir_grupo_y_musculo(nombre)
+        # Enriquecer desde catálogo (búsqueda exacta → parcial)
+        cat = catalogo.get(nombre.lower())
+        if cat is None:
+            for key, val in catalogo.items():
+                if key in nombre.lower() or nombre.lower() in key:
+                    cat = val; break
+        if cat:
+            grupo   = cat.get("grupo_muscular") or grupo
+            musculo = cat.get("musculo_principal") or musculo
+            if peso == 0:
+                peso = cat.get("peso_actual") or 0
+
         datos.append({
-            "ejercicio": nombre_ejercicio,
-            "peso": round(float(peso), 2),
-            "series": int(series or 1),
-            "repeticiones": int(repes or 1),
-            "grupo_muscular": grupo,
+            "ejercicio":        nombre,
+            "peso":             round(float(peso or 0), 2),
+            "series":           int(series or 1),
+            "repeticiones":     int(reps or 1),
+            "grupo_muscular":   grupo,
             "musculo_principal": musculo,
-            "rpe": 6,
-            "notas": notas.strip(),
-            "fecha": contexto_fecha,
-            "vinculo_garmin": vinculo_garmin,
+            "rpe":              6,
+            "notas":            notas,
+            "fecha":            contexto_fecha,
         })
 
     return datos
@@ -200,28 +222,125 @@ def _inicializar_modelo():
         _gemini_disponible = False
         return None
 
-def procesar_nota_fuerza(texto):
-    modelo = _inicializar_modelo()
+def cargar_biblioteca_ejercicios(usuario_id: int) -> str:
+    """
+    Genera el bloque de contexto de ejercicios conocidos para el prompt de la IA.
+    Formato: "- Nombre (también: alias1, alias2) → Grupo, Músculo"
+    """
+    try:
+        import sqlite3, json as _json
+        db_path = os.getenv("LOCAL_DB_PATH", "atleta.db")
+        cc = sqlite3.connect(db_path)
+        rows = cc.execute(
+            "SELECT nombre, alias, grupo_muscular, musculo_principal "
+            "FROM ejercicios_biblioteca WHERE usuario_id=? AND activo=1",
+            (usuario_id,)).fetchall()
+        cc.close()
+    except Exception:
+        return ""
+
+    if not rows:
+        return ""
+
+    lineas = []
+    for nombre, alias, grupo, musculo in rows:
+        alias_str = ""
+        if alias:
+            try:
+                aliases = _json.loads(alias)
+                alias_str = f" (también: {', '.join(aliases)})"
+            except Exception:
+                alias_str = f" (también: {alias})"
+        lineas.append(f"- {nombre}{alias_str} → {grupo or '?'}, {musculo or '?'}")
+
+    return "Ejercicios conocidos de esta atleta:\n" + "\n".join(lineas)
+
+
+def _catalogo_para_parser(usuario_id: int) -> dict:
+    """Carga la biblioteca como dict {nombre_lower: {grupo, musculo}} para el parser local."""
+    try:
+        import sqlite3, json as _json
+        db_path = os.getenv("LOCAL_DB_PATH", "atleta.db")
+        cc = sqlite3.connect(db_path)
+        rows = cc.execute(
+            "SELECT nombre, alias, grupo_muscular, musculo_principal "
+            "FROM ejercicios_biblioteca WHERE usuario_id=? AND activo=1",
+            (usuario_id,)).fetchall()
+        cc.close()
+    except Exception:
+        return {}
+
+    resultado = {}
+    for nombre, alias, grupo, musculo in rows:
+        entrada = {"grupo_muscular": grupo, "musculo_principal": musculo, "peso_actual": 0}
+        resultado[nombre.lower()] = entrada
+        if alias:
+            try:
+                import json as _json
+                for a in _json.loads(alias):
+                    resultado[a.lower()] = entrada
+            except Exception:
+                pass
+    return resultado
+
+
+def procesar_nota_fuerza(texto: str, usuario_id: int = 0) -> dict:
+    """
+    Extrae ejercicios de una nota libre de entrenamiento.
+    Usa la IA (Gemini) con el contexto de la biblioteca personal, o el parser local.
+    """
+    catalogo = _catalogo_para_parser(usuario_id)
+    modelo   = _inicializar_modelo()
+
     if modelo is None:
-        datos_locales = _parsear_nota_local(texto)
         return {
             "exito": True,
-            "datos": datos_locales,
-            "raw": f"Procesado en modo local (sin IA): {_gemini_error}",
+            "datos": _parsear_nota_local(texto, catalogo=catalogo),
+            "raw":   f"Modo local (sin IA): {_gemini_error}",
         }
 
-    prompt = f"CSV estricto (;). Cabecera: ejercicio;peso;series;repeticiones;grupo_muscular;musculo_principal;rpe\nREGLA VITAL: Infiere la anatomía. grupo_muscular = 'Tren Superior', 'Tren Inferior' o 'Core'. musculo_principal = lista de todos los músculos implicados (ej: Cuádriceps, Glúteos, Isquios, Core). Devuelve solo CSV.\nTexto: '{texto}'"
+    ctx_ejercicios = cargar_biblioteca_ejercicios(usuario_id) if usuario_id else ""
+
+    prompt = f"""Eres un asistente de entrenamiento deportivo. Extrae los ejercicios de fuerza de esta nota.
+
+{ctx_ejercicios}
+
+NOTA DE ENTRENAMIENTO:
+"{texto}"
+
+INSTRUCCIONES:
+- Devuelve SOLO JSON válido: una lista de objetos, sin texto extra.
+- Procesa TODAS las líneas que contengan un ejercicio, aunque no tengan peso ni series.
+- Si el nombre es coloquial, usa el nombre oficial de la lista (ej: "Abs en polea" → "Abdominales en cable").
+- Asocia comentarios de percepción ("me he sentido débil", "mantener peso", "subir peso") al ejercicio más cercano.
+
+Formato de cada objeto:
+{{
+  "ejercicio": "nombre oficial o el que aparece",
+  "peso": número_o_null,
+  "series": número_o_null,
+  "repeticiones": número_o_null,
+  "grupo_muscular": "Tren Superior" | "Tren Inferior" | "Core" | "Cardio",
+  "musculo_principal": "texto",
+  "rpe": número_o_null,
+  "notas": "texto_libre_o_null",
+  "progresion": "subir" | "mantener" | "bajar" | null
+}}"""
+
     try:
-        txt = modelo.generate_content(prompt).text.replace('```csv', '').replace('```', '').strip()
-        import csv
-        datos_ia = [f for f in csv.DictReader(txt.split('\n'), delimiter=';')]
-        if datos_ia:
-            return {"exito": True, "datos": datos_ia, "raw": txt}
-        datos_locales = _parsear_nota_local(texto)
-        return {"exito": True, "datos": datos_locales, "raw": "IA sin filas validas; aplicado parser local."}
+        import json as _json
+        raw = modelo.generate_content(prompt).text.strip()
+        raw_clean = raw.replace("```json", "").replace("```", "").strip()
+        datos_ia = _json.loads(raw_clean)
+        if isinstance(datos_ia, list) and datos_ia:
+            return {"exito": True, "datos": datos_ia, "raw": raw_clean}
+        return {"exito": True,
+                "datos": _parsear_nota_local(texto, catalogo=catalogo),
+                "raw": "IA devolvió lista vacía; parser local aplicado."}
     except Exception as e:
-        datos_locales = _parsear_nota_local(texto)
-        return {"exito": True, "datos": datos_locales, "raw": f"Fallo IA, aplicado parser local: {e}"}
+        return {"exito": True,
+                "datos": _parsear_nota_local(texto, catalogo=catalogo),
+                "raw": f"Fallo IA ({e}); parser local aplicado."}
 
 
 def ajustar_plan_con_feedback(plan_csv, feedback, perfil_resumen=""):
