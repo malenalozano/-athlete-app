@@ -252,6 +252,19 @@ def cargar_datos_plan(usuario_id: int) -> dict:
 
     z2_list = df_z2.to_dict("records") if not df_z2.empty else []
 
+    # Últimas 3 actividades para análisis Training Effect
+    ultimas_3_act = []
+    if not df_act.empty:
+        cols_te = ["training_effect_aerobico", "training_effect_anaerobico"]
+        for i, (_, row) in enumerate(df_act.head(3).iterrows()):
+            if i >= 3:
+                break
+            ultimas_3_act.append({
+                "fecha": row.get("fecha"),
+                "training_effect_aerobico": row.get("training_effect_aerobico"),
+                "training_effect_anaerobico": row.get("training_effect_anaerobico"),
+            })
+
     return {
         "hrv_actual": hrv_actual,
         "hrv_media_7d": hrv_media,
@@ -269,16 +282,29 @@ def cargar_datos_plan(usuario_id: int) -> dict:
         "body_battery_min": body_battery_min,
         "vo2max": vo2max,
         "training_status": training_status,
+        "ultimas_3_actividades": ultimas_3_act,
     }
 
 
 def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
-                      restricciones: dict, fecha_inicio) -> list:
-    """Construye los 7 días aplicando templates, semáforo y restricciones de lesión."""
+                      restricciones: dict, fecha_inicio, cadencia_eval: dict = None,
+                      sleep_breakdown: dict = None) -> list:
+    """Construye los 7 días aplicando templates, semáforo y restricciones de lesión.
+    Si cadencia < 170 spm: inserta 5min de drills técnica antes de carreras Z2.
+    Si sleep profundo < 45 min: reduce series a Z2."""
     fase_nombre = fase["fase_nombre"]
     tkey = next((k for k in _TEMPLATES if k in fase_nombre), "Acondicionamiento")
     template = _TEMPLATES[tkey]
     nombre_calidad = _NOMBRE_CALIDAD.get(fase.get("sesion_calidad", "progresiva"), "Calidad")
+
+    if cadencia_eval is None:
+        cadencia_eval = {"necesita_drills": False}
+
+    # Detectar si sleep profundo es insuficiente (<45 min)
+    sleep_insuficiente = False
+    if sleep_breakdown and sleep_breakdown.get("profundo_h") is not None:
+        if sleep_breakdown["profundo_h"] < 0.75:  # 45 min = 0.75 h
+            sleep_insuficiente = True
 
     km_base_total = sum(t["km_base"] for t in template)
     km_tl = max(round(km_objetivo - km_base_total, 1), 6.0)
@@ -312,6 +338,11 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
                 semaforo["color"] == "ambar" and tipo in ("Intervalos VO2max", "Tempo (umbral)", "Progresiva")):
             tipo, alerta = "Carrera Z2", "⚠️ Semáforo ámbar → cambiado a Z2"
 
+        # Sleep profundo insuficiente: reducir series
+        if sleep_insuficiente and tipo in ("Intervalos VO2max", "Tempo (umbral)", nombre_calidad, "Progresiva"):
+            tipo, alerta = "Carrera Z2", "😴 Sleep profundo < 45 min → series reducidas a Z2"
+
+
         # Restricción carrera
         if restricciones["bloqueo_carrera"] and tpl["carrera"]:
             sustit = restricciones["sustituciones"][0] if restricciones["sustituciones"] else "Bici Z2 45min"
@@ -325,7 +356,14 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
         if restricciones["prohibir_series"] and tipo in ("Intervalos VO2max", "Tempo (umbral)", nombre_calidad):
             tipo, alerta = "Carrera Z2", "⚠️ Series prohibidas por lesión → Z2"
 
+        # Drills de cadencia: insertar 5min antes de carreras Z2 si cadencia < 170
+        drill_info = ""
+        if cadencia_eval.get("necesita_drills") and tipo == "Carrera Z2" and km > 0:
+            drill_info = " + 5min drills técnica (cadencia)"
+            if not alerta:
+                alerta = f"📊 Cadencia baja: incluir drills técnicos"
+
         dias.append({"dia": _DIAS[i], "fecha": fecha_dia.strftime("%Y-%m-%d"),
-                     "tipo": tipo, "intensidad": tpl["intensidad"],
+                     "tipo": tipo + drill_info, "intensidad": tpl["intensidad"],
                      "km": km, "duracion_min": dur, "alerta": alerta})
     return dias

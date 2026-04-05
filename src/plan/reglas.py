@@ -65,9 +65,12 @@ def calcular_semaforo(hrv_actual, hrv_media_7d, sleep_score,
     - ÁMBAR:  HRV cae 0-10% O sleep 60-80 O stress > 70 O body battery < 20 al levantarse.
     - ROJO:   HRV cae > 10% O sleep < 60 O sueño profundo < 45min O training_status=overreaching.
     Sin datos HRV: VERDE por defecto (no penalizar sin información).
+    Retorna también "causa" para diferentes restricciones según factor.
     """
     razones_rojo = []
     razones_ambar = []
+    causa_rojo = []
+    causa_ambar = []
 
     # — HRV —
     caida = 0.0
@@ -75,49 +78,61 @@ def calcular_semaforo(hrv_actual, hrv_media_7d, sleep_score,
         caida = (hrv_media_7d - hrv_actual) / hrv_media_7d
         if caida > 0.10:
             razones_rojo.append(f"HRV caído {caida*100:.0f}%")
+            causa_rojo.append("hrv")
         elif caida > 0.0:
             razones_ambar.append(f"HRV ligeramente bajo (-{caida*100:.0f}%)")
+            causa_ambar.append("hrv")
     elif hrv_actual is None and hrv_media_7d is None:
         return {"color": "verde", "mensaje": "Sin datos HRV — plan base aplicado.",
-                "multiplicador_volumen": 1.0, "permitir_calidad": True}
+                "multiplicador_volumen": 1.0, "permitir_calidad": True, "causa": []}
 
     # — Sleep score —
     if sleep_score is not None:
         if sleep_score < 60:
             razones_rojo.append(f"Sleep score crítico ({sleep_score}/100)")
+            causa_rojo.append("sleep")
         elif sleep_score <= 80:
             razones_ambar.append(f"Sleep score subóptimo ({sleep_score}/100)")
+            causa_ambar.append("sleep")
 
     # — Sleep profundo (< 45 min = 0.75 h → señal rojo) —
     if sleep_breakdown:
         prof = sleep_breakdown.get("profundo_h")
         if prof is not None and prof < 0.75:
             razones_rojo.append(f"Sueño profundo insuficiente ({prof*60:.0f} min)")
+            causa_rojo.append("sleep")
         rem = sleep_breakdown.get("rem_h")
         if rem is not None and rem < 1.0:
             razones_ambar.append(f"REM escaso ({rem:.1f} h)")
+            causa_ambar.append("sleep")
 
     # — Estrés —
     if estres_medio is not None:
         if estres_medio > 75:
             razones_rojo.append(f"Estrés muy alto ({estres_medio})")
+            causa_rojo.append("stress")
         elif estres_medio > 55:
             razones_ambar.append(f"Estrés elevado ({estres_medio})")
+            causa_ambar.append("stress")
 
     # — Body Battery —
     if body_battery_min is not None:
         if body_battery_min < 10:
             razones_rojo.append(f"Body Battery crítico al levantarse ({body_battery_min})")
+            causa_rojo.append("battery")
         elif body_battery_min < 25:
             razones_ambar.append(f"Body Battery bajo ({body_battery_min})")
+            causa_ambar.append("battery")
 
     # — Training Status Garmin —
     if training_status:
         ts = training_status.lower()
         if any(k in ts for k in ("overreaching", "strained", "detraining")):
             razones_rojo.append(f"Training Status: {training_status}")
+            causa_rojo.append("training_status")
         elif any(k in ts for k in ("maintaining", "recovery", "unproductive")):
             razones_ambar.append(f"Training Status: {training_status}")
+            causa_ambar.append("training_status")
 
     # — Decisión final —
     if razones_rojo:
@@ -126,6 +141,7 @@ def calcular_semaforo(hrv_actual, hrv_media_7d, sleep_score,
             "mensaje": "Adaptación fallida — " + "; ".join(razones_rojo) + ". Solo regenerativo.",
             "multiplicador_volumen": 0.5,
             "permitir_calidad": False,
+            "causa": list(set(causa_rojo)),  # Deduplicar causas
         }
     if razones_ambar:
         return {
@@ -133,12 +149,84 @@ def calcular_semaforo(hrv_actual, hrv_media_7d, sleep_score,
             "mensaje": "Recuperación subóptima — " + "; ".join(razones_ambar) + ". No buscar PR, -20% series.",
             "multiplicador_volumen": 0.8,
             "permitir_calidad": False,
+            "causa": list(set(causa_ambar)),
         }
     return {
         "color": "verde",
         "mensaje": "Recuperación óptima. Entrenamiento completo.",
         "multiplicador_volumen": 1.0,
         "permitir_calidad": True,
+        "causa": [],
+    }
+
+
+# ---------------------------------------------------------------------------
+# 2.5. VO2MAX + TRAINING EFFECT
+# ---------------------------------------------------------------------------
+
+def evaluar_vo2max(vo2max: float | None) -> dict:
+    """
+    Determina capacidad cardiaca y restringe sesiones high intensity.
+    """
+    if vo2max is None:
+        return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 2, "mensaje": None}
+
+    vo2 = float(vo2max)
+    # Malena: 21 años, mujer, maratonista
+    # VO2max "excelente" para mujer: >49
+    # "Muy bueno": 40-48
+    # "Bueno": 35-39
+    if vo2 < 35:
+        return {"puede_alta_intensidad": False, "sesiones_max_intensidad": 0,
+                "mensaje": "VO2max bajo — foco en base aeróbica (Z2). Evitar alta intensidad."}
+    if vo2 < 40:
+        return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 1,
+                "mensaje": f"VO2max {vo2:.1f} (adecuado) — máximo 1 sesión de alta intensidad/semana."}
+    if vo2 < 48:
+        return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 2,
+                "mensaje": f"VO2max {vo2:.1f} (muy bueno) — 2 sesiones de alta intensidad permitidas."}
+    return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 2,
+            "mensaje": f"VO2max {vo2:.1f} (excelente) — capacidad cardíaca óptima."}
+
+
+def evaluar_training_effect(training_effect_aerobico: float | None,
+                            training_effect_anaerobico: float | None,
+                            ultimas_actividades: list) -> dict:
+    """
+    Detecta acumulación de fatiga neuro-muscular y cardiaca.
+    ultimas_actividades = [{"tipo": "intervalos", "training_effect_aer": 3.8, "training_effect_ana": 4.2}, ...]
+    """
+    if not ultimas_actividades or len(ultimas_actividades) < 2:
+        return {"necesita_descanso": False, "mensaje": None, "severidad": 0}
+
+    # Promedio de training effect anaeróbico últimas 3 sesiones
+    ana_effects = [a.get("training_effect_anaerobico", 0) for a in ultimas_actividades[:3]]
+    ana_promedio = sum(ana_effects) / len(ana_effects) if ana_effects else 0
+
+    # Promedio de training effect aeróbico
+    aer_effects = [a.get("training_effect_aerobico", 0) for a in ultimas_actividades[:3]]
+    aer_promedio = sum(aer_effects) / len(aer_effects) if aer_effects else 0
+
+    severidad = 0
+    mensajes = []
+
+    if ana_promedio > 4.5:  # Acumulación anaeróbica alta
+        severidad = 2
+        mensajes.append(f"Acumulación anaeróbica muy alta ({ana_promedio:.1f}/5) — reducir series esta semana")
+    elif ana_promedio > 4.0:  # Moderada
+        severidad = 1
+        mensajes.append(f"Acumulación anaeróbica moderada ({ana_promedio:.1f}/5) — cuidado con más series")
+
+    if aer_promedio > 4.3:  # Fatiga cardiaca
+        severidad = max(severidad, 2)
+        mensajes.append(f"Fatiga cardiaca detectada (TE aer {aer_promedio:.1f}/5) — descanso recomendado")
+
+    return {
+        "necesita_descanso": severidad >= 2,
+        "mensaje": " | ".join(mensajes) if mensajes else None,
+        "severidad": severidad,
+        "ana_promedio": round(ana_promedio, 1),
+        "aer_promedio": round(aer_promedio, 1),
     }
 
 
@@ -284,9 +372,34 @@ def evaluar_cadencia(cadencia_media_spm) -> dict:
             "mensaje": f"Cadencia {c:.0f} spm — correcta."}
 
 
-# ---------------------------------------------------------------------------
-# 5. VOLUMEN SEMANAL (ACWR + regla 10%)
-# ---------------------------------------------------------------------------
+def recomendar_drills_especificos(gct_ms: float | None, oscilacion_cm: float | None) -> dict:
+    """
+    Recomenda drills específicos basados en biomecánica (GCT y oscilación vertical).
+    GCT (Ground Contact Time) > 270ms = contacto prolongado → enfoque cadencia.
+    Oscilación > 9cm = ineficiencia vertical → enfoque cadera/glúteo.
+    """
+    drills = []
+    mensajes = []
+
+    if gct_ms is not None and float(gct_ms) > 270:
+        drills.append("cadencia_media_zancada")
+        mensajes.append(f"GCT elevado ({gct_ms:.0f}ms) → drills de cadencia (180+ spm) + media zancada")
+
+    if oscilacion_cm is not None and float(oscilacion_cm) > 9:
+        drills.append("cadera_gluteo")
+        mensajes.append(f"Oscilación vertical alta ({oscilacion_cm:.1f}cm) → drills de cadera y glúteo")
+
+    if not drills:
+        drills.append("general_tecnica")
+        mensajes.append("Técnica general: alta cadencia, brazos, postura")
+
+    return {
+        "drills": drills,
+        "mensaje": " | ".join(mensajes),
+        "necesita_drills": len(drills) > 0,
+    }
+
+
 
 def calcular_volumen_semana(km_anterior: float, acwr: float,
                              lesiones_activas: list, km_max_fase: float) -> float:
@@ -352,6 +465,41 @@ def validar_orden_sesiones(plan_dia: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Heredadas (compatibilidad con generar_reporte_semanal)
 # ---------------------------------------------------------------------------
+
+def detectar_conflictos_48h(ultimas_actividades: list) -> dict:
+    """
+    Detecta conflictos potenciales en las últimas 48-72 horas:
+    - Si hay VO2max/series en últimas 3 actividades: avisar de descanso o Z2 solo
+    - Si hay fuerza piernas reciente: no permitir series la próxima sesión
+    """
+    if not ultimas_actividades or len(ultimas_actividades) < 1:
+        return {"hay_conflicto": False, "mensaje": None, "alerta": None}
+
+    conflictos = []
+    tiene_vo2max_reciente = False
+    tiene_fuerza_piernas_reciente = False
+
+    # Revisar últimas 3 actividades (últimos 3 días aproximadamente)
+    for act in ultimas_actividades[:3]:
+        if not act:
+            continue
+        # Detectar si fue sesión de alta intensidad (VO2max/series)
+        te_aer = act.get("training_effect_aerobico", 0)
+        te_ana = act.get("training_effect_anaerobico", 0)
+        if te_aer > 4.0 or te_ana > 4.0:
+            tiene_vo2max_reciente = True
+            conflictos.append("VO2max/series detectado en últimas 48h")
+
+    if tiene_vo2max_reciente:
+        return {
+            "hay_conflicto": True,
+            "mensaje": "Zona de descanso activo detectada (VO2max reciente)",
+            "alerta": "⚠️ Última sesión de alta intensidad hace <48h. Evitar repetir, foco en Z2 y fuerza ligera.",
+        }
+
+    return {"hay_conflicto": False, "mensaje": None, "alerta": None}
+
+
 
 def evaluar_cadencia_y_recomendar(df_actividades):
     recomendaciones, mensajes = [], []

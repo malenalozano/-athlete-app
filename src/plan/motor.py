@@ -11,6 +11,8 @@ from src.plan.reglas import (
     obtener_fase_macrociclo, calcular_semaforo, aplicar_restricciones_lesion,
     evaluar_cadencia, calcular_volumen_semana, evaluar_eficiencia_aerobica,
     validar_orden_sesiones, evaluar_cadencia_y_recomendar, ajustar_por_ciclo,
+    controlar_distribucion_intensidad, evaluar_vo2max, evaluar_training_effect,
+    recomendar_drills_especificos, detectar_conflictos_48h,
 )
 from src.plan.helpers import cargar_datos_plan, distribuir_semana
 
@@ -99,6 +101,24 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
     restricciones = aplicar_restricciones_lesion(datos["lesiones_activas"])
     cadencia_eval = evaluar_cadencia(datos["cadencia_media"])
 
+    # Evaluación VO2max: capacidad cardíaca
+    vo2_eval = evaluar_vo2max(datos.get("vo2max"))
+
+    # Evaluación Training Effect: fatiga acumulada
+    te_eval = evaluar_training_effect(
+        datos.get("metricas_running", {}).get("training_effect_aerobico"),
+        datos.get("metricas_running", {}).get("training_effect_anaerobico"),
+        datos.get("ultimas_3_actividades", [])
+    )
+
+    # Recomendación de drills específicos basados en biomecánica
+    gct = datos.get("metricas_running", {}).get("tiempo_contacto_ms")
+    oscilacion = datos.get("metricas_running", {}).get("oscilacion_vertical_cm")
+    drills_eval = recomendar_drills_especificos(gct, oscilacion)
+
+    # Detector de conflictos 48-72h (últimas actividades)
+    conflictos_48h = detectar_conflictos_48h(datos.get("ultimas_3_actividades", []))
+
     km_objetivo = calcular_volumen_semana(
         datos["km_semana_anterior"], datos["acwr"],
         datos["lesiones_activas"], fase["km_semanales_max"])
@@ -115,7 +135,8 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
         semaforo["permitir_calidad"] = False
         semaforo["mensaje"] = ciclo_ajuste["mensaje"]
 
-    dias = distribuir_semana(fase, km_objetivo, semaforo, restricciones, fecha_inicio_lunes)
+    dias = distribuir_semana(fase, km_objetivo, semaforo, restricciones, fecha_inicio_lunes, cadencia_eval,
+                            datos.get("sleep_breakdown"))
 
     # Recoger alertas
     alertas = list(restricciones["alertas"])
@@ -127,8 +148,29 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
         alertas.append("💧 Fase del ciclo: aumentar hidratación y electrolitos.")
     if cadencia_eval["necesita_drills"]:
         alertas.append(cadencia_eval["mensaje"])
+        # Añadir recomendación de drills específicos
+        if drills_eval["necesita_drills"]:
+            alertas.append(f"👟 {drills_eval['mensaje']}")
     if eficiencia["necesita_fartlek"]:
         alertas.append("📊 Eficiencia aeróbica estancada — añadir fartlek esta semana.")
+
+    # VO2max evaluación
+    if vo2_eval["mensaje"]:
+        alertas.append(f"💪 {vo2_eval['mensaje']}")
+
+    # Training Effect evaluación (fatiga acumulada)
+    if te_eval["mensaje"]:
+        alertas.append(f"⚠️ {te_eval['mensaje']}")
+
+    # Alerta sueño profundo insuficiente
+    sleep_breakdown = datos.get("sleep_breakdown", {})
+    if sleep_breakdown.get("profundo_h") is not None and sleep_breakdown["profundo_h"] < 0.75:
+        alertas.append(f"😴 Sueño profundo insuficiente ({sleep_breakdown['profundo_h']*60:.0f} min < 45 min) — reducir series esta semana.")
+
+    # Detección de conflictos 48-72h
+    if conflictos_48h["alerta"]:
+        alertas.append(conflictos_48h["alerta"])
+
 
     # Alerta Training Status Garmin
     ts = datos.get("training_status", "")
@@ -157,6 +199,11 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
 
     km_totales = round(sum(d["km"] for d in dias), 1)
 
+    # Validar distribución 80/20 de intensidad
+    entrenamientos_running = [d for d in dias if "Carrera" in d["tipo"]]
+    _, validacion_intensidad = controlar_distribucion_intensidad(entrenamientos_running)
+    alertas.append(f"📊 {validacion_intensidad}")
+
     return {
         "dias": dias,
         "alertas": list(dict.fromkeys(alertas)),  # deduplicar manteniendo orden
@@ -168,6 +215,10 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
         "metricas_running": mrun,
         "training_status": datos.get("training_status"),
         "vo2max": datos.get("vo2max"),
+        "vo2_eval": vo2_eval,
+        "training_effect_eval": te_eval,
+        "drills_eval": drills_eval,
+        "conflictos_48h": conflictos_48h,
         "body_battery": datos.get("body_battery_max"),
         "estres_medio": datos.get("estres_medio"),
     }
