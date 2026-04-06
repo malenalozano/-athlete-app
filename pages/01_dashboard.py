@@ -61,6 +61,7 @@ c4.metric("HRV medio",    f"{res['hrv']:.0f} ms"  if res["hrv"]   else "—", _d
 
 # ---------------------------------------------------------------------------
 # 3. Macrociclo — 5 fases + barra global hacia el objetivo
+# DYNAMIC TITLE v2 - Updated 2026-04-06
 # ---------------------------------------------------------------------------
 titulo_macrociclo = obtener_titulo_macrociclo(user_actual)
 st.subheader(titulo_macrociclo)
