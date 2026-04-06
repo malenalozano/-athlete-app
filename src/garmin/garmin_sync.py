@@ -892,6 +892,12 @@ def iniciar_sesion_garmin(email, password):
         return client
     except GarminConnectAuthenticationError as e:
         logger.error(f"❌ Autenticación fallida: {e}")
+        msg = str(e)
+        if "429" in msg or "rate" in msg.lower():
+            raise RuntimeError(
+                "Garmin ha bloqueado temporalmente el login por demasiados intentos (429 Rate Limit). "
+                "Espera unos minutos y vuelve a intentar una sola vez."
+            ) from e
         raise
     except GarminConnectConnectionError as e:
         logger.error(f"❌ Conexión fallida: {e}")

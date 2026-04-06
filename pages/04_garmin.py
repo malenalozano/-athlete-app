@@ -218,14 +218,8 @@ if "gc" not in st.session_state and not st.session_state.get("gc_failed"):
     gc_tok = cargar_sesion_tokens(cred[0] if cred else None)
     if gc_tok is not None:
         st.session_state["gc"] = gc_tok
-    elif cred and cred[0]:
-        saved_pw = _get_saved_password(cred)
-        if saved_pw:
-            try:
-                st.session_state["gc"] = iniciar_sesion_garmin(cred[0], saved_pw)
-            except Exception as e:
-                st.session_state["gc_failed"] = True
-                st.session_state["gc_error"] = str(e)
+    # Importante: no intentar login automático con contraseña al cargar la página,
+    # porque en errores 429 de Garmin eso puede aumentar el bloqueo por reintentos.
 
 st.markdown("<div class='garmin-wrap'>", unsafe_allow_html=True)
 st.markdown(f"<h2 style='color:#e6edf3;font-weight:700;margin:4px 0 4px;'>Garmin Connect</h2>",
@@ -272,7 +266,9 @@ with tab_sync:
                 st.markdown(
                     f"<div style='background:#1a1200;border:1px solid #f59e0b40;border-radius:8px;"
                     f"padding:10px 14px;margin-top:8px;font-size:12px;color:#f59e0b;'>"
-                    f"Si ves error <b>429</b> (demasiados intentos), ejecuta una vez desde terminal:<br>"
+                    f"Garmin ha bloqueado temporalmente el login por demasiados intentos (<b>429</b>). "
+                    f"Espera un rato antes de reintentar y evita pulsar varias veces seguidas.<br>"
+                    f"Cuando se desbloquee, puedes inicializar tokens una vez desde terminal:<br>"
                     f"<code style='background:#0d1117;padding:2px 6px;border-radius:4px;'>"
                     f"python scripts/garmin_login_once.py</code></div>",
                     unsafe_allow_html=True)
@@ -323,7 +319,10 @@ with tab_sync:
                             except Exception as e:
                                 st.session_state["gc_failed"] = True
                                 st.session_state["gc_error"] = str(e)
-                                st.error(f"Error al conectar: {e}")
+                                if "429" in str(e):
+                                    st.error("Garmin ha bloqueado temporalmente el acceso (429). Espera unos minutos y vuelve a intentar una sola vez.")
+                                else:
+                                    st.error(f"Error al conectar: {e}")
             st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Última actividad + botones sync ─────────────────────────────
