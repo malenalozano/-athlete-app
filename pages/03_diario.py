@@ -72,19 +72,27 @@ def _inicio_ultima_regla(conn, usuario_id: int, fecha_ref=None):
 
 st.markdown(f"<h2 style='color:#e6edf3;font-weight:600;margin:8px 0 16px;'>Diario</h2>",
             unsafe_allow_html=True)
-tab2, tab1, tab3, tab4 = st.tabs(["📓 Entreno libre", "🩸 Ciclo", "🏋️ Ejercicios", "🩹 Lesiones"])
+
+from src.db.db_manager import obtener_perfil as _obtener_perfil
+_perfil_actual = _obtener_perfil(user_actual) or {}
+_genero_actual = str(_perfil_actual.get("genero", "")).strip().lower()
+_es_mujer = _genero_actual in ("mujer", "female", "f", "w")
+
+_tab_labels = ["📓 Entreno libre", "🏋️ Ejercicios", "🩹 Lesiones"]
+if _es_mujer:
+    _tab_labels.insert(1, "🩸 Ciclo")
+
+if _es_mujer:
+    tab2, tab1, tab3, tab4 = st.tabs(_tab_labels)
+else:
+    tab2, tab3, tab4 = st.tabs(_tab_labels)
+    tab1 = None  # no existe para hombres
 
 # ===========================================================================
-# TAB 1 — CICLO MENSTRUAL
+# TAB 1 — CICLO MENSTRUAL (solo mujeres)
 # ===========================================================================
-with tab1:
-    from src.db.db_manager import obtener_perfil as _obtener_perfil
-    _perfil_actual = _obtener_perfil(user_actual) or {}
-    _genero_actual = str(_perfil_actual.get("genero", "")).strip().lower()
-    _es_mujer = _genero_actual in ("mujer", "female", "f", "w")
-    if not _es_mujer:
-        st.info("Esta sección no está disponible para este perfil.")
-    else:
+if tab1 is not None:
+    with tab1:
         _conn = get_db_connection()
         _last_bleed_start = _inicio_ultima_regla(_conn, user_actual, datetime.now().date())
         _conn.close()
