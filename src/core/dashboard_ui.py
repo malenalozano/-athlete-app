@@ -62,9 +62,10 @@ def render_checkpoints_moderno(df_check, objetivo_txt="actual"):
                 )
 
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=120, show_spinner=False)
 def obtener_estado_ciclo_malena(usuario_id: int = 1):
-    """Estado actual del ciclo solo para Malena (usuario_id=1)."""
+    """Estado actual del ciclo solo para Malena (usuario_id=1).
+    Cache keyed by usuario_id to prevent cross-user contamination."""
     if int(usuario_id or 0) != 1:
         return None
     conn = get_db_connection()
@@ -112,6 +113,30 @@ def obtener_estado_ciclo_malena(usuario_id: int = 1):
         "fase": fase, "origen": origen, "proxima_regla": proxima_regla,
         "consejos": sugerencias.get(fase, ["Acompaña y ajusta el contexto según cómo se encuentre ese día."]),
     }
+
+
+def obtener_titulo_macrociclo(usuario_id: int | None = None) -> str:
+    """Devuelve el título dinámico del macrociclo basado en perfil usuario."""
+    from src.db.db_manager import obtener_perfil
+    from datetime import datetime
+    
+    if usuario_id is None:
+        usuario_id = int(st.session_state.get("usuario_id", 1))
+    
+    perfil = obtener_perfil(usuario_id) or {}
+    objetivo_tipo = str(perfil.get("objetivo_tipo") or "maraton").lower()
+    fecha_objetivo = perfil.get("fecha_objetivo", "")
+    
+    try:
+        fecha_obj = datetime.strptime(fecha_objetivo, "%Y-%m-%d").date()
+        fecha_str = fecha_obj.strftime("%b %Y")
+    except:
+        fecha_str = ""
+    
+    if objetivo_tipo in ("ultramaraton", "ultra", "trail_ultra"):
+        return f"Macrociclo — Ultra 100km · {fecha_str}"
+    else:
+        return f"Macrociclo — Maratón Sub 3:30 · {fecha_str}"
 
 
 def render_macrociclo(usuario_id: int | None = None):

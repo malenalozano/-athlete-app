@@ -11,7 +11,7 @@ from src.core.dashboard_data import (
     resumen_semana_con_delta, metricas_garmin, progresion_pesos_ejercicios,
     inicio_semana, cargar_plan_semana_cache,
 )
-from src.core.dashboard_ui import obtener_estado_ciclo_malena, render_macrociclo, render_grafico_sueno
+from src.core.dashboard_ui import obtener_estado_ciclo_malena, render_macrociclo, render_grafico_sueno, obtener_titulo_macrociclo
 from src.plan.reglas import obtener_fase_macrociclo
 
 render_navbar("dashboard")
@@ -60,9 +60,10 @@ c3.metric("Sueño medio",  f"{res['sueno']:.1f} h" if res["sueno"] else "—", _
 c4.metric("HRV medio",    f"{res['hrv']:.0f} ms"  if res["hrv"]   else "—", _delta_fmt(res["hrv_delta"]))
 
 # ---------------------------------------------------------------------------
-# 3. Macrociclo — 5 fases + barra global hacia el maratón
+# 3. Macrociclo — 5 fases + barra global hacia el objetivo
 # ---------------------------------------------------------------------------
-st.subheader("Macrociclo — Maratón Sub 3:30 · Feb 2027")
+titulo_macrociclo = obtener_titulo_macrociclo(user_actual)
+st.subheader(titulo_macrociclo)
 render_macrociclo(user_actual)
 
 st.divider()

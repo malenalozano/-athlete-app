@@ -126,12 +126,47 @@ def render_navbar(pagina_activa: str):
                     except Exception as e:
                         st.error(f"Error sync: {e}")
 
-    # Avatar
+    # Avatar con popover dropdown para logout
     with cols[8]:
+        # Botón estilizado como avatar con menú dropdown
+        avatar_btn = st.button(
+            avatar_letter,
+            key="avatar_btn",
+            help="Menú de usuario",
+            use_container_width=False,
+        )
+        
+        # CSS para estilizar el botón como avatar
         st.markdown(
-            f"<div style='width:32px;height:32px;border-radius:50%;"
-            f"background:linear-gradient(135deg,{ACCENT}40,{ACCENT}15);"
-            f"border:1px solid {ACCENT}50;"
-            f"color:{ACCENT};display:flex;align-items:center;justify-content:center;"
-            f"font-size:12px;font-weight:700;margin-top:10px;'>{avatar_letter}</div>",
-            unsafe_allow_html=True)
+            f"""<style>
+            [data-testid="stHorizontalBlock"]:has(> :nth-child(9)) [kind="secondary"] {{
+                width: 32px !important;
+                height: 32px !important;
+                padding: 0 !important;
+                border-radius: 50% !important;
+                font-size: 12px !important;
+                font-weight: 700 !important;
+                border: 1px solid {ACCENT}50 !important;
+                color: {ACCENT} !important;
+                background: linear-gradient(135deg, {ACCENT}40, {ACCENT}15) !important;
+                min-height: 32px !important;
+                line-height: 32px !important;
+                margin-top: 10px !important;
+            }}
+            </style>""",
+            unsafe_allow_html=True
+        )
+        
+        if avatar_btn:
+            with st.popover("", use_container_width=False):
+                st.markdown(f"**Sesión: {auth_user}**")
+                st.divider()
+                if st.button("🚪 Cerrar sesión", key="navbar_logout", use_container_width=True):
+                    st.session_state.pop("auth_ok", None)
+                    st.session_state.pop("auth_user", None)
+                    st.session_state.pop("usuario_id", None)
+                    st.session_state.pop("gc", None)
+                    st.session_state.pop("gc_failed", None)
+                    st.session_state.pop("gc_error", None)
+                    st.cache_data.clear()
+                    st.rerun()
