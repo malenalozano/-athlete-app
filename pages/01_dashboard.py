@@ -37,8 +37,16 @@ saludo = "Buenos días" if hora < 13 else ("Buenas tardes" if hora < 20 else "Bu
 hoy = datetime.now()
 fecha_es = f"{_DIAS_ES[hoy.strftime('%A')]} {hoy.day} de {_MESES_ES[hoy.strftime('%B')]} de {hoy.year}"
 
-fase_hoy = obtener_fase_macrociclo()
-estado_ciclo = obtener_estado_ciclo_malena(user_actual) if user_actual == 1 else None
+_objetivo_tipo = str(perfil.get("objetivo_tipo") or "maraton").lower()
+_es_ultra_dash = _objetivo_tipo in ("ultramaraton", "ultra", "trail_ultra")
+if _es_ultra_dash:
+    from src.plan.reglas import obtener_fase_macrociclo_ultra
+    fase_hoy = obtener_fase_macrociclo_ultra(datetime.now(), perfil.get("fecha_objetivo", ""))
+else:
+    fase_hoy = obtener_fase_macrociclo()
+_genero_dash = str(perfil.get("genero", "")).strip().lower()
+_es_mujer_dash = _genero_dash in ("mujer", "female", "f", "w")
+estado_ciclo = obtener_estado_ciclo_malena(user_actual) if _es_mujer_dash else None
 fase_ciclo_txt = estado_ciclo["fase"] if estado_ciclo else ""
 ciclo_sub = f" · Ciclo: **{fase_ciclo_txt}**" if fase_ciclo_txt else ""
 st.markdown(f"## {saludo}, {nombre} 👋")

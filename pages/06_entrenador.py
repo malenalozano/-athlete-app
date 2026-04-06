@@ -313,8 +313,13 @@ with col_evals3:
 st.markdown("---")
 st.header("📋 8. Plan Semanal Generado")
 
+# Inicializar plan como None para evitar NameError en SECCIÓN 10
+plan = None
+
 try:
-    plan = generar_plan_semana(usuario_id, datetime.now())
+    hoy = datetime.now()
+    lunes = hoy - timedelta(days=hoy.weekday())
+    plan = generar_plan_semana(usuario_id, lunes)
     
     st.subheader(f"Total: {plan['km_totales']:.1f} km | Fase: {plan['fase']['fase_nombre']}")
     
@@ -370,27 +375,35 @@ except Exception as e:
 st.markdown("---")
 st.header("📌 10. Resumen Ejecutivo - Siguiente Plan Semanal")
 
-summary_col1, summary_col2 = st.columns(2)
+if plan:
+    summary_col1, summary_col2 = st.columns(2)
 
-with summary_col1:
-    km_vol = float(plan.get('km_totales', 0)) if plan.get('km_totales') else 0
-    st.markdown(f"""
-    ### Condiciones de Entrenamiento
-    - **Estado de Recuperación:** {semaforo['color'].upper()}
-    - **Volumen Objetivo:** {km_vol:.1f} km
-    - **Esfuerzo Máximo Permitido:** {'Sí' if semaforo['permitir_calidad'] else 'No - Solo Z1/Z2'}
-    - **Carga Acumulada (ACWR):** {datos.get('acwr', 0):.2f}
-    """)
+    with summary_col1:
+        km_vol = float(plan.get('km_totales', 0)) if plan.get('km_totales') else 0
+        st.markdown(f"""
+        ### Condiciones de Entrenamiento
+        - **Estado de Recuperación:** {semaforo['color'].upper()}
+        - **Volumen Objetivo:** {km_vol:.1f} km
+        - **Esfuerzo Máximo Permitido:** {'Sí' if semaforo['permitir_calidad'] else 'No - Solo Z1/Z2'}
+        - **Carga Acumulada (ACWR):** {datos.get('acwr', 0):.2f}
+        """)
 
-with summary_col2:
-    st.markdown(f"""
-    ### Ajustes Aplicados
-    - **Ciclo Menstrual:** {ciclo_data.get('fase_nombre', 'N/A') if ciclo_data else 'N/A'}
-    - **Cadencia Drills:** {'Sí - Incluir 5min técnica' if cadencia_eval['necesita_drills'] else 'No necesarios'}
-    - **Lesiones Activas:** {'Sí - Aplicadas sustituciones' if datos.get('lesiones_activas') else 'Ninguna'}
-    - **Fase del Macrociclo:** {fase['fase_nombre']}
-    """)
+    with summary_col2:
+        st.markdown(f"""
+        ### Ajustes Aplicados
+        - **Ciclo Menstrual:** {ciclo_data.get('fase_nombre', 'N/A') if ciclo_data else 'N/A'}
+        - **Cadencia Drills:** {'Sí - Incluir 5min técnica' if cadencia_eval['necesita_drills'] else 'No necesarios'}
+        - **Lesiones Activas:** {'Sí - Aplicadas sustituciones' if datos.get('lesiones_activas') else 'Ninguna'}
+        - **Fase del Macrociclo:** {fase['fase_nombre']}
+        """)
 
-st.success("✅ Todos los datos están listos para generar tu plan semanal personalizado.")
+    st.success("✅ Todos los datos están listos para generar tu plan semanal personalizado.")
+else:
+    st.warning("⚠️ El plan no se generó correctamente. Revisa los errores en la sección 8.")
 
-conn.close()
+
+if conn:
+    try:
+        conn.close()
+    except:
+        pass

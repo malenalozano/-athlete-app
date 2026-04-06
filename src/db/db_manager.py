@@ -89,6 +89,28 @@ def init_db():
     _ensure_column(conn, "usuarios", "fecha_objetivo", "TEXT")   # fecha de la carrera objetivo (YYYY-MM-DD)
     _ensure_column(conn, "usuarios", "objetivo_tipo", "TEXT")    # 'maraton', 'ultramaraton', 'trail', etc.
 
+    # Sembrar perfiles por defecto (INSERT OR IGNORE preserva datos existentes)
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO usuarios
+            (id, nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
+             fecha_objetivo, objetivo_tipo)
+        VALUES (1, 'Malena', 22, 'Mujer', 58.0,
+                'Maratón Sub 3:30 — 21 Feb 2027', 1, 1, 'Intermedio', '5:30',
+                '2027-02-21', 'maraton')
+        """
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO usuarios
+            (id, nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
+             fecha_objetivo, objetivo_tipo)
+        VALUES (2, 'Dani', 26, 'Hombre', 72.0,
+                'Ultramaratón 100km — Sep 2026', 1, 1, 'Intermedio', '5:00',
+                '2026-09-19', 'ultramaraton')
+        """
+    )
+
     # Tabla de ejercicios por defecto (personalizados por usuario)
     conn.execute('''
         CREATE TABLE IF NOT EXISTS ejercicios_por_defecto (

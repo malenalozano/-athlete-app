@@ -78,7 +78,11 @@ tab2, tab1, tab3, tab4 = st.tabs(["📓 Entreno libre", "🩸 Ciclo", "🏋️ E
 # TAB 1 — CICLO MENSTRUAL
 # ===========================================================================
 with tab1:
-    if user_actual != 1:
+    from src.db.db_manager import obtener_perfil as _obtener_perfil
+    _perfil_actual = _obtener_perfil(user_actual) or {}
+    _genero_actual = str(_perfil_actual.get("genero", "")).strip().lower()
+    _es_mujer = _genero_actual in ("mujer", "female", "f", "w")
+    if not _es_mujer:
         st.info("Esta sección no está disponible para este perfil.")
     else:
         _conn = get_db_connection()
