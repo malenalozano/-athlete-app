@@ -2,6 +2,7 @@ import os
 import re
 from dotenv import load_dotenv
 import google.generativeai as genai
+from src.db.db_manager import get_db_connection
 
 load_dotenv()
 
@@ -95,9 +96,7 @@ def _parsear_nota_local(texto: str, catalogo: dict | None = None) -> list:
     if catalogo is None:
         catalogo = {}
         try:
-            import sqlite3
-            db_path = os.getenv("LOCAL_DB_PATH", "atleta.db")
-            cc = sqlite3.connect(db_path)
+            cc = get_db_connection()
             rows = cc.execute(
                 "SELECT LOWER(nombre), grupo_muscular, musculo_principal, peso_actual "
                 "FROM ejercicios_catalogo").fetchall()
@@ -134,6 +133,25 @@ def _parsear_nota_local(texto: str, catalogo: dict | None = None) -> list:
             contexto_fecha = hoy - dt.timedelta(days=delta)
             continue
 
+        # Detectar fecha "DD de mes [de YYYY]" (ej: "27 de marzo")
+        meses_map = {"enero":1,"febrero":2,"marzo":3,"abril":4,"mayo":5,"junio":6,
+                     "julio":7,"agosto":8,"septiembre":9,"setiembre":9,
+                     "octubre":10,"noviembre":11,"diciembre":12}
+        m_fecha_txt = re.match(
+            r'^(\d{1,2})\s+de\s+([a-z]+)(?:\s+de\s+(\d{4}))?',
+            low_n, re.IGNORECASE)
+        if m_fecha_txt:
+            _d = int(m_fecha_txt.group(1))
+            _mes_txt = m_fecha_txt.group(2)  # already ascii-normalized
+            _m = meses_map.get(_mes_txt)
+            _y = int(m_fecha_txt.group(3)) if m_fecha_txt.group(3) else dt.datetime.now().year
+            if _m:
+                try:
+                    contexto_fecha = dt.date(_y, _m, _d)
+                except ValueError:
+                    pass
+            continue
+
         # Saltar líneas de continuación tipo "X2", "X2-3"
         if re.match(r'^[xX]\d', linea.lstrip('- ')):
             continue
@@ -146,6 +164,20 @@ def _parsear_nota_local(texto: str, catalogo: dict | None = None) -> list:
             reps_prefix = int(m_pref.group(1))
             linea_t = m_pref.group(2)
 
+        # Separar notas inline: texto después de "-" seguido de espacio, · o ,
+        # Ejemplos: "dominadas 3x8- sola 2 asistidas" / "dominadas 3x8 - sola 2 asistidas"
+        notas = ""
+        # Operar sobre la línea sin el guion/espacio inicial para no confundir con "- ejercicio"
+        prefijo_len = len(linea_t) - len(linea_t.lstrip('- '))
+        cuerpo = linea_t[prefijo_len:]
+        m_nota_dash = re.search(r'-\s+(.+)$', cuerpo)
+        m_nota_sym  = re.search(r'[·,]\s*(.+)$', cuerpo)
+        if m_nota_dash:
+            notas   = m_nota_dash.group(1).strip()
+            linea_t = linea_t[:prefijo_len + m_nota_dash.start()]
+        elif m_nota_sym:
+            notas   = m_nota_sym.group(1).strip()
+
         peso   = _extraer_peso(linea_t)
         series, reps = _extraer_series_reps(linea_t)
         if reps_prefix > 0 and reps == 0:
@@ -155,20 +187,23 @@ def _parsear_nota_local(texto: str, catalogo: dict | None = None) -> list:
         if not nombre or nombre == "Nota libre" or len(nombre) < 2:
             continue
 
-        # Extraer nota de percepción (texto después de · o ,)
-        notas = ""
-        m_nota = re.search(r'[·,]\s*(.+)$', linea_t)
-        if m_nota:
-            notas = m_nota.group(1).strip()
-
         grupo, musculo = _inferir_grupo_y_musculo(nombre)
-        # Enriquecer desde catálogo (búsqueda exacta → parcial)
+        # Buscar en catálogo personal (exacto → parcial por normalización)
+        nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ascii','ignore').decode('ascii')
+        nombre_norm = re.sub(r'[^a-z0-9]', '', nombre_norm)
         cat = catalogo.get(nombre.lower())
         if cat is None:
             for key, val in catalogo.items():
-                if key in nombre.lower() or nombre.lower() in key:
+                key_norm = re.sub(r'[^a-z0-9]', '',
+                    unicodedata.normalize('NFKD', key).encode('ascii','ignore').decode('ascii'))
+                if key_norm == nombre_norm or key_norm in nombre_norm or nombre_norm in key_norm:
                     cat = val; break
+        # Si no hay catálogo cargado (sin usuario_id), procesar igual
+        # Si hay catálogo y no hay match, saltar la línea
+        if catalogo and cat is None:
+            continue
         if cat:
+            nombre  = cat.get("nombre_oficial") or nombre
             grupo   = cat.get("grupo_muscular") or grupo
             musculo = cat.get("musculo_principal") or musculo
             if peso == 0:
@@ -228,9 +263,8 @@ def cargar_biblioteca_ejercicios(usuario_id: int) -> str:
     Formato: "- Nombre (también: alias1, alias2) → Grupo, Músculo"
     """
     try:
-        import sqlite3, json as _json
-        db_path = os.getenv("LOCAL_DB_PATH", "atleta.db")
-        cc = sqlite3.connect(db_path)
+        import json as _json
+        cc = get_db_connection()
         rows = cc.execute(
             "SELECT nombre, alias, grupo_muscular, musculo_principal "
             "FROM ejercicios_biblioteca WHERE usuario_id=? AND activo=1",
@@ -259,9 +293,8 @@ def cargar_biblioteca_ejercicios(usuario_id: int) -> str:
 def _catalogo_para_parser(usuario_id: int) -> dict:
     """Carga la biblioteca como dict {nombre_lower: {grupo, musculo}} para el parser local."""
     try:
-        import sqlite3, json as _json
-        db_path = os.getenv("LOCAL_DB_PATH", "atleta.db")
-        cc = sqlite3.connect(db_path)
+        import json as _json
+        cc = get_db_connection()
         rows = cc.execute(
             "SELECT nombre, alias, grupo_muscular, musculo_principal "
             "FROM ejercicios_biblioteca WHERE usuario_id=? AND activo=1",
@@ -272,7 +305,8 @@ def _catalogo_para_parser(usuario_id: int) -> dict:
 
     resultado = {}
     for nombre, alias, grupo, musculo in rows:
-        entrada = {"grupo_muscular": grupo, "musculo_principal": musculo, "peso_actual": 0}
+        entrada = {"grupo_muscular": grupo, "musculo_principal": musculo, "peso_actual": 0,
+                   "nombre_oficial": nombre}
         resultado[nombre.lower()] = entrada
         if alias:
             try:
@@ -310,9 +344,11 @@ NOTA DE ENTRENAMIENTO:
 
 INSTRUCCIONES:
 - Devuelve SOLO JSON válido: una lista de objetos, sin texto extra.
-- Procesa TODAS las líneas que contengan un ejercicio, aunque no tengan peso ni series.
-- Si el nombre es coloquial, usa el nombre oficial de la lista (ej: "Abs en polea" → "Abdominales en cable").
-- Asocia comentarios de percepción ("me he sentido débil", "mantener peso", "subir peso") al ejercicio más cercano.
+- SOLO incluye ejercicios cuyos nombres aparezcan en la lista de ejercicios del usuario (arriba). Si el nombre escrito no corresponde a ninguno, ignora esa línea completamente.
+- Usa siempre el nombre oficial tal como aparece en la lista del usuario.
+- Asocia comentarios de percepción ("me he sentido débil", "mantener peso", "subir peso") al ejercicio más cercano como "notas".
+- Cuando una línea tiene la forma "ejercicio NxM - texto", el texto después del " - " son NOTAS del ejercicio, no un ejercicio nuevo.
+- Las líneas que empiezan por "DD de mes" (ej: "27 de marzo") son fechas, no ejercicios — ignóralas.
 
 Formato de cada objeto:
 {{

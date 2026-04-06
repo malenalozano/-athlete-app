@@ -28,26 +28,36 @@ def generar_entrenamiento_semana(usuario_id: int, fecha_inicio=None) -> dict:
         hoy = datetime.now()
         fecha_inicio = hoy - __import__("datetime").timedelta(days=hoy.weekday())
 
-    # PARTE 1 — Python genera la estructura completa
-    plan = generar_plan_semana(usuario_id, fecha_inicio)
+    try:
+        # PARTE 1 — Python genera la estructura completa
+        plan = generar_plan_semana(usuario_id, fecha_inicio)
+    except Exception as e:
+        import traceback
+        error_msg = f"Error generando plan: {str(e)}\n{traceback.format_exc()}"
+        raise RuntimeError(error_msg) from e
 
-    # PARTE 2 — Construir contexto completo del atleta
-    datos = cargar_datos_plan(usuario_id)
-    fase = plan["fase"]
-    semaforo = plan["semaforo"]
-    contexto = _construir_contexto_atleta(usuario_id, fase, semaforo, datos)
+    try:
+        # PARTE 2 — Construir contexto completo del atleta
+        datos = cargar_datos_plan(usuario_id)
+        fase = plan["fase"]
+        semaforo = plan["semaforo"]
+        contexto = _construir_contexto_atleta(usuario_id, fase, semaforo, datos)
 
-    # PARTE 3 — IA redacta descripción de cada sesión no-descanso
-    for dia in plan["dias"]:
-        if dia["tipo"] in ("Descanso",):
-            dia["descripcion_ia"] = "Día de descanso. Recuperación activa opcional: caminar, estirar."
-        else:
-            dia["descripcion_ia"] = _pedir_descripcion_ia(dia, contexto)
+        # PARTE 3 — IA redacta descripción de cada sesión no-descanso
+        for dia in plan["dias"]:
+            if dia["tipo"] in ("Descanso",):
+                dia["descripcion_ia"] = "Día de descanso. Recuperación activa opcional: caminar, estirar."
+            else:
+                dia["descripcion_ia"] = _pedir_descripcion_ia(dia, contexto)
 
-    plan["contexto_ia"] = contexto  # para debug/display en UI
-    plan["nutricion"] = _generar_recomendaciones_nutricion(datos, plan)
-    plan["reporte_semanal"] = _generar_reporte_semanal(datos, plan)
-    return plan
+        plan["contexto_ia"] = contexto  # para debug/display en UI
+        plan["nutricion"] = _generar_recomendaciones_nutricion(datos, plan)
+        plan["reporte_semanal"] = _generar_reporte_semanal(datos, plan)
+        return plan
+    except Exception as e:
+        import traceback
+        error_msg = f"Error en contexto IA: {str(e)}\n{traceback.format_exc()}"
+        raise RuntimeError(error_msg) from e
 
 
 # ---------------------------------------------------------------------------

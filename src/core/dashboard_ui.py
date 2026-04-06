@@ -92,13 +92,19 @@ def obtener_estado_ciclo_malena():
 
     fase = fila_hoy.iloc[0]["fase_ciclo"]
     origen = fila_hoy.iloc[0]["origen"]
-    proximas = ciclo_df[(ciclo_df["fecha"] >= hoy) & (ciclo_df["fase_ciclo"] == "Fase Folicular")].head(2)
+    proximas = ciclo_df[
+        (ciclo_df["fecha"] >= hoy)
+        & (ciclo_df["fase_ciclo"].isin(["Fase Folicular", "Folicular", "Menstruación"]))
+    ].head(2)
     proxima_regla = proximas.iloc[0]["fecha"] if not proximas.empty and proximas.iloc[0]["fecha"] >= hoy else None
 
     sugerencias = {
         "Fase Folicular": ["Buen momento para proponer planes, viajes o entrenos más exigentes juntos.", "Las conversaciones importantes suelen ir mejor en esta fase."],
+        "Folicular": ["Buen momento para proponer planes, viajes o entrenos más exigentes juntos.", "Las conversaciones importantes suelen ir mejor en esta fase."],
         "Fase Ovulatoria": ["Buena ventana para citas, conexión y refuerzo positivo.", "Si entrenáis juntos, suele tolerar bien intensidad y sesiones sociales."],
+        "Ovulación": ["Buena ventana para citas, conexión y refuerzo positivo.", "Si entrenáis juntos, suele tolerar bien intensidad y sesiones sociales."],
         "Fase Lútea": ["Prioriza paciencia, validación emocional y menos fricción innecesaria.", "Suman mucho los mimos prácticos: cena reconfortante, masaje, bajar carga social."],
+        "Lútea": ["Prioriza paciencia, validación emocional y menos fricción innecesaria.", "Suman mucho los mimos prácticos: cena reconfortante, masaje, bajar carga social."],
     }
     return {
         "fase": fase, "origen": origen, "proxima_regla": proxima_regla,
@@ -106,38 +112,84 @@ def obtener_estado_ciclo_malena():
     }
 
 
-def render_macrociclo():
-    """Grid 5 fases del macrociclo + barra global de progreso hacia el maratón."""
-    from src.plan.reglas import obtener_fase_macrociclo
+def render_macrociclo(usuario_id: int = 1):
+    """Grid 5 fases del macrociclo + barra global de progreso.
+    Dinámico: calcula fases según perfil del usuario (maratón o ultramaratón)."""
+    from src.plan.reglas import obtener_fase_macrociclo, obtener_fase_macrociclo_ultra
+    from src.db.db_manager import obtener_perfil
+    from datetime import timedelta
 
-    fase_actual = obtener_fase_macrociclo(datetime.now())
+    perfil = obtener_perfil(usuario_id) or {}
+    objetivo_tipo = str(perfil.get("objetivo_tipo") or "maraton").lower()
+    fecha_objetivo_str = perfil.get("fecha_objetivo")
+    es_ultra = objetivo_tipo in ("ultramaraton", "ultra", "trail_ultra")
     hoy = date.today()
-    inicio_macro = date(2026, 4, 6)
-    objetivo     = date(2027, 2, 21)
-    total_dias   = (objetivo - inicio_macro).days
-    pct_total    = max(0, min(100, int((hoy - inicio_macro).days / total_dias * 100)))
 
-    fases = [
-        {"nombre": "Acondicionamiento", "meses": "Abr–May", "color": "#a3e635",
-         "inicio": date(2026, 4, 6), "fin": date(2026, 5, 31),
-         "desc": "Base aeróbica, fuerza glúteo, volumen bajo"},
-        {"nombre": "Prep. General",     "meses": "Jun–Ago", "color": "#22d3ee",
-         "inicio": date(2026, 6, 1), "fin": date(2026, 8, 31),
-         "desc": "Resistencia y fuerza máxima, volumen medio"},
-        {"nombre": "Prep. Específica",  "meses": "Sep–Nov", "color": "#f59e0b",
-         "inicio": date(2026, 9, 1), "fin": date(2026, 11, 30),
-         "desc": "Ritmos competición, volumen alto"},
-        {"nombre": "Pico de Forma",     "meses": "Dic–Ene", "color": "#f87171",
-         "inicio": date(2026, 12, 1), "fin": date(2027, 1, 31),
-         "desc": "Tiradas largas, core, volumen máximo"},
-        {"nombre": "Tapering",          "meses": "Feb 27",  "color": "#a855f7",
-         "inicio": date(2027, 2, 1), "fin": date(2027, 2, 21),
-         "desc": "Descanso, activación, supercompensación"},
-    ]
+    if es_ultra and fecha_objetivo_str:
+        try:
+            fecha_carrera = datetime.strptime(fecha_objetivo_str, "%Y-%m-%d").date()
+        except ValueError:
+            fecha_carrera = date(2026, 9, 19)
+        fase_actual = obtener_fase_macrociclo_ultra(datetime.now(), fecha_objetivo_str)
+        # Fases calculadas hacia atrás desde la carrera
+        tap_inicio  = fecha_carrera - timedelta(weeks=3)
+        pico_inicio = tap_inicio    - timedelta(weeks=6)
+        esp_inicio  = pico_inicio   - timedelta(weeks=8)
+        gen_inicio  = esp_inicio    - timedelta(weeks=8)
+        acon_inicio = gen_inicio    - timedelta(weeks=12)
+        label_inicio  = acon_inicio.strftime("%-d %b %Y") if hasattr(acon_inicio, 'strftime') else str(acon_inicio)
+        label_carrera = f"Ultra — {fecha_carrera.strftime('%d %b %Y')}"
+        fases = [
+            {"nombre": "Acondicionamiento", "meses": f"hasta {gen_inicio.strftime('%d %b')}",
+             "color": "#a3e635", "inicio": acon_inicio, "fin": gen_inicio - timedelta(days=1),
+             "desc": "Base aeróbica Z2, técnica trail, fuerza glúteo"},
+            {"nombre": "Prep. General",     "meses": f"{gen_inicio.strftime('%d %b')}–{esp_inicio.strftime('%d %b')}",
+             "color": "#22d3ee", "inicio": gen_inicio, "fin": esp_inicio - timedelta(days=1),
+             "desc": "Volumen base, desnivel progresivo, fuerza máxima"},
+            {"nombre": "Prep. Específica",  "meses": f"{esp_inicio.strftime('%d %b')}–{pico_inicio.strftime('%d %b')}",
+             "color": "#f59e0b", "inicio": esp_inicio, "fin": pico_inicio - timedelta(days=1),
+             "desc": "Simulacros ultra, back-to-back, elevación específica"},
+            {"nombre": "Pico de Forma",     "meses": f"{pico_inicio.strftime('%d %b')}–{tap_inicio.strftime('%d %b')}",
+             "color": "#f87171", "inicio": pico_inicio, "fin": tap_inicio - timedelta(days=1),
+             "desc": "Back-to-back máximos, ritmo ultra, core"},
+            {"nombre": "Tapering",          "meses": f"{tap_inicio.strftime('%d %b')}–{fecha_carrera.strftime('%d %b')}",
+             "color": "#a855f7", "inicio": tap_inicio, "fin": fecha_carrera,
+             "desc": "Supercompensación. Mínima fatiga. Activación."},
+        ]
+        inicio_macro  = acon_inicio
+        objetivo_date = fecha_carrera
+    else:
+        # Malena — maratón Feb 2027
+        fecha_carrera = date(2027, 2, 21)
+        fase_actual   = obtener_fase_macrociclo(datetime.now())
+        label_inicio  = "6 Abr 2026"
+        label_carrera = "Maratón — 21 Feb 2027"
+        fases = [
+            {"nombre": "Acondicionamiento", "meses": "Abr–May", "color": "#a3e635",
+             "inicio": date(2026, 4, 6), "fin": date(2026, 5, 31),
+             "desc": "Base aeróbica, fuerza glúteo, volumen bajo"},
+            {"nombre": "Prep. General",     "meses": "Jun–Ago", "color": "#22d3ee",
+             "inicio": date(2026, 6, 1), "fin": date(2026, 8, 31),
+             "desc": "Resistencia y fuerza máxima, volumen medio"},
+            {"nombre": "Prep. Específica",  "meses": "Sep–Nov", "color": "#f59e0b",
+             "inicio": date(2026, 9, 1), "fin": date(2026, 11, 30),
+             "desc": "Ritmos competición, volumen alto"},
+            {"nombre": "Pico de Forma",     "meses": "Dic–Ene", "color": "#f87171",
+             "inicio": date(2026, 12, 1), "fin": date(2027, 1, 31),
+             "desc": "Tiradas largas, core, volumen máximo"},
+            {"nombre": "Tapering",          "meses": "Feb 27",  "color": "#a855f7",
+             "inicio": date(2027, 2, 1), "fin": date(2027, 2, 21),
+             "desc": "Descanso, activación, supercompensación"},
+        ]
+        inicio_macro  = date(2026, 4, 6)
+        objetivo_date = fecha_carrera
 
-    cols = st.columns(5)
+    total_dias = (objetivo_date - inicio_macro).days
+    pct_total  = max(0, min(100, int((hoy - inicio_macro).days / max(total_dias, 1) * 100)))
+
+    cols = st.columns(5, gap="large")
     for col, fase in zip(cols, fases):
-        dias_fase  = (fase["fin"] - fase["inicio"]).days
+        dias_fase  = max((fase["fin"] - fase["inicio"]).days, 1)
         dias_en    = max(0, (hoy - fase["inicio"]).days)
         pct_fase   = max(0, min(100, int(dias_en / dias_fase * 100)))
         es_actual  = fase_actual["fase_nombre"].lower() in fase["nombre"].lower()
@@ -145,7 +197,7 @@ def render_macrociclo():
         opacidad   = "opacity:1" if es_actual or hoy >= fase["inicio"] else "opacity:0.4"
         col.markdown(
             f"<div style='background:#161b22;{borde}border-radius:12px;"
-            f"padding:14px;{opacidad};min-height:140px'>"
+            f"padding:14px;{opacidad};min-height:140px;margin-bottom:8px;'>"
             f"<div style='font-size:10px;color:{fase['color']};text-transform:uppercase;"
             f"letter-spacing:0.7px;font-weight:500;margin-bottom:4px'>{fase['nombre']}</div>"
             f"<div style='font-size:22px;font-weight:500;color:{fase['color']};"
@@ -163,9 +215,9 @@ def render_macrociclo():
         f"border-radius:8px;padding:10px 16px'>"
         f"<div style='display:flex;justify-content:space-between;font-size:11px;"
         f"color:#8b949e;margin-bottom:6px'>"
-        f"<span>Inicio — 1 Mar 2026</span>"
+        f"<span>Inicio — {label_inicio}</span>"
         f"<span style='color:#a3e635;font-weight:500'>{pct_total}% del macrociclo completado</span>"
-        f"<span>Maratón — 21 Feb 2027</span></div>"
+        f"<span>{label_carrera}</span></div>"
         f"<div style='height:6px;background:#21262d;border-radius:3px;overflow:hidden'>"
         f"<div style='height:100%;width:{pct_total}%;background:linear-gradient("
         f"to right,#a3e635,#22d3ee,#f59e0b,#f87171,#a855f7);border-radius:3px'>"
@@ -173,13 +225,18 @@ def render_macrociclo():
 
 
 def render_grafico_sueno(usuario_id: int):
-    """Barras de horas + línea de score (eje Y2) para los últimos 7 días."""
+    """Barras de horas + línea de score (eje Y2) para los últimos 7 días.
+    Debajo: análisis de la última noche sincronizada."""
     import plotly.graph_objects as go
+    from src.core.styles import format_hours, analizar_ultima_noche_sueno
+    from src.db.db_manager import obtener_perfil
 
     conn = get_db_connection()
     # Intenta leer desde datos_sueno; si score está vacío, intenta desde datos_biometricos_premium
     df = pd.read_sql_query(
-        """SELECT ds.fecha, ds.horas_totales, COALESCE(ds.score, bp.sleep_score) as score
+        """SELECT ds.fecha, ds.horas_totales, COALESCE(ds.score, bp.sleep_score) as score,
+                  ds.sleep_profundo_horas, ds.sleep_rem_horas, ds.sleep_vigilia_horas,
+                  bp.estres_medio
            FROM datos_sueno ds
            LEFT JOIN datos_biometricos_premium bp ON ds.usuario_id = bp.usuario_id AND ds.fecha = bp.fecha
            WHERE ds.usuario_id = ? ORDER BY ds.fecha DESC LIMIT 7""",
@@ -205,9 +262,14 @@ def render_grafico_sueno(usuario_id: int):
         for s in scores
     ]
 
+    # Preparar etiquetas de horas formateadas
+    horas_labels = [format_hours(h) if h > 0 else "—" for h in horas]
+
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=dias, y=horas, name="Horas",
+        text=horas_labels,
+        textposition="outside",
         marker_color="#60a5fa", opacity=0.85, yaxis="y1",
     ))
     fig.add_trace(go.Scatter(
@@ -231,3 +293,37 @@ def render_grafico_sueno(usuario_id: int):
         font=dict(color="#8b949e"),
     )
     st.plotly_chart(fig, width="stretch", key="sueno_chart")
+
+    # Análisis de la última noche sincronizada
+    if len(df) > 0:
+        ultima_noche = df.iloc[-1]  # Más reciente
+        score_ultima = pd.to_numeric(ultima_noche["score"], errors="coerce")
+        horas_ultima = ultima_noche["horas_totales"]
+        profundo_ultima = ultima_noche.get("sleep_profundo_horas") or 0
+        rem_ultima = ultima_noche.get("sleep_rem_horas") or 0
+        vigilia_ultima = ultima_noche.get("sleep_vigilia_horas") or 0
+        estres_ultima = ultima_noche.get("estres_medio") or 0
+
+        if score_ultima and score_ultima > 0:
+            # Obtener sexo del usuario
+            perfil = obtener_perfil(usuario_id) or {}
+            genero = perfil.get("genero", "mujer")
+
+            # Generar análisis
+            comentario = analizar_ultima_noche_sueno(
+                score=score_ultima,
+                horas_totales=horas_ultima,
+                profundo_min=profundo_ultima * 60,  # Convertir a minutos
+                rem_min=rem_ultima * 60,
+                vigilia_min=vigilia_ultima * 60,
+                estres_medio=estres_ultima,
+                genero=genero,
+            )
+
+            if comentario:
+                st.markdown(
+                    f"<div style='background:#0f1e10;border-left:4px solid #a3e635;border-radius:0 8px 8px 0;"
+                    f"padding:12px 14px;margin-top:12px;font-size:13px;color:#c9d1d9;line-height:1.5;'>"
+                    f"{comentario}</div>",
+                    unsafe_allow_html=True,
+                )

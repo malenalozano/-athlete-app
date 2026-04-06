@@ -200,3 +200,112 @@ def tipo_color(tipo: str) -> str:
         if k in t:
             return v
     return TXT2
+
+def format_hours(horas_decimales) -> str:
+    """Convierte horas decimales a formato legible: 47min, 1h 7min, etc."""
+    if horas_decimales is None or horas_decimales == "Pendiente Garmin":
+        return horas_decimales
+    try:
+        h = float(horas_decimales)
+        if h <= 0:
+            return "—"
+        hours = int(h)
+        minutes = int(round((h - hours) * 60))
+        # Si redondeó a 60 minutos, sumar a horas
+        if minutes == 60:
+            hours += 1
+            minutes = 0
+        if hours == 0:
+            return f"{minutes}min"
+        elif minutes == 0:
+            return f"{hours}h"
+        else:
+            return f"{hours}h {minutes}min"
+    except (ValueError, TypeError):
+        return str(horas_decimales)
+
+
+def analizar_ultima_noche_sueno(score: float, horas_totales: float, profundo_min: float,
+                                rem_min: float, vigilia_min: float, estres_medio: float,
+                                genero: str = "mujer") -> str:
+    """
+    Analiza la última noche de sueño y genera un comentario personalizado.
+    genera: "hombre" o "mujer"
+    """
+    if score is None or score == 0:
+        return ""
+
+    es_mujer = str(genero).lower() in ("mujer", "woman", "f", "female")
+    score_int = int(score)
+
+    # Criterios según sexo
+    if es_mujer:
+        profundo_min_ok, profundo_max_ok = 90, 160
+        rem_min_ok, rem_max_ok = 105, 155
+        vigilia_max_ok = 20
+        horas_min_ok = 8.5
+        estres_max_ok = 15
+        icono = "👩"
+    else:
+        profundo_min_ok, profundo_max_ok = 80, 140
+        rem_min_ok, rem_max_ok = 100, 150
+        vigilia_max_ok = 20
+        horas_min_ok = 7.5
+        estres_max_ok = 15
+        icono = "🧔"
+
+    # Análisis de factores limitantes
+    problemas = []
+
+    # Estrés (el "killer")
+    if estres_medio > estres_max_ok:
+        problemas.append(("estrés alto", f"tu estrés fue {estres_medio:.0f} (objetivo <{estres_max_ok})"))
+
+    # Vigilia/Inquietud
+    if vigilia_min > vigilia_max_ok:
+        problemas.append(("vigilia alta", f"tuviste {vigilia_min:.0f} min de vigilia (objetivo <{vigilia_max_ok} min)"))
+
+    # REM
+    if rem_min < rem_min_ok:
+        problemas.append(("falta de REM", f"necesitas {rem_min_ok}-{rem_max_ok} min, tienes {rem_min:.0f} min"))
+
+    # Profundo
+    if profundo_min < profundo_min_ok:
+        problemas.append(("falta de sueño profundo", f"necesitas {profundo_min_ok}-{profundo_max_ok} min, tienes {profundo_min:.0f} min"))
+
+    # Horas totales
+    if horas_totales < horas_min_ok:
+        problemas.append(("pocas horas", f"tienes {format_hours(horas_totales)}, objetivo {format_hours(horas_min_ok)}+"))
+
+    # Generar comentario
+    if score_int >= 90:
+        emoji_score = "🏆"
+        if problemas:
+            razon = problemas[0][1]
+            return f"{emoji_score} <b>Excelente:</b> {score_int}/100 — Casi perfecto. Aunque {razon}."
+        else:
+            return f"{emoji_score} <b>Excelente:</b> {score_int}/100 — Noche perfecta de recuperación."
+
+    elif score_int >= 70:
+        emoji_score = "👍"
+        if problemas:
+            razon = problemas[0][1]
+            return f"{emoji_score} <b>Bueno:</b> {score_int}/100 — {razon.capitalize()}."
+        else:
+            return f"{emoji_score} <b>Bueno:</b> {score_int}/100 — Noche sólida de recuperación."
+
+    elif score_int >= 50:
+        emoji_score = "⚠️"
+        if problemas:
+            razon = problemas[0][1]
+            return f"{emoji_score} <b>Normal:</b> {score_int}/100 — {razon.capitalize()}."
+        else:
+            return f"{emoji_score} <b>Normal:</b> {score_int}/100 — Hay espacio para mejorar."
+
+    else:
+        emoji_score = "⛔"
+        if problemas:
+            razon = problemas[0][1]
+            return f"{emoji_score} <b>Pobre:</b> {score_int}/100 — {razon.capitalize()}. Hay que trabajar en recuperación."
+        else:
+            return f"{emoji_score} <b>Pobre:</b> {score_int}/100 — Necesitas mejorar significativamente tu sueño."

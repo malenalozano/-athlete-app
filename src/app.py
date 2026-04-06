@@ -1422,8 +1422,9 @@ def cargar_datos_dashboard(usuario_id):
         except Exception:
             try:
                 df_fuerza = pd.read_sql_query(
-                    "SELECT fecha, ejercicio, peso, series, repeticiones, musculo_principal FROM entrenamientos_fuerza",
-                    conn,
+                    "SELECT fecha, ejercicio, peso, series, repeticiones, musculo_principal "
+                    "FROM entrenamientos_fuerza WHERE usuario_id=? OR usuario_id IS NULL",
+                    conn, params=(usuario_id,),
                 )
             except Exception:
                 df_fuerza = pd.DataFrame()
@@ -1958,15 +1959,22 @@ if user_actual == 1:
         "genero": "Mujer",
         "peso": 55,
         "objetivo": "Maratón",
-        "ritmo": "4:00-5:00"
+        "ritmo": "4:00-5:00",
+        "fecha_objetivo": "2027-02-21",
+        "objetivo_tipo": "maraton",
     }
     guardar_perfil(1, datos_malena)
 elif user_actual == 2:
     datos_dani = {
         "nombre": "Dani",
-        "edad": 21,
+        "edad": 22,
         "genero": "Hombre",
-        "peso": 70
+        "peso": 70,
+        "objetivo": "Ultramaratón",
+        "fecha_objetivo": "2026-09-19",
+        "objetivo_tipo": "ultramaraton",
+        "carrera": 1,
+        "fuerza": 1,
     }
     guardar_perfil(2, datos_dani)
 
@@ -2959,42 +2967,19 @@ if menu in ("Dashboard", "Inicio"):
         unsafe_allow_html=True,
     )
 
-    # Widget de tarjetas de fases de macrociclo
-    from src.core.marathon_planner import generar_plan_maraton, analizar_estado_atleta, cargar_historial_garmin, resumen_fases_plan
-    from src.core.marathon_planner import generar_plan_maraton, analizar_estado_atleta, cargar_historial_garmin, resumen_fases_plan
-    csv_path = os.path.join('data', 'historial_entrenamientos.csv')
-    df_running = cargar_historial_garmin(csv_path)
-    estado = analizar_estado_atleta(df_running)
-    plan = generar_plan_maraton(estado)
-    tarjetas = resumen_fases_plan(plan)
-    colores = [
-        "linear-gradient(130deg, #C9FF00 0%, #161B22 100%)",
-        "linear-gradient(130deg, #00FFD0 0%, #161B22 100%)",
-        "linear-gradient(130deg, #FFB800 0%, #161B22 100%)",
-        "linear-gradient(130deg, #FF5E5E 0%, #161B22 100%)",
-        "linear-gradient(130deg, #A87FFF 0%, #161B22 100%)",
-    ]
-    st.markdown("""
+    # Widget de tarjetas de fases de macrociclo (dinámico por usuario)
+    from src.core.dashboard_ui import render_macrociclo as _render_macrociclo
+    _objetivo_label = "Ultramaratón" if perfil.get("objetivo_tipo", "").lower() in ("ultramaraton", "ultra") else "Maratón"
+    st.markdown(f"""
         <div class='summary7-head'>
             <svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>
                 <rect x='3' y='5' width='18' height='16' rx='2'></rect>
                 <path d='M8 3v4M16 3v4M3 10h18'></path>
             </svg>
-            <span>Macrociclo Maratón</span>
+            <span>Macrociclo {_objetivo_label}</span>
         </div>
     """, unsafe_allow_html=True)
-    cols_fases = st.columns(len(tarjetas))
-    for i, tarjeta in enumerate(tarjetas):
-        color = colores[i % len(colores)]
-        with cols_fases[i]:
-            st.markdown(f"""
-                <div style='background: {color}; border-left: 4px solid #C9FF00; border-radius: 14px; min-height: 96px; padding: 10px 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.22), inset 0 1px 0 rgba(201,255,0,0.08); display: flex; flex-direction: column; justify-content: center;'>
-                    <div style='color:#A6B0BB;font-size:0.98rem;font-weight:700;text-transform:uppercase;letter-spacing:0.01em;'>{tarjeta['fase']}</div>
-                    <div style='position:absolute;top:10px;right:10px;background:rgba(116,129,142,0.26);border:1px solid rgba(175,188,199,0.20);color:#9EA9B5;border-radius:8px;padding:3px 8px;font-size:0.72rem;font-weight:600;'>Fase</div>
-                    <div style='margin-top:8px;color:#FFFFFF;font-size:2.05rem;font-weight:800;letter-spacing:-0.03em;line-height:1;'>{tarjeta['porcentaje']}%</div>
-                    <div style='margin-top:8px;color:#A6B0BB;font-size:0.92rem;'>{tarjeta['resumen']}</div>
-                </div>
-            """, unsafe_allow_html=True)
+    _render_macrociclo(user_actual)
 
     if user_actual == 2:
         estado_malena = obtener_estado_ciclo_malena()

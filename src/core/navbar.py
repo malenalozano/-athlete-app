@@ -13,6 +13,7 @@ PAGES = [
     ("pages/03_diario.py",     "Diario",       "diario"),
     ("pages/04_garmin.py",     "Garmin",       "garmin"),
     ("pages/05_ejercicios.py", "Ejercicios",   "ejercicios"),
+    ("pages/06_entrenador.py", "Entrenador",   "entrenador"),
 ]
 
 _CSS = f"""<style>
@@ -52,7 +53,7 @@ def render_navbar(pagina_activa: str):
     st.markdown(_CSS, unsafe_allow_html=True)
 
     # Columnas: logo | nav items | spacer | sync | avatar
-    cols = st.columns([2.2, 1.1, 1.3, 1.0, 1.2, 1.4, 4.0, 0.45, 0.45])
+    cols = st.columns([2.0, 1.05, 1.2, 0.95, 1.05, 1.15, 1.25, 3.35, 0.45, 0.45])
 
     with cols[0]:
         st.markdown(

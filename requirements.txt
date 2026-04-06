@@ -1,0 +1,9 @@
+streamlit
+garminconnect
+pandas
+plotly
+python-dotenv
+libsql; python_version < "3.14"
+google-generativeai
+pypdf
+cryptography

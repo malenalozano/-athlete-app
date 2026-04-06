@@ -41,14 +41,18 @@ def _guardar_ultimo_usuario(uid):
 
 def _dividir_nota_por_fechas(texto):
     """
-    Divide el texto en segmentos por marcadores de día.
+    Divide el texto en segmentos por marcadores de día (día de semana o "DD de mes").
     Devuelve lista de (marca_encontrada, fragmento).
     Si no hay marcadores, devuelve todo como un segmento con marca=False.
     """
     import re
     dias_semana = r"(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)"
+    meses = r"(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)"
+
+    # Patrón 1: día de semana (opcional con número)
+    # Patrón 2: "DD de mes" (ej: 27 de marzo)
     patron = re.compile(
-        rf"^\s*({dias_semana}(?:\s+\d{{1,2}})?)",
+        rf"^\s*(?:({dias_semana}(?:\s+\d{{1,2}})?)|(\d{{1,2}}\s+de\s+{meses}))",
         re.IGNORECASE | re.MULTILINE
     )
 

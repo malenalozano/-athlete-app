@@ -669,6 +669,40 @@ div[data-testid="stTextArea"] textarea:focus {
                             unsafe_allow_html=True,
                         )
 
+                    # ── Botón borrar ────────────────────────────────────
+                    sesion_id_val = row.get("id")
+                    tiene_garmin  = actividad_id not in (None, "", "None")
+                    key_confirm   = f"confirm_del_{sesion_id_val}"
+                    if key_confirm not in st.session_state:
+                        st.session_state[key_confirm] = False
+
+                    st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+                    if not st.session_state[key_confirm]:
+                        if st.button("🗑 Borrar sesión", key=f"del_{sesion_id_val}",
+                                     help="Borra esta entrada del diario" + (" (la actividad Garmin se conserva)" if tiene_garmin else "")):
+                            st.session_state[key_confirm] = True
+                            st.rerun()
+                    else:
+                        aviso = "¿Borrar esta sesión? La actividad Garmin enlazada **no** se borrará." if tiene_garmin else "¿Borrar esta sesión?"
+                        st.warning(aviso)
+                        col_si, col_no = st.columns(2)
+                        with col_si:
+                            if st.button("Sí, borrar", key=f"confirm_si_{sesion_id_val}", type="primary"):
+                                c_del = get_db_connection()
+                                try:
+                                    c_del.execute("DELETE FROM ejercicios_fuerza WHERE sesion_id=?", (sesion_id_val,))
+                                    c_del.execute("DELETE FROM sesiones_fuerza WHERE id=? AND usuario_id=?",
+                                                  (sesion_id_val, usuario_id))
+                                    c_del.commit()
+                                finally:
+                                    c_del.close()
+                                st.session_state[key_confirm] = False
+                                st.rerun()
+                        with col_no:
+                            if st.button("Cancelar", key=f"confirm_no_{sesion_id_val}"):
+                                st.session_state[key_confirm] = False
+                                st.rerun()
+
         if not df_garmin_libre.empty:
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
             st.markdown(label_upper("Actividades Garmin"), unsafe_allow_html=True)

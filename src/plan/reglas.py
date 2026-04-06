@@ -5,7 +5,7 @@ volumen semanal, cadencia y validación de sesiones concurrentes.
 """
 
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 # ---------------------------------------------------------------------------
@@ -13,10 +13,17 @@ from datetime import datetime
 # ---------------------------------------------------------------------------
 
 def obtener_fase_macrociclo(fecha_actual=None) -> dict:
-    """Retorna fase activa, volumen máx, días fuerza, enfoques y restricciones."""
+    """
+    Retorna fase activa, volumen máx, días fuerza, enfoques y restricciones.
+    Maratón objetivo: febrero.
+    FIX tapering: segunda quincena de enero = pre-tapering (volumen -20%, sin series largas).
+    Enero primera quincena = Pico de Forma. Enero segunda quincena = Tapering.
+    """
     if fecha_actual is None:
         fecha_actual = datetime.now()
     mes = fecha_actual.month
+    dia = fecha_actual.day
+
     if mes in [3, 4, 5]:
         return {"fase_nombre": "Acondicionamiento", "km_semanales_max": 30, "dias_fuerza": 4,
                 "enfoque_fuerza": "Hipertrofia base y glúteo (3×12-15, 65-70% 1RM)",
@@ -35,12 +42,27 @@ def obtener_fase_macrociclo(fecha_actual=None) -> dict:
                 "enfoque_running": "Ritmos competición. Media Maratón noviembre.",
                 "sesion_calidad": "tempo",
                 "restricciones": {"limitar_impacto": False, "permitir_series": True}}
-    if mes in [12, 1]:
+    if mes == 12:
         return {"fase_nombre": "Pico de Forma", "km_semanales_max": 75, "dias_fuerza": 2,
                 "enfoque_fuerza": "Funcional: core y estabilidad",
                 "enfoque_running": "Tiradas largas y ritmo Maratón.",
                 "sesion_calidad": "tempo",
                 "restricciones": {"limitar_impacto": False, "permitir_series": True}}
+    if mes == 1:
+        if dia <= 15:
+            # Primera quincena enero: último bloque de carga máxima
+            return {"fase_nombre": "Pico de Forma", "km_semanales_max": 75, "dias_fuerza": 2,
+                    "enfoque_fuerza": "Funcional: core y estabilidad",
+                    "enfoque_running": "Tiradas largas y ritmo Maratón.",
+                    "sesion_calidad": "tempo",
+                    "restricciones": {"limitar_impacto": False, "permitir_series": True}}
+        else:
+            # Segunda quincena enero: pre-tapering — reducir volumen progresivamente
+            return {"fase_nombre": "Tapering", "km_semanales_max": 50, "dias_fuerza": 1,
+                    "enfoque_fuerza": "Movilidad, core y activación",
+                    "enfoque_running": "Reducción progresiva. Ritmo maratón en tirada larga.",
+                    "sesion_calidad": "progresiva",
+                    "restricciones": {"limitar_impacto": True, "permitir_series": False}}
     if mes == 2:
         return {"fase_nombre": "Tapering", "km_semanales_max": 30, "dias_fuerza": 1,
                 "enfoque_fuerza": "Movilidad y activación mínima",
@@ -50,6 +72,93 @@ def obtener_fase_macrociclo(fecha_actual=None) -> dict:
     return {"fase_nombre": "Desconocida", "km_semanales_max": 20, "dias_fuerza": 2,
             "enfoque_fuerza": "", "enfoque_running": "", "sesion_calidad": "progresiva",
             "restricciones": {"limitar_impacto": False, "permitir_series": False}}
+
+
+def obtener_fase_macrociclo_ultra(fecha_actual=None, fecha_carrera_str: str = "2026-09-19") -> dict:
+    """
+    Macrociclo dinámico para ultramaratón calculado hacia atrás desde fecha_carrera.
+    Fases (semanas antes de la carrera):
+      Tapering        : 3 semanas antes
+      Pico de Forma   : 6 semanas antes del tapering (semanas 4–9)
+      Prep. Específica: 8 semanas (semanas 10–17) — volumen + elevación + back-to-back
+      Prep. General   : 8 semanas (semanas 18–25) — construcción base ultra
+      Acondicionamiento: todo lo anterior
+    """
+    if fecha_actual is None:
+        fecha_actual = datetime.now()
+    try:
+        fecha_carrera = datetime.strptime(fecha_carrera_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        fecha_carrera = datetime(2026, 9, 19)
+
+    dias_para_carrera = (fecha_carrera - fecha_actual).days
+
+    # Límites en días antes de la carrera
+    TAPERING_INICIO   = 21    # 3 semanas
+    PICO_INICIO       = 21 + 42   # 9 semanas
+    ESPECIFICA_INICIO = 21 + 42 + 56   # 17 semanas
+    GENERAL_INICIO    = 21 + 42 + 56 + 56   # 25 semanas
+
+    if dias_para_carrera < 0:
+        return {"fase_nombre": "Post-Carrera", "km_semanales_max": 40, "dias_fuerza": 2,
+                "enfoque_fuerza": "Recuperación activa: movilidad y fuerza ligera",
+                "enfoque_running": "Recuperación progresiva. Volumen muy bajo.",
+                "sesion_calidad": "progresiva",
+                "restricciones": {"limitar_impacto": True, "permitir_series": False},
+                "fecha_carrera": fecha_carrera_str}
+    if dias_para_carrera <= TAPERING_INICIO:
+        return {"fase_nombre": "Tapering", "km_semanales_max": 50, "dias_fuerza": 1,
+                "enfoque_fuerza": "Movilidad y activación mínima",
+                "enfoque_running": "Supercompensación. Mínima fatiga. Algún ritmo objetivo.",
+                "sesion_calidad": "progresiva",
+                "restricciones": {"limitar_impacto": True, "permitir_series": False},
+                "fecha_carrera": fecha_carrera_str}
+    if dias_para_carrera <= PICO_INICIO:
+        return {"fase_nombre": "Pico de Forma", "km_semanales_max": 120, "dias_fuerza": 1,
+                "enfoque_fuerza": "Funcional: core, estabilidad y fuerza excéntrica",
+                "enfoque_running": "Back-to-back largos. Ritmo ultra. Elevación máxima.",
+                "sesion_calidad": "tempo",
+                "restricciones": {"limitar_impacto": False, "permitir_series": True},
+                "fecha_carrera": fecha_carrera_str}
+    if dias_para_carrera <= ESPECIFICA_INICIO:
+        return {"fase_nombre": "Preparación Específica", "km_semanales_max": 100, "dias_fuerza": 2,
+                "enfoque_fuerza": "Fuerza excéntrica (nórdico, sentadilla búlgara). Cadera.",
+                "enfoque_running": "Simulacros de carrera: elevación, back-to-back, ritmo ultra.",
+                "sesion_calidad": "tempo",
+                "restricciones": {"limitar_impacto": False, "permitir_series": True},
+                "fecha_carrera": fecha_carrera_str}
+    if dias_para_carrera <= GENERAL_INICIO:
+        return {"fase_nombre": "Preparación General", "km_semanales_max": 80, "dias_fuerza": 2,
+                "enfoque_fuerza": "Fuerza Máxima (4×4-6, 85-90% 1RM). Glúteo y core.",
+                "enfoque_running": "Construcción de volumen aeróbico base. Primer desnivel.",
+                "sesion_calidad": "intervalos_vo2max",
+                "restricciones": {"limitar_impacto": False, "permitir_series": True},
+                "fecha_carrera": fecha_carrera_str}
+    return {"fase_nombre": "Acondicionamiento", "km_semanales_max": 60, "dias_fuerza": 3,
+            "enfoque_fuerza": "Hipertrofia base y glúteo (3×12-15, 65-70% 1RM)",
+            "enfoque_running": "Base aeróbica Z2. Foco en técnica de trail.",
+            "sesion_calidad": "progresiva",
+            "restricciones": {"limitar_impacto": True, "permitir_series": False},
+            "fecha_carrera": fecha_carrera_str}
+
+
+def obtener_fase_macrociclo_usuario(usuario_id: int = 1, fecha_actual=None) -> dict:
+    """
+    Dispatcher: usa macrociclo Maratón (Malena) o Ultra dinámico (Dani / objetivo_tipo='ultramaraton').
+    Si no se puede cargar el perfil, usa macrociclo maratón por defecto.
+    """
+    if fecha_actual is None:
+        fecha_actual = datetime.now()
+    try:
+        from src.db.db_manager import obtener_perfil
+        perfil = obtener_perfil(usuario_id) or {}
+        objetivo_tipo = str(perfil.get("objetivo_tipo") or "").lower()
+        fecha_objetivo = perfil.get("fecha_objetivo")
+        if objetivo_tipo in ("ultramaraton", "ultra", "trail_ultra") and fecha_objetivo:
+            return obtener_fase_macrociclo_ultra(fecha_actual, fecha_objetivo)
+    except Exception:
+        pass
+    return obtener_fase_macrociclo(fecha_actual)
 
 
 # ---------------------------------------------------------------------------
@@ -164,29 +273,44 @@ def calcular_semaforo(hrv_actual, hrv_media_7d, sleep_score,
 # 2.5. VO2MAX + TRAINING EFFECT
 # ---------------------------------------------------------------------------
 
-def evaluar_vo2max(vo2max: float | None) -> dict:
+def evaluar_vo2max(vo2max: float | None, genero: str = "Mujer") -> dict:
     """
     Determina capacidad cardiaca y restringe sesiones high intensity.
+    Umbrales diferenciados por género (21-25 años, corredor de resistencia):
+      Mujer: bajo <35 | adecuado 35-40 | muy bueno 40-48 | excelente ≥48
+      Hombre: bajo <42 | adecuado 42-50 | muy bueno 50-60 | excelente ≥60
     """
     if vo2max is None:
         return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 2, "mensaje": None}
 
     vo2 = float(vo2max)
-    # Malena: 21 años, mujer, maratonista
-    # VO2max "excelente" para mujer: >49
-    # "Muy bueno": 40-48
-    # "Bueno": 35-39
-    if vo2 < 35:
-        return {"puede_alta_intensidad": False, "sesiones_max_intensidad": 0,
-                "mensaje": "VO2max bajo — foco en base aeróbica (Z2). Evitar alta intensidad."}
-    if vo2 < 40:
-        return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 1,
-                "mensaje": f"VO2max {vo2:.1f} (adecuado) — máximo 1 sesión de alta intensidad/semana."}
-    if vo2 < 48:
+    es_hombre = str(genero).lower() in ("hombre", "male", "m")
+
+    if es_hombre:
+        if vo2 < 42:
+            return {"puede_alta_intensidad": False, "sesiones_max_intensidad": 0,
+                    "mensaje": "VO2max bajo — foco en base aeróbica (Z2). Evitar alta intensidad."}
+        if vo2 < 50:
+            return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 1,
+                    "mensaje": f"VO2max {vo2:.1f} (adecuado) — máximo 1 sesión de alta intensidad/semana."}
+        if vo2 < 60:
+            return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 2,
+                    "mensaje": f"VO2max {vo2:.1f} (muy bueno) — 2 sesiones de alta intensidad permitidas."}
         return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 2,
-                "mensaje": f"VO2max {vo2:.1f} (muy bueno) — 2 sesiones de alta intensidad permitidas."}
-    return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 2,
-            "mensaje": f"VO2max {vo2:.1f} (excelente) — capacidad cardíaca óptima."}
+                "mensaje": f"VO2max {vo2:.1f} (excelente) — capacidad cardíaca óptima."}
+    else:
+        # Mujer
+        if vo2 < 35:
+            return {"puede_alta_intensidad": False, "sesiones_max_intensidad": 0,
+                    "mensaje": "VO2max bajo — foco en base aeróbica (Z2). Evitar alta intensidad."}
+        if vo2 < 40:
+            return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 1,
+                    "mensaje": f"VO2max {vo2:.1f} (adecuado) — máximo 1 sesión de alta intensidad/semana."}
+        if vo2 < 48:
+            return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 2,
+                    "mensaje": f"VO2max {vo2:.1f} (muy bueno) — 2 sesiones de alta intensidad permitidas."}
+        return {"puede_alta_intensidad": True, "sesiones_max_intensidad": 2,
+                "mensaje": f"VO2max {vo2:.1f} (excelente) — capacidad cardíaca óptima."}
 
 
 def evaluar_training_effect(training_effect_aerobico: float | None,
@@ -516,12 +640,14 @@ def evaluar_cadencia_y_recomendar(df_actividades):
 
 
 def controlar_distribucion_intensidad(entrenamientos):
+    """FIX: usar campo 'intensidad' (string) en lugar de 'zona' (inexistente en días del plan)."""
     total = len(entrenamientos)
-    baja_pct = 100 * len([e for e in entrenamientos if e.get("zona") in [1, 2]]) / max(total, 1)
+    _BAJA = {"Muy baja", "Baja"}
+    baja_pct = 100 * len([e for e in entrenamientos if e.get("intensidad") in _BAJA]) / max(total, 1)
     alta_pct = 100 - baja_pct
-    msg = f"Distribución: {baja_pct:.0f}% baja / {alta_pct:.0f}% alta."
+    msg = f"Distribución intensidad: {baja_pct:.0f}% baja / {alta_pct:.0f}% alta."
     if baja_pct < 80:
-        msg += " Aumentar Z1/Z2."
+        msg += " ⚠️ Aumentar proporción Z1/Z2 (objetivo 80/20)."
     return entrenamientos, msg
 
 

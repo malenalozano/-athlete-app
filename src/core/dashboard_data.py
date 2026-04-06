@@ -66,7 +66,9 @@ def cargar_datos_dashboard(usuario_id):
         except Exception:
             try:
                 df_fuerza = pd.read_sql_query(
-                    "SELECT fecha, ejercicio, peso, series, repeticiones, musculo_principal FROM entrenamientos_fuerza", conn)
+                    "SELECT fecha, ejercicio, peso, series, repeticiones, musculo_principal "
+                    "FROM entrenamientos_fuerza WHERE usuario_id=? OR usuario_id IS NULL",
+                    conn, params=(usuario_id,))
             except Exception:
                 df_fuerza = pd.DataFrame()
     finally:

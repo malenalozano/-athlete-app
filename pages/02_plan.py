@@ -63,7 +63,7 @@ def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
         ).fetchall()
         if not rows:
             return None
-        # Convertir rows a estructura plan
+        # Convertir rows a estructura de días
         dias = []
         for row in rows:
             dias.append({
@@ -76,7 +76,26 @@ def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
                 "km": 0,
                 "alerta": "",
             })
-        return {"dias": dias, "existe_en_bd": True}
+        # Hidratar metadata del plan para que la página siempre tenga estructura completa
+        try:
+            base = generar_plan_semana(usuario_id, lunes)
+            if isinstance(base, dict):
+                base["dias"] = dias
+                base["existe_en_bd"] = True
+                return base
+        except Exception:
+            pass
+
+        # Fallback mínimo (evita bloquear UI si falla la hidratación)
+        return {
+            "dias": dias,
+            "fase": {"fase_nombre": "Plan guardado", "km_semanales_max": 0, "dias_fuerza": 0},
+            "semaforo": {"color": "ambar", "mensaje": "Plan recuperado desde BD", "permitir_calidad": True, "multiplicador_volumen": 1.0},
+            "km_totales": round(sum(float(d.get("km") or 0) for d in dias), 1),
+            "acwr": None,
+            "alertas": [],
+            "existe_en_bd": True,
+        }
     except:
         return None
     finally:
@@ -159,11 +178,15 @@ with c4:
     with c4a:
         if st.button("⚡ Regenerar plan (con IA)", type="primary", use_container_width=True):
             with st.spinner():
-                from src.plan.entrenador import generar_entrenamiento_semana
-                plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
-                plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, lunes, datetime.now())
-                st.session_state.plan_data = plan_nuevo
-                st.session_state.plan_ia = True
+                try:
+                    from src.plan.entrenador import generar_entrenamiento_semana
+                    plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
+                    plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, lunes, datetime.now())
+                    st.session_state.plan_data = plan_nuevo
+                    st.session_state.plan_ia = True
+                except Exception as e:
+                    st.error(f"❌ Error generando plan:\n\n{str(e)}")
+                    st.stop()
             st.rerun()
     with c4b:
         sin_ia = st.checkbox("Sin IA", key="plan_sin_ia", label_visibility="collapsed")
@@ -175,6 +198,15 @@ if st.session_state.plan_data is None:
     st.stop()
 
 plan = st.session_state.plan_data
+if not isinstance(plan, dict) or "fase" not in plan:
+    # Intentar reparar automáticamente desde BD de la semana activa
+    plan_bd = _cargar_plan_de_bd(user_actual, lunes)
+    if plan_bd and isinstance(plan_bd, dict) and "fase" in plan_bd:
+        st.session_state.plan_data = plan_bd
+        st.rerun()
+    st.error("Error: El plan no contiene datos válidos. Intenta regenerarlo.")
+    st.stop()
+
 fase = plan["fase"]
 semaforo = plan["semaforo"]
 
@@ -207,7 +239,7 @@ with col_det:
         if fase["dias_fuerza"] > 0:
             conn = get_db_connection()
             try:
-                tabla = generar_tabla_fuerza_semana(user_actual, fase, semaforo, conn)
+                tabla = generar_tabla_fuerza_semana(user_actual, fase, semaforo, conn=conn)
             finally:
                 conn.close()
             st.dataframe(pd.DataFrame(tabla), use_container_width=True, hide_index=True)

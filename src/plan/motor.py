@@ -8,7 +8,8 @@ import pandas as pd
 from datetime import datetime
 
 from src.plan.reglas import (
-    obtener_fase_macrociclo, calcular_semaforo, aplicar_restricciones_lesion,
+    obtener_fase_macrociclo, obtener_fase_macrociclo_ultra, obtener_fase_macrociclo_usuario,
+    calcular_semaforo, aplicar_restricciones_lesion,
     evaluar_cadencia, calcular_volumen_semana, evaluar_eficiencia_aerobica,
     validar_orden_sesiones, evaluar_cadencia_y_recomendar, ajustar_por_ciclo,
     controlar_distribucion_intensidad, evaluar_vo2max, evaluar_training_effect,
@@ -82,7 +83,16 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
     10. Valida orden de sesiones concurrentes.
     """
     datos = cargar_datos_plan(usuario_id)
-    fase = obtener_fase_macrociclo(fecha_inicio_lunes)
+
+    # Seleccionar macrociclo según perfil (maratón vs ultramaratón)
+    objetivo_tipo = datos.get("objetivo_tipo", "maraton")
+    genero = datos.get("genero", "Mujer")
+    es_ultra = str(objetivo_tipo).lower() in ("ultramaraton", "ultra", "trail_ultra")
+
+    if es_ultra and datos.get("fecha_objetivo"):
+        fase = obtener_fase_macrociclo_ultra(fecha_inicio_lunes, datos["fecha_objetivo"])
+    else:
+        fase = obtener_fase_macrociclo(fecha_inicio_lunes)
 
     # Semáforo enriquecido con TODAS las señales de recuperación
     semaforo = calcular_semaforo(
@@ -95,14 +105,15 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
         training_status=datos.get("training_status"),
     )
 
-    # Ajuste por ciclo menstrual
-    ciclo_ajuste = ajustar_por_ciclo(datos.get("fase_ciclo"))
+    # Ajuste por ciclo menstrual — solo para mujeres
+    es_hombre = str(genero).lower() in ("hombre", "male", "m")
+    ciclo_ajuste = ajustar_por_ciclo(None if es_hombre else datos.get("fase_ciclo"))
 
     restricciones = aplicar_restricciones_lesion(datos["lesiones_activas"])
     cadencia_eval = evaluar_cadencia(datos["cadencia_media"])
 
-    # Evaluación VO2max: capacidad cardíaca
-    vo2_eval = evaluar_vo2max(datos.get("vo2max"))
+    # Evaluación VO2max: capacidad cardíaca (umbrales por género)
+    vo2_eval = evaluar_vo2max(datos.get("vo2max"), genero=genero)
 
     # Evaluación Training Effect: fatiga acumulada
     te_eval = evaluar_training_effect(
@@ -136,16 +147,18 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
         semaforo["mensaje"] = ciclo_ajuste["mensaje"]
 
     dias = distribuir_semana(fase, km_objetivo, semaforo, restricciones, fecha_inicio_lunes, cadencia_eval,
-                            datos.get("sleep_breakdown"))
+                            datos.get("sleep_breakdown"), objetivo_tipo=objetivo_tipo)
 
     # Recoger alertas
     alertas = list(restricciones["alertas"])
     if semaforo["color"] != "verde":
         alertas.append(semaforo["mensaje"])
-    if ciclo_ajuste["mensaje"] and ciclo_ajuste["mensaje"] not in alertas:
-        alertas.append(f"🩸 {ciclo_ajuste['mensaje']}")
-    if ciclo_ajuste.get("hidratacion_extra"):
-        alertas.append("💧 Fase del ciclo: aumentar hidratación y electrolitos.")
+    # Alertas ciclo menstrual solo para mujeres
+    if not es_hombre:
+        if ciclo_ajuste["mensaje"] and ciclo_ajuste["mensaje"] not in alertas:
+            alertas.append(f"🩸 {ciclo_ajuste['mensaje']}")
+        if ciclo_ajuste.get("hidratacion_extra"):
+            alertas.append("💧 Fase del ciclo: aumentar hidratación y electrolitos.")
     if cadencia_eval["necesita_drills"]:
         alertas.append(cadencia_eval["mensaje"])
         # Añadir recomendación de drills específicos
@@ -221,6 +234,11 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
         "conflictos_48h": conflictos_48h,
         "body_battery": datos.get("body_battery_max"),
         "estres_medio": datos.get("estres_medio"),
+        # Perfil del atleta
+        "genero": genero,
+        "objetivo_tipo": objetivo_tipo,
+        "nombre_atleta": datos.get("nombre", "Atleta"),
+        "es_hombre": es_hombre,
     }
 
 

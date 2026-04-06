@@ -142,7 +142,7 @@ def cargar_datos_plan(usuario_id: int) -> dict:
     try:
         df_bio = pd.read_sql_query(
             """SELECT fecha, hrv_ms, fc_reposo, sleep_score, spo2, estres_medio,
-                      body_battery_max, body_battery_min, vo2max, training_status
+                      body_battery, body_battery_max, body_battery_min, vo2max, training_status
                FROM datos_biometricos_premium
                WHERE usuario_id=? AND fecha>=? ORDER BY fecha DESC""",
             conn, params=(usuario_id, fecha_7d))
@@ -191,25 +191,47 @@ def cargar_datos_plan(usuario_id: int) -> dict:
             conn, params=(usuario_id, fecha_28d))
 
         df_z2 = pd.read_sql_query(
-            "SELECT fecha, ritmo_medio, fc_media FROM actividades_garmin "
-            "WHERE usuario_id=? AND fecha>=? AND fc_media BETWEEN 120 AND 150",
+            f"SELECT fecha, ritmo_medio, fc_media FROM actividades_garmin "
+            f"WHERE usuario_id=? AND fecha>=? AND fc_media BETWEEN 120 AND 150"
+            f" AND (tipo_deporte IN {_TIPOS_CARRERA} OR tipo_deporte IS NULL)",
             conn, params=(usuario_id, fecha_28d))
 
-        # Ciclo menstrual — último registro (solo si tiene < 4 días de antigüedad)
+        # Ciclo menstrual — usar último registro y, si existe historial, inferir fase actual
         fase_ciclo = None
         try:
-            fecha_ciclo_min = (datetime.now() - timedelta(days=4)).strftime("%Y-%m-%d")
             row_ciclo = conn.execute(
                 "SELECT fase_ciclo, fecha, fatiga_subjetiva, estado_animo "
-                "FROM diario_fisiologia WHERE usuario_id=? AND fecha>=? ORDER BY fecha DESC LIMIT 1",
-                (usuario_id, fecha_ciclo_min)).fetchone()
+                "FROM diario_fisiologia WHERE usuario_id=? AND fase_ciclo IS NOT NULL "
+                "ORDER BY fecha DESC LIMIT 1",
+                (usuario_id,)).fetchone()
             if row_ciclo:
                 fase_ciclo = {
                     "fase": row_ciclo[0],
                     "fecha": row_ciclo[1],
                     "fatiga_subjetiva": row_ciclo[2],
                     "estado_animo": row_ciclo[3],
+                    "origen": "Registrado",
                 }
+
+            df_ciclo_hist = pd.read_sql_query(
+                "SELECT fecha, fase_ciclo, sangre FROM diario_fisiologia "
+                "WHERE usuario_id=? AND fecha>=? ORDER BY fecha ASC",
+                conn, params=(usuario_id, fecha_28d))
+            if not df_ciclo_hist.empty:
+                from datetime import date
+                from src.core.ciclo_helpers import predecir_fases_ciclo
+
+                ciclo_df, _ = predecir_fases_ciclo(df_ciclo_hist, horizonte_dias=40)
+                hoy = date.today()
+                fila_hoy = ciclo_df[ciclo_df["fecha"] == hoy]
+                if not fila_hoy.empty:
+                    fase_hoy = str(fila_hoy.iloc[0].get("fase_ciclo") or "").strip()
+                    origen_hoy = str(fila_hoy.iloc[0].get("origen") or "Predicho").strip()
+                    if fase_hoy:
+                        if fase_ciclo is None:
+                            fase_ciclo = {}
+                        fase_ciclo["fase"] = fase_hoy
+                        fase_ciclo["origen"] = origen_hoy
         except Exception:
             pass
 
@@ -323,9 +345,9 @@ def cargar_datos_plan(usuario_id: int) -> dict:
                 metricas_running["fc_media"] = round(float(fm.mean()), 1)
 
     # --- Stress, Body Battery, VO2max, Training Status (último disponible) ---
-    estres_medio = body_battery_max = body_battery_min = vo2max = training_status = None
+    estres_medio = body_battery = body_battery_max = body_battery_min = vo2max = training_status = None
     if not df_bio.empty:
-        for col, var in [("estres_medio", "estres_medio"), ("body_battery_max", "body_battery_max"),
+        for col, var in [("estres_medio", "estres_medio"), ("body_battery", "body_battery"), ("body_battery_max", "body_battery_max"),
                          ("body_battery_min", "body_battery_min"), ("vo2max", "vo2max")]:
             if col in df_bio.columns:
                 s = df_bio[col].dropna()
@@ -333,12 +355,20 @@ def cargar_datos_plan(usuario_id: int) -> dict:
                     val = float(s.iloc[0])
                     if col == "estres_medio":
                         estres_medio = int(val)
+                    elif col == "body_battery":
+                        body_battery = int(val)
                     elif col == "body_battery_max":
                         body_battery_max = int(val)
                     elif col == "body_battery_min":
                         body_battery_min = int(val)
                     elif col == "vo2max":
                         vo2max = val
+    # Compatibilidad entre fuentes Garmin: usar body_battery simple si no hay min/max.
+    if body_battery is not None:
+        if body_battery_min is None:
+            body_battery_min = body_battery
+        if body_battery_max is None:
+            body_battery_max = body_battery
         if "training_status" in df_bio.columns:
             ts_s = df_bio["training_status"].dropna()
             if not ts_s.empty:
@@ -372,7 +402,9 @@ def cargar_datos_plan(usuario_id: int) -> dict:
         "actividades_z2": z2_list,
         "metricas_running": metricas_running,
         "fase_ciclo": fase_ciclo,
+        "ciclo_menstrual": fase_ciclo,
         "estres_medio": estres_medio,
+        "body_battery": body_battery,
         "body_battery_max": body_battery_max,
         "body_battery_min": body_battery_min,
         "vo2max": vo2max,

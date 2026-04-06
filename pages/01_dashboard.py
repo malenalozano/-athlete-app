@@ -53,7 +53,7 @@ def _delta_fmt(v):
     if v is None or v == 0: return None
     return f"+{v}" if v > 0 else str(v)
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(4, gap="large")
 c1.metric("Km (7 días)",  f"{res['km']:.1f} km", _delta_fmt(res["km_delta"]))
 c2.metric("Fuerza (7 días)", res["fuerza"],       _delta_fmt(res["fuerza_delta"]))
 c3.metric("Sueño medio",  f"{res['sueno']:.1f} h" if res["sueno"] else "—", _delta_fmt(res["sueno_delta"]))
@@ -77,7 +77,7 @@ _BADGE  = {"Fuerza":"#9B59B6","Tirada Larga":"#C9FF00","Progresiva":"#C9FF00","C
            "Tempo (umbral)":"#C9FF00","Regenerativo":"#00C8C8","Intervalos VO2max":"#FF6B6B",
            "Descanso":"#3a4150","Movilidad":"#3a4150"}
 
-col_plan, col_pesos = st.columns(2)
+col_plan, col_pesos = st.columns(2, gap="large")
 
 with col_plan:
     st.subheader("Plan esta semana")
@@ -92,7 +92,7 @@ with col_plan:
             sub = f"{dia['km']} km" if dia["km"] else f"{dia['duracion_min']}'"
             st.markdown(
                 f"<div style='display:flex;justify-content:space-between;align-items:center;"
-                f"background:#131D2B;border-radius:8px;padding:6px 12px;margin-bottom:4px;'>"
+                f"background:#131D2B;border-radius:8px;padding:6px 12px;margin-bottom:7px;'>"
                 f"<span style='color:#C9E1FF;font-size:0.82rem;font-weight:700;min-width:70px;'>{dia['dia']}</span>"
                 f"<span style='color:{bc};font-size:0.82rem;flex:1;padding:0 8px;'>"
                 f"{_EMOJIS.get(dia['tipo'],'📅')} {dia['tipo']}</span>"
@@ -111,7 +111,7 @@ with col_pesos:
             color = "#00C896" if row["_trend"] == "up" else ("#FF6B6B" if row["_trend"] == "dn" else "#8B949E")
             st.markdown(
                 f"<div style='display:flex;justify-content:space-between;align-items:center;"
-                f"background:#131D2B;border-radius:8px;padding:6px 12px;margin-bottom:4px;'>"
+                f"background:#131D2B;border-radius:8px;padding:6px 12px;margin-bottom:7px;'>"
                 f"<span style='color:#C9E1FF;font-size:0.82rem;flex:1;'>{row['Ejercicio']}</span>"
                 f"<span style='color:#d8e9db;font-size:0.82rem;margin:0 8px;'>{row['Peso']} kg &nbsp; {row['S×R']}</span>"
                 f"<span style='color:{color};font-weight:800;font-size:0.82rem;'>{row['Δ']}</span></div>",
@@ -120,7 +120,7 @@ with col_pesos:
 st.divider()
 
 # ---------------------------------------------------------------------------
-# 5. Grid biométrico Garmin (2×4)
+# 5. Grid biométrico Garmin (1×7)
 # ---------------------------------------------------------------------------
 st.subheader("Biométricos Garmin (últimos 7 días)")
 met = metricas_garmin(user_actual)
@@ -135,22 +135,25 @@ else:
         v_str = f"{value:.0f} {unit}".strip() if value is not None else "—"
         pct   = min(int(100 * float(value) / max_val), 100) if value is not None else 0
         return (f"<div style='background:#131D2B;border:1px solid rgba(201,255,0,0.15);"
-                f"border-radius:10px;padding:10px 14px;'>"
-                f"<div style='color:#8B949E;font-size:0.7rem;font-weight:700;text-transform:uppercase;'>{label}</div>"
-                f"<div style='color:{color};font-weight:800;font-size:1.1rem;margin:4px 0;'>{v_str}</div>"
+                f"border-radius:8px;padding:8px 10px;min-height:74px;'>"
+                f"<div style='color:#8B949E;font-size:0.62rem;font-weight:700;text-transform:uppercase;line-height:1.1;'>{label}</div>"
+                f"<div style='color:{color};font-weight:800;font-size:0.95rem;margin:4px 0;'>{v_str}</div>"
                 f"<div style='background:#0c2922;border-radius:3px;height:4px;'>"
                 f"<div style='background:{color};width:{pct}%;height:4px;border-radius:3px;'></div></div></div>")
 
-    r1 = st.columns(4)
-    r1[0].markdown(_card("HRV",         met["hrv"],         "ms",  80,  "#C9FF00"), unsafe_allow_html=True)
-    r1[1].markdown(_card("Sueño",       met["sueno_h"],     "h",    9,  "#7EB8E0"), unsafe_allow_html=True)
-    r1[2].markdown(_card("Score sueño", met["sueno_score"], "",  100,  "#7EB8E0"), unsafe_allow_html=True)
-    r1[3].markdown(_card("Cadencia",    met["cadencia"],    "spm",200,  "#00C896"), unsafe_allow_html=True)
-    r2 = st.columns(3)
     acwr_color = "#FF6B6B" if (met["acwr"] or 0) > 1.3 else "#C9FF00"
-    r2[0].markdown(_card("ACWR",       met["acwr"],      "",   1.5, acwr_color), unsafe_allow_html=True)
-    r2[1].markdown(_card("FC Reposo",  met["fc_reposo"], "bpm", 80, "#C9E1FF"),  unsafe_allow_html=True)
-    r2[2].markdown(_card("Estrés",     met["estres"],    "",   100, "#F5A623"),  unsafe_allow_html=True)
+    cards = [
+        ("HRV", met["hrv"], "ms", 80, "#C9FF00"),
+        ("Sueño", met["sueno_h"], "h", 9, "#7EB8E0"),
+        ("Score sueño", met["sueno_score"], "", 100, "#7EB8E0"),
+        ("Cadencia", met["cadencia"], "spm", 200, "#00C896"),
+        ("ACWR", met["acwr"], "", 1.5, acwr_color),
+        ("FC Reposo", met["fc_reposo"], "bpm", 80, "#C9E1FF"),
+        ("Estrés", met["estres"], "", 100, "#F5A623"),
+    ]
+    row = st.columns(7, gap="small")
+    for col, (lbl, val, unit, mx, colr) in zip(row, cards):
+        col.markdown(_card(lbl, val, unit, mx, colr), unsafe_allow_html=True)
 
 st.divider()
 

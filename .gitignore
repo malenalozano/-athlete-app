@@ -19,3 +19,4 @@ atleta.db
 .aider*
 # Mis secretos (¡NUNCA SUBIR!)
 .env
+.streamlit/secrets.toml

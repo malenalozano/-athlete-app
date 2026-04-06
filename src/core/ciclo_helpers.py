@@ -13,6 +13,69 @@ import streamlit as st
 from datetime import timedelta
 
 
+_SANGRADO_REGLA = {"Ligero", "Medio", "Fuerte"}
+
+
+def _normalizar_fase(fase_raw):
+    fase = str(fase_raw or "").strip().lower()
+    if fase in ("menstruacion", "menstruación"):
+        return "Menstruación"
+    if fase in ("folicular", "fase folicular"):
+        return "Folicular"
+    if fase in ("ovulacion", "ovulación", "fase ovulatoria", "ovulatoria"):
+        return "Ovulación"
+    if fase in ("lutea", "lútea", "fase lútea", "fase lutea"):
+        return "Lútea"
+    return ""
+
+
+def _fase_por_dia(posicion_dia):
+    if posicion_dia <= 5:
+        return "Menstruación"
+    if posicion_dia <= 11:
+        return "Folicular"
+    if posicion_dia <= 16:
+        return "Ovulación"
+    return "Lútea"
+
+
+def _inferir_inicios_regla(real_df):
+    inicios = []
+    if "sangre" in real_df.columns:
+        sangres = real_df[real_df["sangre"].isin(list(_SANGRADO_REGLA))]["fecha_dt"].drop_duplicates().sort_values().tolist()
+
+        # Construir bloques consecutivos de sangrado real
+        bloques = []
+        if sangres:
+            bloque = [sangres[0]]
+            for f in sangres[1:]:
+                if (f - bloque[-1]).days <= 1:
+                    bloque.append(f)
+                else:
+                    bloques.append(bloque)
+                    bloque = [f]
+            bloques.append(bloque)
+
+        # Validar inicios: aceptar bloques de 2+ días o, si son de 1 día,
+        # solo cuando respetan separación mínima respecto al ciclo anterior.
+        for bloque in bloques:
+            inicio = bloque[0]
+            duracion = len(bloque)
+            if not inicios:
+                inicios.append(inicio)
+                continue
+            dias_desde_anterior = (inicio - inicios[-1]).days
+            if duracion >= 2 or dias_desde_anterior >= 20:
+                inicios.append(inicio)
+
+    if not inicios:
+        men_days = real_df[real_df["fase_norm"] == "Menstruación"]["fecha_dt"].drop_duplicates().sort_values().tolist()
+        for d in men_days:
+            if not inicios or (d - inicios[-1]).days > 5:
+                inicios.append(d)
+    return inicios
+
+
 def predecir_fases_ciclo(df_fisio, horizonte_dias=90):
     """Combina registros reales con predicción hacia horizonte_dias días."""
     if df_fisio.empty:
@@ -21,12 +84,14 @@ def predecir_fases_ciclo(df_fisio, horizonte_dias=90):
     real = df_fisio.copy()
     real["fecha_dt"] = pd.to_datetime(real["fecha"]).dt.date
     real = real.sort_values("fecha_dt")
+    real = real[real["fecha_dt"].notna()].copy()
+    real["fase_norm"] = real.get("fase_ciclo", pd.Series([None] * len(real))).apply(_normalizar_fase)
+    if "sangre" in real.columns:
+        real["sangre"] = real["sangre"].fillna("").astype(str).str.strip()
+    else:
+        real["sangre"] = ""
 
-    _period_starts = real[real["fase_ciclo"].isin(["Menstruación", "Fase Folicular"])]["fecha_dt"].drop_duplicates().tolist()
-    starts = []
-    for _d in _period_starts:
-        if not starts or (_d - starts[-1]).days > 5:
-            starts.append(_d)
+    starts = _inferir_inicios_regla(real)
 
     ciclo_dias = 28
     if len(starts) >= 2:
@@ -35,16 +100,37 @@ def predecir_fases_ciclo(df_fisio, horizonte_dias=90):
             ciclo_dias = int(round(sum(diffs) / len(diffs)))
 
     base = starts[-1] if starts else real["fecha_dt"].max()
+
+    registros = []
+    for _, row in real.iterrows():
+        fecha = row["fecha_dt"]
+        sangre = row.get("sangre", "")
+        fase_real = row.get("fase_norm", "")
+
+        if sangre in _SANGRADO_REGLA:
+            fase_real = "Menstruación"
+        elif starts:
+            # Si hay anclas de regla, priorizar cálculo por día de ciclo para evitar
+            # que fases guardadas antiguas/desfasadas deformen el calendario.
+            ini = max((s for s in starts if s <= fecha), default=starts[0])
+            pos = ((fecha - ini).days % ciclo_dias) + 1
+            fase_real = _fase_por_dia(pos)
+        elif not fase_real:
+            # Sin anclas ni fase explícita: no forzar dato.
+            fase_real = ""
+
+        if fase_real:
+            registros.append({"fecha": fecha, "fase_ciclo": fase_real, "origen": "Registrado"})
+
     pred = []
     for day in range(1, horizonte_dias + 1):
         fecha = base + timedelta(days=day)
         pos = ((day - 1) % ciclo_dias) + 1
-        fase = "Menstruación" if pos <= 5 else "Folicular" if pos <= 11 else "Ovulación" if pos <= 16 else "Lútea"
+        fase = _fase_por_dia(pos)
         pred.append({"fecha": fecha, "fase_ciclo": fase, "origen": "Predicho"})
 
     pred_df = pd.DataFrame(pred)
-    real_df = real[["fecha_dt", "fase_ciclo"]].rename(columns={"fecha_dt": "fecha"})
-    real_df["origen"] = "Registrado"
+    real_df = pd.DataFrame(registros) if registros else pd.DataFrame(columns=["fecha", "fase_ciclo", "origen"])
     combinado = pd.concat([pred_df, real_df], ignore_index=True)
     combinado = combinado.sort_values(["fecha", "origen"]).drop_duplicates(subset=["fecha"], keep="last")
     return combinado, ciclo_dias
@@ -100,7 +186,7 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
             if d.month == mes and d.year == anio and d.day not in reg_por_dia:
                 reg_por_dia[d.day] = row
 
-    sangre_emoji = {"Sin sangre": "⚪", "Manchado": "🩸", "Ligero": "🩸", "Medio": "🩸🩸", "Fuerte": "🩸🩸🩸"}
+    sangre_emoji = {"Sin sangre": "⚪", "Manchado": "🩸", "Flujo": "🟤", "Ligero": "🩸", "Medio": "🩸🩸", "Fuerte": "🩸🩸🩸"}
     sintomas_emoji = {"Dolor de ovarios": "🥚", "Dolor de senos": "🍒", "Antojos": "🍫", "Dolor de cabeza": "💢", "Hinchazón": "🎈"}
     animo_emoji = {"Ansiedad/Estrés": "😰", "Triste": "😭", "Enfadada": "😡", "Feliz": "😄", "Cansada": "🪫", "Energética": "⚡"}
     feedback_emoji = {"A tope": "🚀", "Regulero": "🗿", "Bajito": "⛈️", "No completo": "⛔"}

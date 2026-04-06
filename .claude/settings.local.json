@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(python -c \":*)",
-      "Bash(python -c \"import inspect, streamlit as st; print\\(inspect.signature\\(st.navigation\\)\\)\")"
+      "Bash(python -c \"import inspect, streamlit as st; print\\(inspect.signature\\(st.navigation\\)\\)\")",
+      "Bash(python -c \"from src.plan.motor import generar_plan_semana; from src.plan.reglas import obtener_fase_macrociclo, controlar_distribucion_intensidad; from src.plan.helpers import distribuir_semana; print\\('Import OK'\\)\")",
+      "Bash(python -c ':*)",
+      "Bash(sed -n '2860,2900p' src/app.py)",
+      "Bash(sed -n '1920,1960p' src/app.py)",
+      "Bash(sed -n '410,425p' src/app.py)",
+      "Bash(sed -n '1955,1980p' src/app.py)"
     ]
   }
 }

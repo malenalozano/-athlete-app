@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from src.db.db_manager import get_db_connection
+from src.core.styles import format_hours
 from src.plan.helpers import cargar_datos_plan
 from src.plan.memoria_fuerza import generar_tabla_fuerza_semana
 from src.plan.motor import generar_plan_semana
@@ -27,11 +28,23 @@ from src.plan.reglas import (
 
 
 def render_tab_entrenador(usuario_id: int) -> None:
+    from src.db.db_manager import obtener_perfil
+    from src.plan.reglas import obtener_fase_macrociclo_ultra
+
+    perfil = obtener_perfil(usuario_id) or {}
+    nombre_atleta = perfil.get("nombre", "Atleta")
+    genero = perfil.get("genero", "Mujer")
+    es_hombre = str(genero).lower() in ("hombre", "male", "m")
+    objetivo_tipo = str(perfil.get("objetivo_tipo") or "maraton").lower()
+    fecha_objetivo = perfil.get("fecha_objetivo", "")
+    es_ultra = objetivo_tipo in ("ultramaraton", "ultra", "trail_ultra")
+    icono_genero = "🏃" if es_hombre else "🏃‍♀️"
+
     st.markdown(
         "<h4 style='margin:4px 0 10px;'>🧠 Entrenador — Datos y decisiones</h4>",
         unsafe_allow_html=True,
     )
-    st.caption("Vista técnica del plan semanal generado para Malena.")
+    st.caption(f"Vista técnica del plan semanal generado para {nombre_atleta}.")
 
     try:
         datos = cargar_datos_plan(usuario_id)
@@ -39,7 +52,12 @@ def render_tab_entrenador(usuario_id: int) -> None:
         st.error(f"No se pudieron cargar los datos del entrenador: {e}")
         return
 
-    fase = obtener_fase_macrociclo(datetime.now())
+    # Macrociclo según perfil
+    if es_ultra and fecha_objetivo:
+        fase = obtener_fase_macrociclo_ultra(datetime.now(), fecha_objetivo)
+    else:
+        fase = obtener_fase_macrociclo(datetime.now())
+
     semaforo = calcular_semaforo(
         hrv_actual=datos.get("hrv_actual"),
         hrv_media_7d=datos.get("hrv_media_7d"),
@@ -49,17 +67,20 @@ def render_tab_entrenador(usuario_id: int) -> None:
         body_battery_min=datos.get("body_battery_min"),
         training_status=datos.get("training_status"),
     )
-    ciclo = ajustar_por_ciclo(datos.get("fase_ciclo"))
+    ciclo = ajustar_por_ciclo(None if es_hombre else datos.get("fase_ciclo"))
 
     st.markdown("---")
     st.subheader("1) Perfil del Atleta")
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("Edad", "22 años")
+        edad = perfil.get("edad") or "—"
+        st.metric("Edad", f"{edad} años" if edad != "—" else "—")
     with c2:
-        st.metric("Sexo", "🏃‍♀️ Mujer")
+        st.metric("Sexo", f"{icono_genero} {genero}")
     with c3:
-        st.metric("Objetivo", "Maratón Feb")
+        obj_label = perfil.get("objetivo") or objetivo_tipo.capitalize()
+        fecha_obj_label = f" ({fecha_objetivo})" if fecha_objetivo else ""
+        st.metric("Objetivo", f"{obj_label}{fecha_obj_label}")
     with c4:
         st.metric("Modalidad", "Running + Fuerza")
 
@@ -79,11 +100,11 @@ def render_tab_entrenador(usuario_id: int) -> None:
     sb = datos.get("sleep_breakdown", {})
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("😴 Profundo", f"{sb.get('profundo_h', 0):.2f}h" if sb.get("profundo_h") else "—")
+        st.metric("😴 Profundo", format_hours(sb.get('profundo_h')) if sb.get("profundo_h") else "—")
     with c2:
-        st.metric("💭 REM", f"{sb.get('rem_h', 0):.2f}h" if sb.get("rem_h") else "—")
+        st.metric("💭 REM", format_hours(sb.get('rem_h')) if sb.get("rem_h") else "—")
     with c3:
-        st.metric("🔄 Vigilia", f"{sb.get('vigilia_h', 0):.2f}h" if sb.get("vigilia_h") else "—")
+        st.metric("🔄 Vigilia", format_hours(sb.get('vigilia_h')) if sb.get("vigilia_h") else "—")
     with c4:
         st.metric("⏰ Despertares", f"{sb.get('despertares', 0):.0f}" if sb.get("despertares") else "—")
 
@@ -175,24 +196,45 @@ def render_tab_entrenador(usuario_id: int) -> None:
         st.caption(f"🎯 Causas: {', '.join(causa)}")
 
     st.markdown("---")
-    st.subheader("7) Ciclo Menstrual")
-    fase_ciclo = datos.get("fase_ciclo", {})
-    if fase_ciclo:
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric("Fase", fase_ciclo.get("fase", "—"))
-        with c2:
-            fatiga = fase_ciclo.get("fatiga_subjetiva", "—")
-            st.metric("Fatiga subjetiva", f"{fatiga}/10" if fatiga != "—" else "—")
-        with c3:
-            st.metric("Estado ánimo", fase_ciclo.get("estado_animo", "—"))
-
-    # Ciclo ajuste
-    st.metric("Multiplicador volumen ciclo", f"{ciclo.get('multiplicador_volumen', 1.0):.2f}x")
-    if not ciclo.get("permitir_calidad"):
-        st.warning(f"⚠️ Fase menstrual: {ciclo.get('mensaje', 'Evitar máxima intensidad')}")
-    if ciclo.get("hidratacion_extra"):
-        st.info("💧 Aumentar hidratación y electrolitos durante esta fase")
+    if not es_hombre:
+        # === Sección ciclo menstrual — solo mujeres ===
+        st.subheader("7) Ciclo Menstrual")
+        fase_ciclo = datos.get("fase_ciclo", {})
+        if fase_ciclo:
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Fase", fase_ciclo.get("fase", "—"))
+            with c2:
+                fatiga = fase_ciclo.get("fatiga_subjetiva", "—")
+                st.metric("Fatiga subjetiva", f"{fatiga}/10" if fatiga != "—" else "—")
+            with c3:
+                st.metric("Estado ánimo", fase_ciclo.get("estado_animo", "—"))
+        st.metric("Multiplicador volumen ciclo", f"{ciclo.get('multiplicador_volumen', 1.0):.2f}x")
+        if not ciclo.get("permitir_calidad"):
+            st.warning(f"⚠️ Fase menstrual: {ciclo.get('mensaje', 'Evitar máxima intensidad')}")
+        if ciclo.get("hidratacion_extra"):
+            st.info("💧 Aumentar hidratación y electrolitos durante esta fase")
+    else:
+        # === Widget ciclo de Malena — solo para Dani ===
+        st.subheader("7) Ciclo de Malena")
+        try:
+            from src.core.dashboard_ui import obtener_estado_ciclo_malena
+            estado_ciclo = obtener_estado_ciclo_malena()
+            if estado_ciclo:
+                fase_m = estado_ciclo.get("fase", "—")
+                sugs = estado_ciclo.get("sugerencias", [])
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.metric("Fase actual", fase_m)
+                with c2:
+                    prox = estado_ciclo.get("proxima_regla")
+                    st.metric("Próx. menstruación", str(prox) if prox else "—")
+                if sugs:
+                    st.info(f"💡 {sugs[0]}")
+            else:
+                st.caption("Sin datos de ciclo de Malena disponibles.")
+        except Exception:
+            st.caption("No se pudo cargar el ciclo de Malena.")
 
     st.markdown("---")
     st.subheader("8) Carga y Running")
@@ -292,12 +334,15 @@ def render_tab_entrenador(usuario_id: int) -> None:
 
     st.markdown("---")
     st.subheader("12) Resumen ejecutivo")
-    st.markdown(
-        f"""
-- Recuperación: **{semaforo.get('color', '—').upper()}**
-- Fase macrociclo: **{fase.get('fase_nombre', '—')}**
-- Multiplicador ciclo menstrual: **{ciclo.get('multiplicador_volumen', 1.0):.2f}x**
-- Km objetivo: **{km_obj:.1f} km**
-- Km plan final: **{plan.get('km_totales', 0):.1f} km**
-"""
-    )
+    lineas = [
+        f"- Atleta: **{nombre_atleta}** ({genero}, {perfil.get('edad', '—')} años)",
+        f"- Recuperación: **{semaforo.get('color', '—').upper()}**",
+        f"- Fase macrociclo: **{fase.get('fase_nombre', '—')}**",
+    ]
+    if not es_hombre:
+        lineas.append(f"- Multiplicador ciclo menstrual: **{ciclo.get('multiplicador_volumen', 1.0):.2f}x**")
+    lineas += [
+        f"- Km objetivo: **{km_obj:.1f} km**",
+        f"- Km plan final: **{plan.get('km_totales', 0):.1f} km**",
+    ]
+    st.markdown("\n".join(lineas))

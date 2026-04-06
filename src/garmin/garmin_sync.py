@@ -187,19 +187,62 @@ def _extract_activity_metrics(activity, summary, details):
 
 
 def _extract_sleep_score(data):
+    def _find_sleep_score_recursive(obj, depth=0, max_depth=10):
+        """Búsqueda recursiva en el objeto para encontrar un sleep score válido (70-100)."""
+        if depth > max_depth or obj is None:
+            return None
+
+        if isinstance(obj, dict):
+            for key, val in obj.items():
+                # Buscar en nombres de claves que sugieran score
+                key_lower = str(key).lower()
+                if any(k in key_lower for k in ["score", "quality", "overall"]):
+                    if isinstance(val, (int, float)):
+                        score = _to_int(val)
+                        if score and 40 < score <= 100:
+                            logger.debug(f"    [FOUND RECURSIVE] {key}={score}")
+                            return score
+                    elif isinstance(val, dict):
+                        if "value" in val:
+                            score = _to_int(val["value"])
+                            if score and 40 < score <= 100:
+                                logger.debug(f"    [FOUND RECURSIVE] {key}.value={score}")
+                                return score
+
+                # Recursión
+                result = _find_sleep_score_recursive(val, depth + 1, max_depth)
+                if result is not None:
+                    return result
+
+        elif isinstance(obj, list):
+            for item in obj:
+                result = _find_sleep_score_recursive(item, depth + 1, max_depth)
+                if result is not None:
+                    return result
+
+        return None
+
     def _score_from_block(block):
         if not isinstance(block, dict):
             return None
+
+        # Loguear estructura para debug
+        try:
+            logger.debug(f"    [DEBUG sleep_score] Keys en block: {list(block.keys())[:10]}")
+        except:
+            pass
 
         # Formato frecuente: {"overallSleepScore": {"value": 82}}
         overall = block.get("overallSleepScore")
         if isinstance(overall, dict):
             score = _to_int(overall.get("value"))
             if score is not None:
+                logger.debug(f"    [DEBUG] Found score {score} in overallSleepScore.value")
                 return score
         elif overall is not None:
             score = _to_int(overall)
             if score is not None:
+                logger.debug(f"    [DEBUG] Found score {score} in overallSleepScore direct")
                 return score
 
         # Formato alternativo: {"sleepScores": [{"qualifierKey": "OVERALL", "value": 82}, ...]}
@@ -212,25 +255,56 @@ def _extract_sleep_score(data):
                 if qualifier in {"OVERALL", "SLEEP_SCORE", "TOTAL"}:
                     score = _to_int(item.get("value"))
                     if score is not None:
+                        logger.debug(f"    [DEBUG] Found score {score} in sleepScores[{qualifier}]")
                         return score
 
             # Fallback de la lista: tomar el máximo valor válido (normalmente 0-100).
             values = [_to_int(item.get("value")) for item in sleep_scores if isinstance(item, dict)]
             values = [v for v in values if v is not None and 0 < v <= 100]
             if values:
-                return max(values)
+                max_score = max(values)
+                logger.debug(f"    [DEBUG] Found score {max_score} from sleepScores max")
+                return max_score
 
         # Otros nombres vistos en integraciones/SDKs.
-        return _to_int(_last_number(block, ["sleepScore", "sleepQualityScore", "overallScore"]))
+        # Buscar directamente en campos simples
+        for key in ["sleepScore", "sleepQualityScore", "overallScore", "score", "overall", "qualityScore", "score24h"]:
+            val = block.get(key)
+            if val is not None:
+                score = _to_int(val)
+                if score is not None and 0 < score <= 100:
+                    logger.debug(f"    [DEBUG] Found score {score} in {key}")
+                    return score
 
+        # Búsqueda profunda por nombres parciales
+        fallback = _to_int(_last_number(block, ["sleepScore", "sleepQualityScore", "overallScore", "score", "overall"]))
+        if fallback is not None:
+            logger.debug(f"    [DEBUG] Found fallback score {fallback} from _last_number")
+            return fallback
+
+        # ÚLTIMO RECURSO: búsqueda recursiva
+        recursive = _find_sleep_score_recursive(block)
+        if recursive is not None:
+            return recursive
+
+        return None
+
+    logger.debug(f"  [DEBUG sleep] Extrayendo score de datos tipo: {type(data)}")
     # Algunos payloads traen datos al tope; otros bajo dailySleepDTO.
-    for block in (data, data.get("dailySleepDTO")):
+    for block_name, block in [("data_root", data), ("dailySleepDTO", data.get("dailySleepDTO") if isinstance(data, dict) else None)]:
+        if block is None:
+            continue
+        logger.debug(f"    [DEBUG] Buscando en {block_name}")
         score = _score_from_block(block)
         if score is not None:
+            logger.debug(f"  ✓ Sleep score extraído: {score}")
             return score
 
     # Último fallback global, por si la estructura cambia.
-    return _to_int(_last_number(data, ["sleepScore", "sleepQualityScore", "overallScore"]))
+    fallback = _to_int(_last_number(data, ["sleepScore", "sleepQualityScore", "overallScore", "score", "overall"]))
+    if fallback is not None:
+        logger.debug(f"  [DEBUG] Fallback final: {fallback}")
+    return fallback
 
 
 def _extract_sleep_metrics(data, fecha_iso):
@@ -238,6 +312,7 @@ def _extract_sleep_metrics(data, fecha_iso):
         return None
 
     score = _extract_sleep_score(data)
+    score_original = score  # Guardar score original de Garmin
     if score is not None and score <= 0:
         score = None
 
@@ -272,10 +347,37 @@ def _extract_sleep_metrics(data, fecha_iso):
     ]):
         return None
 
+    # IMPORTANTE: Solo estimar score si Garmin definitivamente NO lo proporciona
+    # y tenemos datos de sueño profundo. NO reemplazar el score de Garmin.
+    if score is None and sleep_profundo_horas is not None:
+        # Estimación simple: base 60 + bonificación por profundo/REM
+        base = 60
+        if horas_totales:
+            # Añadir puntos por duración total (hasta +10, máx 8h)
+            duracion_bonus = min(10, int(horas_totales * 1.25))
+            base += duracion_bonus
+        if sleep_profundo_horas:
+            # Profundo: óptimo 2-2.5h, añadir +15 si está en rango
+            if 1.5 <= sleep_profundo_horas <= 2.5:
+                base += 15
+            elif sleep_profundo_horas > 1.0:
+                base += 10
+        if sleep_rem_horas:
+            # REM: óptimo 1.5-2h, añadir +5 si está en rango
+            if 1.0 <= sleep_rem_horas <= 2.5:
+                base += 5
+        if awakenings and awakenings > 0:
+            # Despenalizar por despertares (-5 por despertar excesivo)
+            base -= min(10, awakenings * 2)
+        score = max(40, min(100, base))  # Clamped entre 40-100
+        logger.debug(f"  ℹ Score de sueño estimado {fecha_iso}: {_to_int(score)}/100 (Garmin no proporcionó score)")
+    else:
+        logger.debug(f"  ✓ Score de sueño {fecha_iso}: {score}/100 (de Garmin)")
+
     return {
         "fecha": fecha_iso,
         "horas_totales": horas_totales,
-        "score": score,
+        "score": _to_int(score) if score is not None else None,
         "sleep_profundo_horas": sleep_profundo_horas,
         "sleep_rem_horas": sleep_rem_horas,
         "sleep_vigilia_horas": sleep_vigilia_horas,
@@ -349,6 +451,14 @@ def _extract_daily_metrics(client, fecha_iso):
             training_status = str(ts_raw[0]).lower()
     logger.info(f"  ✓ Training Status: {training_status}" if training_status else "  ✗ Training Status: No encontrado")
 
+    # Training Load (ACWR - Acute/Chronic Workload)
+    carga_aguda = carga_cronica = None
+    tl_data = _safe_api_call(getattr(client, 'get_training_load_balance', lambda x: None), fecha_iso) or {}
+    if tl_data:
+        carga_aguda = _to_float(_first_number(tl_data, ["acuteLoadValue", "acute", "acuteLoad"]))
+        carga_cronica = _to_float(_first_number(tl_data, ["chronicLoadValue", "chronic", "chronicLoad"]))
+    logger.info(f"  ✓ Training Load: Acute={carga_aguda}, Chronic={carga_cronica}" if carga_aguda or carga_cronica else "  ✗ Training Load: No encontrado")
+
     logger.info(f"{'='*70}\n")
 
     return {
@@ -362,6 +472,8 @@ def _extract_daily_metrics(client, fecha_iso):
         "body_battery_min": body_battery_min,
         "vo2max": vo2max,
         "training_status": training_status,
+        "carga_aguda": carga_aguda,
+        "carga_cronica": carga_cronica,
     }
 
 
@@ -419,8 +531,9 @@ def guardar_metricas_premium_db(usuario_id, datos):
                 usuario_id, fecha, hrv_ms, fc_reposo, fc_maxima,
                 cadencia_media, longitud_zancada_m, tiempo_contacto_ms,
                 oscilacion_vertical_cm, sleep_score, spo2, potencia_media_w,
-                vo2max, training_status, body_battery_max, body_battery_min, estres_medio
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                vo2max, training_status, body_battery_max, body_battery_min, estres_medio,
+                carga_aguda, carga_cronica
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(usuario_id, fecha) DO UPDATE SET
                 hrv_ms = COALESCE(excluded.hrv_ms, datos_biometricos_premium.hrv_ms),
                 fc_reposo = COALESCE(excluded.fc_reposo, datos_biometricos_premium.fc_reposo),
@@ -436,7 +549,9 @@ def guardar_metricas_premium_db(usuario_id, datos):
                 training_status = COALESCE(excluded.training_status, datos_biometricos_premium.training_status),
                 body_battery_max = COALESCE(excluded.body_battery_max, datos_biometricos_premium.body_battery_max),
                 body_battery_min = COALESCE(excluded.body_battery_min, datos_biometricos_premium.body_battery_min),
-                estres_medio = COALESCE(excluded.estres_medio, datos_biometricos_premium.estres_medio)
+                estres_medio = COALESCE(excluded.estres_medio, datos_biometricos_premium.estres_medio),
+                carga_aguda = COALESCE(excluded.carga_aguda, datos_biometricos_premium.carga_aguda),
+                carga_cronica = COALESCE(excluded.carga_cronica, datos_biometricos_premium.carga_cronica)
             """,
             (
                 usuario_id,
@@ -456,11 +571,72 @@ def guardar_metricas_premium_db(usuario_id, datos):
                 datos.get("body_battery_max"),
                 datos.get("body_battery_min"),
                 datos.get("estres_medio"),
+                datos.get("carga_aguda"),
+                datos.get("carga_cronica"),
             ),
         )
         conexion.commit()
     finally:
         conexion.close()
+
+
+def _calcular_acwr(usuario_id: int, fecha_referencia: str) -> tuple:
+    """
+    Calcula ACWR (Acute/Chronic Workload Ratio) basado en Training Effect acumulado.
+
+    Carga aguda: suma de TE de los últimos 7 días
+    Carga crónica: suma de TE de los últimos 28 días
+    ACWR = carga_aguda / carga_crónica
+
+    Returns: (carga_aguda, carga_cronica, acwr)
+    """
+    conn = get_db_connection()
+    try:
+        # Últimos 7 días
+        fecha_7d = (datetime.strptime(fecha_referencia, "%Y-%m-%d") - timedelta(days=7)).strftime("%Y-%m-%d")
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COALESCE(SUM(COALESCE(training_effect_aerobico, 0) + COALESCE(training_effect_anaerobico, 0)), 0)
+            FROM actividades_garmin
+            WHERE usuario_id=? AND fecha >= ? AND fecha <= ?
+        """, (usuario_id, fecha_7d, fecha_referencia))
+        carga_aguda = float(cursor.fetchone()[0] or 0)
+
+        # Últimos 28 días
+        fecha_28d = (datetime.strptime(fecha_referencia, "%Y-%m-%d") - timedelta(days=28)).strftime("%Y-%m-%d")
+        cursor.execute("""
+            SELECT COALESCE(SUM(COALESCE(training_effect_aerobico, 0) + COALESCE(training_effect_anaerobico, 0)), 0)
+            FROM actividades_garmin
+            WHERE usuario_id=? AND fecha >= ? AND fecha <= ?
+        """, (usuario_id, fecha_28d, fecha_referencia))
+        carga_cronica = float(cursor.fetchone()[0] or 0)
+
+        acwr = carga_aguda / carga_cronica if carga_cronica > 0 else 1.0
+
+        return round(carga_aguda, 2), round(carga_cronica, 2), round(acwr, 2)
+    finally:
+        conn.close()
+
+
+def _guardar_acwr_diario(usuario_id: int, fecha_referencia: str) -> None:
+    """
+    Calcula ACWR y lo guarda en datos_biometricos_premium para la fecha.
+    """
+    carga_aguda, carga_cronica, acwr = _calcular_acwr(usuario_id, fecha_referencia)
+
+    conn = get_db_connection()
+    try:
+        conn.execute("""
+            INSERT INTO datos_biometricos_premium (usuario_id, fecha, carga_aguda, carga_cronica)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(usuario_id, fecha) DO UPDATE SET
+                carga_aguda = COALESCE(excluded.carga_aguda, datos_biometricos_premium.carga_aguda),
+                carga_cronica = COALESCE(excluded.carga_cronica, datos_biometricos_premium.carga_cronica)
+        """, (usuario_id, fecha_referencia, carga_aguda if carga_aguda > 0 else None, carga_cronica if carga_cronica > 0 else None))
+        conn.commit()
+    finally:
+        conn.close()
+
 
 _RUNNING_KEYWORDS = {"running", "trail", "treadmill", "indoor_running", "street_running"}
 
@@ -1057,6 +1233,15 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
                     "body_battery_min": daily_metrics.get("body_battery_min"),
                     "sleep_score": daily_metrics.get("sleep_score"),
                 })
+        except Exception:
+            pass
+
+    # ── 3. Calcular y guardar ACWR para los últimos días ───────────────────
+    for i in range(dias):
+        fecha = (datetime.now() - timedelta(days=i)).date()
+        fecha_iso = fecha.strftime("%Y-%m-%d")
+        try:
+            _guardar_acwr_diario(usuario_id, fecha_iso)
         except Exception:
             pass
 

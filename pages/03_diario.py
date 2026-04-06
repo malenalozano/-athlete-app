@@ -26,6 +26,50 @@ if "usuario_id" not in st.session_state:
     st.stop()
 user_actual = st.session_state.usuario_id
 
+
+def _inicio_ultima_regla(conn, usuario_id: int, fecha_ref=None):
+    """Devuelve el primer día del último bloque de sangrado real (Ligero/Medio/Fuerte)."""
+    q = (
+        "SELECT fecha FROM diario_fisiologia WHERE usuario_id=? "
+        "AND sangre IN ('Ligero','Medio','Fuerte')"
+    )
+    params = [usuario_id]
+    if fecha_ref is not None:
+        q += " AND fecha<=?"
+        params.append(str(fecha_ref))
+    q += " ORDER BY fecha ASC"
+
+    df = pd.read_sql_query(q, conn, params=tuple(params))
+    if df.empty:
+        return None
+
+    fechas = sorted(pd.to_datetime(df["fecha"]).dt.date.tolist())
+
+    # Bloques de días consecutivos con sangrado real
+    bloques = []
+    bloque = [fechas[0]]
+    for f in fechas[1:]:
+        if (f - bloque[-1]).days <= 1:
+            bloque.append(f)
+        else:
+            bloques.append(bloque)
+            bloque = [f]
+    bloques.append(bloque)
+
+    # Aceptar bloques de 2+ días o bloque de 1 día solo si está separado >=20 días
+    inicios_validos = []
+    for b in bloques:
+        inicio = b[0]
+        duracion = len(b)
+        if not inicios_validos:
+            inicios_validos.append(inicio)
+            continue
+        dias = (inicio - inicios_validos[-1]).days
+        if duracion >= 2 or dias >= 20:
+            inicios_validos.append(inicio)
+
+    return inicios_validos[-1] if inicios_validos else None
+
 st.markdown(f"<h2 style='color:#e6edf3;font-weight:600;margin:8px 0 16px;'>Diario</h2>",
             unsafe_allow_html=True)
 tab2, tab1, tab3, tab4 = st.tabs(["📓 Entreno libre", "🩸 Ciclo", "🏋️ Ejercicios", "🩹 Lesiones"])
@@ -38,15 +82,11 @@ with tab1:
         st.info("Esta sección no está disponible para este perfil.")
     else:
         _conn = get_db_connection()
-        _last_bleed = pd.read_sql_query(
-            "SELECT fecha FROM diario_fisiologia WHERE usuario_id=? AND sangre IS NOT NULL "
-            "AND sangre != 'Sin sangre' ORDER BY fecha DESC LIMIT 1",
-            _conn, params=(user_actual,))
+        _last_bleed_start = _inicio_ultima_regla(_conn, user_actual, datetime.now().date())
         _conn.close()
 
-        if not _last_bleed.empty:
-            _last_date = pd.to_datetime(_last_bleed.iloc[0]["fecha"]).date()
-            _cycle_day = (datetime.now().date() - _last_date).days + 1
+        if _last_bleed_start is not None:
+            _cycle_day = (datetime.now().date() - _last_bleed_start).days + 1
             _fase_actual = ("Menstruación" if _cycle_day <= 5 else "Folicular" if _cycle_day <= 11
                             else "Ovulación" if _cycle_day <= 16 else "Lútea")
         else:
@@ -64,8 +104,15 @@ with tab1:
 
         col1, col2 = st.columns([0.38, 0.62])
         with col1:
-            sangre_opts = ["⚪ Sin sangre","🩸 Manchado","🩸 Ligero","🩸🩸 Medio","🩸🩸🩸 Fuerte"]
-            sangre_map  = {"⚪ Sin sangre":"Sin sangre","🩸 Manchado":"Manchado","🩸 Ligero":"Ligero","🩸🩸 Medio":"Medio","🩸🩸🩸 Fuerte":"Fuerte"}
+            sangre_opts = ["⚪ Sin sangre","🩸 Manchado","🟤 Flujo","🩸 Ligero","🩸🩸 Medio","🩸🩸🩸 Fuerte"]
+            sangre_map  = {
+                "⚪ Sin sangre": "Sin sangre",
+                "🩸 Manchado": "Manchado",
+                "🟤 Flujo": "Flujo",
+                "🩸 Ligero": "Ligero",
+                "🩸🩸 Medio": "Medio",
+                "🩸🩸🩸 Fuerte": "Fuerte",
+            }
             sint_opts   = ["🥚 Dolor de ovarios","🍒 Dolor de senos","🍫 Antojos","💢 Dolor de cabeza","🎈 Hinchazón"]
             sint_map    = {o: o.split(" ",1)[1] for o in sint_opts}
             animo_opts  = ["😰 Ansiedad/Estrés","😭 Triste","😡 Enfadada","😄 Feliz","🪫 Cansada","⚡ Energética"]
@@ -86,22 +133,29 @@ with tab1:
                 fb_sel = st.pills("_f", fb_opts, selection_mode="single", label_visibility="collapsed")
                 if st.form_submit_button("Guardar", use_container_width=True, type="primary"):
                     sv = sangre_map.get(sangre or "⚪ Sin sangre", "Sin sangre")
-                    # Manchado no cuenta como menstruación (DIU)
-                    fase = "Menstruación" if sv not in ("Sin sangre", "Manchado") else "Lútea"
-                    if sv == "Sin sangre" and not _last_bleed.empty:
-                        _ld = pd.to_datetime(_last_bleed.iloc[0]["fecha"]).date()
-                        _cd = (fecha - _ld).days + 1
-                        fase = "Menstruación" if _cd<=5 else "Folicular" if _cd<=11 else "Ovulación" if _cd<=16 else "Lútea"
-                    sint_str  = ", ".join([sint_map.get(x,x)  for x in (sint_sel  or [])])
-                    animo_str = ", ".join([animo_map.get(x,x) for x in (animo_sel or [])]) or "Normal"
-                    fb_str    = fb_map.get(fb_sel, "") if fb_sel else ""
+                    # Solo Ligero/Medio/Fuerte cuentan como días de regla.
+                    fase = "Menstruación" if sv in ("Ligero", "Medio", "Fuerte") else "Lútea"
+
                     conn = get_db_connection()
-                    conn.cursor().execute(
-                        "INSERT INTO diario_fisiologia (usuario_id,fecha,fase_ciclo,fatiga_subjetiva,"
-                        "dolor_notas,sangre,sintomas,estado_animo,feedback_entreno) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (user_actual, str(fecha), fase, None, sint_str,
-                         sv if sv != "Sin sangre" else None, sint_str, animo_str, fb_str))
-                    conn.commit(); conn.close()
+                    try:
+                        if sv not in ("Ligero", "Medio", "Fuerte"):
+                            _ld = _inicio_ultima_regla(conn, user_actual, fecha)
+                            if _ld is not None:
+                                _cd = (fecha - _ld).days + 1
+                                _pos = ((_cd - 1) % 28) + 1
+                                fase = "Menstruación" if _pos <= 5 else "Folicular" if _pos <= 11 else "Ovulación" if _pos <= 16 else "Lútea"
+
+                        sint_str  = ", ".join([sint_map.get(x,x)  for x in (sint_sel  or [])])
+                        animo_str = ", ".join([animo_map.get(x,x) for x in (animo_sel or [])]) or "Normal"
+                        fb_str    = fb_map.get(fb_sel, "") if fb_sel else ""
+                        conn.cursor().execute(
+                            "INSERT INTO diario_fisiologia (usuario_id,fecha,fase_ciclo,fatiga_subjetiva,"
+                            "dolor_notas,sangre,sintomas,estado_animo,feedback_entreno) VALUES (?,?,?,?,?,?,?,?,?)",
+                            (user_actual, str(fecha), fase, None, sint_str,
+                             sv if sv != "Sin sangre" else None, sint_str, animo_str, fb_str))
+                        conn.commit()
+                    finally:
+                        conn.close()
                     st.cache_data.clear(); st.success("Registro guardado.")
 
         with col2:
@@ -122,9 +176,8 @@ with tab1:
             if df_fisio.empty:
                 st.info("Aún no hay datos. ¡Empieza registrando hoy!")
             else:
-                df_valid = df_fisio[df_fisio["fase_ciclo"].isin(["Menstruación","Fase Folicular"])].copy()
-                if not df_valid.empty:
-                    ciclo_df, _ = predecir_fases_ciclo(df_valid[["fecha","fase_ciclo"]].copy(), horizonte_dias=120)
+                ciclo_df, _ = predecir_fases_ciclo(df_fisio[["fecha", "fase_ciclo", "sangre"]].copy(), horizonte_dias=120)
+                if not ciclo_df.empty:
                     hoy = datetime.now().date()
                     if "mes_ciclo_cursor" not in st.session_state:
                         st.session_state.mes_ciclo_cursor = hoy.replace(day=1)

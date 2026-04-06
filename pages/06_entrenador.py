@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
+from src.core.navbar import render_navbar
 from src.plan.helpers import cargar_datos_plan
 from src.plan.reglas import (
     obtener_fase_macrociclo, calcular_semaforo, aplicar_restricciones_lesion,
@@ -19,8 +20,8 @@ from src.db.db_manager import get_db_connection
 from src.core.styles import apply_custom_css
 
 # Configurar página
-st.set_page_config(page_title="Entrenador", layout="wide")
 apply_custom_css()
+render_navbar("entrenador")
 
 st.title("🧠 Entrenador - Análisis de Datos & Decisiones")
 st.markdown("""
@@ -29,8 +30,8 @@ Datos en tiempo real, decisiones del código y próximas acciones.
 """)
 
 # Verificar autenticación
-if "user_email" not in st.session_state or not st.session_state.get("logged_in"):
-    st.error("Debes iniciar sesión primero.")
+if "usuario_id" not in st.session_state:
+    st.warning("Selecciona tu perfil en la página de inicio.")
     st.stop()
 
 usuario_id = st.session_state.get("usuario_id", 1)
@@ -82,13 +83,17 @@ try:
     
     sb = datos.get("sleep_breakdown", {})
     with col_sleep1:
-        st.info(f"**Total:** {sb.get('total_h', 0):.1f}h")
+        total_h = sb.get('horas_totales')
+        st.info(f"**Total:** {total_h:.1f}h" if total_h is not None else "**Total:** —")
     with col_sleep2:
-        st.success(f"**Profundo:** {sb.get('profundo_h', 0):.1f}h")
+        prof_h = sb.get('profundo_h')
+        st.success(f"**Profundo:** {prof_h:.1f}h" if prof_h is not None else "**Profundo:** —")
     with col_sleep3:
-        st.warning(f"**REM:** {sb.get('rem_h', 0):.1f}h")
+        rem_h = sb.get('rem_h')
+        st.warning(f"**REM:** {rem_h:.1f}h" if rem_h is not None else "**REM:** —")
     with col_sleep4:
-        st.error(f"**Vigilia:** {sb.get('vigilia_h', 0):.1f}h")
+        vig_h = sb.get('vigilia_h')
+        st.error(f"**Vigilia:** {vig_h:.1f}h" if vig_h is not None else "**Vigilia:** —")
     
 except Exception as e:
     st.error(f"Error cargando datos biométricos: {str(e)}")
@@ -132,6 +137,13 @@ try:
                   potencia_media_w, tiempo_contacto_ms, oscilacion_vertical_cm
            FROM actividades_garmin
            WHERE usuario_id=? AND fecha >= date('now', '-7 days')
+           AND (
+               LOWER(COALESCE(tipo_deporte, '')) LIKE '%running%'
+               OR LOWER(COALESCE(tipo_deporte, '')) LIKE '%trail%'
+               OR LOWER(COALESCE(tipo_deporte, '')) LIKE '%treadmill%'
+               OR LOWER(COALESCE(tipo_deporte, '')) LIKE '%street_running%'
+               OR LOWER(COALESCE(tipo_deporte, '')) LIKE '%indoor_running%'
+           )
            ORDER BY fecha DESC""",
         conn, params=(usuario_id,))
     
@@ -211,13 +223,15 @@ st.markdown(f"""
 st.markdown("---")
 st.header("🩸 5. Ciclo Menstrual - Ajustes")
 
-ciclo_data = datos.get("ciclo_menstrual")
+ciclo_data = datos.get("ciclo_menstrual") or datos.get("fase_ciclo")
 
 if ciclo_data:
     col_ciclo1, col_ciclo2, col_ciclo3 = st.columns(3)
     
     with col_ciclo1:
-        st.info(f"**Fase:** {ciclo_data.get('fase_nombre', 'Desconocida')}")
+        fase_txt = ciclo_data.get('fase') or ciclo_data.get('fase_nombre') or 'Desconocida'
+        origen_txt = ciclo_data.get('origen')
+        st.info(f"**Fase:** {fase_txt}" + (f" ({origen_txt})" if origen_txt else ""))
     
     with col_ciclo2:
         st.metric("Multiplicador Volumen", f"{ciclo_data.get('multiplicador_volumen', 1.0):.2f}x")
@@ -272,7 +286,11 @@ with col_evals1:
 eficiencia = evaluar_eficiencia_aerobica(datos.get("actividades_z2", []))
 with col_evals2:
     st.subheader("💨 Eficiencia Aeróbica")
-    if eficiencia["necesita_fartlek"]:
+    if eficiencia["tendencia"] == "sin_datos":
+        st.info("Sin datos suficientes (mínimo 4 sesiones Z2 en 28 días).")
+    elif eficiencia["necesita_fartlek"]:
+        st.warning("⚠️ Tendencia estancada. Conviene añadir fartlek suave.")
+    else:
         st.success("✅ Tendencia positiva")
 
 # Volumen Objetivo

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from src.core.navbar import render_navbar
 from src.core.styles import (
     ACCENT, CARD, BORDER, BORDER_H, TXT1, TXT2, TXT3,
-    label_upper, badge, tipo_color,
+    label_upper, badge, tipo_color, format_hours,
 )
 from src.db.db_manager import get_db_connection, obtener_credenciales_garmin
 from src.garmin.garmin_sync import (
@@ -70,6 +70,33 @@ st.markdown(
         border-top: 1px solid #1e2a3b;
         margin: 14px 0;
     }
+    .garmin-field-card {
+        background: #161b22;
+        border: 1px solid #21262d;
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin-bottom: 12px;
+        min-height: 76px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    .garmin-field-label {
+        color: #484f58;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        line-height: 1.1;
+    }
+    .garmin-field-value {
+        font-size: 13px;
+        font-weight: 600;
+        margin-top: 2px;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -126,7 +153,7 @@ def _render_last_sync_details():
     st.markdown("<div class='garmin-sync-head'>", unsafe_allow_html=True)
     st.markdown("**Resumen de importación**")
     st.caption(f"Sincronizado {ts} · origen: {source_lbl}")
-    m1, m2, m3 = st.columns(3)
+    m1, m2, m3 = st.columns(3, gap="large")
     m1.metric("Actividades", n_act)
     m2.metric("Días biométricos", n_bio)
     m3.metric("Días de sueño", n_sleep)
@@ -178,8 +205,12 @@ def _render_last_sync_details():
         if sleep:
             with st.expander("Ver detalle de sueño importado", expanded=False):
                 df_s = pd.DataFrame(sleep)
-                df_s = _mark_pending_df(df_s, ["horas_totales", "score", "sleep_profundo_horas", "sleep_rem_horas"])
-                cols = [c for c in ["fecha", "horas_totales", "score", "sleep_profundo_horas", "sleep_rem_horas"] if c in df_s.columns]
+                df_s = _mark_pending_df(df_s, ["horas_totales", "score", "sleep_profundo_horas", "sleep_rem_horas", "sleep_vigilia_horas", "despertares"])
+                # Formatear horas
+                for c in ["horas_totales", "sleep_profundo_horas", "sleep_rem_horas", "sleep_vigilia_horas"]:
+                    if c in df_s.columns:
+                        df_s[c] = df_s[c].apply(lambda v: format_hours(v) if pd.notna(v) and str(v) != "Pendiente Garmin" else v)
+                cols = [c for c in ["fecha", "horas_totales", "score", "sleep_profundo_horas", "sleep_rem_horas", "sleep_vigilia_horas", "despertares"] if c in df_s.columns]
                 st.dataframe(df_s[cols], width="stretch", hide_index=True)
 # Auto-auth: try token first, then saved credentials (single-profile friendly)
 cred = obtener_credenciales_garmin(user_actual)
@@ -224,8 +255,6 @@ with tab_sync:
                 f"<span style='color:{dot_color};font-weight:600;font-size:13px;'>Conectado</span></div>"
                 f"<div style='color:{TXT2};font-size:12px;'>{gc_email}</div></div>",
                 unsafe_allow_html=True)
-            if st.button("↔ Cambiar cuenta", key="cambiar_cta"):
-                st.session_state.pop("gc", None); st.session_state.pop("gc_failed", None); st.rerun()
 
         elif st.session_state.get("gc_failed"):
             dot_color = "#ef4444"
@@ -251,9 +280,6 @@ with tab_sync:
             with c1:
                 if st.button("🔄 Reintentar", use_container_width=True):
                     st.session_state.pop("gc_failed", None); st.rerun()
-            with c2:
-                if st.button("↔ Cambiar cuenta", use_container_width=True):
-                    st.session_state.pop("gc", None); st.session_state.pop("gc_failed", None); st.rerun()
         else:
             dot_color = "#f59e0b"
             st.markdown(
@@ -400,7 +426,7 @@ with tab_sync:
         st.info("Sin actividades importadas aún.")
     else:
         # Grid de campos: verde si tiene dato, gris si None
-        cols_grid = st.columns(4)
+        cols_grid = st.columns(4, gap="medium")
         last_row = df_v.iloc[0]
         for idx, campo in enumerate(CAMPOS):
             val = last_row.get(campo)
@@ -409,15 +435,97 @@ with tab_sync:
             val_txt = str(round(float(val),2)) if has_val and isinstance(val,(int,float)) else (str(val) if has_val else "—")
             with cols_grid[idx % 4]:
                 st.markdown(
-                    f"<div style='background:{CARD};border:1px solid {BORDER};border-radius:8px;"
-                    f"padding:8px 10px;margin-bottom:6px;'>"
-                    f"<div style='color:{TXT3};font-size:10px;text-transform:uppercase;letter-spacing:0.5px;'>{campo}</div>"
-                    f"<div style='color:{col_v};font-size:13px;font-weight:600;margin-top:2px;'>{val_txt}</div>"
+                    f"<div class='garmin-field-card'>"
+                    f"<div class='garmin-field-label'>{campo}</div>"
+                    f"<div class='garmin-field-value' style='color:{col_v};'>{val_txt}</div>"
                     f"</div>",
                     unsafe_allow_html=True)
 
     st.markdown("<div style='margin:16px 0 4px;'></div>", unsafe_allow_html=True)
     _render_last_sync_details()
+
+    # === DEBUG: Mostrar estado de la BD después de sincronizar ===
+    st.markdown(label_upper("🔍 Estado de datos importados"), unsafe_allow_html=True)
+    conn = get_db_connection()
+    try:
+        # Biometrics
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) as total,
+                   COUNT(fc_reposo) as fc_reposo_vals,
+                   COUNT(sleep_score) as sleep_score_vals,
+                   COUNT(carga_aguda) as carga_aguda_vals,
+                   COUNT(carga_cronica) as carga_cronica_vals
+            FROM datos_biometricos_premium
+            WHERE usuario_id=?
+        """, (user_actual,))
+        row = cursor.fetchone()
+
+        col1, col2, col3, col4 = st.columns(4, gap="large")
+        with col1:
+            st.metric("Total Biometrics", row[0] or 0)
+        with col2:
+            st.metric("fc_reposo (n)", row[1] or 0, delta="✅ OK" if row[1] else "❌ sin datos")
+        with col3:
+            st.metric("sleep_score_bio (n)", row[2] or 0, delta="valores en BD" if row[2] else "—")
+        with col4:
+            st.metric("ACWR (n)", row[4] or 0, delta="cr+ag" if row[4] else "—")
+
+        # Sleep scores en datos_sueno - ALL fields
+        cursor.execute("""
+            SELECT COUNT(*) as total,
+                   COUNT(horas_totales) as horas_totales_vals,
+                   COUNT(score) as score_vals,
+                   COUNT(sleep_profundo_horas) as profundo_vals,
+                   COUNT(sleep_rem_horas) as rem_vals,
+                   COUNT(sleep_vigilia_horas) as vigilia_vals,
+                   COUNT(despertares) as despertares_vals,
+                   MAX(score) as max_score,
+                   MIN(score) as min_score,
+                   AVG(score) as avg_score
+            FROM datos_sueno WHERE usuario_id=?
+        """, (user_actual,))
+        row_sueno = cursor.fetchone()
+
+        col_s1, col_s2, col_s3 = st.columns(3, gap="large")
+        with col_s1:
+            st.metric("datos_sueno (días)", row_sueno[0] or 0)
+        with col_s2:
+            score_count = row_sueno[2] or 0
+            st.metric("Score importado (n)", score_count, delta="✅ OK" if score_count > 0 else "❌ sin datos")
+        with col_s3:
+            if row_sueno[2] and row_sueno[2] > 0:
+                st.metric("Score range", f"{int(row_sueno[8])}-{int(row_sueno[7])}", delta=f"avg={int(row_sueno[9])}")
+            else:
+                st.metric("Score range", "—")
+
+        # Desglose de todos los campos de sueño
+        st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
+        sleep_cols = [
+            ("Horas totales", row_sueno[1] or 0),
+            ("Score", row_sueno[2] or 0),
+            ("Profundo (h)", row_sueno[3] or 0),
+            ("REM (h)", row_sueno[4] or 0),
+            ("Vigilia (h)", row_sueno[5] or 0),
+            ("Despertares", row_sueno[6] or 0),
+        ]
+        cols_sleep = st.columns(6, gap="medium")
+        for idx, (label, count) in enumerate(sleep_cols):
+            with cols_sleep[idx]:
+                status = "✅" if count > 0 else "—"
+                st.markdown(
+                    f"<div style='background:{CARD};border:1px solid {BORDER};border-radius:8px;"
+                    f"padding:8px 10px;text-align:center;'>"
+                    f"<div style='color:{TXT3};font-size:10px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;'>{label}</div>"
+                    f"<div style='color:{ACCENT if count > 0 else TXT3};font-size:14px;font-weight:700;margin-top:4px;'>{int(count) if count > 0 else '—'}</div>"
+                    f"<div style='color:{ACCENT if count > 0 else TXT3};font-size:11px;margin-top:2px;'>{status}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"Error al revisar BD: {e}")
+    finally:
+        conn.close()
 
 # ===========================================================================
 # TAB 2 — HISTORIAL
@@ -431,7 +539,7 @@ with tab_hist:
             "FROM actividades_garmin WHERE usuario_id=? ORDER BY fecha DESC",
             conn, params=(user_actual,))
         df_sueno = pd.read_sql_query(
-            "SELECT fecha,horas_totales,score,sleep_profundo_horas,sleep_rem_horas "
+            "SELECT fecha,horas_totales,score,sleep_profundo_horas,sleep_rem_horas,sleep_vigilia_horas,despertares "
             "FROM datos_sueno WHERE usuario_id=? ORDER BY fecha DESC LIMIT 30",
             conn, params=(user_actual,))
         df_bio = pd.read_sql_query(
@@ -463,12 +571,16 @@ with tab_hist:
     st.divider()
     h_sue, h_bio = st.columns(2)
     with h_sue:
-        st.markdown(label_upper("Sueño"), unsafe_allow_html=True)
+        st.markdown(label_upper("Sueño (últimos 30 días)"), unsafe_allow_html=True)
         if not df_sueno.empty:
-            for c in ["horas_totales", "score", "sleep_profundo_horas", "sleep_rem_horas"]:
-                if c in df_sueno.columns:
-                    df_sueno[c] = df_sueno[c].apply(lambda v: "Pendiente Garmin" if (pd.notna(v) and str(v) not in ("", "None") and float(v) == 0.0) else v)
-            st.dataframe(df_sueno, use_container_width=True, hide_index=True)
+            df_sueno_fmt = df_sueno.copy()
+            # Formatear columnas de horas a "Xh Ymin"
+            for c in ["horas_totales", "sleep_profundo_horas", "sleep_rem_horas", "sleep_vigilia_horas"]:
+                if c in df_sueno_fmt.columns:
+                    df_sueno_fmt[c] = df_sueno_fmt[c].apply(lambda v:
+                        format_hours(v) if (pd.notna(v) and str(v) not in ("", "None"))
+                        else "Pendiente Garmin" if (pd.notna(v) and float(v) == 0.0) else "—")
+            st.dataframe(df_sueno_fmt, use_container_width=True, hide_index=True)
         else:
             st.info("Sin datos de sueño.")
     with h_bio:

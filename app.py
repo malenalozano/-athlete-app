@@ -130,6 +130,7 @@ plan       = st.Page("pages/02_plan.py",       title="Plan semanal", icon="📅"
 diario     = st.Page("pages/03_diario.py",     title="Diario",       icon="📓")
 garmin     = st.Page("pages/04_garmin.py",     title="Garmin",       icon="⌚")
 ejercicios = st.Page("pages/05_ejercicios.py", title="Ejercicios",   icon="🏋️")
+entrenador = st.Page("pages/06_entrenador.py", title="Entrenador",   icon="🧠")
 
-pg = st.navigation([dashboard, plan, diario, garmin, ejercicios], position="hidden")
+pg = st.navigation([dashboard, plan, diario, garmin, ejercicios, entrenador], position="hidden")
 pg.run()

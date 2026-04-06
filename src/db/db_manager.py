@@ -7,17 +7,39 @@ try:
 except Exception:
     libsql_sqlite3 = None
 
+try:
+    import streamlit as st
+except Exception:
+    st = None
+
 load_dotenv()
-URL = os.getenv("TURSO_DATABASE_URL")
-TOKEN = os.getenv("TURSO_AUTH_TOKEN")
-LOCAL_DB_PATH = os.getenv("LOCAL_DB_PATH", "atleta.db")
+
+
+def _get_setting(name, default=None):
+    value = os.getenv(name)
+    if value:
+        return value
+    if st is not None:
+        try:
+            return st.secrets.get(name, default)
+        except Exception:
+            pass
+    return default
+
+
+URL = _get_setting("TURSO_DATABASE_URL")
+TOKEN = _get_setting("TURSO_AUTH_TOKEN")
+LOCAL_DB_PATH = _get_setting("LOCAL_DB_PATH", "atleta.db")
 
 
 def get_db_connection():
     # Prefer Turso when URL is available; otherwise use local SQLite file.
     if URL and libsql_sqlite3 is not None:
         return libsql_sqlite3.connect(URL, auth_token=TOKEN)
-    return sqlite3.connect(LOCAL_DB_PATH, timeout=10)
+    conn = sqlite3.connect(LOCAL_DB_PATH, timeout=30, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    return conn
 
 
 def _column_exists(conn, table_name, column_name):
@@ -64,6 +86,8 @@ def init_db():
     _ensure_column(conn, "usuarios", "nivel", "TEXT")
     _ensure_column(conn, "usuarios", "ritmo", "TEXT")
     _ensure_column(conn, "usuarios", "password_garmin_enc", "TEXT")
+    _ensure_column(conn, "usuarios", "fecha_objetivo", "TEXT")   # fecha de la carrera objetivo (YYYY-MM-DD)
+    _ensure_column(conn, "usuarios", "objetivo_tipo", "TEXT")    # 'maraton', 'ultramaraton', 'trail', etc.
 
     # Tabla de ejercicios por defecto (personalizados por usuario)
     conn.execute('''
@@ -85,9 +109,10 @@ def init_db():
     _ensure_column(conn, "diario_fisiologia", "feedback_entreno", "TEXT")
     # Tabla Fuerza (Corregida con todas las columnas)
     conn.execute('''CREATE TABLE IF NOT EXISTS entrenamientos_fuerza (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, ejercicio TEXT, peso REAL, 
-        series INTEGER, repeticiones INTEGER, grupo_muscular TEXT, rpe INTEGER, 
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT, ejercicio TEXT,
+        peso REAL, series INTEGER, repeticiones INTEGER, grupo_muscular TEXT, rpe INTEGER,
         musculo_principal TEXT, notas TEXT)''')
+    _ensure_column(conn, "entrenamientos_fuerza", "usuario_id", "INTEGER")
     conn.commit()
     conn.close()
 
@@ -97,7 +122,7 @@ def obtener_perfil(usuario_id):
     row = conn.execute(
         """
         SELECT id, nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
-               email_garmin, password_garmin_enc
+               email_garmin, password_garmin_enc, fecha_objetivo, objetivo_tipo
         FROM usuarios
         WHERE id = ?
         """,
@@ -121,6 +146,8 @@ def obtener_perfil(usuario_id):
         "ritmo": row[9],
         "email_garmin": row[10],
         "password_garmin_enc": row[11],
+        "fecha_objetivo": row[12],   # YYYY-MM-DD de la carrera objetivo
+        "objetivo_tipo": row[13],    # 'maraton', 'ultramaraton', etc.
     }
 
 
@@ -138,6 +165,8 @@ def guardar_perfil(usuario_id, datos):
         datos.get("fuerza"),
         datos.get("nivel"),
         datos.get("ritmo"),
+        datos.get("fecha_objetivo"),
+        datos.get("objetivo_tipo"),
         usuario_id,
     )
 
@@ -146,7 +175,8 @@ def guardar_perfil(usuario_id, datos):
             """
             UPDATE usuarios
             SET nombre = ?, edad = ?, genero = ?, peso = ?, objetivo = ?,
-                carrera = ?, fuerza = ?, nivel = ?, ritmo = ?
+                carrera = ?, fuerza = ?, nivel = ?, ritmo = ?,
+                fecha_objetivo = ?, objetivo_tipo = ?
             WHERE id = ?
             """,
             params,
@@ -155,8 +185,9 @@ def guardar_perfil(usuario_id, datos):
         conn.execute(
             """
             INSERT INTO usuarios
-            (nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo, id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
+             fecha_objetivo, objetivo_tipo, id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             params,
         )
