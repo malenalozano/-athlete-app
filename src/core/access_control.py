@@ -46,21 +46,12 @@ def require_auth() -> None:
         return
 
     if st.session_state.get("auth_ok"):
-        user = str(st.session_state.get("auth_user", "")).strip() or "usuario"
-        st.caption(f"Sesión iniciada como {user}")
-        if st.button("Cerrar sesión", use_container_width=False):
-            st.session_state.pop("auth_ok", None)
-            st.session_state.pop("auth_user", None)
-            st.session_state.pop("usuario_id", None)
-            st.session_state.pop("gc", None)
-            st.session_state.pop("gc_failed", None)
-            st.session_state.pop("gc_error", None)
-            st.rerun()
+        # Auth OK - navbar.py maneja el UX de logout en el avatar dropdown
+        # Este bloque solo valida que el usuario está loggeado
         return
 
     users = _get_users_from_secrets()
     st.title("Acceso privado")
-    st.caption("Solo Malena y Dani")
 
     with st.form("login_form", clear_on_submit=False):
         username = st.text_input("Usuario")

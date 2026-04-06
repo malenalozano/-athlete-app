@@ -128,18 +128,18 @@ def render_navbar(pagina_activa: str):
 
     # Avatar con popover dropdown para logout
     with cols[8]:
-        # Botón estilizado como avatar con menú dropdown
-        avatar_btn = st.button(
+        if st.button(
             avatar_letter,
             key="avatar_btn",
             help="Menú de usuario",
             use_container_width=False,
-        )
+        ):
+            st.session_state["navbar_popover_open"] = not st.session_state.get("navbar_popover_open", False)
         
         # CSS para estilizar el botón como avatar
         st.markdown(
             f"""<style>
-            [data-testid="stHorizontalBlock"]:has(> :nth-child(9)) [kind="secondary"] {{
+            [data-testid="stHorizontalBlock"] [kind="secondary"] {{
                 width: 32px !important;
                 height: 32px !important;
                 padding: 0 !important;
@@ -156,17 +156,19 @@ def render_navbar(pagina_activa: str):
             </style>""",
             unsafe_allow_html=True
         )
-        
-        if avatar_btn:
-            with st.popover("", use_container_width=False):
-                st.markdown(f"**Sesión: {auth_user}**")
-                st.divider()
-                if st.button("🚪 Cerrar sesión", key="navbar_logout", use_container_width=True):
-                    st.session_state.pop("auth_ok", None)
-                    st.session_state.pop("auth_user", None)
-                    st.session_state.pop("usuario_id", None)
-                    st.session_state.pop("gc", None)
-                    st.session_state.pop("gc_failed", None)
-                    st.session_state.pop("gc_error", None)
-                    st.cache_data.clear()
-                    st.rerun()
+    
+    # Popover del menú de usuario (rendereado abajo del navbar)
+    if st.session_state.get("navbar_popover_open", False):
+        with st.container(border=True):
+            st.markdown(f"**{auth_user}**")
+            st.divider()
+            if st.button("🚪 Cerrar sesión", key="navbar_logout", use_container_width=True):
+                st.session_state.pop("auth_ok", None)
+                st.session_state.pop("auth_user", None)
+                st.session_state.pop("usuario_id", None)
+                st.session_state.pop("gc", None)
+                st.session_state.pop("gc_failed", None)
+                st.session_state.pop("gc_error", None)
+                st.session_state.pop("navbar_popover_open", None)
+                st.cache_data.clear()
+                st.rerun()
