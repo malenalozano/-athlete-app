@@ -1,11 +1,9 @@
 import sqlite3
 import os
+import json
+import urllib.request
+import urllib.error
 from dotenv import load_dotenv
-
-try:
-    import libsql as libsql_sqlite3
-except Exception:
-    libsql_sqlite3 = None
 
 try:
     import streamlit as st
@@ -31,11 +29,157 @@ URL = _get_setting("TURSO_DATABASE_URL")
 TOKEN = _get_setting("TURSO_AUTH_TOKEN")
 LOCAL_DB_PATH = _get_setting("LOCAL_DB_PATH", "atleta.db")
 
+# ---------------------------------------------------------------------------
+# Turso HTTP connection wrapper (DBAPI2-compatible subset)
+# ---------------------------------------------------------------------------
+
+def _escape_val(v):
+    """Inline-escape a Python value for SQLite."""
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "1" if v else "0"
+    if isinstance(v, (int, float)):
+        return str(v)
+    return "'" + str(v).replace("'", "''") + "'"
+
+
+def _bind_params(sql: str, params) -> str:
+    """Replace ? placeholders with escaped values."""
+    if not params:
+        return sql
+    parts = sql.split("?")
+    if len(parts) != len(params) + 1:
+        raise ValueError(f"SQL has {len(parts)-1} placeholders but {len(params)} params")
+    result = parts[0]
+    for val, tail in zip(params, parts[1:]):
+        result += _escape_val(val) + tail
+    return result
+
+
+class _TursoCursor:
+    def __init__(self, conn: "TursoHTTPConnection"):
+        self._conn = conn
+        self.description = None
+        self._rows = []
+        self._pos = 0
+        self.rowcount = -1
+
+    def execute(self, sql, params=()):
+        sql_bound = _bind_params(sql, params)
+        result = self._conn._send([sql_bound])
+        r = result[0]
+        if r.get("type") == "error":
+            raise sqlite3.OperationalError(r.get("error", {}).get("message", "Turso error"))
+        resp = r.get("response", {}).get("result", {})
+        cols = resp.get("cols", [])
+        if cols:
+            self.description = [(c["name"], None, None, None, None, None, None) for c in cols]
+        else:
+            self.description = None
+        raw_rows = resp.get("rows", [])
+        self._rows = []
+        for cell_row in raw_rows:
+            row = []
+            for cell in cell_row:
+                t = cell.get("type", "null")
+                if t == "null":
+                    row.append(None)
+                elif t == "integer":
+                    row.append(int(cell["value"]))
+                elif t == "float":
+                    row.append(float(cell["value"]))
+                else:
+                    row.append(cell.get("value"))
+            self._rows.append(tuple(row))
+        self._pos = 0
+        self.rowcount = resp.get("affected_row_count", len(self._rows))
+        return self
+
+    def fetchone(self):
+        if self._pos >= len(self._rows):
+            return None
+        row = self._rows[self._pos]
+        self._pos += 1
+        return row
+
+    def fetchall(self):
+        rows = self._rows[self._pos:]
+        self._pos = len(self._rows)
+        return rows
+
+    def fetchmany(self, size=1):
+        rows = self._rows[self._pos:self._pos + size]
+        self._pos += len(rows)
+        return rows
+
+    def __iter__(self):
+        return iter(self._rows)
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
+class TursoHTTPConnection:
+    """Minimal DBAPI2-compatible wrapper over Turso v2 HTTP pipeline API."""
+
+    def __init__(self, url: str, token: str):
+        self._url = url.replace("libsql://", "https://")
+        self._token = token
+        self._pipeline_url = f"{self._url}/v2/pipeline"
+
+    def _send(self, sql_statements: list[str]) -> list[dict]:
+        requests = [{"type": "execute", "stmt": {"sql": s}} for s in sql_statements]
+        requests.append({"type": "close"})
+        payload = json.dumps({"requests": requests}).encode("utf-8")
+        req = urllib.request.Request(
+            self._pipeline_url,
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {self._token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read())
+                return data.get("results", [])
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            raise sqlite3.OperationalError(f"Turso HTTP {e.code}: {body[:300]}")
+
+    def cursor(self):
+        return _TursoCursor(self)
+
+    def execute(self, sql, params=()):
+        cur = self.cursor()
+        cur.execute(sql, params)
+        return cur
+
+    def commit(self):
+        pass  # Turso auto-commits each statement
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
 
 def get_db_connection():
-    # Prefer Turso when URL is available; otherwise use local SQLite file.
-    if URL and libsql_sqlite3 is not None:
-        return libsql_sqlite3.connect(URL, auth_token=TOKEN)
+    """Return a Turso connection when URL is set, else local SQLite."""
+    if URL and TOKEN:
+        return TursoHTTPConnection(URL, TOKEN)
     conn = sqlite3.connect(LOCAL_DB_PATH, timeout=30, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
