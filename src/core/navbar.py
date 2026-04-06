@@ -52,6 +52,9 @@ def _dot(active: bool) -> str:
 def render_navbar(pagina_activa: str):
     st.markdown(_CSS, unsafe_allow_html=True)
 
+    auth_user = str(st.session_state.get("auth_user", "")).strip()
+    avatar_letter = (auth_user[:1] or "?").upper()
+
     # Columnas: logo | nav items | spacer | sync | avatar
     cols = st.columns([2.0, 1.05, 1.2, 0.95, 1.05, 1.15, 1.25, 3.35, 0.45, 0.45])
 
@@ -130,5 +133,5 @@ def render_navbar(pagina_activa: str):
             f"background:linear-gradient(135deg,{ACCENT}40,{ACCENT}15);"
             f"border:1px solid {ACCENT}50;"
             f"color:{ACCENT};display:flex;align-items:center;justify-content:center;"
-            f"font-size:12px;font-weight:700;margin-top:10px;'>M</div>",
+            f"font-size:12px;font-weight:700;margin-top:10px;'>{avatar_letter}</div>",
             unsafe_allow_html=True)

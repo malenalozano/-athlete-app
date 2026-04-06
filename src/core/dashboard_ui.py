@@ -63,8 +63,10 @@ def render_checkpoints_moderno(df_check, objetivo_txt="actual"):
 
 
 @st.cache_data(ttl=120)
-def obtener_estado_ciclo_malena():
-    """Estado actual del ciclo de Malena (usuario_id=1) para mostrar en el dashboard de Dani."""
+def obtener_estado_ciclo_malena(usuario_id: int = 1):
+    """Estado actual del ciclo solo para Malena (usuario_id=1)."""
+    if int(usuario_id or 0) != 1:
+        return None
     conn = get_db_connection()
     try:
         df = pd.read_sql_query(
@@ -112,12 +114,18 @@ def obtener_estado_ciclo_malena():
     }
 
 
-def render_macrociclo(usuario_id: int = 1):
+def render_macrociclo(usuario_id: int | None = None):
     """Grid 5 fases del macrociclo + barra global de progreso.
     Dinámico: calcula fases según perfil del usuario (maratón o ultramaratón)."""
     from src.plan.reglas import obtener_fase_macrociclo, obtener_fase_macrociclo_ultra
     from src.db.db_manager import obtener_perfil
     from datetime import timedelta
+
+    if usuario_id is None:
+        try:
+            usuario_id = int(st.session_state.get("usuario_id", 1))
+        except Exception:
+            usuario_id = 1
 
     perfil = obtener_perfil(usuario_id) or {}
     objetivo_tipo = str(perfil.get("objetivo_tipo") or "maraton").lower()

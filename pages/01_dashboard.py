@@ -38,7 +38,7 @@ hoy = datetime.now()
 fecha_es = f"{_DIAS_ES[hoy.strftime('%A')]} {hoy.day} de {_MESES_ES[hoy.strftime('%B')]} de {hoy.year}"
 
 fase_hoy = obtener_fase_macrociclo()
-estado_ciclo = obtener_estado_ciclo_malena() if user_actual == 1 else None
+estado_ciclo = obtener_estado_ciclo_malena(user_actual) if user_actual == 1 else None
 fase_ciclo_txt = estado_ciclo["fase"] if estado_ciclo else ""
 ciclo_sub = f" · Ciclo: **{fase_ciclo_txt}**" if fase_ciclo_txt else ""
 st.markdown(f"## {saludo}, {nombre} 👋")
@@ -63,7 +63,7 @@ c4.metric("HRV medio",    f"{res['hrv']:.0f} ms"  if res["hrv"]   else "—", _d
 # 3. Macrociclo — 5 fases + barra global hacia el maratón
 # ---------------------------------------------------------------------------
 st.subheader("Macrociclo — Maratón Sub 3:30 · Feb 2027")
-render_macrociclo()
+render_macrociclo(user_actual)
 
 st.divider()
 
