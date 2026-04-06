@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import sys
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -10,6 +11,13 @@ def _normalize_create_sql(sql: str) -> str:
     if sql_u.upper().startswith("CREATE TABLE ") and "IF NOT EXISTS" not in sql_u.upper():
         return sql_u.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1)
     return sql_u
+
+
+def _normalize_turso_url_for_client(url: str) -> str:
+    u = (url or "").strip()
+    if u.startswith("libsql://"):
+        return "https://" + u[len("libsql://"):]
+    return u
 
 
 def _iter_tables(conn_local: sqlite3.Connection):
@@ -43,11 +51,17 @@ def _copy_table(conn_local: sqlite3.Connection, conn_remote, table_name: str) ->
 def main() -> int:
     load_dotenv()
 
+    remote_connector = None
     try:
         import libsql  # type: ignore
+        remote_connector = ("libsql", libsql)
     except Exception as exc:
-        print(f"Falta libsql: {exc}")
-        return 1
+        try:
+            import libsql_client  # type: ignore
+            remote_connector = ("libsql_client", libsql_client)
+        except Exception:
+            print(f"Falta libsql/libsql-client: {exc}")
+            return 1
 
     local_db = os.getenv("LOCAL_DB_PATH", "atleta.db")
     turso_url = os.getenv("TURSO_DATABASE_URL")
@@ -64,7 +78,13 @@ def main() -> int:
         return 1
 
     conn_local = sqlite3.connect(local_db)
-    conn_remote = libsql.connect(turso_url, auth_token=turso_token)
+    kind, module = remote_connector
+    if kind == "libsql":
+        conn_remote = module.connect(turso_url, auth_token=turso_token)
+    else:
+        conn_remote = module.create_client_sync(
+            url=_normalize_turso_url_for_client(turso_url), auth_token=turso_token
+        )
 
     total = 0
     try:
