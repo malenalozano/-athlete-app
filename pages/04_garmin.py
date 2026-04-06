@@ -435,7 +435,7 @@ with tab_hist:
             "FROM datos_sueno WHERE usuario_id=? ORDER BY fecha DESC LIMIT 30",
             conn, params=(user_actual,))
         df_bio = pd.read_sql_query(
-            "SELECT fecha,hrv_ms,fc_reposo,estres_vital "
+            "SELECT fecha,hrv_ms,fc_reposo,estres_medio "
             "FROM datos_biometricos_premium WHERE usuario_id=? ORDER BY fecha DESC LIMIT 30",
             conn, params=(user_actual,))
     except Exception:
