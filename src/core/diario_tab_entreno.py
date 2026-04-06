@@ -22,6 +22,56 @@ from src.core.ai_coach import procesar_nota_fuerza
 _RUNNING_KW = {"running", "trail", "treadmill", "indoor_running", "street_running", "caminata"}
 
 
+def _card_open() -> None:
+    st.markdown(
+        "<div style='background:#161b22;border:1px solid #21262d;border-radius:12px;padding:14px;margin-bottom:12px;'>",
+        unsafe_allow_html=True,
+    )
+
+
+def _card_close() -> None:
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _color_nota(nota: str):
+    if not nota:
+        return None
+    n = str(nota).lower()
+    if any(k in n for k in ["subir", "genial", "bien", "perfecto", "excelente"]):
+        return ("up", "#1a3a1a", "#4ade80")
+    if any(k in n for k in ["no termino", "no terminó", "débil", "debil", "mal", "peor"]):
+        return ("down", "#2a1a1a", "#f87171")
+    return ("ok", "#1a1a2a", "#818cf8")
+
+
+def _safe_float(value):
+    try:
+        if pd.isna(value):
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _formatear_ritmo_min_km(ritmo_medio):
+    valor = _safe_float(ritmo_medio)
+    if valor is None or valor <= 0:
+        return None
+    minutos = int(valor)
+    segundos = int(round((valor - minutos) * 60))
+    if segundos == 60:
+        minutos += 1
+        segundos = 0
+    return f"{minutos}:{segundos:02d} min/km"
+
+
+def _formatear_bpm(fc_media):
+    valor = _safe_float(fc_media)
+    if valor is None or valor <= 0:
+        return None
+    return f"{valor:.0f}bpm"
+
+
 # ---------------------------------------------------------------------------
 # Calendario HTML
 # ---------------------------------------------------------------------------
@@ -73,9 +123,9 @@ def _cargar_dias_mes(usuario_id: int, anio: int, mes: int) -> dict:
 
 def html_calendario_entreno(dias_mes: dict, anio: int, mes: int) -> str:
     colores = {
-        "run":  {"bg": "#0e2a0e", "border": "#a3e63560", "dot": "#a3e635", "emoji": "🏃"},
-        "gym":  {"bg": "#16164a", "border": "#818cf860", "dot": "#818cf8", "emoji": "🏋️"},
-        "both": {"bg": "#0e221e", "border": "#22d3ee60", "dot": "#22d3ee", "emoji": "💪"},
+        "run":  {"bg": "#1a3a1a", "border": "#a3e635", "dot": "#a3e635", "emoji": "🏃"},
+        "gym":  {"bg": "#1e1b3a", "border": "#818cf8", "dot": "#a78bfa", "emoji": "🏋️"},
+        "both": {"bg": "#1a2a1a", "border": "#a3e635", "dot": "#a3e635", "emoji": "💪🏃"},
     }
     hoy = date.today()
     primer_dia, total_dias = calendar.monthrange(anio, mes)
@@ -95,18 +145,20 @@ def html_calendario_entreno(dias_mes: dict, anio: int, mes: int) -> str:
     for dia in range(1, total_dias + 1):
         tipo = dias_mes.get(dia, "")
         cfg = colores.get(tipo, {})
-        bg     = cfg.get("bg", "#0d1117")
+        bg     = cfg.get("bg", "#161b22")
         border = cfg.get("border", "#21262d")
         emoji  = cfg.get("emoji", "")
         es_hoy = (anio == hoy.year and mes == hoy.month and dia == hoy.day)
-        border_hoy = f"border:2px solid {ACCENT};" if es_hoy else f"border:1px solid {border};"
+        border_hoy = f"border:2px solid #a3e635; box-shadow:0 0 0 2px #a3e63522;" if es_hoy else f"border:2px solid {border};"
+        color_txt = cfg.get("dot", "#484f58") if tipo else "#484f58"
+        font_w = "700" if tipo or es_hoy else "400"
 
         celdas.append(
             f"<div style='background:{bg};{border_hoy}border-radius:6px;"
             f"aspect-ratio:1;display:flex;flex-direction:column;"
             f"align-items:center;justify-content:center;position:relative;'>"
-            f"<div style='font-size:11px;color:{'#a3e635' if es_hoy else TXT2};font-weight:{'700' if es_hoy else '400'};'>{dia}</div>"
-            f"<div style='font-size:8px;line-height:1;'>{emoji}</div>"
+            f"<div style='font-size:11px;color:{'#a3e635' if es_hoy else color_txt};font-weight:{font_w};'>{dia}</div>"
+            f"<div style='font-size:10px;line-height:1.1;margin-top:2px;'>{emoji}</div>"
             f"</div>"
         )
 
@@ -241,6 +293,7 @@ div[data-testid="stTextArea"] textarea:focus {
     with col_izq:
 
         # ── Sección 1: Textarea ─────────────────────────────────────────
+        _card_open()
         st.markdown(label_upper("Entreno libre"), unsafe_allow_html=True)
         nota = st.text_area(
             "nota",
@@ -293,8 +346,11 @@ div[data-testid="stTextArea"] textarea:focus {
             st.session_state.resultado_ia = True
             st.rerun()
 
+        _card_close()
+
         # ── Sección 2: Resultado ────────────────────────────────────────
         if st.session_state.resultado_ia and st.session_state.sesiones_detectadas:
+            _card_open()
             for ses in st.session_state.sesiones_detectadas:
                 res_s     = ses["res"]
                 fecha_obj = ses.get("fecha")
@@ -328,6 +384,22 @@ div[data-testid="stTextArea"] textarea:focus {
                     f"</div>{garmin_html}</div>",
                     unsafe_allow_html=True)
 
+                if ses.get("vinculo_running"):
+                    v = ses["vinculo_running"]
+                    km = round(float(v.get("distancia_m") or 0) / 1000, 2)
+                    ritmo_txt = _formatear_ritmo_min_km(v.get("ritmo_medio"))
+                    bpm_txt = _formatear_bpm(v.get("fc_media"))
+                    partes = [f"⌚ Enlazado con Garmin · {km}km"]
+                    if ritmo_txt:
+                        partes.append(ritmo_txt)
+                    if bpm_txt:
+                        partes.append(bpm_txt)
+                    st.markdown(
+                        f"<div style='color:#60a5fa;font-size:11px;margin:4px 0 8px;'>"
+                        f"{' · '.join(partes)}</div>",
+                        unsafe_allow_html=True,
+                    )
+
                 if ses.get("nota_estado"):
                     st.warning(f"Percepción: {ses['nota_estado']}")
 
@@ -335,13 +407,39 @@ div[data-testid="stTextArea"] textarea:focus {
                     cols_show = ["ejercicio", "series", "repeticiones", "peso", "notas"]
                     df_r = pd.DataFrame(res_s["datos"])
                     df_r = df_r[[c for c in cols_show if c in df_r.columns]]
-                    df_r.columns = [c.capitalize() for c in df_r.columns]
-                    # Rellenar notas vacías con —
-                    if "Notas" in df_r.columns:
-                        df_r["Notas"] = df_r["Notas"].fillna("").replace("", "—")
-                    st.dataframe(df_r, use_container_width=True, hide_index=True)
+                    if not df_r.empty:
+                        df_r.columns = [c.capitalize() for c in df_r.columns]
+                        if "Notas" in df_r.columns:
+                            df_r["Notas"] = df_r["Notas"].fillna("").replace("", "—")
+
+                        for _, ej in df_r.iterrows():
+                            nota_txt = str(ej.get("Notas", "") or "")
+                            chip = _color_nota(nota_txt)
+                            chip_html = ""
+                            if chip:
+                                _, bg_chip, fg_chip = chip
+                                chip_html = (
+                                    f"<span style='background:{bg_chip};color:{fg_chip};"
+                                    f"border-radius:999px;padding:2px 8px;font-size:10px;"
+                                    f"font-weight:600;'>"
+                                    f"{nota_txt if nota_txt and nota_txt != '—' else 'Sin nota'}"
+                                    f"</span>"
+                                )
+                            st.markdown(
+                                f"<div style='display:grid;grid-template-columns:1.7fr 0.5fr 0.6fr 0.8fr 1.2fr;gap:8px;"
+                                f"padding:8px 10px;border-bottom:1px solid {BORDER};align-items:center;'>"
+                                f"<div style='color:{TXT1};font-size:12px;font-weight:600;'>{ej.get('Ejercicio','—')}</div>"
+                                f"<div style='color:{TXT2};font-size:12px;'>{ej.get('Series','—')}</div>"
+                                f"<div style='color:{TXT2};font-size:12px;'>{ej.get('Repeticiones','—')}</div>"
+                                f"<div style='color:{TXT2};font-size:12px;'>{ej.get('Peso','—')}</div>"
+                                f"<div>{chip_html}</div>"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
                 elif ses["meta"]["has_fuerza"]:
                     st.info("No se detectaron ejercicios. Revisa el formato.")
+
+            _card_close()
 
             n = len(st.session_state.sesiones_detectadas)
             col_g, col_c = st.columns([3, 1])
@@ -358,59 +456,16 @@ div[data-testid="stTextArea"] textarea:focus {
                     st.rerun()
 
         # ── Sección 3: Lesiones activas inline ──────────────────────────
+        _card_open()
         _render_lesiones_inline(usuario_id)
+        _card_close()
 
     # ======================================================================
     # COLUMNA DERECHA
     # ======================================================================
     with col_der:
-
-        # ── Sección 1: Últimas sesiones ─────────────────────────────────
-        st.markdown(label_upper("Últimas sesiones"), unsafe_allow_html=True)
-        conn = get_db_connection()
-        try:
-            df_hist = pd.read_sql_query(
-                "SELECT fecha, tipo_registro, resumen FROM sesiones_fuerza "
-                "WHERE usuario_id=? ORDER BY fecha DESC LIMIT 10",
-                conn, params=(usuario_id,))
-        except Exception:
-            df_hist = pd.DataFrame()
-        finally:
-            conn.close()
-
-        if df_hist.empty:
-            st.markdown(
-                f"<div style='text-align:center;padding:32px 16px;'>"
-                f"<div style='font-size:28px;margin-bottom:8px;'>📋</div>"
-                f"<div style='color:{TXT2};font-size:13px;font-weight:500;'>"
-                f"Sin sesiones guardadas</div>"
-                f"<div style='color:{TXT3};font-size:11px;margin-top:4px;'>"
-                f"Escribe tu entrenamiento y pulsa ⚡ Procesar</div>"
-                f"</div>",
-                unsafe_allow_html=True)
-        else:
-            for _, row in df_hist.iterrows():
-                tc       = tipo_color(row.get("tipo_registro", ""))
-                tipo_txt = str(row.get("tipo_registro", "")).capitalize()
-                resumen  = str(row.get("resumen", ""))[:70]
-                fecha_d  = str(row.get("fecha", ""))
-                st.markdown(
-                    f"<div style='display:flex;align-items:flex-start;gap:10px;"
-                    f"padding:7px 0;border-bottom:1px solid {BORDER};'>"
-                    f"<span style='width:7px;height:7px;border-radius:50%;background:{tc};"
-                    f"margin-top:4px;flex-shrink:0;display:inline-block;'></span>"
-                    f"<div style='min-width:0;'>"
-                    f"<div style='font-size:12px;color:{TXT1};font-weight:500;"
-                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{resumen}</div>"
-                    f"<div style='font-size:10px;color:{TXT3};margin-top:1px;'>"
-                    f"{fecha_d} · {tipo_txt}</div>"
-                    f"</div></div>",
-                    unsafe_allow_html=True)
-
-        # ── Sección 2: Calendario mensual ───────────────────────────────
-        st.markdown(
-            f"<div style='margin-top:20px;'></div>",
-            unsafe_allow_html=True)
+        # ── Sección 1: Calendario mensual ───────────────────────────────
+        _card_open()
         st.markdown(label_upper("Calendario del mes"), unsafe_allow_html=True)
 
         anio_cal, mes_cal = st.session_state.cal_cursor
@@ -442,14 +497,218 @@ div[data-testid="stTextArea"] textarea:focus {
             html_calendario_entreno(dias_mes, anio_cal, mes_cal),
             unsafe_allow_html=True)
 
-        # Stats del mes
+        _card_close()
+
+        # ── Sección 2: Stats del mes ────────────────────────────────────
+        _card_open()
         n_gym = sum(1 for t in dias_mes.values() if t in ("gym", "both"))
         n_run = sum(1 for t in dias_mes.values() if t in ("run", "both"))
         n_tot = len(dias_mes)
+        st.markdown(label_upper("Stats del mes"), unsafe_allow_html=True)
         c1, c2, c3 = st.columns(3)
         c1.metric("Días", n_tot)
         c2.metric("🏋️ Fuerza", n_gym)
         c3.metric("🏃 Carreras", n_run)
+
+        _card_close()
+
+        # ── Sección 3: Leyenda ─────────────────────────────────────────
+        _card_open()
+        st.markdown(label_upper("Leyenda"), unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='display:flex;gap:12px;flex-wrap:wrap;color:{TXT2};font-size:10px;align-items:center;'>"
+            f"<span style='display:flex;align-items:center;gap:6px;'><span style='width:8px;height:8px;border-radius:50%;background:#a3e635;display:inline-block;'></span>🏃 Carrera</span>"
+            f"<span style='display:flex;align-items:center;gap:6px;'><span style='width:8px;height:8px;border-radius:50%;background:#a78bfa;display:inline-block;'></span>🏋️ Fuerza</span>"
+            f"<span style='display:flex;align-items:center;gap:6px;'><span style='width:8px;height:8px;border-radius:50%;background:#60a5fa;display:inline-block;'></span>💪🏃 Ambos</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        _card_close()
+
+        # ── Sección 4: Sesiones guardadas ──────────────────────────────
+        _card_open()
+        st.markdown(label_upper("Sesiones guardadas"), unsafe_allow_html=True)
+        conn = get_db_connection()
+        try:
+            df_hist = pd.read_sql_query(
+                "SELECT id, fecha, tipo_registro, resumen, actividad_garmin_id FROM sesiones_fuerza "
+                "WHERE usuario_id=? ORDER BY fecha DESC LIMIT 10",
+                conn, params=(usuario_id,))
+            df_garmin = pd.read_sql_query(
+                "SELECT id_actividad, fecha, tipo_deporte, distancia_m, tiempo_seg, ritmo_medio, fc_media, cadencia_media "
+                "FROM actividades_garmin WHERE usuario_id=? ORDER BY fecha DESC LIMIT 20",
+                conn, params=(usuario_id,))
+        except Exception:
+            df_hist = pd.DataFrame()
+            df_garmin = pd.DataFrame()
+
+        actividad_ids_vinculadas = set()
+        if not df_hist.empty and "actividad_garmin_id" in df_hist.columns:
+            actividad_ids_vinculadas = set(
+                int(v) for v in df_hist["actividad_garmin_id"].dropna().tolist() if str(v).strip() not in ("", "None")
+            )
+
+        df_garmin_libre = df_garmin.copy()
+        if not df_garmin_libre.empty and "id_actividad" in df_garmin_libre.columns and actividad_ids_vinculadas:
+            df_garmin_libre = df_garmin_libre[~df_garmin_libre["id_actividad"].isin(actividad_ids_vinculadas)]
+
+        if df_hist.empty and df_garmin_libre.empty:
+            st.markdown(
+                f"<div style='text-align:center;padding:32px 16px;'>"
+                f"<div style='font-size:28px;margin-bottom:8px;'>📋</div>"
+                f"<div style='color:{TXT2};font-size:13px;font-weight:500;'>"
+                f"Sin sesiones guardadas</div>"
+                f"<div style='color:{TXT3};font-size:11px;margin-top:4px;'>"
+                f"Escribe tu entrenamiento y pulsa ⚡ Procesar</div>"
+                f"</div>",
+                unsafe_allow_html=True)
+        else:
+            for idx, row in df_hist.iterrows():
+                tc       = tipo_color(row.get("tipo_registro", ""))
+                tipo_txt = str(row.get("tipo_registro", "")).capitalize()
+                resumen  = str(row.get("resumen", ""))
+                fecha_d  = str(row.get("fecha", ""))
+                es_fuerza = (str(row.get("tipo_registro", "")).lower() == "fuerza")
+                badge_bg = "#1e1b3a" if es_fuerza else "#1a3a1a"
+                badge_fg = "#a78bfa" if es_fuerza else "#a3e635"
+                actividad_id = row.get("actividad_garmin_id")
+                df_det = pd.DataFrame()
+                df_garmin = pd.DataFrame()
+                if es_fuerza and row.get("id") is not None:
+                    try:
+                        df_det = pd.read_sql_query(
+                            "SELECT ejercicio, series, repeticiones, peso, sensaciones, grupo_muscular FROM ejercicios_fuerza WHERE sesion_id=?",
+                            conn,
+                            params=(int(row.get("id")),),
+                        )
+                    except Exception:
+                        df_det = pd.DataFrame()
+                elif actividad_id is not None:
+                    try:
+                        df_garmin = pd.read_sql_query(
+                            "SELECT distancia_m, tiempo_seg, ritmo_medio, fc_media FROM actividades_garmin WHERE id_actividad=? LIMIT 1",
+                            conn,
+                            params=(actividad_id,),
+                        )
+                    except Exception:
+                        df_garmin = pd.DataFrame()
+
+                if es_fuerza and not df_det.empty:
+                    grupos = [g for g in df_det.get("grupo_muscular", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if g]
+                    titulo = f"{len(df_det)} ejercicios · {', '.join(grupos[:2]) if grupos else 'General'}"
+                elif not es_fuerza and not df_garmin.empty:
+                    km = float(df_garmin.iloc[0].get("distancia_m", 0) or 0) / 1000
+                    titulo = f"Carrera Z2 · {km:.1f}km"
+                elif not es_fuerza:
+                    titulo = resumen or "Carrera"
+                else:
+                    titulo = resumen or f"{len(df_det)} ejercicios"
+
+                with st.expander(f"• {titulo} · {fecha_d} · {tipo_txt}", expanded=False):
+                    st.markdown(
+                        f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:6px;'>"
+                        f"<span style='width:8px;height:8px;border-radius:50%;background:{tc};display:inline-block;'></span>"
+                        f"<div style='flex:1;min-width:0;'>"
+                        f"<div style='color:{TXT1};font-size:13px;font-weight:600;line-height:1.2;'>{titulo}</div>"
+                        f"<div style='color:{TXT3};font-size:10px;margin-top:2px;'>{fecha_d} · {tipo_txt}</div>"
+                        f"</div>"
+                        f"<span style='background:{badge_bg};color:{badge_fg};border-radius:999px;padding:2px 8px;"
+                        f"font-size:10px;font-weight:700;'>" + ("Fuerza" if es_fuerza else "Carrera") + "</span>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    if es_fuerza and not df_det.empty:
+                        st.markdown(
+                            f"<div style='margin-bottom:6px;color:{TXT2};font-size:11px;font-weight:600;'>"
+                            f"{len(df_det)} ejercicio{'s' if len(df_det) != 1 else ''} · "
+                            f"{', '.join(sorted(set(str(x) for x in df_det['ejercicio'].dropna().tolist()))[:3])}"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+                        cols_tbl = st.columns([3, 0.8, 0.8, 1, 1.4])
+                        with cols_tbl[0]:
+                            st.caption("Ejercicio")
+                        with cols_tbl[1]:
+                            st.caption("Series")
+                        with cols_tbl[2]:
+                            st.caption("Reps")
+                        with cols_tbl[3]:
+                            st.caption("Peso")
+                        with cols_tbl[4]:
+                            st.caption("Notas")
+                        for _, ej in df_det.iterrows():
+                            nota = str(ej.get("sensaciones", "") or "")
+                            chip = _color_nota(nota)
+                            if chip:
+                                _, bg_chip, fg_chip = chip
+                                chip_html = f"<span style='background:{bg_chip};color:{fg_chip};border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;'>" \
+                                            f"{nota if nota else '—'}" \
+                                            f"</span>"
+                            else:
+                                chip_html = f"<span style='color:{TXT3};font-size:10px;'>—</span>"
+                            fila_cols = st.columns([3, 0.8, 0.8, 1, 1.4])
+                            fila_cols[0].markdown(f"<div style='font-size:12px;color:{TXT1};'>{ej.get('ejercicio','—')}</div>", unsafe_allow_html=True)
+                            fila_cols[1].markdown(f"<div style='font-size:12px;color:{TXT2};'>{ej.get('series','—')}</div>", unsafe_allow_html=True)
+                            fila_cols[2].markdown(f"<div style='font-size:12px;color:{TXT2};'>{ej.get('repeticiones','—')}</div>", unsafe_allow_html=True)
+                            fila_cols[3].markdown(f"<div style='font-size:12px;color:{TXT2};'>{ej.get('peso','—')}</div>", unsafe_allow_html=True)
+                            fila_cols[4].markdown(chip_html, unsafe_allow_html=True)
+                    if not es_fuerza and not df_garmin.empty:
+                        g = df_garmin.iloc[0]
+                        km = (_safe_float(g.get("distancia_m")) or 0) / 1000
+                        ritmo_txt = _formatear_ritmo_min_km(g.get("ritmo_medio"))
+                        bpm_txt = _formatear_bpm(g.get("fc_media"))
+                        partes = [f"⌚ Enlazado con Garmin · {km:.1f}km"]
+                        if ritmo_txt:
+                            partes.append(ritmo_txt)
+                        if bpm_txt:
+                            partes.append(bpm_txt)
+                        st.markdown(
+                            f"<div style='color:#60a5fa;font-size:11px;margin:4px 0 8px;'>"
+                            f"{' · '.join(partes)}</div>",
+                            unsafe_allow_html=True,
+                        )
+
+        if not df_garmin_libre.empty:
+            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+            st.markdown(label_upper("Actividades Garmin"), unsafe_allow_html=True)
+            for _, row in df_garmin_libre.iterrows():
+                tipo_deporte = str(row.get("tipo_deporte", "") or "Garmin")
+                fecha_d = str(row.get("fecha", ""))
+                km = (_safe_float(row.get("distancia_m")) or 0) / 1000
+                ritmo_txt = _formatear_ritmo_min_km(row.get("ritmo_medio"))
+                bpm_txt = _formatear_bpm(row.get("fc_media"))
+                cadencia_val = _safe_float(row.get('cadencia_media'))
+                cadencia_txt = f"{cadencia_val:.0f} spm" if cadencia_val is not None else None
+                subtitulo = [f"⌚ Garmin · {km:.1f}km"]
+                if ritmo_txt:
+                    subtitulo.append(ritmo_txt)
+                if bpm_txt:
+                    subtitulo.append(bpm_txt)
+                if cadencia_txt:
+                    subtitulo.append(cadencia_txt)
+
+                with st.expander(f"• {tipo_deporte} · {fecha_d}", expanded=False):
+                    st.markdown(
+                        f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:6px;'>"
+                        f"<span style='width:8px;height:8px;border-radius:50%;background:#60a5fa;display:inline-block;'></span>"
+                        f"<div style='flex:1;min-width:0;'>"
+                        f"<div style='color:{TXT1};font-size:13px;font-weight:600;line-height:1.2;'>{tipo_deporte}</div>"
+                        f"<div style='color:{TXT3};font-size:10px;margin-top:2px;'>{fecha_d} · Garmin</div>"
+                        f"</div>"
+                        f"<span style='background:#17335c;color:#93c5fd;border-radius:999px;padding:2px 8px;"
+                        f"font-size:10px;font-weight:700;'>Garmin</span>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        f"<div style='color:#60a5fa;font-size:11px;margin:4px 0 8px;'>"
+                        f"{' · '.join(subtitulo)}</div>",
+                        unsafe_allow_html=True,
+                    )
+
+        conn.close()
+        _card_close()
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ from src.core.navbar import render_navbar
 from src.plan.motor import generar_plan_semana
 from src.plan.memoria_fuerza import generar_tabla_fuerza_semana
 from src.garmin.workout_builder import crear_workout_garmin, sesion_a_bloques, programar_workout_garmin
-from src.db.db_manager import get_db_connection
+from src.db.db_manager import get_db_connection, obtener_credenciales_garmin
 from src.core.plan_ui_helpers import (
     html_semaforo, html_barra_fase,
     html_detalle_carrera, html_detalle_fuerza, html_detalle_descanso,
@@ -51,16 +51,96 @@ div[data-testid="stRadio"] input[type="radio"] { display:none; }
 
 def _lunes_de(dt): return dt - timedelta(days=dt.weekday())
 
+def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
+    """Carga el plan guardado en BD para esta semana."""
+    conn = get_db_connection()
+    try:
+        semana_str = lunes.strftime("%Y-%m-%d")
+        rows = conn.execute(
+            "SELECT fecha, tipo, sesion, duracion_min, intensidad FROM plan_entrenamiento "
+            "WHERE usuario_id=? AND semana_inicio=? ORDER BY fecha",
+            (usuario_id, semana_str)
+        ).fetchall()
+        if not rows:
+            return None
+        # Convertir rows a estructura plan
+        dias = []
+        for row in rows:
+            dias.append({
+                "fecha": row[0],
+                "dia": datetime.fromisoformat(row[0]).strftime("%a").upper()[:3],
+                "tipo": row[1],
+                "descripcion_ia": row[2] or "",
+                "duracion_min": row[3] or 0,
+                "intensidad": row[4] or "Z1-Z2",
+                "km": 0,
+                "alerta": "",
+            })
+        return {"dias": dias, "existe_en_bd": True}
+    except:
+        return None
+    finally:
+        conn.close()
+
+def _adaptar_plan_a_hoy(plan: dict, lunes: datetime, hoy: datetime) -> dict:
+    """Si hoy es miércoles, mantiene solo de miércoles a domingo y rellena pasados con historial."""
+    hoy_date = hoy.date()
+    dias_adaptados = []
+
+    # Días que ya pasaron (lunes, martes si es miércoles) → usar historial
+    dias_pasados = (hoy_date - lunes.date()).days
+
+    if dias_pasados > 0:
+        # Cargar actividades realizadas de los días pasados
+        conn = get_db_connection()
+        try:
+            actvs = conn.execute(
+                "SELECT fecha, tipo, duracion_min, distancia_m/1000.0 as km FROM actividades_garmin "
+                "WHERE usuario_id=? AND fecha >= ? AND fecha < ? ORDER BY fecha",
+                (st.session_state.usuario_id, lunes.strftime("%Y-%m-%d"), hoy_date)
+            ).fetchall()
+            for i in range(dias_pasados):
+                fecha_dia = lunes + timedelta(days=i)
+                # Buscar actividad del día
+                actv = next((a for a in actvs if a[0][:10] == fecha_dia.strftime("%Y-%m-%d")), None)
+                if actv:
+                    dias_adaptados.append({
+                        "fecha": actv[0][:10],
+                        "dia": fecha_dia.strftime("%a").upper()[:3],
+                        "tipo": "Realizado: " + (actv[1] or "Actividad"),
+                        "km": actv[3] or 0,
+                        "duracion_min": actv[2] or 0,
+                        "intensidad": "Histórico",
+                        "descripcion_ia": "[De historial Garmin]",
+                        "alerta": "✓ Completado",
+                    })
+        finally:
+            conn.close()
+
+    # Días futuros (a partir de hoy)
+    for dia in plan.get("dias", []):
+        dia_date = datetime.fromisoformat(dia["fecha"]).date()
+        if dia_date >= hoy_date:
+            dias_adaptados.append(dia)
+
+    plan["dias"] = dias_adaptados
+    return plan
+
 
 if "plan_cursor" not in st.session_state:
     st.session_state.plan_cursor = _lunes_de(datetime.now())
 if "plan_data" not in st.session_state:
     st.session_state.plan_data = None
 if "plan_ia" not in st.session_state:
-    st.session_state.plan_ia = False
+    st.session_state.plan_ia = True  # Ahora por defecto con IA
 
-# Barra de navegación
+# Intentar cargar plan guardado en BD para esta semana
 lunes = st.session_state.plan_cursor
+if st.session_state.plan_data is None:
+    plan_bd = _cargar_plan_de_bd(user_actual, lunes)
+    if plan_bd:
+        st.session_state.plan_data = plan_bd
+        st.session_state.plan_ia = False  # Marcado como plan guardado
 c1, c2, c3, c4 = st.columns([0.08, 0.52, 0.08, 0.32])
 with c1:
     if st.button("◀", key="plan_prev"):
@@ -75,23 +155,23 @@ with c3:
         st.session_state.plan_cursor += timedelta(weeks=1)
         st.session_state.plan_data = None; st.rerun()
 with c4:
-    c4a, c4b = st.columns([1, 1])
+    c4a, c4b = st.columns([2, 1])
     with c4a:
-        if st.button("↻ Generar", use_container_width=True):
-            with st.spinner("Calculando plan..."):
-                st.session_state.plan_data = generar_plan_semana(user_actual, lunes)
-                st.session_state.plan_ia = False
-            st.rerun()
-    with c4b:
-        if st.button("⚡ Generar con IA", type="primary", use_container_width=True):
-            with st.spinner("Generando plan con IA personalizada..."):
+        if st.button("⚡ Regenerar plan (con IA)", type="primary", use_container_width=True):
+            with st.spinner():
                 from src.plan.entrenador import generar_entrenamiento_semana
-                st.session_state.plan_data = generar_entrenamiento_semana(user_actual, lunes)
+                plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
+                plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, lunes, datetime.now())
+                st.session_state.plan_data = plan_nuevo
                 st.session_state.plan_ia = True
             st.rerun()
+    with c4b:
+        sin_ia = st.checkbox("Sin IA", key="plan_sin_ia", label_visibility="collapsed")
+        if sin_ia:
+            st.session_state.plan_ia = False
 
 if st.session_state.plan_data is None:
-    st.info("Pulsa **↻ Generar / Regenerar** para calcular el plan de esta semana.")
+    st.info("Pulsa **⚡ Regenerar plan** para generar el plan de esta semana con IA personalizada.")
     st.stop()
 
 plan = st.session_state.plan_data
@@ -138,7 +218,9 @@ with col_det:
 
         if st.button("⌚ Enviar workout a Garmin", key=f"garmin_{idx}"):
             from src.garmin.garmin_sync import cargar_sesion_tokens
-            gc = st.session_state.get("gc") or cargar_sesion_tokens()
+            cred = obtener_credenciales_garmin(user_actual)
+            email = cred[0] if cred else None
+            gc = st.session_state.get("gc") or cargar_sesion_tokens(email)
             if gc is None:
                 st.warning("Conecta tu cuenta Garmin primero en la página Garmin.")
             else:

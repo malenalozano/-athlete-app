@@ -112,14 +112,14 @@ def render_macrociclo():
 
     fase_actual = obtener_fase_macrociclo(datetime.now())
     hoy = date.today()
-    inicio_macro = date(2026, 3, 1)
+    inicio_macro = date(2026, 4, 6)
     objetivo     = date(2027, 2, 21)
     total_dias   = (objetivo - inicio_macro).days
     pct_total    = max(0, min(100, int((hoy - inicio_macro).days / total_dias * 100)))
 
     fases = [
-        {"nombre": "Acondicionamiento", "meses": "Mar–May", "color": "#a3e635",
-         "inicio": date(2026, 3, 1), "fin": date(2026, 5, 31),
+        {"nombre": "Acondicionamiento", "meses": "Abr–May", "color": "#a3e635",
+         "inicio": date(2026, 4, 6), "fin": date(2026, 5, 31),
          "desc": "Base aeróbica, fuerza glúteo, volumen bajo"},
         {"nombre": "Prep. General",     "meses": "Jun–Ago", "color": "#22d3ee",
          "inicio": date(2026, 6, 1), "fin": date(2026, 8, 31),
@@ -179,12 +179,17 @@ def render_grafico_sueno(usuario_id: int):
     conn = get_db_connection()
     df = pd.read_sql_query(
         "SELECT fecha, horas_totales, score FROM datos_sueno "
-        "WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 7",
+        "WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 14",
+        conn, params=(usuario_id,),
+    )
+    df_bio = pd.read_sql_query(
+        "SELECT fecha, sleep_score FROM datos_biometricos_premium "
+        "WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 14",
         conn, params=(usuario_id,),
     )
     conn.close()
 
-    if df.empty:
+    if df.empty and df_bio.empty:
         st.markdown(
             "<div style='background:#161b22;border:1px solid #30363d;border-radius:10px;"
             "padding:20px;text-align:center;color:#484f58;font-size:13px'>"
@@ -193,12 +198,32 @@ def render_grafico_sueno(usuario_id: int):
         )
         return
 
-    df = df.sort_values("fecha").reset_index(drop=True)
+    if df.empty:
+        df = pd.DataFrame({"fecha": df_bio["fecha"], "horas_totales": None, "score": None})
+
+    # Fallback de score: si datos_sueno.score falta, usar datos_biometricos_premium.sleep_score de la misma fecha.
+    if not df_bio.empty:
+        score_map = {
+            str(r["fecha"])[:10]: pd.to_numeric(r["sleep_score"], errors="coerce")
+            for _, r in df_bio.iterrows()
+        }
+    else:
+        score_map = {}
+
+    df["fecha_key"] = df["fecha"].astype(str).str[:10]
+    df["score_num"] = pd.to_numeric(df["score"], errors="coerce")
+    df["score_num"] = df.apply(
+        lambda r: r["score_num"] if pd.notna(r["score_num"]) and float(r["score_num"]) > 0
+        else score_map.get(r["fecha_key"]),
+        axis=1,
+    )
+
+    df = df.sort_values("fecha").tail(7).reset_index(drop=True)
     dias    = [str(f)[:10] for f in df["fecha"]]
-    horas   = df["horas_totales"].fillna(0).tolist()
-    scores  = pd.to_numeric(df["score"], errors="coerce").fillna(0).tolist()
+    horas   = pd.to_numeric(df["horas_totales"], errors="coerce").fillna(0).tolist()
+    scores  = pd.to_numeric(df["score_num"], errors="coerce").tolist()
     colores = [
-        "#a3e635" if s >= 80 else "#f59e0b" if s >= 65 else "#ef4444"
+        "#a3e635" if pd.notna(s) and s >= 80 else "#f59e0b" if pd.notna(s) and s >= 65 else "#ef4444"
         for s in scores
     ]
 
@@ -212,6 +237,7 @@ def render_grafico_sueno(usuario_id: int):
         mode="lines+markers",
         line=dict(color="#a3e635", width=2),
         marker=dict(color=colores, size=8, line=dict(color="#0d1117", width=1.5)),
+        connectgaps=False,
         yaxis="y2",
     ))
     fig.update_layout(

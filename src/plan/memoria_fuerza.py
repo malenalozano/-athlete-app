@@ -76,11 +76,12 @@ def obtener_progresion_ejercicio(usuario_id: int, ejercicio: str, conn) -> dict:
 
 
 def generar_tabla_fuerza_semana(usuario_id: int, fase_macrociclo: dict,
-                                 semaforo: dict, conn) -> list:
+                                 semaforo: dict, acwr: float = None, conn=None) -> list:
     """
     Genera lista de ejercicios con pesos sugeridos según fase y semáforo.
     Si semáforo ROJO → reducir series a 2 y peso al 80%.
-    Si semáforo ÁMBAR → mantener peso actual sin subir.
+    Si semáforo ÁMBAR → mantener peso actual sin subir, reducir series -1.
+    Si ACWR > 1.3 → reducir series -1 pero mantener peso (calidad > cantidad).
     Devuelve lista de dicts listos para st.dataframe.
     """
     fase_nombre = fase_macrociclo.get("fase_nombre", "Acondicionamiento")
@@ -96,17 +97,21 @@ def generar_tabla_fuerza_semana(usuario_id: int, fase_macrociclo: dict,
         series = esquema["series"]
         reps = esquema["reps"]
         peso = prog["sugerencia_peso"]
+        razon = prog["razon"]
 
         if color == "rojo":
             series = min(series, 2)
             peso = round(float(prog["peso_actual"]) * 0.80 / 2.5) * 2.5
-            razon = "Semáforo rojo — -20% peso"
+            razon = "Semáforo rojo — -20% peso, -series"
         elif color == "ambar":
+            series = max(series - 1, 2)
             peso = prog["peso_actual"]  # no subir
-            razon = f"Semáforo ámbar — {prog['razon']} (sin subir)"
-        else:
-            razon = prog["razon"]
-
+            razon = f"Semáforo ámbar — {prog['razon']} (sin subir, -1 serie)"
+        elif acwr is not None and acwr > 1.3:
+            # ACWR alto: reducir series pero mantener peso (calidad biomecánica)
+            series = max(series - 1, 2)
+            razon = f"{prog['razon']} · ACWR {acwr:.2f} alto — mantener peso, -1 serie"
+        
         filas.append({
             "Ejercicio": ej["ejercicio"],
             "Grupo": ej["grupo"],

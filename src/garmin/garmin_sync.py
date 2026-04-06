@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 from datetime import datetime, timedelta
 from garminconnect import Garmin, GarminConnectConnectionError, GarminConnectAuthenticationError
 from dotenv import load_dotenv
@@ -185,13 +186,60 @@ def _extract_activity_metrics(activity, summary, details):
     }
 
 
+def _extract_sleep_score(data):
+    def _score_from_block(block):
+        if not isinstance(block, dict):
+            return None
+
+        # Formato frecuente: {"overallSleepScore": {"value": 82}}
+        overall = block.get("overallSleepScore")
+        if isinstance(overall, dict):
+            score = _to_int(overall.get("value"))
+            if score is not None:
+                return score
+        elif overall is not None:
+            score = _to_int(overall)
+            if score is not None:
+                return score
+
+        # Formato alternativo: {"sleepScores": [{"qualifierKey": "OVERALL", "value": 82}, ...]}
+        sleep_scores = block.get("sleepScores")
+        if isinstance(sleep_scores, list):
+            for item in sleep_scores:
+                if not isinstance(item, dict):
+                    continue
+                qualifier = str(item.get("qualifierKey", "")).upper()
+                if qualifier in {"OVERALL", "SLEEP_SCORE", "TOTAL"}:
+                    score = _to_int(item.get("value"))
+                    if score is not None:
+                        return score
+
+            # Fallback de la lista: tomar el máximo valor válido (normalmente 0-100).
+            values = [_to_int(item.get("value")) for item in sleep_scores if isinstance(item, dict)]
+            values = [v for v in values if v is not None and 0 < v <= 100]
+            if values:
+                return max(values)
+
+        # Otros nombres vistos en integraciones/SDKs.
+        return _to_int(_last_number(block, ["sleepScore", "sleepQualityScore", "overallScore"]))
+
+    # Algunos payloads traen datos al tope; otros bajo dailySleepDTO.
+    for block in (data, data.get("dailySleepDTO")):
+        score = _score_from_block(block)
+        if score is not None:
+            return score
+
+    # Último fallback global, por si la estructura cambia.
+    return _to_int(_last_number(data, ["sleepScore", "sleepQualityScore", "overallScore"]))
+
+
 def _extract_sleep_metrics(data, fecha_iso):
     if not data:
         return None
 
-    score = None
-    if isinstance(data.get("overallSleepScore"), dict):
-        score = _to_int(data.get("overallSleepScore", {}).get("value"))
+    score = _extract_sleep_score(data)
+    if score is not None and score <= 0:
+        score = None
 
     total_seg = _first_number(data, ["sleepTimeSeconds", "totalSleepSeconds", "overallSleepDurationSeconds"])
     deep_seg = _first_number(data, ["deepSleepSeconds"])
@@ -199,13 +247,38 @@ def _extract_sleep_metrics(data, fecha_iso):
     awake_seg = _first_number(data, ["awakeSleepSeconds", "awakeSeconds", "sleepAwakeSeconds"])
     awakenings = _to_int(_first_number(data, ["awakeCount", "awakeningsCount", "restlessMomentsCount"]))
 
+    def _hours_or_none(seconds_value):
+        val = _to_float(seconds_value)
+        if val is None or val <= 0:
+            return None
+        return round(val / 3600, 2)
+
+    horas_totales = _hours_or_none(total_seg)
+    sleep_profundo_horas = _hours_or_none(deep_seg)
+    sleep_rem_horas = _hours_or_none(rem_seg)
+    sleep_vigilia_horas = _hours_or_none(awake_seg)
+
+    if awakenings is not None and awakenings <= 0:
+        awakenings = None
+
+    # Si todo viene vacío/cero, Garmin aún no ha publicado los datos del día.
+    if not any([
+        horas_totales is not None,
+        score is not None,
+        sleep_profundo_horas is not None,
+        sleep_rem_horas is not None,
+        sleep_vigilia_horas is not None,
+        awakenings is not None,
+    ]):
+        return None
+
     return {
         "fecha": fecha_iso,
-        "horas_totales": round((total_seg or 0) / 3600, 2),
+        "horas_totales": horas_totales,
         "score": score,
-        "sleep_profundo_horas": round((deep_seg or 0) / 3600, 2),
-        "sleep_rem_horas": round((rem_seg or 0) / 3600, 2),
-        "sleep_vigilia_horas": round((awake_seg or 0) / 3600, 2),
+        "sleep_profundo_horas": sleep_profundo_horas,
+        "sleep_rem_horas": sleep_rem_horas,
+        "sleep_vigilia_horas": sleep_vigilia_horas,
         "despertares": awakenings,
     }
 
@@ -494,23 +567,49 @@ def sincronizar_actividades_inteligente(email, password, usuario_id, num_activid
 GARTH_HOME = os.path.expanduser("~/.garth_athlete")
 
 
-def cargar_sesion_tokens():
+def _safe_email_slug(email: str) -> str:
+    return re.sub(r"[^a-z0-9._-]+", "_", str(email or "").strip().lower())
+
+
+def _token_homes(email: str | None = None):
+    """
+    Construye rutas candidatas de tokens.
+    - Preferimos un directorio por cuenta para soportar multiusuario.
+    - Mantenemos compatibilidad con el path legacy (~/.garth_athlete).
+    """
+    homes = []
+    if email:
+        homes.append(os.path.join(GARTH_HOME, _safe_email_slug(email)))
+    homes.append(GARTH_HOME)
+    return homes
+
+
+def _load_valid_client_from_home(home: str):
+    if not os.path.exists(home) or not os.listdir(home):
+        return None
+    try:
+        client = Garmin()
+        client.garth.load(home)
+        client.get_full_name()  # valida token/refresh token
+        logger.debug(f"✓ Sesión Garmin válida cargada desde {home}")
+        return client
+    except Exception as e:
+        logger.warning(f"Tokens inválidos/expirados en {home}: {type(e).__name__}: {e}")
+        return None
+
+
+def cargar_sesion_tokens(email: str | None = None):
     """
     Carga la sesión SOLO desde tokens garth guardados en disco.
     NO hace login SSO. NO toca las credenciales.
     Devuelve el cliente Garmin si los tokens existen, o None si no hay tokens.
     El cliente usa el refresh_token automáticamente si el access_token expiró.
     """
-    if not os.path.exists(GARTH_HOME) or not os.listdir(GARTH_HOME):
-        return None
-    try:
-        client = Garmin()
-        client.garth.load(GARTH_HOME)
-        logger.debug("✓ Sesión cargada desde tokens de disco")
-        return client
-    except Exception as e:
-        logger.warning(f"No se pudo cargar sesión desde tokens: {e}")
-        return None
+    for home in _token_homes(email):
+        client = _load_valid_client_from_home(home)
+        if client is not None:
+            return client
+    return None
 
 
 def sincronizar_actividades_con_sesion(gc, usuario_id: int, num_actividades: int = 20) -> int:
@@ -601,24 +700,19 @@ def iniciar_sesion_garmin(email, password):
     - Si no hay tokens → login con credenciales y guarda tokens.
     Ejecutar scripts/garmin_login_once.py una vez para inicializar tokens.
     """
-    # 1. Intentar con tokens pre-guardados por garmin_login_once.py
-    if os.path.exists(GARTH_HOME) and os.listdir(GARTH_HOME):
-        try:
-            client = Garmin()
-            client.garth.load(GARTH_HOME)
-            client.get_full_name()   # prueba rápida de sesión válida
-            logger.debug("✓ Login via GARTH_HOME OK")
-            return client
-        except Exception as e:
-            logger.warning(f"Tokens expirados ({type(e).__name__}), haciendo login fresco...")
+    # 1. Intentar con tokens de esta cuenta (y fallback legacy)
+    client = cargar_sesion_tokens(email)
+    if client is not None:
+        return client
 
     # 2. Login fresco con credenciales
     client = Garmin(email=email, password=password)
     try:
         client.login()
-        os.makedirs(GARTH_HOME, exist_ok=True)
-        client.garth.dump(GARTH_HOME)
-        logger.debug(f"✓ Tokens guardados en {GARTH_HOME}")
+        token_home = os.path.join(GARTH_HOME, _safe_email_slug(email)) if email else GARTH_HOME
+        os.makedirs(token_home, exist_ok=True)
+        client.garth.dump(token_home)
+        logger.debug(f"✓ Tokens guardados en {token_home}")
         return client
     except GarminConnectAuthenticationError as e:
         logger.error(f"❌ Autenticación fallida: {e}")
@@ -843,6 +937,7 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
     ]
 
     act_guardadas = 0
+    actividades_importadas = []
     if actividades_nuevas:
         conexion = get_db_connection()
         cursor = conexion.cursor()
@@ -893,6 +988,14 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
                      metrics.get("oscilacion_vertical_cm"),
                      metrics.get("training_effect_aerobico"), metrics.get("training_effect_anaerobico")))
                 act_guardadas += 1
+                actividades_importadas.append({
+                    "id_actividad": id_actividad,
+                    "fecha": fecha,
+                    "tipo_deporte": tipo_deporte,
+                    "km": round((distancia_m or 0) / 1000, 2) if distancia_m is not None else None,
+                    "min": round((tiempo_seg or 0) / 60, 1) if tiempo_seg is not None else None,
+                    "fc_media": fc_media,
+                })
             conexion.commit()
         except Exception as e:
             conexion.rollback()
@@ -905,6 +1008,9 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
     latest_running = latest_running_list[0] if latest_running_list else None
 
     dias_bio = 0
+    dias_sueno = 0
+    biometricos_importados = []
+    sueno_importado = []
     for i in range(dias):
         fecha = (datetime.now() - timedelta(days=i)).date()
         fecha_iso = fecha.strftime("%Y-%m-%d")
@@ -914,6 +1020,14 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
             sleep_metrics = obtener_datos_sueno(gc, fecha)
             if sleep_metrics:
                 guardar_sueno_db(usuario_id, sleep_metrics)
+                dias_sueno += 1
+                sueno_importado.append({
+                    "fecha": fecha_iso,
+                    "horas_totales": sleep_metrics.get("horas_totales"),
+                    "score": sleep_metrics.get("score"),
+                    "sleep_profundo_horas": sleep_metrics.get("sleep_profundo_horas"),
+                    "sleep_rem_horas": sleep_metrics.get("sleep_rem_horas"),
+                })
         except Exception:
             sleep_metrics = None
 
@@ -933,10 +1047,27 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
             if _has_useful_daily_metrics(daily_metrics):
                 guardar_metricas_premium_db(usuario_id, daily_metrics)
                 dias_bio += 1
+                biometricos_importados.append({
+                    "fecha": fecha_iso,
+                    "hrv_ms": daily_metrics.get("hrv_ms"),
+                    "fc_reposo": daily_metrics.get("fc_reposo"),
+                    "spo2": daily_metrics.get("spo2"),
+                    "estres_medio": daily_metrics.get("estres_medio"),
+                    "body_battery_max": daily_metrics.get("body_battery_max"),
+                    "body_battery_min": daily_metrics.get("body_battery_min"),
+                    "sleep_score": daily_metrics.get("sleep_score"),
+                })
         except Exception:
             pass
 
-    return {"actividades": act_guardadas, "dias_bio": dias_bio}
+    return {
+        "actividades": act_guardadas,
+        "dias_bio": dias_bio,
+        "dias_sueno": dias_sueno,
+        "actividades_importadas": actividades_importadas,
+        "biometricos_importados": biometricos_importados,
+        "sueno_importado": sueno_importado,
+    }
 
 
 if __name__ == "__main__":

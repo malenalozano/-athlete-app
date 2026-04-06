@@ -125,10 +125,11 @@ if "usuario_id" not in st.session_state:
 asegurar_tabla_ejercicios(st.session_state["usuario_id"])
 
 # Routing: position="hidden" oculta la navbar nativa
-dashboard  = st.Page("pages/1_dashboard.py", title="Dashboard",    icon="📊", default=True)
-plan       = st.Page("pages/2_plan.py",      title="Plan semanal", icon="📅")
-diario     = st.Page("pages/3_diario.py",    title="Diario",       icon="📓")
-garmin     = st.Page("pages/4_garmin.py",    title="Garmin",       icon="⌚")
+dashboard  = st.Page("pages/01_dashboard.py",  title="Dashboard",    icon="📊", default=True)
+plan       = st.Page("pages/02_plan.py",       title="Plan semanal", icon="📅")
+diario     = st.Page("pages/03_diario.py",     title="Diario",       icon="📓")
+garmin     = st.Page("pages/04_garmin.py",     title="Garmin",       icon="⌚")
+ejercicios = st.Page("pages/05_ejercicios.py", title="Ejercicios",   icon="🏋️")
 
-pg = st.navigation([dashboard, plan, diario, garmin], position="hidden")
+pg = st.navigation([dashboard, plan, diario, garmin, ejercicios], position="hidden")
 pg.run()

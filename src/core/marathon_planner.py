@@ -93,49 +93,51 @@ def analizar_estado_atleta(df_running):
 def generar_plan_maraton(estado, semanas=16):
     """
     Genera un plan de entrenamiento para maratón con periodización personalizada.
+    MACROCICLO: Inicia 6 de abril de 2026, termina 21 de febrero de 2027 (46 semanas).
     """
-    # Definición de fases del macrociclo
+    # Definición de fases del macrociclo: ABRIL 2026 - FEBRERO 2027
     fases = [
         {
             'nombre': 'Acondicionamiento General',
-            'meses': ['marzo', 'abril', 'mayo'],
+            'meses': ['abril', 'mayo'],  # 6 abril - 31 mayo (8 semanas)
             'volumen': (20, 30),
             'fuerza': 'Hipertrofia glúteo. Máximo Volumen: 4 días/semana.',
             'enfoque': 'Curar tibia + Hipertrofia base + Base aeróbica (Z2). Mucha bici/elíptica.'
         },
         {
             'nombre': 'Preparación General',
-            'meses': ['junio', 'julio', 'agosto'],
+            'meses': ['junio', 'julio', 'agosto'],  # 1 junio - 31 agosto (13 semanas)
             'volumen': (35, 45),
             'fuerza': 'Fuerza Máxima: Cargas altas, pocas repes.',
             'enfoque': 'Construcción de resistencia y fuerza máxima.'
         },
         {
             'nombre': 'Preparación Específica',
-            'meses': ['septiembre', 'octubre', 'noviembre'],
+            'meses': ['septiembre', 'octubre', 'noviembre'],  # 1 sept - 30 nov (13 semanas)
             'volumen': (50, 60),
             'fuerza': 'Mantenimiento: 2-3 días. Menos series, más peso.',
             'enfoque': 'Ritmos de competición (Media Maratón Nov).' 
         },
         {
             'nombre': 'Pico de Forma',
-            'meses': ['diciembre', 'enero'],
+            'meses': ['diciembre', 'enero'],  # 1 dic - 31 enero (9 semanas)
             'volumen': (60, 75),
             'fuerza': 'Funcional: Foco en core y estabilidad.',
             'enfoque': 'Tiradas largas y ritmos Maratón.'
         },
         {
             'nombre': 'Tapering y Competición',
-            'meses': ['febrero'],
+            'meses': ['febrero'],  # 1 feb - 21 feb (3 semanas)
             'volumen': (8, 30),  # Descenso drástico (-60%)
             'fuerza': 'Mínimo: Movilidad y activación.',
             'enfoque': 'Supercompensación (GAS).'
         }
     ]
     # Calcular semanas hasta la competición
+    fecha_inicio_macrociclo = datetime.strptime('2026-04-06', '%Y-%m-%d')
     fecha_competicion = datetime.strptime('2027-02-21', '%Y-%m-%d')
     hoy = datetime.now()
-    semanas_totales = (fecha_competicion - hoy).days // 7
+    semanas_totales = (fecha_competicion - fecha_inicio_macrociclo).days // 7
     # Asignar semanas a cada fase según meses
     meses_fase = sum([len(f['meses']) for f in fases])
     semanas_por_mes = semanas_totales / meses_fase
@@ -228,70 +230,102 @@ def crear_regenerativo(distancia_km, fcmax_pct=70, duracion_min=None):
 
 def obtener_fase_macrociclo(fecha_actual=None):
     """
-    Devuelve la fase del macrociclo y sus reglas según el mes actual.
+    Devuelve la fase del macrociclo y sus reglas según la fecha actual.
+    MACROCICLO: 6 abril 2026 - 21 febrero 2027
     """
     if fecha_actual is None:
         fecha_actual = datetime.now()
-    mes_actual = fecha_actual.month
-    # 1. ACONDICIONAMIENTO GENERAL (Marzo - Mayo)
-    if mes_actual in [3, 4, 5]:
-        return {
-            "fase_nombre": "Acondicionamiento General",
-            "km_semanales_max": 30,
-            "dias_fuerza_recomendados": 4,
-            "enfoque_fuerza": "Hipertrofia base y curar tibia. Foco en glúteo.",
-            "enfoque_running": "Base aeróbica (Z2). Mucha bici/elíptica.",
-            "restricciones": {"limitar_impacto": True, "permitir_series_running": False}
+    
+    # Definir fechas de inicio para cada fase
+    fecha_inicio_macrociclo = datetime.strptime('2026-04-06', '%Y-%m-%d')
+    
+    # Fases con sus fechas
+    fases_fechas = [
+        {
+            'nombre': 'Acondicionamiento General',
+            'inicio': datetime.strptime('2026-04-06', '%Y-%m-%d'),
+            'fin': datetime.strptime('2026-05-31', '%Y-%m-%d'),
+            'km_semanales_max': 30,
+            'dias_fuerza_recomendados': 4,
+            'enfoque_fuerza': 'Hipertrofia base y curar tibia. Foco en glúteo.',
+            'enfoque_running': 'Base aeróbica (Z2). Mucha bici/elíptica.',
+            'restricciones': {'limitar_impacto': True, 'permitir_series_running': False}
+        },
+        {
+            'nombre': 'Preparación General',
+            'inicio': datetime.strptime('2026-06-01', '%Y-%m-%d'),
+            'fin': datetime.strptime('2026-08-31', '%Y-%m-%d'),
+            'km_semanales_max': 45,
+            'dias_fuerza_recomendados': 3,
+            'enfoque_fuerza': 'Fuerza Máxima: Cargas altas, pocas repeticiones.',
+            'enfoque_running': 'Construcción de resistencia.',
+            'restricciones': {'limitar_impacto': False, 'permitir_series_running': True}
+        },
+        {
+            'nombre': 'Preparación Específica',
+            'inicio': datetime.strptime('2026-09-01', '%Y-%m-%d'),
+            'fin': datetime.strptime('2026-11-30', '%Y-%m-%d'),
+            'km_semanales_max': 60,
+            'dias_fuerza_recomendados': 2,
+            'enfoque_fuerza': 'Mantenimiento: Bajar nº de ejercicios/series, mantener peso.',
+            'enfoque_running': 'Ritmos competición (Media Maratón Nov).',
+            'restricciones': {'limitar_impacto': False, 'permitir_series_running': True}
+        },
+        {
+            'nombre': 'Pico de Forma',
+            'inicio': datetime.strptime('2026-12-01', '%Y-%m-%d'),
+            'fin': datetime.strptime('2027-01-31', '%Y-%m-%d'),
+            'km_semanales_max': 75,
+            'dias_fuerza_recomendados': 2,
+            'enfoque_fuerza': 'Funcional: Foco en core y estabilidad.',
+            'enfoque_running': 'Tiradas largas y ritmos Maratón.',
+            'restricciones': {'limitar_impacto': False, 'permitir_series_running': True}
+        },
+        {
+            'nombre': 'Tapering y Competición',
+            'inicio': datetime.strptime('2027-02-01', '%Y-%m-%d'),
+            'fin': datetime.strptime('2027-02-21', '%Y-%m-%d'),
+            'km_semanales_max': 30,
+            'dias_fuerza_recomendados': 1,
+            'enfoque_fuerza': 'Mínimo: Movilidad y activación.',
+            'enfoque_running': 'Supercompensación (GAS). Mínima fatiga.',
+            'restricciones': {'limitar_impacto': True, 'permitir_series_running': False}
         }
-    # 2. PREPARACIÓN GENERAL (Junio - Agosto)
-    elif mes_actual in [6, 7, 8]:
+    ]
+    
+    # Buscar fase actual
+    for fase in fases_fechas:
+        if fase['inicio'] <= fecha_actual <= fase['fin']:
+            return {
+                'fase_nombre': fase['nombre'],
+                'km_semanales_max': fase['km_semanales_max'],
+                'dias_fuerza_recomendados': fase['dias_fuerza_recomendados'],
+                'enfoque_fuerza': fase['enfoque_fuerza'],
+                'enfoque_running': fase['enfoque_running'],
+                'restricciones': fase['restricciones']
+            }
+    
+    # Si la fecha está antes del macrociclo, retornar fase inicial
+    if fecha_actual < fases_fechas[0]['inicio']:
         return {
-            "fase_nombre": "Preparación General",
-            "km_semanales_max": 45,
-            "dias_fuerza_recomendados": 3,
-            "enfoque_fuerza": "Fuerza Máxima: Cargas altas, pocas repeticiones.",
-            "enfoque_running": "Construcción de resistencia.",
-            "restricciones": {"limitar_impacto": False, "permitir_series_running": True}
+            'fase_nombre': 'Acondicionamiento General (Próximo)',
+            'km_semanales_max': 30,
+            'dias_fuerza_recomendados': 4,
+            'enfoque_fuerza': 'Prepararse para hipertrofia base.',
+            'enfoque_running': 'Base aeróbica (Z2).',
+            'restricciones': {'limitar_impacto': True, 'permitir_series_running': False}
         }
-    # 3. PREPARACIÓN ESPECÍFICA (Septiembre - Noviembre)
-    elif mes_actual in [9, 10, 11]:
-        return {
-            "fase_nombre": "Preparación Específica",
-            "km_semanales_max": 60,
-            "dias_fuerza_recomendados": 2,
-            "enfoque_fuerza": "Mantenimiento: Bajar nº de ejercicios/series, mantener peso.",
-            "enfoque_running": "Ritmos competición (Media Maratón Nov).",
-            "restricciones": {"limitar_impacto": False, "permitir_series_running": True}
-        }
-    # 4. PICO DE FORMA (Diciembre - Enero)
-    elif mes_actual in [12, 1]:
-        return {
-            "fase_nombre": "Pico de Forma",
-            "km_semanales_max": 75,
-            "dias_fuerza_recomendados": 2,
-            "enfoque_fuerza": "Funcional: Foco en core y estabilidad.",
-            "enfoque_running": "Tiradas largas y ritmos Maratón.",
-            "restricciones": {"limitar_impacto": False, "permitir_series_running": True}
-        }
-    # 5. TAPERING Y COMPETICIÓN (Febrero)
-    elif mes_actual == 2:
-        return {
-            "fase_nombre": "Tapering y Competición",
-            "km_semanales_max": 30, # Descenso drástico
-            "dias_fuerza_recomendados": 1,
-            "enfoque_fuerza": "Mínimo: Movilidad y activación.",
-            "enfoque_running": "Supercompensación (GAS). Mínima fatiga.",
-            "restricciones": {"limitar_impacto": True, "permitir_series_running": False}
-        }
-    else:
-        return {
-            "fase_nombre": "Desconocida",
-            "km_semanales_max": 0,
-            "dias_fuerza_recomendados": 0,
-            "enfoque_fuerza": "",
-            "enfoque_running": "",
-            "restricciones": {}
-        }
+    
+    # Si la fecha está después, ya pasó la maratón
+    return {
+        'fase_nombre': 'Competición Finalizada',
+        'km_semanales_max': 0,
+        'dias_fuerza_recomendados': 0,
+        'enfoque_fuerza': 'Recuperación post-competición.',
+        'enfoque_running': 'Recuperación activa.',
+        'restricciones': {'limitar_impacto': False, 'permitir_series_running': False}
+    }
+
 
 # Cada función puede ser adaptada según los factores individuales del atleta.
 
@@ -302,6 +336,7 @@ if __name__ == "__main__":
     estado = analizar_estado_atleta(df_running)
     plan = generar_plan_maraton(estado)
     mostrar_plan(plan)
+
 
 def evaluar_cadencia_y_recomendar(df_actividades):
     """

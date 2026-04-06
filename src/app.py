@@ -2883,7 +2883,7 @@ with st.container(key="nav_shell"):
 if _do_sync:
     cred = obtener_credenciales_garmin(user_actual)
     if cred and cred[0]:
-        with st.spinner("Conectando con Garmin..."):
+        with st.spinner(""):
             try:
                 email_g, p_enc_g = cred
                 pw_g = desencriptar_password(p_enc_g)

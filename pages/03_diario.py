@@ -28,19 +28,25 @@ user_actual = st.session_state.usuario_id
 
 st.markdown(f"<h2 style='color:#e6edf3;font-weight:600;margin:8px 0 16px;'>Diario</h2>",
             unsafe_allow_html=True)
-tab1, tab2, tab3, tab4 = st.tabs(["🩸 Ciclo", "📓 Entreno libre", "🏋️ Ejercicios", "🩹 Lesiones"])
+tab1, tab2, tab3, tab4 = st.tabs(["📓 Entreno libre", "🩸 Ciclo", "🏋️ Ejercicios", "🩹 Lesiones"])
 
 # ===========================================================================
-# TAB 1 — CICLO MENSTRUAL
+# TAB 1 — DIARIO DE ENTRENAMIENTO
 # ===========================================================================
 with tab1:
+    render_tab_entreno(user_actual)
+
+# ===========================================================================
+# TAB 2 — CICLO MENSTRUAL
+# ===========================================================================
+with tab2:
     if user_actual != 1:
         st.info("Esta sección no está disponible para este perfil.")
     else:
         _conn = get_db_connection()
         _last_bleed = pd.read_sql_query(
             "SELECT fecha FROM diario_fisiologia WHERE usuario_id=? AND sangre IS NOT NULL "
-            "AND sangre != 'Sin sangre' ORDER BY fecha DESC LIMIT 1",
+            "AND sangre IN ('Ligero','Medio','Fuerte') ORDER BY fecha DESC LIMIT 1",
             _conn, params=(user_actual,))
         _conn.close()
 
@@ -83,23 +89,24 @@ with tab1:
                 st.markdown(label_upper("Ánimo"), unsafe_allow_html=True)
                 animo_sel = st.pills("_a", animo_opts, selection_mode="multi", label_visibility="collapsed")
                 st.markdown(label_upper("Entreno"), unsafe_allow_html=True)
-                fb_sel = st.pills("_f", fb_opts, selection_mode="single", default="🗿 Regulero", label_visibility="collapsed")
+                fb_sel = st.pills("_f", fb_opts, selection_mode="single", label_visibility="collapsed")
                 if st.form_submit_button("Guardar", use_container_width=True, type="primary"):
                     sv = sangre_map.get(sangre or "⚪ Sin sangre", "Sin sangre")
-                    fase = "Menstruación" if sv != "Sin sangre" else "Lútea"
-                    if sv == "Sin sangre" and not _last_bleed.empty:
+                    es_regla_real = sv in ("Ligero", "Medio", "Fuerte")
+                    fase = "Menstruación" if es_regla_real else "Lútea"
+                    if not es_regla_real and not _last_bleed.empty:
                         _ld = pd.to_datetime(_last_bleed.iloc[0]["fecha"]).date()
                         _cd = (fecha - _ld).days + 1
                         fase = "Menstruación" if _cd<=5 else "Folicular" if _cd<=11 else "Ovulación" if _cd<=16 else "Lútea"
                     sint_str  = ", ".join([sint_map.get(x,x)  for x in (sint_sel  or [])])
                     animo_str = ", ".join([animo_map.get(x,x) for x in (animo_sel or [])]) or "Normal"
-                    fb_str    = fb_map.get(fb_sel or "🗿 Regulero", "Regulero")
+                    fb_str    = fb_map.get(fb_sel) if fb_sel else None
                     conn = get_db_connection()
                     conn.cursor().execute(
                         "INSERT INTO diario_fisiologia (usuario_id,fecha,fase_ciclo,fatiga_subjetiva,"
                         "dolor_notas,sangre,sintomas,estado_animo,feedback_entreno) VALUES (?,?,?,?,?,?,?,?,?)",
                         (user_actual, str(fecha), fase, None, sint_str,
-                         sv if sv != "Sin sangre" else None, sint_str, animo_str, fb_str))
+                         sv if es_regla_real else None, sint_str, animo_str, fb_str))
                     conn.commit(); conn.close()
                     st.cache_data.clear(); st.success("Registro guardado.")
 
@@ -148,12 +155,6 @@ with tab1:
                     st.info("Registra al menos una menstruación para ver el calendario.")
 
 # ===========================================================================
-# TAB 2 — DIARIO DE ENTRENAMIENTO
-# ===========================================================================
-with tab2:
-    render_tab_entreno(user_actual)
-
-# ===========================================================================
 # TAB 3 — EJERCICIOS
 # ===========================================================================
 with tab3:
@@ -164,3 +165,4 @@ with tab3:
 # ===========================================================================
 with tab4:
     render_tab_lesiones(user_actual)
+

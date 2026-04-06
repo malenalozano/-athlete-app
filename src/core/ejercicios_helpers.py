@@ -4,6 +4,8 @@ Helpers de DB + UI para pages/5_ejercicios.py.
 """
 
 import json
+import re
+import unicodedata
 import pandas as pd
 import streamlit as st
 from datetime import datetime
@@ -33,6 +35,37 @@ GRUPO_COLOR = {
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
+
+
+def _normalizar_texto(texto: str) -> str:
+    if texto is None:
+        return ""
+    texto = str(texto).strip().lower()
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(ch for ch in texto if not unicodedata.combining(ch))
+    texto = re.sub(r"[^a-z0-9]+", "", texto)
+    return texto
+
+
+def _candidatos_nombre(nombre: str) -> set[str]:
+    base = _normalizar_texto(nombre)
+    candidatos = {base}
+    if base:
+        candidatos.add(base.replace("hiptrust", "hipthrust"))
+        candidatos.add(base.replace("thrust", "trust"))
+        candidatos.add(base.replace("trust", "thrust"))
+        candidatos.add(base.replace("sentadillabulgara", "bulgara"))
+        candidatos.add(base.replace("sentadillabulgaras", "bulgara"))
+    return {c for c in candidatos if c}
+
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        if pd.isna(value):
+            return default
+        return int(value)
+    except Exception:
+        return default
 
 def cargar_biblioteca(usuario_id: int) -> pd.DataFrame:
     conn = get_db_connection()
@@ -82,16 +115,28 @@ def buscar_ejercicio_id(usuario_id: int, nombre: str) -> int | None:
         rows = []
     finally:
         conn.close()
-    nombre_l = nombre.lower().strip()
+    nombre_l = str(nombre or "").lower().strip()
+    nombre_norm = _normalizar_texto(nombre_l)
+    candidatos = _candidatos_nombre(nombre_l)
     for eid, enombre, ealias in rows:
-        if nombre_l == enombre.lower():
+        enombre_norm = _normalizar_texto(enombre)
+        if nombre_l == enombre.lower() or nombre_norm == enombre_norm or nombre_norm in enombre_norm or enombre_norm in nombre_norm:
             return eid
         if ealias:
             try:
                 aliases = [a.lower() for a in json.loads(ealias)]
             except Exception:
                 aliases = [ealias.lower()]
-            if any(nombre_l in a or a in nombre_l for a in aliases):
+            for alias in aliases:
+                alias_norm = _normalizar_texto(alias)
+                if alias_norm in candidatos or nombre_norm in alias_norm or alias_norm in nombre_norm:
+                    return eid
+                if any(c in alias_norm or alias_norm in c for c in candidatos):
+                    return eid
+    # Último fallback: si el usuario escribió una variante común, intentar por nombre aproximado.
+    for eid, enombre, ealias in rows:
+        enombre_norm = _normalizar_texto(enombre)
+        if enombre_norm and any(c.startswith(enombre_norm[:5]) or enombre_norm.startswith(c[:5]) for c in candidatos if c):
                 return eid
     return None
 
@@ -109,6 +154,70 @@ def guardar_historial(usuario_id: int, ejercicio_id: int, fecha: str,
         pass
     finally:
         conn.close()
+
+
+def reconciliar_historial_desde_sesiones(usuario_id: int) -> int:
+    """Rellena historial_ejercicio a partir de ejercicios_fuerza ya guardados.
+
+    Sirve para recuperar sesiones antiguas que quedaron sin enlazar por un nombre
+    escrito con variante o sin alias.
+    """
+    conn = get_db_connection()
+    insertados = 0
+    try:
+        sesiones = conn.execute(
+            "SELECT sf.id, sf.fecha, ef.ejercicio, ef.peso, ef.series, ef.repeticiones, ef.rpe, ef.sensaciones "
+            "FROM sesiones_fuerza sf "
+            "JOIN ejercicios_fuerza ef ON ef.sesion_id = sf.id "
+            "WHERE sf.usuario_id=? ORDER BY sf.fecha DESC",
+            (usuario_id,),
+        ).fetchall()
+
+        for sesion_id, fecha, ejercicio, peso, series, repeticiones, rpe, sensaciones in sesiones:
+            ejercicio_id = buscar_ejercicio_id(usuario_id, ejercicio)
+            if ejercicio_id is None:
+                continue
+
+            existe = conn.execute(
+                "SELECT 1 FROM historial_ejercicio "
+                "WHERE usuario_id=? AND ejercicio_id=? AND fecha=? AND peso=? AND series=? AND repeticiones=? "
+                "AND COALESCE(rpe, 0)=COALESCE(?, 0) AND COALESCE(notas, '')=COALESCE(?, '') LIMIT 1",
+                (
+                    usuario_id,
+                    ejercicio_id,
+                    fecha,
+                    float(0 if pd.isna(peso) else (peso or 0)),
+                    _safe_int(series),
+                    _safe_int(repeticiones),
+                    _safe_int(rpe),
+                    str(sensaciones or ""),
+                ),
+            ).fetchone()
+            if existe:
+                continue
+
+            conn.execute(
+                "INSERT INTO historial_ejercicio (ejercicio_id,usuario_id,fecha,peso,series,repeticiones,rpe,notas) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    ejercicio_id,
+                    usuario_id,
+                    fecha,
+                    float(0 if pd.isna(peso) else (peso or 0)),
+                    _safe_int(series),
+                    _safe_int(repeticiones),
+                    _safe_int(rpe),
+                    str(sensaciones or ""),
+                ),
+            )
+            insertados += 1
+
+        if insertados:
+            conn.commit()
+    finally:
+        conn.close()
+
+    return insertados
 
 
 # ---------------------------------------------------------------------------

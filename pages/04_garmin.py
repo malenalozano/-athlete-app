@@ -21,20 +21,185 @@ from src.core.seguridad import encriptar_password, desencriptar_password
 
 render_navbar("garmin")
 
+st.markdown(
+    """
+    <style>
+    .garmin-wrap {
+        margin-top: 6px;
+    }
+    .garmin-sub {
+        color: #9aa7b8;
+        font-size: 12px;
+        margin-top: -6px;
+        margin-bottom: 12px;
+    }
+    .garmin-sync-head {
+        background: linear-gradient(90deg, #0f1722 0%, #131d2c 100%);
+        border: 1px solid #233043;
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin: 2px 0 14px;
+    }
+    .garmin-sync-meta {
+        color: #8b949e;
+        font-size: 12px;
+        margin-top: 4px;
+    }
+    .garmin-chip-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+    }
+    .garmin-chip {
+        border: 1px solid #2a3a52;
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: #101826;
+        color: #c9d1d9;
+        font-size: 11px;
+    }
+    .garmin-card {
+        border: 1px solid #212b3a;
+        border-radius: 12px;
+        background: linear-gradient(180deg, #121926 0%, #101722 100%);
+        padding: 12px;
+        margin-top: 10px;
+    }
+    .garmin-divider {
+        border-top: 1px solid #1e2a3b;
+        margin: 14px 0;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 if "usuario_id" not in st.session_state:
     st.warning("Selecciona tu perfil en la página de inicio.")
     st.stop()
 user_actual = st.session_state.usuario_id
 
-# Auto-auth: load tokens from disk only — never SSO on page load
+
+def _get_saved_password(cred_row):
+    if not cred_row or not cred_row[1]:
+        return None
+    try:
+        return desencriptar_password(cred_row[1])
+    except Exception:
+        return None
+
+
+def _resolve_last_sync_event():
+    evt = st.session_state.get("garmin_last_sync")
+    if evt and isinstance(evt, dict):
+        return evt
+
+    # Compatibilidad con claves previas
+    page_ts = st.session_state.get("g_sync")
+    page_r = st.session_state.get("g_sync_r")
+    nav_ts = st.session_state.get("navbar_sync_ts")
+    nav_r = st.session_state.get("navbar_sync_r")
+    if page_ts and page_r is not None:
+        return {"ts": page_ts, "source": "garmin", "result": page_r}
+    if nav_ts and nav_r is not None:
+        return {"ts": nav_ts, "source": "navbar", "result": nav_r}
+    return None
+
+
+def _render_last_sync_details():
+    evt = _resolve_last_sync_event()
+    st.markdown(label_upper("Última sincronización"), unsafe_allow_html=True)
+
+    if not evt:
+        st.info("Aún no hay una sincronización registrada en esta sesión.")
+        return
+
+    res = evt.get("result", {}) or {}
+    ts = evt.get("ts", "-")
+    source = evt.get("source", "garmin")
+    source_lbl = "Barra de navegación" if source == "navbar" else "Página Garmin"
+    n_act = int(res.get("actividades", 0) or 0)
+    n_bio = int(res.get("dias_bio", 0) or 0)
+    n_sleep = int(res.get("dias_sueno", 0) or 0)
+
+    st.markdown("<div class='garmin-sync-head'>", unsafe_allow_html=True)
+    st.markdown("**Resumen de importación**")
+    st.caption(f"Sincronizado {ts} · origen: {source_lbl}")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Actividades", n_act)
+    m2.metric("Días biométricos", n_bio)
+    m3.metric("Días de sueño", n_sleep)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    acts = res.get("actividades_importadas") or []
+    bio = res.get("biometricos_importados") or []
+    sleep = res.get("sueno_importado") or []
+
+    def _sleep_pending(v):
+        if v is None:
+            return "Pendiente Garmin"
+        try:
+            if float(v) <= 0:
+                return "Pendiente Garmin"
+        except Exception:
+            pass
+        return v
+
+    def _mark_pending_df(df_in, cols):
+        if df_in.empty:
+            return df_in
+        df_out = df_in.copy()
+        for c in cols:
+            if c in df_out.columns:
+                df_out[c] = df_out[c].apply(_sleep_pending)
+        return df_out
+
+    c_a, c_b = st.columns(2, gap="large")
+    with c_a:
+        st.markdown("**Actividades importadas**")
+        if acts:
+            df_a = pd.DataFrame(acts)
+            cols = [c for c in ["fecha", "tipo_deporte", "km", "min", "fc_media"] if c in df_a.columns]
+            st.dataframe(df_a[cols], width="stretch", hide_index=True)
+        else:
+            st.caption("No se importaron actividades nuevas en la última sync.")
+
+    with c_b:
+        st.markdown("**Biométricos / Sueño importados**")
+        if bio:
+            df_b = pd.DataFrame(bio)
+            df_b = _mark_pending_df(df_b, ["sleep_score"])
+            cols = [c for c in ["fecha", "hrv_ms", "fc_reposo", "sleep_score", "spo2", "estres_medio"] if c in df_b.columns]
+            st.dataframe(df_b[cols], width="stretch", hide_index=True)
+        else:
+            st.caption("No hubo días biométricos nuevos en la última sync.")
+
+        if sleep:
+            with st.expander("Ver detalle de sueño importado", expanded=False):
+                df_s = pd.DataFrame(sleep)
+                df_s = _mark_pending_df(df_s, ["horas_totales", "score", "sleep_profundo_horas", "sleep_rem_horas"])
+                cols = [c for c in ["fecha", "horas_totales", "score", "sleep_profundo_horas", "sleep_rem_horas"] if c in df_s.columns]
+                st.dataframe(df_s[cols], width="stretch", hide_index=True)
+# Auto-auth: try token first, then saved credentials (single-profile friendly)
 cred = obtener_credenciales_garmin(user_actual)
 if "gc" not in st.session_state and not st.session_state.get("gc_failed"):
-    gc_tok = cargar_sesion_tokens()
+    gc_tok = cargar_sesion_tokens(cred[0] if cred else None)
     if gc_tok is not None:
         st.session_state["gc"] = gc_tok
+    elif cred and cred[0]:
+        saved_pw = _get_saved_password(cred)
+        if saved_pw:
+            try:
+                st.session_state["gc"] = iniciar_sesion_garmin(cred[0], saved_pw)
+            except Exception as e:
+                st.session_state["gc_failed"] = True
+                st.session_state["gc_error"] = str(e)
 
-st.markdown(f"<h2 style='color:#e6edf3;font-weight:600;margin:8px 0 16px;'>Garmin Connect</h2>",
+st.markdown("<div class='garmin-wrap'>", unsafe_allow_html=True)
+st.markdown(f"<h2 style='color:#e6edf3;font-weight:700;margin:4px 0 4px;'>Garmin Connect</h2>",
             unsafe_allow_html=True)
+st.markdown("<div class='garmin-sub'>Sincroniza tu reloj y revisa exactamente qué datos han entrado.</div>", unsafe_allow_html=True)
 
 tab_sync, tab_hist = st.tabs(["🔄 Sincronización", "📊 Historial"])
 
@@ -74,7 +239,7 @@ with tab_sync:
                 f"<div style='color:{TXT2};font-size:12px;'>No se pudo conectar con Garmin.</div></div>",
                 unsafe_allow_html=True)
 
-            if "429" in str(st.session_state.get("gc_error","")) or True:
+            if "429" in str(st.session_state.get("gc_error","")):
                 st.markdown(
                     f"<div style='background:#1a1200;border:1px solid #f59e0b40;border-radius:8px;"
                     f"padding:10px 14px;margin-top:8px;font-size:12px;color:#f59e0b;'>"
@@ -122,7 +287,9 @@ with tab_sync:
                         # Only here do we trigger SSO — explicit user action
                         with st.spinner("Conectando con Garmin (puede tardar 15-30 seg)..."):
                             try:
-                                pw = pass_g.strip() or desencriptar_password(cred[1])
+                                pw = pass_g.strip() or _get_saved_password(cred)
+                                if not pw:
+                                    raise RuntimeError("La contraseña guardada no es válida. Escríbela de nuevo para re-guardarla.")
                                 gc_new = iniciar_sesion_garmin(email_g or cred[0], pw)
                                 st.session_state["gc"] = gc_new
                                 st.session_state.pop("gc_failed", None)
@@ -173,24 +340,45 @@ with tab_sync:
         with st.form("sync_todo"):
             n_dias = st.number_input("Días a sincronizar", min_value=1, max_value=30, value=7)
             if st.form_submit_button("↻ Sincronizar todo", use_container_width=True, type="primary"):
-                if not st.session_state.get("gc"):
+                gc = st.session_state.get("gc")
+                if gc is None and cred and cred[0]:
+                    try:
+                        saved_pw = _get_saved_password(cred)
+                        if saved_pw:
+                            gc = iniciar_sesion_garmin(cred[0], saved_pw)
+                            st.session_state["gc"] = gc
+                        else:
+                            st.warning("Tu contraseña guardada de Garmin no es válida. Vuelve a guardarla una vez y quedará recordada.")
+                    except Exception as e:
+                        st.session_state["gc_failed"] = True
+                        st.session_state["gc_error"] = str(e)
+                        gc = None
+
+                if gc is None:
                     st.warning("Primero conecta tu cuenta Garmin.")
                 else:
                     with st.spinner("Sincronizando actividades y biométricos…"):
                         try:
-                            r = sincronizar_todo_con_sesion(
-                                st.session_state["gc"], user_actual, dias=int(n_dias))
-                            st.session_state["g_sync"] = datetime.now().strftime("%d/%m %H:%M")
+                            r = sincronizar_todo_con_sesion(gc, user_actual, dias=int(n_dias))
+                            ts = datetime.now().strftime("%d/%m %H:%M")
+                            st.session_state["g_sync"] = ts
                             st.session_state["g_sync_r"] = r
+                            st.session_state["garmin_last_sync"] = {
+                                "ts": ts,
+                                "source": "garmin",
+                                "result": r,
+                            }
                             st.cache_data.clear(); st.rerun()
                         except Exception as e:
                             st.error(f"Error: {e}")
 
-        if "g_sync" in st.session_state:
-            r = st.session_state.get("g_sync_r", {})
+        evt = _resolve_last_sync_event()
+        if evt:
+            r = evt.get("result", {}) or {}
             st.caption(
-                f"Última sync: {st.session_state['g_sync']} — "
-                f"{r.get('actividades','?')} actividades nuevas · {r.get('dias_bio','?')} días biométricos"
+                f"Última sync: {evt.get('ts','-')} — "
+                f"{r.get('actividades','?')} actividades nuevas · "
+                f"{r.get('dias_bio','?')} días biométricos · {r.get('dias_sueno','?')} días sueño"
             )
 
     # ── Panel de verificación ────────────────────────────────────────
@@ -227,6 +415,9 @@ with tab_sync:
                     f"<div style='color:{col_v};font-size:13px;font-weight:600;margin-top:2px;'>{val_txt}</div>"
                     f"</div>",
                     unsafe_allow_html=True)
+
+    st.markdown("<div style='margin:16px 0 4px;'></div>", unsafe_allow_html=True)
+    _render_last_sync_details()
 
 # ===========================================================================
 # TAB 2 — HISTORIAL
@@ -274,6 +465,9 @@ with tab_hist:
     with h_sue:
         st.markdown(label_upper("Sueño"), unsafe_allow_html=True)
         if not df_sueno.empty:
+            for c in ["horas_totales", "score", "sleep_profundo_horas", "sleep_rem_horas"]:
+                if c in df_sueno.columns:
+                    df_sueno[c] = df_sueno[c].apply(lambda v: "Pendiente Garmin" if (pd.notna(v) and str(v) not in ("", "None") and float(v) == 0.0) else v)
             st.dataframe(df_sueno, use_container_width=True, hide_index=True)
         else:
             st.info("Sin datos de sueño.")
@@ -283,3 +477,5 @@ with tab_hist:
             st.dataframe(df_bio, use_container_width=True, hide_index=True)
         else:
             st.info("Sin datos biométricos.")
+
+st.markdown("</div>", unsafe_allow_html=True)

@@ -11,6 +11,7 @@ from src.core.ejercicios_helpers import (
     GRUPOS, GRUPO_COLOR,
     cargar_biblioteca, stats_ejercicio,
     render_card_ejercicio, render_formulario_nuevo,
+    reconciliar_historial_desde_sesiones,
 )
 from src.db.db_manager import get_db_connection
 
@@ -20,6 +21,11 @@ if "usuario_id" not in st.session_state:
     st.warning("Selecciona tu perfil en la página de inicio.")
     st.stop()
 user_actual = st.session_state.usuario_id
+
+# Recuperar automáticamente sesiones antiguas que quedaron sin enlazar por variantes de nombre.
+_reconciliadas = reconciliar_historial_desde_sesiones(user_actual)
+if _reconciliadas:
+    st.caption(f"Se recuperaron {_reconciliadas} registros históricos desde Entreno libre.")
 
 # ---------------------------------------------------------------------------
 # Header

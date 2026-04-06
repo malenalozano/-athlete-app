@@ -11,15 +11,24 @@ Uso:
 
 import os
 import sys
+import re
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 GARTH_HOME = os.path.expanduser("~/.garth_athlete")
 
 
+def _safe_email_slug(email: str) -> str:
+    return re.sub(r"[^a-z0-9._-]+", "_", str(email or "").strip().lower())
+
+
+def _token_home_for_email(email: str) -> str:
+    return os.path.join(GARTH_HOME, _safe_email_slug(email))
+
+
 def main():
     print("=== Login único Garmin ===")
-    print(f"Tokens se guardarán en: {GARTH_HOME}\n")
+    print(f"Directorio base de tokens: {GARTH_HOME}\n")
 
     # Intentar leer credenciales de BD primero
     try:
@@ -39,13 +48,15 @@ def main():
 
     print("Conectando con Garmin... (puede tardar 10-30 seg)\n")
 
-    # Comprobar si ya hay tokens válidos
-    if os.path.exists(GARTH_HOME) and os.listdir(GARTH_HOME):
-        print(f"Tokens existentes en {GARTH_HOME} — verificando...")
+    token_home = _token_home_for_email(usuario)
+
+    # Comprobar si ya hay tokens válidos para esta cuenta
+    if os.path.exists(token_home) and os.listdir(token_home):
+        print(f"Tokens existentes en {token_home} — verificando...")
         try:
             from garminconnect import Garmin
             gc = Garmin()
-            gc.garth.load(GARTH_HOME)
+            gc.garth.load(token_home)
             name = gc.get_full_name()
             print(f"✓ Tokens válidos. Sesión activa como: {name}")
             print("No es necesario volver a hacer login.")
@@ -57,10 +68,10 @@ def main():
         from garminconnect import Garmin
         gc = Garmin(email=usuario, password=password)
         gc.login()
-        os.makedirs(GARTH_HOME, exist_ok=True)
-        gc.garth.dump(GARTH_HOME)
+        os.makedirs(token_home, exist_ok=True)
+        gc.garth.dump(token_home)
         name = gc.get_full_name()
-        print(f"✓ Tokens guardados en {GARTH_HOME}")
+        print(f"✓ Tokens guardados en {token_home}")
         print(f"✓ Sesión activa como: {name}")
         print("La app ya no necesita hacer login de nuevo.")
     except Exception as e:

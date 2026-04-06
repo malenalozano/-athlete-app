@@ -146,6 +146,12 @@ hr {{ border-color: {BORDER} !important; }}
 [data-testid="stPageLink"] {{ background: transparent !important; border: none !important; }}
 </style>"""
 
+
+def apply_custom_css() -> None:
+    """Backward-compatible helper used by pages that expect this function."""
+    import streamlit as st
+    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+
 # ---------------------------------------------------------------------------
 # HELPERS HTML
 # ---------------------------------------------------------------------------

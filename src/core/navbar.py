@@ -3,13 +3,16 @@ src/core/navbar.py — Navbar horizontal con dot de color por item activo.
 """
 
 import streamlit as st
+from datetime import datetime
 from src.core.styles import ACCENT, BORDER, TXT2, TXT3, CARD
+from src.db.db_manager import obtener_credenciales_garmin
 
 PAGES = [
-    ("pages/1_dashboard.py", "Dashboard",    "dashboard"),
-    ("pages/2_plan.py",      "Plan semanal", "plan"),
-    ("pages/3_diario.py",    "Diario",       "diario"),
-    ("pages/4_garmin.py",    "Garmin",       "garmin"),
+    ("pages/01_dashboard.py",  "Dashboard",    "dashboard"),
+    ("pages/02_plan.py",       "Plan semanal", "plan"),
+    ("pages/03_diario.py",     "Diario",       "diario"),
+    ("pages/04_garmin.py",     "Garmin",       "garmin"),
+    ("pages/05_ejercicios.py", "Ejercicios",   "ejercicios"),
 ]
 
 _CSS = f"""<style>
@@ -48,8 +51,8 @@ def _dot(active: bool) -> str:
 def render_navbar(pagina_activa: str):
     st.markdown(_CSS, unsafe_allow_html=True)
 
-    # Columnas: logo | 5 nav items | spacer | sync | avatar
-    cols = st.columns([2.2, 1.1, 1.3, 1.0, 1.2, 4.0, 0.45, 0.45])
+    # Columnas: logo | nav items | spacer | sync | avatar
+    cols = st.columns([2.2, 1.1, 1.3, 1.0, 1.2, 1.4, 4.0, 0.45, 0.45])
 
     with cols[0]:
         st.markdown(
@@ -77,7 +80,7 @@ def render_navbar(pagina_activa: str):
                 st.page_link(path, label=label)
 
     # Botón sync — llama a sincronizar_todo_con_sesion si hay sesión activa
-    with cols[6]:
+    with cols[7]:
         st.markdown("""<style>
         div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"]:first-child
         button[kind="secondary"] {
@@ -92,7 +95,10 @@ def render_navbar(pagina_activa: str):
             gc = st.session_state.get("gc")
             if gc is None:
                 from src.garmin.garmin_sync import cargar_sesion_tokens
-                gc = cargar_sesion_tokens()
+                usuario_id = st.session_state.get("usuario_id", 1)
+                cred = obtener_credenciales_garmin(usuario_id)
+                email = cred[0] if cred else None
+                gc = cargar_sesion_tokens(email)
                 if gc is not None:
                     st.session_state["gc"] = gc
             if gc is None:
@@ -100,18 +106,24 @@ def render_navbar(pagina_activa: str):
             else:
                 usuario_id = st.session_state.get("usuario_id", 1)
                 from src.garmin.garmin_sync import sincronizar_todo_con_sesion
-                with st.spinner("Sincronizando Garmin…"):
+                with st.spinner():
                     try:
                         r = sincronizar_todo_con_sesion(gc, usuario_id, dias=7)
-                        st.session_state["navbar_sync_ts"] = __import__("datetime").datetime.now().strftime("%H:%M")
+                        ts = datetime.now().strftime("%d/%m %H:%M")
+                        st.session_state["navbar_sync_ts"] = ts
                         st.session_state["navbar_sync_r"] = r
+                        st.session_state["garmin_last_sync"] = {
+                            "ts": ts,
+                            "source": "navbar",
+                            "result": r,
+                        }
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error sync: {e}")
 
     # Avatar
-    with cols[7]:
+    with cols[8]:
         st.markdown(
             f"<div style='width:32px;height:32px;border-radius:50%;"
             f"background:linear-gradient(135deg,{ACCENT}40,{ACCENT}15);"
