@@ -121,7 +121,16 @@ asegurar_tabla_lesiones()
 
 # Persistencia usuario + init ejercicios (necesita usuario_id)
 from src.core.ui_helpers_a import _leer_ultimo_usuario, _guardar_ultimo_usuario
-if "usuario_id" not in st.session_state:
+auth_user = str(st.session_state.get("auth_user", "")).strip().lower()
+auth_user_to_id = {"malena": 1, "dani": 2}
+forced_uid = auth_user_to_id.get(auth_user)
+
+if forced_uid in (1, 2):
+    # Si hay login, el usuario autenticado manda siempre sobre la preferencia local.
+    if st.session_state.get("usuario_id") != forced_uid:
+        st.session_state["usuario_id"] = forced_uid
+        _guardar_ultimo_usuario(forced_uid)
+elif "usuario_id" not in st.session_state:
     uid = _leer_ultimo_usuario()
     st.session_state["usuario_id"] = uid if uid else 1
     if not uid:
