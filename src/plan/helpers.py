@@ -142,7 +142,7 @@ def cargar_datos_plan(usuario_id: int) -> dict:
     try:
         df_bio = pd.read_sql_query(
             """SELECT fecha, hrv_ms, fc_reposo, sleep_score, spo2, estres_medio,
-                      body_battery, body_battery_max, body_battery_min, vo2max, training_status
+                      body_battery, body_battery_max, body_battery_min, training_status
                FROM datos_biometricos_premium
                WHERE usuario_id=? AND fecha>=? ORDER BY fecha DESC""",
             conn, params=(usuario_id, fecha_7d))

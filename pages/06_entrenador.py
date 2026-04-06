@@ -118,10 +118,9 @@ with col_run1:
     )
 
 with col_run2:
-    vo2 = datos.get('vo2max')
     st.metric(
         "VO2max",
-        f"{vo2:.1f} mL/kg/min" if vo2 else "—"
+        "—"  # Métrica no disponible actualmente
     )
 
 with col_run3:
@@ -374,10 +373,11 @@ st.header("📌 10. Resumen Ejecutivo - Siguiente Plan Semanal")
 summary_col1, summary_col2 = st.columns(2)
 
 with summary_col1:
+    km_vol = float(plan.get('km_totales', 0)) if plan.get('km_totales') else 0
     st.markdown(f"""
     ### Condiciones de Entrenamiento
     - **Estado de Recuperación:** {semaforo['color'].upper()}
-    - **Volumen Objetivo:** {plan.get('km_totales', '?'):.1f} km
+    - **Volumen Objetivo:** {km_vol:.1f} km
     - **Esfuerzo Máximo Permitido:** {'Sí' if semaforo['permitir_calidad'] else 'No - Solo Z1/Z2'}
     - **Carga Acumulada (ACWR):** {datos.get('acwr', 0):.2f}
     """)

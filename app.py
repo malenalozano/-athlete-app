@@ -122,7 +122,7 @@ asegurar_tabla_lesiones()
 # Persistencia usuario + init ejercicios (necesita usuario_id)
 from src.core.ui_helpers_a import _leer_ultimo_usuario, _guardar_ultimo_usuario
 auth_user = str(st.session_state.get("auth_user", "")).strip().lower()
-auth_user_to_id = {"malena": 1, "dani": 2}
+auth_user_to_id = {"malena": 1, "dani": 2, "malenita88": 1, "danielito99": 2}
 forced_uid = auth_user_to_id.get(auth_user)
 
 if forced_uid in (1, 2):
