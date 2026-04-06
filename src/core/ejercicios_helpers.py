@@ -15,7 +15,7 @@ from src.core.styles import ACCENT, CARD, BORDER, BORDER_H, TXT1, TXT2, TXT3, FU
 
 GRUPOS = [
     "Glúteo", "Tren inferior", "Tren superior",
-    "Espalda", "Pecho", "Bíceps", "Tríceps", "Core", "Full body",
+    "Espalda", "Pecho", "Bíceps", "Tríceps", "Hombro", "Core", "Full body",
 ]
 TIPOS = ["Fuerza", "Cardio", "Movilidad", "Técnica"]
 
@@ -27,6 +27,7 @@ GRUPO_COLOR = {
     "Pecho":         "#fb923c",
     "Bíceps":        "#34d399",
     "Tríceps":       "#4ade80",
+    "Hombro":        "#ec4899",
     "Core":          ACCENT,
     "Full body":     "#f472b6",
 }
@@ -218,6 +219,37 @@ def reconciliar_historial_desde_sesiones(usuario_id: int) -> int:
         conn.close()
 
     return insertados
+
+
+def editar_ejercicio(ejercicio_id: int, nombre: str, grupo_muscular: str,
+                     musculo_principal: str, tipo: str, alias: str, notas: str):
+    """Actualiza un ejercicio existente en la biblioteca."""
+    conn = get_db_connection()
+    try:
+        alias_json = json.dumps([a.strip() for a in alias.split(",") if a.strip()]) if alias.strip() else None
+        conn.execute(
+            "UPDATE ejercicios_biblioteca SET nombre=?, grupo_muscular=?, musculo_principal=?, "
+            "tipo=?, alias=?, notas=? WHERE id=?",
+            (nombre.strip(), grupo_muscular, musculo_principal.strip() or None,
+             tipo, alias_json, notas.strip() or None, ejercicio_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_ejercicio(ejercicio_id: int, usuario_id: int):
+    """Borra un ejercicio de la biblioteca y su historial."""
+    conn = get_db_connection()
+    try:
+        # Borrar historial del ejercicio
+        conn.execute("DELETE FROM historial_ejercicio WHERE ejercicio_id=? AND usuario_id=?",
+                     (ejercicio_id, usuario_id))
+        # Borrar el ejercicio
+        conn.execute("DELETE FROM ejercicios_biblioteca WHERE id=? AND usuario_id=?",
+                     (ejercicio_id, usuario_id))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------

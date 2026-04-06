@@ -254,7 +254,8 @@ def metricas_garmin(usuario_id) -> dict:
 
     cad = _m(df_c, "cadencia_media") if not df_c.empty else _m(df_b, "cadencia_media")
     return {"hrv": _m(df_b, "hrv_ms"), "sueno_h": _f(df_s, "horas_totales"),
-            "sueno_score": _f(df_s, "score"), "body_battery": _m(df_b, "body_battery"),
+            "sueno_score": (_f(df_s, "score") if _f(df_s, "score") not in (None, 0.0) else _m(df_b, "sleep_score")),
+            "body_battery": _m(df_b, "body_battery"),
             "cadencia": cad, "acwr": acwr, "fc_reposo": _m(df_b, "fc_reposo"),
             "estres": _m(df_b, "estres_vital")}
 

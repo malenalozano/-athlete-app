@@ -12,6 +12,7 @@ from src.core.ejercicios_helpers import (
     cargar_biblioteca, stats_ejercicio,
     render_card_ejercicio, render_formulario_nuevo,
     reconciliar_historial_desde_sesiones,
+    editar_ejercicio, borrar_ejercicio,
 )
 from src.db.db_manager import get_db_connection
 
@@ -109,14 +110,63 @@ df_arch = df[df["activo"] == 0] if not df.empty else df
 if not df_arch.empty:
     with st.expander(f"Archivados ({len(df_arch)})"):
         for _, row in df_arch.iterrows():
-            ca, cb = st.columns([5, 1])
+            ca, cb, cc, cd = st.columns([5, 1, 1, 1])
             with ca:
                 st.markdown(
                     f"<span style='color:{TXT2};font-size:13px;'>{row['nombre']}</span>"
                     f"<span style='color:{TXT3};font-size:11px;margin-left:8px;'>{row.get('grupo_muscular','')}</span>",
                     unsafe_allow_html=True)
             with cb:
-                if st.button("Restaurar", key=f"rest_{row['id']}"):
+                if st.button("Restaurar", key=f"rest_{row['id']}", use_container_width=True):
                     c = get_db_connection()
                     c.execute("UPDATE ejercicios_biblioteca SET activo=1 WHERE id=?", (row["id"],))
                     c.commit(); c.close(); st.rerun()
+            with cc:
+                if st.button("✏️ Editar", key=f"edit_{row['id']}", use_container_width=True):
+                    st.session_state[f"edit_form_{row['id']}"] = True
+            with cd:
+                if st.button("🗑️ Borrar", key=f"delt_{row['id']}", use_container_width=True):
+                    if st.session_state.get(f"confirm_delete_{row['id']}", False):
+                        # Segunda confirmación: borrar
+                        borrar_ejercicio(int(row["id"]), user_actual)
+                        st.session_state[f"confirm_delete_{row['id']}"] = False
+                        st.rerun()
+                    else:
+                        # Primera vez: pedir confirmación
+                        st.session_state[f"confirm_delete_{row['id']}"] = True
+                        st.rerun()
+
+            # Modal de ediciones
+            if st.session_state.get(f"edit_form_{row['id']}", False):
+                st.divider()
+                with st.expander(f"Editar: {row['nombre']}", expanded=True):
+                    with st.form(f"form_edit_{row['id']}", clear_on_submit=False):
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            nombre_e = st.text_input("Nombre", value=row.get("nombre", ""), key=f"nome_{row['id']}")
+                            grupo_e = st.selectbox("Grupo muscular", GRUPOS,
+                                                  index=GRUPOS.index(row.get("grupo_muscular", GRUPOS[0]))
+                                                  if row.get("grupo_muscular") in GRUPOS else 0,
+                                                  key=f"grp_{row['id']}")
+                            musculo_e = st.text_input("Músculo principal", value=row.get("musculo_principal", ""), key=f"musc_{row['id']}")
+                        with c2:
+                            tipo_e = st.text_input("Tipo", value=row.get("tipo", ""), key=f"tipo_{row['id']}")
+                            alias_e = st.text_input("Alias", value=", ".join(eval(row.get("alias", "[]"))) if row.get("alias") and row.get("alias").startswith("[") else row.get("alias", ""), key=f"ali_{row['id']}")
+                            notas_e = st.text_input("Notas", value=row.get("notas", ""), key=f"not_{row['id']}")
+
+                        c_save, c_cancel = st.columns(2)
+                        with c_save:
+                            if st.form_submit_button("Guardar cambios", use_container_width=True):
+                                editar_ejercicio(int(row["id"]), nombre_e, grupo_e, musculo_e, tipo_e, alias_e, notas_e)
+                                st.session_state[f"edit_form_{row['id']}"] = False
+                                st.success("Ejercicio actualizado.")
+                                st.rerun()
+                        with c_cancel:
+                            if st.form_submit_button("Cancelar", use_container_width=True):
+                                st.session_state[f"edit_form_{row['id']}"] = False
+                                st.rerun()
+
+            # Confirmación de borrado
+            if st.session_state.get(f"confirm_delete_{row['id']}", False):
+                st.error(f"⚠️ ¿Borrar '{row['nombre']}' y su historial completo? Haz clic en 'Borrar' de nuevo para confirmar.")
+
