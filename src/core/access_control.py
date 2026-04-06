@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import os
+from collections.abc import Mapping
 
 import streamlit as st
 
@@ -30,7 +31,7 @@ def verify_password(password: str, encoded_hash: str) -> bool:
 
 def _get_users_from_secrets() -> dict:
     users = st.secrets.get("APP_USERS", {})
-    if isinstance(users, dict):
+    if isinstance(users, Mapping):
         return {str(k): str(v) for k, v in users.items() if k and v}
     return {}
 

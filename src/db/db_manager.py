@@ -338,6 +338,9 @@ def asegurar_tablas_premium():
     for col_name, col_type in [
         ("training_readiness", "INTEGER"),
         ("body_battery", "INTEGER"),
+        ("body_battery_min", "INTEGER"),
+        ("body_battery_max", "INTEGER"),
+        ("estres_medio", "REAL"),
         ("recovery_hours", "REAL"),
         ("spo2", "REAL"),
         ("potencia_media_w", "REAL"),
