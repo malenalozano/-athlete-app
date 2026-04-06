@@ -46,6 +46,16 @@ def require_auth() -> None:
         return
 
     if st.session_state.get("auth_ok"):
+        user = str(st.session_state.get("auth_user", "")).strip() or "usuario"
+        st.caption(f"Sesión iniciada como {user}")
+        if st.button("Cerrar sesión", use_container_width=False):
+            st.session_state.pop("auth_ok", None)
+            st.session_state.pop("auth_user", None)
+            st.session_state.pop("usuario_id", None)
+            st.session_state.pop("gc", None)
+            st.session_state.pop("gc_failed", None)
+            st.session_state.pop("gc_error", None)
+            st.rerun()
         return
 
     users = _get_users_from_secrets()
