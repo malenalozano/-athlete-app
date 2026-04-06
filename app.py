@@ -7,12 +7,16 @@ import streamlit as st
 import os, sys
 sys.path.insert(0, os.path.dirname(__file__))
 
+from src.core.access_control import require_auth
+
 st.set_page_config(
     page_title="Athlete",
     page_icon="🏃",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+require_auth()
 
 # Ocultar TODO lo nativo de Streamlit + CSS global del sistema de diseño
 from src.core.styles import GLOBAL_CSS

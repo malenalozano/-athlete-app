@@ -21,3 +21,24 @@ GEMINI_API_KEY = "..."
 - La base de datos local `atleta.db` solo sirve para desarrollo en tu ordenador.
 - En producción, la app usa Turso/libSQL de forma automática si existen los secretos.
 - No subas `.streamlit/secrets.toml` al repositorio.
+
+## Acceso solo para Malena y Dani
+
+Por defecto, una app en Streamlit Cloud es accesible por URL. Para restringir el acceso, esta app incluye login interno si defines usuarios en secretos.
+
+1. Genera hash para cada contraseña:
+
+```bash
+python scripts/generar_hash_password.py "password_segura_malena"
+python scripts/generar_hash_password.py "password_segura_dani"
+```
+
+2. Copia los hashes en los secretos de Streamlit Cloud:
+
+```toml
+[APP_USERS]
+malena = "pbkdf2_sha256$..."
+dani = "pbkdf2_sha256$..."
+```
+
+Con esto, la app pedirá usuario y contraseña antes de mostrar cualquier pantalla.
