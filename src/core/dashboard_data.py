@@ -252,20 +252,9 @@ def metricas_garmin(usuario_id) -> dict:
         if len(ag) and len(cr) and float(cr.iloc[0]) > 0:
             acwr = round(float(ag.iloc[0]) / float(cr.iloc[0]), 2)
 
-    # Body battery: promedio de min y max
-    battery_min = _m(df_b, "body_battery_min")
-    battery_max = _m(df_b, "body_battery_max")
-    battery = None
-    if battery_min is not None and battery_max is not None:
-        battery = round((battery_min + battery_max) / 2, 1)
-    elif battery_max is not None:
-        battery = battery_max
-    elif battery_min is not None:
-        battery = battery_min
-
     cad = _m(df_c, "cadencia_media") if not df_c.empty else _m(df_b, "cadencia_media")
     return {"hrv": _m(df_b, "hrv_ms"), "sueno_h": _f(df_s, "horas_totales"),
-            "sueno_score": _f(df_s, "score"), "body_battery": battery,
+            "sueno_score": _f(df_s, "score"), "body_battery": None,
             "cadencia": cad, "acwr": acwr, "fc_reposo": _m(df_b, "fc_reposo"),
             "estres": _m(df_b, "estres_medio")}
 

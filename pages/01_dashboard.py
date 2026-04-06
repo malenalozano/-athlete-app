@@ -144,14 +144,13 @@ else:
     r1 = st.columns(4)
     r1[0].markdown(_card("HRV",         met["hrv"],         "ms",  80,  "#C9FF00"), unsafe_allow_html=True)
     r1[1].markdown(_card("Sueño",       met["sueno_h"],     "h",    9,  "#7EB8E0"), unsafe_allow_html=True)
-    r1[2].markdown(_card("Body Battery",met["body_battery"],"",   100,  "#F5A623"), unsafe_allow_html=True)
+    r1[2].markdown(_card("Score sueño", met["sueno_score"], "",  100,  "#7EB8E0"), unsafe_allow_html=True)
     r1[3].markdown(_card("Cadencia",    met["cadencia"],    "spm",200,  "#00C896"), unsafe_allow_html=True)
-    r2 = st.columns(4)
+    r2 = st.columns(3)
     acwr_color = "#FF6B6B" if (met["acwr"] or 0) > 1.3 else "#C9FF00"
     r2[0].markdown(_card("ACWR",       met["acwr"],      "",   1.5, acwr_color), unsafe_allow_html=True)
     r2[1].markdown(_card("FC Reposo",  met["fc_reposo"], "bpm", 80, "#C9E1FF"),  unsafe_allow_html=True)
     r2[2].markdown(_card("Estrés",     met["estres"],    "",   100, "#F5A623"),  unsafe_allow_html=True)
-    r2[3].markdown(_card("Score sueño",met["sueno_score"],"", 100, "#7EB8E0"),  unsafe_allow_html=True)
 
 st.divider()
 
