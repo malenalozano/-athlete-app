@@ -67,20 +67,81 @@ _NOMBRE_CALIDAD = {
     "tempo": "Tempo (umbral)",
 }
 
+# Templates específicos para ultramaratón (más volumen, back-to-back sábado+domingo)
+_TEMPLATES_ULTRA = {
+    "Acondicionamiento": [
+        {"tipo": "Fuerza",        "carrera": False, "fuerza_p": True,  "intensidad": "Media",    "km_base": 0},
+        {"tipo": "Carrera Z2",    "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 8},
+        {"tipo": "Fuerza",        "carrera": False, "fuerza_p": True,  "intensidad": "Media",    "km_base": 0},
+        {"tipo": "Calidad",       "carrera": True,  "fuerza_p": False, "intensidad": "Media-Alta","km_base": 10},
+        {"tipo": "Fuerza",        "carrera": False, "fuerza_p": True,  "intensidad": "Media",    "km_base": 0},
+        {"tipo": "Tirada Larga",  "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 0, "tl": True},
+        {"tipo": "Regenerativo",  "carrera": True,  "fuerza_p": False, "intensidad": "Muy baja", "km_base": 0, "regen": True},
+    ],
+    "Preparación General": [
+        {"tipo": "Regenerativo",  "carrera": True,  "fuerza_p": False, "intensidad": "Muy baja", "km_base": 0, "regen": True},
+        {"tipo": "Carrera Z2",    "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 12},
+        {"tipo": "Fuerza",        "carrera": False, "fuerza_p": True,  "intensidad": "Alta",     "km_base": 0},
+        {"tipo": "Calidad",       "carrera": True,  "fuerza_p": False, "intensidad": "Alta",     "km_base": 12},
+        {"tipo": "Fuerza",        "carrera": False, "fuerza_p": True,  "intensidad": "Alta",     "km_base": 0},
+        {"tipo": "Tirada Larga",  "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 0, "tl": True},
+        {"tipo": "Back-to-Back",  "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 0, "regen": True},
+    ],
+    "Preparación Específica": [
+        {"tipo": "Regenerativo",  "carrera": True,  "fuerza_p": False, "intensidad": "Muy baja", "km_base": 0, "regen": True},
+        {"tipo": "Carrera Z2",    "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 14},
+        {"tipo": "Fuerza",        "carrera": False, "fuerza_p": True,  "intensidad": "Media",    "km_base": 0},
+        {"tipo": "Calidad",       "carrera": True,  "fuerza_p": False, "intensidad": "Alta",     "km_base": 14},
+        {"tipo": "Carrera Z2",    "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 12},
+        {"tipo": "Tirada Larga",  "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 0, "tl": True},
+        {"tipo": "Back-to-Back",  "carrera": True,  "fuerza_p": False, "intensidad": "Muy baja", "km_base": 0, "regen": True},
+    ],
+    "Pico de Forma": [
+        {"tipo": "Regenerativo",  "carrera": True,  "fuerza_p": False, "intensidad": "Muy baja", "km_base": 0, "regen": True},
+        {"tipo": "Carrera Z2",    "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 16},
+        {"tipo": "Fuerza",        "carrera": False, "fuerza_p": True,  "intensidad": "Media",    "km_base": 0},
+        {"tipo": "Calidad",       "carrera": True,  "fuerza_p": False, "intensidad": "Alta",     "km_base": 16},
+        {"tipo": "Carrera Z2",    "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 14},
+        {"tipo": "Tirada Larga",  "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 0, "tl": True},
+        {"tipo": "Back-to-Back",  "carrera": True,  "fuerza_p": False, "intensidad": "Muy baja", "km_base": 0, "regen": True},
+    ],
+    "Tapering": [
+        {"tipo": "Descanso",      "carrera": False, "fuerza_p": False, "intensidad": "—",        "km_base": 0},
+        {"tipo": "Carrera Z2",    "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 8},
+        {"tipo": "Fuerza Activ.", "carrera": False, "fuerza_p": False, "intensidad": "Baja",     "km_base": 0},
+        {"tipo": "Calidad",       "carrera": True,  "fuerza_p": False, "intensidad": "Media",    "km_base": 8},
+        {"tipo": "Descanso",      "carrera": False, "fuerza_p": False, "intensidad": "—",        "km_base": 0},
+        {"tipo": "Rodaje Corto",  "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 6},
+        {"tipo": "Regenerativo",  "carrera": True,  "fuerza_p": False, "intensidad": "Muy baja", "km_base": 0, "regen": True},
+    ],
+    "Post-Carrera": [
+        {"tipo": "Descanso",      "carrera": False, "fuerza_p": False, "intensidad": "—",        "km_base": 0},
+        {"tipo": "Movilidad",     "carrera": False, "fuerza_p": False, "intensidad": "Muy baja", "km_base": 0},
+        {"tipo": "Regenerativo",  "carrera": True,  "fuerza_p": False, "intensidad": "Muy baja", "km_base": 0, "regen": True},
+        {"tipo": "Movilidad",     "carrera": False, "fuerza_p": False, "intensidad": "Muy baja", "km_base": 0},
+        {"tipo": "Descanso",      "carrera": False, "fuerza_p": False, "intensidad": "—",        "km_base": 0},
+        {"tipo": "Carrera Z2",    "carrera": True,  "fuerza_p": False, "intensidad": "Baja",     "km_base": 6},
+        {"tipo": "Regenerativo",  "carrera": True,  "fuerza_p": False, "intensidad": "Muy baja", "km_base": 0, "regen": True},
+    ],
+}
+
 
 def cargar_datos_plan(usuario_id: int) -> dict:
     """
     Carga TODOS los datos relevantes para generar el plan semanal:
     HRV, sueño (score + breakdown), lesiones, km, cadencia, ACWR,
     métricas running específicas, ciclo menstrual, stress, body battery,
-    VO2max, training status.
+    VO2max, training status + perfil del usuario (género, fecha_objetivo, objetivo_tipo).
     """
+    from src.db.db_manager import obtener_perfil
+    perfil_usuario = obtener_perfil(usuario_id) or {}
+
     conn = get_db_connection()
     fecha_7d = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
     fecha_28d = (datetime.now() - timedelta(days=28)).strftime("%Y-%m-%d")
     try:
         df_bio = pd.read_sql_query(
-            """SELECT fecha, hrv_ms, sleep_score, spo2, estres_medio,
+            """SELECT fecha, hrv_ms, fc_reposo, sleep_score, spo2, estres_medio,
                       body_battery_max, body_battery_min, vo2max, training_status
                FROM datos_biometricos_premium
                WHERE usuario_id=? AND fecha>=? ORDER BY fecha DESC""",
@@ -106,19 +167,23 @@ def cargar_datos_plan(usuario_id: int) -> dict:
         except Exception:
             df_lesiones_hist = pd.DataFrame(columns=["zona", "tipo", "grado"])
 
+        # FIX: filtrar solo actividades de carrera para no contaminar km/cadencia con ciclismo/natación
+        _TIPOS_CARRERA = "('running', 'trail_running', 'treadmill', 'indoor_running', 'track_running', 'road_running')"
         df_act = pd.read_sql_query(
-            """SELECT fecha, distancia_m, cadencia_media, ritmo_medio, fc_media, fc_max,
+            f"""SELECT fecha, distancia_m, cadencia_media, ritmo_medio, fc_media, fc_max,
                       potencia_media_w, longitud_zancada_m, tiempo_contacto_ms,
                       oscilacion_vertical_cm, training_effect_aerobico, training_effect_anaerobico
                FROM actividades_garmin
                WHERE usuario_id=? AND fecha>=?
+               AND (tipo_deporte IN {_TIPOS_CARRERA} OR tipo_deporte IS NULL)
                ORDER BY fecha DESC""",
             conn, params=(usuario_id, fecha_7d))
 
         df_act_28d = pd.read_sql_query(
-            "SELECT fecha, distancia_m FROM actividades_garmin "
-            "WHERE usuario_id=? AND fecha>=? AND fecha<?",
-            conn, params=(usuario_id, fecha_28d, fecha_7d))
+            f"SELECT fecha, distancia_m FROM actividades_garmin "
+            f"WHERE usuario_id=? AND fecha>=?"
+            f" AND (tipo_deporte IN {_TIPOS_CARRERA} OR tipo_deporte IS NULL)",
+            conn, params=(usuario_id, fecha_28d))
 
         df_carga = pd.read_sql_query(
             "SELECT carga_aguda, carga_cronica FROM datos_biometricos_premium "
@@ -130,13 +195,14 @@ def cargar_datos_plan(usuario_id: int) -> dict:
             "WHERE usuario_id=? AND fecha>=? AND fc_media BETWEEN 120 AND 150",
             conn, params=(usuario_id, fecha_28d))
 
-        # Ciclo menstrual — último registro
+        # Ciclo menstrual — último registro (solo si tiene < 4 días de antigüedad)
         fase_ciclo = None
         try:
+            fecha_ciclo_min = (datetime.now() - timedelta(days=4)).strftime("%Y-%m-%d")
             row_ciclo = conn.execute(
                 "SELECT fase_ciclo, fecha, fatiga_subjetiva, estado_animo "
-                "FROM diario_fisiologia WHERE usuario_id=? ORDER BY fecha DESC LIMIT 1",
-                (usuario_id,)).fetchone()
+                "FROM diario_fisiologia WHERE usuario_id=? AND fecha>=? ORDER BY fecha DESC LIMIT 1",
+                (usuario_id, fecha_ciclo_min)).fetchone()
             if row_ciclo:
                 fase_ciclo = {
                     "fase": row_ciclo[0],
@@ -144,6 +210,17 @@ def cargar_datos_plan(usuario_id: int) -> dict:
                     "fatiga_subjetiva": row_ciclo[2],
                     "estado_animo": row_ciclo[3],
                 }
+        except Exception:
+            pass
+
+        # --- FC Reposo fallback: buscar en 28d si no encontró en 7d ---
+        df_bio_28d = None
+        try:
+            df_bio_28d = pd.read_sql_query(
+                """SELECT fc_reposo FROM datos_biometricos_premium
+                   WHERE usuario_id=? AND fecha>=? AND fc_reposo IS NOT NULL
+                   ORDER BY fecha DESC LIMIT 3""",
+                conn, params=(usuario_id, fecha_28d))
         except Exception:
             pass
 
@@ -158,16 +235,32 @@ def cargar_datos_plan(usuario_id: int) -> dict:
             hrv_actual = float(df_h.iloc[0]["hrv_ms"])
             hrv_media = float(df_h["hrv_ms"].mean())
 
+    # --- FC Reposo (buscar en últimos 7d, luego fallback a 28d) ---
+    fc_reposo = None
+    if not df_bio.empty and "fc_reposo" in df_bio.columns:
+        df_fc = df_bio.dropna(subset=["fc_reposo"])
+        if not df_fc.empty:
+            # Si hay múltiples registros, usar el promedio de los últimos 3 días
+            fc_reposo_values = df_fc["fc_reposo"].head(3).values
+            if len(fc_reposo_values) > 0:
+                fc_reposo = int(round(float(fc_reposo_values.mean())))
+
+    # Si no encontró en 7d, buscar en 28d (ya cargado en el try block)
+    if fc_reposo is None and df_bio_28d is not None and not df_bio_28d.empty:
+        fc_reposo = int(round(float(df_bio_28d["fc_reposo"].mean())))
+
     # --- Sleep score ---
     sleep_score = None
-    if not df_bio.empty:
-        df_s = df_bio.dropna(subset=["sleep_score"])
+    # Primero buscar en datos_sueno.score (más confiable)
+    if not df_sueno.empty:
+        df_s = df_sueno.dropna(subset=["score"])
         if not df_s.empty:
-            sleep_score = float(df_s.iloc[0]["sleep_score"])
-    if sleep_score is None and not df_sueno.empty:
-        df_s2 = df_sueno.dropna(subset=["score"])
+            sleep_score = float(df_s.iloc[0]["score"])
+    # Fallback a datos_biometricos_premium.sleep_score
+    if sleep_score is None and not df_bio.empty:
+        df_s2 = df_bio.dropna(subset=["sleep_score"])
         if not df_s2.empty:
-            sleep_score = float(df_s2.iloc[0]["score"])
+            sleep_score = float(df_s2.iloc[0]["sleep_score"])
 
     # --- Sleep breakdown (último disponible) ---
     sleep_breakdown = {}
@@ -189,10 +282,11 @@ def cargar_datos_plan(usuario_id: int) -> dict:
         lesiones = [{"zona": r.get("zona") or r.get("tipo", ""), "grado": int(r["grado"] or 1)}
                     for _, r in df_lesiones_hist.iterrows()]
 
-    # --- Km semana ---
+    # --- Km semana (solo carrera, filtrado en query) ---
     km_anterior = float(df_act["distancia_m"].fillna(0).sum() / 1000) if not df_act.empty else 0.0
     if km_anterior == 0.0 and not df_act_28d.empty:
-        km_anterior = float(df_act_28d["distancia_m"].fillna(0).sum() / 1000 / 3)
+        # df_act_28d ahora cubre 28d completos; calcular promedio semanal (4 semanas)
+        km_anterior = float(df_act_28d["distancia_m"].fillna(0).sum() / 1000 / 4)
 
     # --- Cadencia ---
     cadencia = None
@@ -201,12 +295,12 @@ def cargar_datos_plan(usuario_id: int) -> dict:
         if not c.empty:
             cadencia = float(c["cadencia_media"].mean())
 
-    # --- ACWR ---
+    # --- ACWR (Acute/Chronic Workload Ratio) ---
     acwr = 1.0
     if not df_carga.empty:
         ag, cr = df_carga.iloc[0]["carga_aguda"], df_carga.iloc[0]["carga_cronica"]
         if ag and cr and float(cr) > 0:
-            acwr = float(ag) / float(cr)
+            acwr = round(float(ag) / float(cr), 2)
 
     # --- Métricas running específicas (promedios últimos 7d) ---
     metricas_running = {}
@@ -268,6 +362,7 @@ def cargar_datos_plan(usuario_id: int) -> dict:
     return {
         "hrv_actual": hrv_actual,
         "hrv_media_7d": hrv_media,
+        "fc_reposo": fc_reposo,
         "sleep_score": sleep_score,
         "sleep_breakdown": sleep_breakdown,
         "lesiones_activas": lesiones,
@@ -283,18 +378,27 @@ def cargar_datos_plan(usuario_id: int) -> dict:
         "vo2max": vo2max,
         "training_status": training_status,
         "ultimas_3_actividades": ultimas_3_act,
+        # Perfil del usuario
+        "genero": perfil_usuario.get("genero", "Mujer"),
+        "fecha_objetivo": perfil_usuario.get("fecha_objetivo"),
+        "objetivo_tipo": perfil_usuario.get("objetivo_tipo", "maraton"),
+        "nombre": perfil_usuario.get("nombre", "Atleta"),
     }
 
 
 def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
                       restricciones: dict, fecha_inicio, cadencia_eval: dict = None,
-                      sleep_breakdown: dict = None) -> list:
+                      sleep_breakdown: dict = None, objetivo_tipo: str = "maraton") -> list:
     """Construye los 7 días aplicando templates, semáforo y restricciones de lesión.
     Si cadencia < 170 spm: inserta 5min de drills técnica antes de carreras Z2.
-    Si sleep profundo < 45 min: reduce series a Z2."""
+    Si sleep profundo < 45 min: reduce series a Z2.
+    objetivo_tipo: 'maraton' usa _TEMPLATES; 'ultramaraton'/'ultra' usa _TEMPLATES_ULTRA.
+    """
     fase_nombre = fase["fase_nombre"]
-    tkey = next((k for k in _TEMPLATES if k in fase_nombre), "Acondicionamiento")
-    template = _TEMPLATES[tkey]
+    es_ultra = str(objetivo_tipo).lower() in ("ultramaraton", "ultra", "trail_ultra")
+    catalogo = _TEMPLATES_ULTRA if es_ultra else _TEMPLATES
+    tkey = next((k for k in catalogo if k in fase_nombre), "Acondicionamiento")
+    template = catalogo[tkey]
     nombre_calidad = _NOMBRE_CALIDAD.get(fase.get("sesion_calidad", "progresiva"), "Calidad")
 
     if cadencia_eval is None:
@@ -323,7 +427,12 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
         elif tpl.get("regen"):
             km = km_regen
 
-        dur = int(km * 7) if (tpl["carrera"] and km > 0) else (60 if not tpl["carrera"] and tpl["fuerza_p"] else 30)
+        # FIX: ritmo estimado según intensidad de sesión (min/km), no fijo a 7
+        _RITMO_MIN_KM = {"Muy baja": 7.5, "Baja": 6.5, "Media": 6.0,
+                         "Media-Alta": 5.5, "Alta": 5.0, "—": 0}
+        ritmo_est = _RITMO_MIN_KM.get(tpl["intensidad"], 6.5)
+        dur = int(km * ritmo_est) if (tpl["carrera"] and km > 0) else (
+            60 if not tpl["carrera"] and tpl["fuerza_p"] else 30)
 
         alerta = ""
         # Semáforo ROJO
@@ -333,9 +442,9 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
             elif tpl["fuerza_p"]:
                 tipo, dur, alerta = "Movilidad", 25, "⛔ Semáforo rojo → movilidad"
 
-        # Semáforo ÁMBAR: no calidad
-        elif semaforo["color"] == "ambar" and "Calidad" in tipo or (
-                semaforo["color"] == "ambar" and tipo in ("Intervalos VO2max", "Tempo (umbral)", "Progresiva")):
+        # Semáforo ÁMBAR: no calidad — FIX: parentizar correctamente el `or`
+        elif semaforo["color"] == "ambar" and (
+                "Calidad" in tipo or tipo in ("Intervalos VO2max", "Tempo (umbral)", "Progresiva")):
             tipo, alerta = "Carrera Z2", "⚠️ Semáforo ámbar → cambiado a Z2"
 
         # Sleep profundo insuficiente: reducir series
