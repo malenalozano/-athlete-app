@@ -435,7 +435,7 @@ with tab_hist:
             "FROM datos_sueno WHERE usuario_id=? ORDER BY fecha DESC LIMIT 30",
             conn, params=(user_actual,))
         df_bio = pd.read_sql_query(
-            "SELECT fecha,hrv_ms,fc_reposo,estres_medio "
+            "SELECT fecha,hrv_ms,fc_reposo,sleep_score,estres_medio,carga_aguda,carga_cronica "
             "FROM datos_biometricos_premium WHERE usuario_id=? ORDER BY fecha DESC LIMIT 30",
             conn, params=(user_actual,))
     except Exception:
@@ -474,7 +474,16 @@ with tab_hist:
     with h_bio:
         st.markdown(label_upper("Biométricos"), unsafe_allow_html=True)
         if not df_bio.empty:
-            st.dataframe(df_bio, use_container_width=True, hide_index=True)
+            # Calcular ACWR
+            df_bio_show = df_bio.copy()
+            df_bio_show["ACWR"] = df_bio_show.apply(
+                lambda row: round(float(row["carga_aguda"]) / float(row["carga_cronica"]), 2)
+                if (pd.notna(row["carga_aguda"]) and pd.notna(row["carga_cronica"]) and float(row["carga_cronica"]) > 0) else None,
+                axis=1
+            )
+            # Mostrar solo columnas relevantes
+            df_bio_show = df_bio_show[["fecha", "hrv_ms", "fc_reposo", "sleep_score", "estres_medio", "ACWR"]]
+            st.dataframe(df_bio_show, use_container_width=True, hide_index=True)
         else:
             st.info("Sin datos biométricos.")
 

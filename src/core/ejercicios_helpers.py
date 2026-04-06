@@ -226,12 +226,14 @@ def editar_ejercicio(ejercicio_id: int, nombre: str, grupo_muscular: str,
     """Actualiza un ejercicio existente en la biblioteca."""
     conn = get_db_connection()
     try:
-        alias_json = json.dumps([a.strip() for a in alias.split(",") if a.strip()]) if alias.strip() else None
+        alias_json = json.dumps([a.strip() for a in alias.split(",") if a.strip()]) if alias and alias.strip() else None
+        musculo_clean = (musculo_principal.strip() or None) if musculo_principal else None
+        notas_clean = (notas.strip() or None) if notas else None
         conn.execute(
             "UPDATE ejercicios_biblioteca SET nombre=?, grupo_muscular=?, musculo_principal=?, "
             "tipo=?, alias=?, notas=? WHERE id=?",
-            (nombre.strip(), grupo_muscular, musculo_principal.strip() or None,
-             tipo, alias_json, notas.strip() or None, ejercicio_id))
+            (nombre.strip(), grupo_muscular, musculo_clean,
+             tipo, alias_json, notas_clean, ejercicio_id))
         conn.commit()
     finally:
         conn.close()
@@ -329,14 +331,16 @@ def render_formulario_nuevo(usuario_id: int):
                 st.error("El nombre es obligatorio.")
                 return
             alias_json = json.dumps([a.strip() for a in alias.split(",") if a.strip()]) if alias.strip() else None
+            musculo_clean = (musculo.strip() or None) if musculo else None
+            notas_clean = (notas.strip() or None) if notas else None
             conn = get_db_connection()
             try:
                 conn.execute(
                     "INSERT OR IGNORE INTO ejercicios_biblioteca "
                     "(usuario_id,nombre,grupo_muscular,musculo_principal,tipo,alias,notas,activo,creado_en) "
                     "VALUES (?,?,?,?,?,?,?,1,?)",
-                    (usuario_id, nombre.strip(), grupo, musculo.strip() or None,
-                     tipo, alias_json, notas.strip() or None,
+                    (usuario_id, nombre.strip(), grupo, musculo_clean,
+                     tipo, alias_json, notas_clean,
                      datetime.now().strftime("%Y-%m-%d")))
                 conn.commit()
                 st.success(f"'{nombre.strip()}' añadido a la biblioteca.")
