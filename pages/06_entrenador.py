@@ -44,6 +44,9 @@ conn = get_db_connection()
 st.markdown("---")
 st.header("📊 1. Datos Biométricos Actuales")
 
+# Inicializar datos como dict vacío para evitar NameError si hay excepción
+datos = {}
+
 try:
     datos = cargar_datos_plan(usuario_id)
     
