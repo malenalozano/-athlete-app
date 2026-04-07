@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 import streamlit as st
 
-_COOKIE_NAME = "athlete_auth_user"
+_COOKIE_NAME = "athlete_auth_token"
 _COOKIE_DAYS = 30
 
 
@@ -33,98 +33,104 @@ def verify_password(password: str, encoded_hash: str) -> bool:
         return False
 
 
-def _get_users_from_secrets() -> dict:
-    users = st.secrets.get("APP_USERS", {})
-    if isinstance(users, Mapping):
-        return {str(k): str(v) for k, v in users.items() if k and v}
-    return {}
+def _get_app_password() -> str:
+    """Obtiene la contraseña maestra de la app desde secrets."""
+    return str(st.secrets.get("APP_PASSWORD", "")).strip()
 
 
-def is_auth_required() -> bool:
-    return len(_get_users_from_secrets()) > 0
-
-
-def require_auth(cm=None) -> None:
+def require_simple_password_auth(cm=None) -> None:
     """
-    cm: CookieManager de extra-streamlit-components (opcional).
-        Si se pasa, el login se persiste en cookie 30 días — survives F5/reload.
+    Autenticación simple: solo contraseña para acceder a la app.
+    Una vez autenticado, puede elegir entre Malena (1) y Dani (2) desde el menú.
     """
-    if not is_auth_required():
+    app_password = _get_app_password()
+    if not app_password:
+        # Sin contraseña configurada — acceso libre
         return
 
     if st.session_state.get("auth_ok"):
+        # Ya autenticado
         return
-
-    users = _get_users_from_secrets()
 
     # ── Intentar auto-login desde cookie ────────────────────────────
     if cm is not None:
         try:
-            cookie_user = cm.get(_COOKIE_NAME)
-            if cookie_user and str(cookie_user).strip() in users:
+            cookie_token = cm.get(_COOKIE_NAME)
+            if cookie_token == "authenticated":
                 st.session_state["auth_ok"] = True
-                st.session_state["auth_user"] = str(cookie_user).strip()
                 st.rerun()
         except Exception:
             pass
 
-    # ── Pantalla de login ────────────────────────────────────────────
+    # ── Pantalla de login con solo contraseña ────────────────────────
     st.markdown("""
     <style>
     [data-testid="stAppViewContainer"] {
         background: linear-gradient(135deg, #0E1117 0%, #0A2E0A 52%, #0E1117 100%);
+        min-height: 100vh;
     }
-    .login-center { max-width: 400px; margin: 6vh auto 0; padding: 0 16px; }
-    .login-title  { font-size: 2rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
-    .login-sub    { color: #8B949E; font-size: 0.9rem; margin-bottom: 24px; }
+    .login-center { max-width: 400px; margin: 12vh auto 0; padding: 0 16px; }
+    .login-title  { font-size: 2.2rem; font-weight: 800; color: #C9FF00; margin-bottom: 8px; letter-spacing: -0.5px; }
+    .login-sub    { color: #8B949E; font-size: 0.95rem; margin-bottom: 32px; line-height: 1.5; }
+    .login-form { background: rgba(13, 17, 23, 0.8); border: 1px solid #30363d; border-radius: 12px; padding: 24px; backdrop-filter: blur(10px); }
     </style>
     """, unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        st.markdown("<div style='text-align:center;margin:40px 0 24px;'>", unsafe_allow_html=True)
+        # Avatar
         st.markdown(
-            "<div style='width:64px;height:64px;background:#C9FF00;border-radius:12px;"
-            "display:inline-flex;align-items:center;justify-content:center;"
-            "box-shadow:0 10px 24px rgba(201,255,0,0.4);margin-bottom:16px;'>"
-            "<svg width='32' height='32' viewBox='0 0 24 24' fill='#0E1117'>"
-            "<path d='M12 12c2.2 0 4-1.8 4-4s-1.8-4-4-4-4 1.8-4 4 1.8 4 4 4zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z'/>"
-            "</svg></div>",
+            "<div style='text-align:center;margin-bottom:24px;'>"
+            "<div style='width:72px;height:72px;background:linear-gradient(135deg,#C9FF00,#A3E635);border-radius:16px;"
+            "display:inline-flex;align-items:center;justify-content:center;box-shadow:0 12px 32px rgba(201,255,0,0.25);'>"
+            "<svg width='40' height='40' viewBox='0 0 24 24' fill='#0E1117' style='font-weight:bold;'>"
+            "<path d='M16.5 12c1.93 0 3.5-1.57 3.5-3.5S18.43 5 16.5 5 13 6.57 13 8.5s1.57 3.5 3.5 3.5zm-9 0c1.93 0 3.5-1.57 3.5-3.5S9.43 5 7.5 5 4 6.57 4 8.5 5.57 12 7.5 12zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4zm9 0c-.29 0-.74.02-1.5.15 1.42 1.25 2.5 2.71 2.5 4.35v2h6v-2c0-2.66-5.33-4-7-4.5z'/>"
+            "</svg></div>"
+            "</div>",
             unsafe_allow_html=True,
         )
-        st.markdown("<div class='login-title'>Proyecto Athlete</div>", unsafe_allow_html=True)
-        st.markdown("<div class='login-sub'>Acceso privado</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
-        with st.form("login_form", clear_on_submit=False):
-            username = st.text_input("Usuario")
-            password = st.text_input("Contraseña", type="password")
-            submitted = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+        # Títulos
+        st.markdown(
+            "<div style='text-align:center;'>"
+            "<div class='login-title'>🏃 athlete.</div>"
+            "<div class='login-sub'>Sistema privado de entrenamiento<br>para Malena y Dani</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        # Formulario
+        with st.form("login_password_form", clear_on_submit=False):
+            password = st.text_input(
+                "🔐 Contraseña de acceso",
+                type="password",
+                placeholder="Ingresa la contraseña",
+                help="Solo personas autorizadas pueden acceder"
+            )
+            submitted = st.form_submit_button("🔓 Entrar", type="primary", use_container_width=True)
 
         if submitted:
-            stored = users.get((username or "").strip())
-            if stored and verify_password(password or "", stored):
+            if password == app_password:
                 st.session_state["auth_ok"] = True
-                st.session_state["auth_user"] = username.strip()
                 if cm is not None:
                     try:
                         cm.set(
                             _COOKIE_NAME,
-                            username.strip(),
+                            "authenticated",
                             expires_at=datetime.now() + timedelta(days=_COOKIE_DAYS),
                         )
                     except Exception:
                         pass
                 st.rerun()
             else:
-                st.error("Usuario o contraseña incorrectos.")
+                st.error("❌ Contraseña incorrecta. Intenta de nuevo.")
 
     st.stop()
 
 
 def logout(cm=None) -> None:
     """Limpia sesión y cookie."""
-    for key in ("auth_ok", "auth_user", "usuario_id", "gc", "gc_failed", "gc_error"):
+    for key in ("auth_ok", "usuario_id", "gc", "gc_failed", "gc_error", "auth_user"):
         st.session_state.pop(key, None)
     if cm is not None:
         try:
@@ -133,3 +139,13 @@ def logout(cm=None) -> None:
             pass
     st.cache_data.clear()
     st.rerun()
+
+
+# ── Mantener compatibilidad con sistema antiguo (opcional) ──
+def is_auth_required() -> bool:
+    return len(_get_app_password()) > 0
+
+
+def require_auth(cm=None) -> None:
+    """Alias para compatibilidad — ahora redirecciona a autenticación simple."""
+    require_simple_password_auth(cm)
