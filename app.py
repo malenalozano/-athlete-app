@@ -24,7 +24,8 @@ try:
 except Exception:
     pass
 
-require_auth(_cm)
+# 🔓 DESHABILITADO TEMPORALMENTE PARA DESARROLLO - permite acceso libre a Malena (1) y Dani (2)
+# require_auth(_cm)
 
 # Ocultar TODO lo nativo de Streamlit + CSS global del sistema de diseño
 from src.core.styles import GLOBAL_CSS
