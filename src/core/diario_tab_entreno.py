@@ -818,6 +818,25 @@ def _guardar_sesiones(usuario_id: int, sesiones: list):
                      int(ej.get("rpe",5) or 5),
                      ej.get("notas","")))
                 ej_id = buscar_ejercicio_id(usuario_id, ej.get("ejercicio",""))
+                
+                # Si no existe en biblioteca, crear automáticamente
+                if not ej_id:
+                    nombre_ej = ej.get("ejercicio","").strip()
+                    if nombre_ej:
+                        try:
+                            conn.execute(
+                                "INSERT INTO ejercicios_biblioteca "
+                                "(usuario_id,nombre,grupo_muscular,musculo_principal,tipo,activo,creado_en) "
+                                "VALUES (?,?,?,?,?,1,?)",
+                                (usuario_id, nombre_ej,
+                                 ej.get("grupo_muscular","Tren Inferior"),
+                                 ej.get("musculo_principal","Varios"),
+                                 "Fuerza",
+                                 datetime.now().strftime("%Y-%m-%d")))
+                            ej_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                        except Exception:
+                            pass
+                
                 if ej_id:
                     guardar_historial(
                         usuario_id, ej_id, fecha_str,
