@@ -114,7 +114,7 @@ button[kind="secondary"] {{
     border-radius: 14px !important;
     padding: 12px 14px !important;
     box-shadow: 0 1px 0 rgba(255,255,255,0.03), inset 0 1px 0 rgba(255,255,255,0.02) !important;
-}
+}}
 [data-testid="stMetric"] > div {{
     padding: 0 !important;
 }}
