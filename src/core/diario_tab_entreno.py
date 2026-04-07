@@ -330,24 +330,28 @@ div[data-testid="stTextArea"] textarea:focus {
                 st.session_state["_fecha_override"] = date.today()
 
         if procesar and nota.strip():
-            sesiones_prep = []
-            with st.spinner("Analizando…"):
-                for marca, frag in _dividir_nota_por_fechas(nota):
-                    texto_seg   = frag if marca else nota
-                    fecha_seg, _ = extraer_fecha_historica(texto_seg)
-                    meta        = _clasificar_segmento_diario(texto_seg)
-                    nota_estado = _extraer_nota_estado(texto_seg)
-                    vinculo     = _buscar_actividad_running_fecha(usuario_id, fecha_seg)
-                    res = (procesar_nota_fuerza(texto_seg, usuario_id=usuario_id)
-                           if meta["has_fuerza"]
-                           else {"exito": True, "datos": [], "raw": ""})
-                    sesiones_prep.append({
-                        "fecha": fecha_seg, "res": res, "texto": texto_seg,
-                        "meta": meta, "nota_estado": nota_estado, "vinculo_running": vinculo,
-                    })
-            st.session_state[_k_ses] = sesiones_prep
-            st.session_state[_k_res] = True
-            st.rerun()
+            # Validar longitud de entrada
+            if len(nota.strip()) > 5000:
+                st.error(f"⚠️ Nota muy larga ({len(nota.strip())} caracteres). Máximo 5000.")
+            else:
+                sesiones_prep = []
+                with st.spinner("Analizando…"):
+                    for marca, frag in _dividir_nota_por_fechas(nota):
+                        texto_seg   = frag if marca else nota
+                        fecha_seg, _ = extraer_fecha_historica(texto_seg)
+                        meta        = _clasificar_segmento_diario(texto_seg)
+                        nota_estado = _extraer_nota_estado(texto_seg)
+                        vinculo     = _buscar_actividad_running_fecha(usuario_id, fecha_seg)
+                        res = (procesar_nota_fuerza(texto_seg, usuario_id=usuario_id)
+                               if meta["has_fuerza"]
+                               else {"exito": True, "datos": [], "raw": ""})
+                        sesiones_prep.append({
+                            "fecha": fecha_seg, "res": res, "texto": texto_seg,
+                            "meta": meta, "nota_estado": nota_estado, "vinculo_running": vinculo,
+                        })
+                st.session_state[_k_ses] = sesiones_prep
+                st.session_state[_k_res] = True
+                st.rerun()
 
         _card_close()
 

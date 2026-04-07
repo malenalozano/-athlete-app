@@ -170,7 +170,7 @@ def progreso_fuerza_grupos(df_fuerza):
     return out.groupby(["fecha_dt", "grupo", "ejercicio"], as_index=False).agg(volumen=("volumen", "sum")).sort_values("fecha_dt")
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def resumen_semana_con_delta(usuario_id) -> dict:
     """Métricas 7d con delta vs los 7 días anteriores."""
     conn = get_db_connection()
@@ -263,7 +263,7 @@ def metricas_garmin(usuario_id) -> dict:
             "estres": _m(df_b, "estres_medio")}
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def progresion_pesos_ejercicios(usuario_id) -> pd.DataFrame:
     """Últimas 2 sesiones por ejercicio — devuelve tabla con delta de peso."""
     conn = get_db_connection()
@@ -283,7 +283,7 @@ def progresion_pesos_ejercicios(usuario_id) -> pd.DataFrame:
         u = grp.iloc[0]
         p = grp.iloc[1] if len(grp) > 1 else None
         delta = round(float(u["peso"]) - float(p["peso"]), 1) if p is not None else 0.0
-        badge = f"↑ +{delta}" if delta > 0 else ("↓ {delta}" if delta < 0 else "=")
+        badge = f"↑ +{delta}" if delta > 0 else (f"↓ {abs(delta)}" if delta < 0 else "=")
         filas.append({"Ejercicio": ej,
                       "Peso": float(u["peso"]) if float(u["peso"]) > 0 else "PC",
                       "S×R": f"{int(u['series'])}×{int(u['repeticiones'])}",

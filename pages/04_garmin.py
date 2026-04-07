@@ -332,14 +332,36 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                 unsafe_allow_html=True)
             with st.form("garmin_cred_form"):
                 email_def = cred[0] if cred and cred[0] else ""
-                email_g = st.text_input("Email Garmin", value=email_def)
+                email_g = st.text_input("Email Garmin", value=email_def).strip()
                 pass_g  = st.text_input("Contraseña", type="password", help="Vacía = mantener actual")
                 if st.form_submit_button("Guardar y conectar", type="primary", use_container_width=True):
-                    if email_g and "@" not in email_g:
-                        st.error("Email sin formato válido.")
-                    elif not pass_g.strip() and not (cred and cred[1]):
-                        st.error("Introduce la contraseña.")
-                    else:
+                    # Validar email más estrictamente
+                    email_valid = True
+                    if email_g:
+                        if "@" not in email_g:
+                            st.error("Email inválido: sin '@'.")
+                            email_valid = False
+                        elif email_g.count("@") > 1:
+                            st.error("Email inválido: múltiples '@'.")
+                            email_valid = False
+                        elif not email_g.split("@")[0]:
+                            st.error("Email inválido: vacío antes de '@'.")
+                            email_valid = False
+                        elif "." not in email_g.split("@")[1]:
+                            st.error("Email inválido: sin dominio (sin '.').")
+                            email_valid = False
+                    
+                    # Validar contraseña
+                    pass_valid = True
+                    pass_g_clean = pass_g.strip() if pass_g else ""
+                    if not pass_g_clean and not (cred and cred[1]):
+                        st.error("Introduce la contraseña (mín. 4 caracteres).")
+                        pass_valid = False
+                    elif pass_g_clean and len(pass_g_clean) < 4:
+                        st.error("Contraseña muy corta (mín. 4 caracteres).")
+                        pass_valid = False
+                    
+                    if email_valid and pass_valid:
                         conn = get_db_connection()
                         try:
                             if email_g and pass_g.strip():
