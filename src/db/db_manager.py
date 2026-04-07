@@ -568,11 +568,12 @@ def asegurar_tabla_ejercicios(usuario_id: int = 1):
             ("Press militar",      "Tren superior", "Hombro",                "Fuerza",    '["press hombro","militar","press overhead"]'),
             ("Plancha",            "Core",          "Core",                  "Fuerza",    '["plank","plancha abdominal","isométrico"]'),
         ]
-        conn.executemany(
-            "INSERT OR IGNORE INTO ejercicios_biblioteca "
-            "(usuario_id,nombre,grupo_muscular,musculo_principal,tipo,alias,activo,creado_en) "
-            "VALUES (?,?,?,?,?,?,1,?)",
-            [(usuario_id, n, g, m, t, a, ahora) for n, g, m, t, a in defaults])
+        for n, g, m, t, a in defaults:
+            conn.execute(
+                "INSERT OR IGNORE INTO ejercicios_biblioteca "
+                "(usuario_id,nombre,grupo_muscular,musculo_principal,tipo,alias,activo,creado_en) "
+                "VALUES (?,?,?,?,?,?,1,?)",
+                (usuario_id, n, g, m, t, a, ahora))
     conn.commit()
     conn.close()
 

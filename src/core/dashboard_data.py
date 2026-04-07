@@ -170,6 +170,7 @@ def progreso_fuerza_grupos(df_fuerza):
     return out.groupby(["fecha_dt", "grupo", "ejercicio"], as_index=False).agg(volumen=("volumen", "sum")).sort_values("fecha_dt")
 
 
+@st.cache_data(ttl=300)
 def resumen_semana_con_delta(usuario_id) -> dict:
     """Métricas 7d con delta vs los 7 días anteriores."""
     conn = get_db_connection()
@@ -218,6 +219,7 @@ def resumen_semana_con_delta(usuario_id) -> dict:
             "hrv": h_c, "hrv_delta": _d(h_c, h_p)}
 
 
+@st.cache_data(ttl=300)
 def metricas_garmin(usuario_id) -> dict:
     """Últimas métricas biométricas para el grid del dashboard."""
     conn = get_db_connection()
@@ -261,6 +263,7 @@ def metricas_garmin(usuario_id) -> dict:
             "estres": _m(df_b, "estres_medio")}
 
 
+@st.cache_data(ttl=300)
 def progresion_pesos_ejercicios(usuario_id) -> pd.DataFrame:
     """Últimas 2 sesiones por ejercicio — devuelve tabla con delta de peso."""
     conn = get_db_connection()

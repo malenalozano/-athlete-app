@@ -257,6 +257,7 @@ def render_macrociclo(usuario_id: int | None = None):
         f"</div></div></div>", unsafe_allow_html=True)
 
 
+@st.cache_data(ttl=120, show_spinner=False)
 def render_grafico_sueno(usuario_id: int):
     """Barras de horas + línea de score (eje Y2) para los últimos 7 días.
     Debajo: análisis de la última noche sincronizada."""

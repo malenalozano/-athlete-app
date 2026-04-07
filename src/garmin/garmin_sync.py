@@ -2,6 +2,7 @@ import os
 import logging
 import re
 from datetime import datetime, timedelta
+from threading import Thread
 from garminconnect import Garmin, GarminConnectConnectionError, GarminConnectAuthenticationError
 from dotenv import load_dotenv
 from src.db.db_manager import get_db_connection
@@ -151,22 +152,40 @@ def _last_number(obj, keys):
 def _safe_api_call(fn, *args, **kwargs):
     """
     Ejecuta una llamada API de Garmin de forma segura, registrando errores.
+    Incluye timeout de 15 segundos para evitar cuelgues.
     Retorna None si la llamada falla, pero registra qué pasó.
     """
     fn_name = getattr(fn, '__name__', str(fn))
-    try:
-        result = fn(*args, **kwargs)
-        logger.debug(f"✅ {fn_name}({args}, {kwargs}) - OK")
-        return result
-    except GarminConnectAuthenticationError as e:
-        logger.error(f"❌ {fn_name}: ERROR DE AUTENTICACIÓN - {e}")
+    timeout_sec = 15
+    result_container = [None]
+    exception_container = [None]
+    
+    def _call_with_result():
+        try:
+            result_container[0] = fn(*args, **kwargs)
+        except Exception as e:
+            exception_container[0] = e
+    
+    thread = Thread(target=_call_with_result, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_sec)
+    
+    if thread.is_alive():
+        logger.error(f"❌ {fn_name}: TIMEOUT después de {timeout_sec}s")
         return None
-    except GarminConnectConnectionError as e:
-        logger.error(f"❌ {fn_name}: ERROR DE CONEXIÓN - {e}")
+    
+    if exception_container[0]:
+        e = exception_container[0]
+        if isinstance(e, GarminConnectAuthenticationError):
+            logger.error(f"❌ {fn_name}: ERROR DE AUTENTICACIÓN - {e}")
+        elif isinstance(e, GarminConnectConnectionError):
+            logger.error(f"❌ {fn_name}: ERROR DE CONEXIÓN - {e}")
+        else:
+            logger.warning(f"⚠️  {fn_name}({args}): {type(e).__name__}: {e}")
         return None
-    except Exception as e:
-        logger.warning(f"⚠️  {fn_name}({args}): {type(e).__name__}: {e}")
-        return None
+    
+    logger.debug(f"✅ {fn_name}({args}, {kwargs}) - OK")
+    return result_container[0]
 
 
 def _extract_activity_metrics(activity, summary, details):
@@ -766,7 +785,28 @@ def _load_valid_client_from_home(home: str):
     try:
         client = Garmin()
         client.garth.load(home)
-        client.get_full_name()  # valida token/refresh token
+        
+        # Validar con timeout
+        result_container = [False]
+        exception_container = [None]
+        
+        def _validate():
+            try:
+                client.get_full_name()
+                result_container[0] = True
+            except Exception as e:
+                exception_container[0] = e
+        
+        thread = Thread(target=_validate, daemon=True)
+        thread.start()
+        thread.join(timeout=10)  # 10 segundos para validación
+        
+        if not result_container[0]:
+            if exception_container[0]:
+                raise exception_container[0]
+            else:
+                raise TimeoutError("Validación de token expirada")
+        
         logger.debug(f"✓ Sesión Garmin válida cargada desde {home}")
         return client
     except Exception as e:
@@ -801,7 +841,28 @@ def _cargar_tokens_db(usuario_id: int):
         token_json = row[0]
         client = Garmin()
         client.garth.loads(token_json)
-        client.get_full_name()  # valida / renueva access_token si hace falta
+        
+        # Validar con timeout
+        result_container = [False]
+        exception_container = [None]
+        
+        def _validate():
+            try:
+                client.get_full_name()  # valida / renueva access_token si hace falta
+                result_container[0] = True
+            except Exception as e:
+                exception_container[0] = e
+        
+        thread = Thread(target=_validate, daemon=True)
+        thread.start()
+        thread.join(timeout=10)  # 10 segundos para validación
+        
+        if not result_container[0]:
+            if exception_container[0]:
+                raise exception_container[0]
+            else:
+                raise TimeoutError("Validación de token expirada")
+        
         # Re-guardar por si el refresh_token generó nuevos tokens
         try:
             _guardar_tokens_db(usuario_id, client.garth.dumps())
@@ -930,7 +991,26 @@ def iniciar_sesion_garmin(email, password, usuario_id: int | None = None):
     # 2. Login fresco con credenciales
     client = Garmin(email=email, password=password)
     try:
-        client.login()
+        # Login con timeout
+        login_container = [False]
+        exception_container = [None]
+        
+        def _login():
+            try:
+                client.login()
+                login_container[0] = True
+            except Exception as e:
+                exception_container[0] = e
+        
+        thread = Thread(target=_login, daemon=True)
+        thread.start()
+        thread.join(timeout=20)  # 20 segundos para login
+        
+        if not login_container[0]:
+            if exception_container[0]:
+                raise exception_container[0]
+            else:
+                raise TimeoutError("Login en Garmin expiró (timeout)")
         # Guardar en disco (local)
         token_home = os.path.join(GARTH_HOME, _safe_email_slug(email)) if email else GARTH_HOME
         try:
