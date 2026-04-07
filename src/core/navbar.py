@@ -175,162 +175,265 @@ def render_navbar(pagina_activa: str):
     
     # Popover del menú de usuario (rendereado abajo del navbar)
     if st.session_state.get("navbar_popover_open", False):
-        # Estilos para el menú mejorado
+        # Estilos mejorados para el menú
         st.markdown(f"""<style>
-        .user-menu-container {{
-            background: linear-gradient(135deg, #0E1117 0%, #0A2E0A 52%, #0E1117 100%);
-            border: 1px solid {ACCENT}30;
-            border-radius: 12px;
-            padding: 20px;
+        .premium-menu {{
+            background: linear-gradient(135deg, #0E1117 0%, #0A2E0A 50%, #0E1117 100%);
+            border: 1px solid {ACCENT}25;
+            border-radius: 16px;
+            padding: 0;
             margin-top: 12px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            box-shadow: 0 16px 48px rgba(0,0,0,0.4), inset 0 1px 0 {ACCENT}10;
+            overflow: hidden;
         }}
-        .user-menu-header {{
+        .profile-header {{
+            background: linear-gradient(90deg, {ACCENT}15 0%, transparent 100%);
+            border-bottom: 1px solid {BORDER};
+            padding: 20px;
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 20px;
+            gap: 16px;
         }}
-        .user-menu-avatar {{
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, {ACCENT}, {ACCENT}80);
+        .profile-avatar {{
+            width: 56px;
+            height: 56px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, {ACCENT}80, {ACCENT}40);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 700;
-            font-size: 20px;
+            font-size: 28px;
+            font-weight: 800;
             color: #0E1117;
-            box-shadow: 0 4px 12px {ACCENT}40;
+            box-shadow: 0 4px 16px {ACCENT}30;
+            flex-shrink: 0;
         }}
-        .user-menu-info {{
+        .profile-info {{
             flex: 1;
         }}
-        .user-menu-info .nombre {{
+        .profile-info .current-profile {{
+            font-size: 16px;
             font-weight: 700;
-            color: #C9FF00;
-            font-size: 15px;
-            margin-bottom: 4px;
+            color: {ACCENT};
+            margin-bottom: 3px;
+            letter-spacing: -0.3px;
         }}
-        .user-menu-info .objetivo {{
+        .profile-info .status {{
             font-size: 12px;
             color: #8B949E;
-        }}
-        .perfil-selector {{
             display: flex;
-            gap: 8px;
-            margin-bottom: 16px;
+            align-items: center;
+            gap: 6px;
         }}
-        .perfil-btn {{
+        .profiles-container {{
+            padding: 20px;
+        }}
+        .profile-card {{
+            background: rgba(19, 29, 43, 0.6);
+            border: 2px solid {BORDER};
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }}
+        .profile-card:hover {{
+            border-color: {ACCENT}80;
+            background: rgba({ACCENT[1:] if ACCENT.startswith('#') else '201,255,0'}, 0.08);
+            transform: translateX(4px);
+        }}
+        .profile-card.active {{
+            border-color: {ACCENT};
+            background: linear-gradient(90deg, {ACCENT}15 0%, transparent 100%);
+            box-shadow: 0 0 20px {ACCENT}25;
+        }}
+        .profile-card-avatar {{
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, {ACCENT}60, {ACCENT}30);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: 700;
+            color: white;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px {ACCENT}20;
+        }}
+        .profile-card-info {{
             flex: 1;
-            padding: 12px;
-            border: 2px solid {ACCENT}40;
-            border-radius: 8px;
+        }}
+        .profile-card-name {{
+            font-size: 14px;
+            font-weight: 700;
+            color: #C9FF00;
+            margin-bottom: 2px;
+        }}
+        .profile-card-target {{
+            font-size: 11px;
+            color: #8B949E;
+        }}
+        .profile-card-badge {{
+            display: inline-block;
+            background: {ACCENT}20;
+            border: 1px solid {ACCENT}50;
+            color: {ACCENT};
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+        .profile-card.active .profile-card-badge {{
+            background: {ACCENT};
+            color: #0E1117;
+            border-color: {ACCENT};
+        }}
+        .menu-actions {{
+            border-top: 1px solid {BORDER};
+            padding: 16px 20px;
+            display: flex;
+            gap: 12px;
+        }}
+        .menu-btn {{
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: 10px;
+            border: 1px solid {BORDER};
             background: transparent;
             color: #8B949E;
-            cursor: pointer;
             font-size: 13px;
             font-weight: 600;
+            cursor: pointer;
             transition: all 0.2s;
-            text-align: center;
         }}
-        .perfil-btn.activo {{
-            border-color: {ACCENT}!important;
-            background: {ACCENT}20!important;
-            color: {ACCENT}!important;
-            box-shadow: 0 0 16px {ACCENT}30;
-        }}
-        .perfil-btn:hover {{
-            border-color: {ACCENT}80;
+        .menu-btn:hover {{
+            border-color: {ACCENT};
             color: #C9D1D9;
+            background: {ACCENT}08;
         }}
-        .menu-divider {{
-            height: 1px;
-            background: {BORDER};
-            margin: 12px 0;
+        .menu-btn.logout {{
+            border-color: #da3633;
+            color: #da3633;
         }}
-        .menu-action {{
-            margin-bottom: 8px;
-        }}
-        .menu-action button {{
-            width: 100%!important;
-            font-size: 13px!important;
+        .menu-btn.logout:hover {{
+            background: rgba(218, 54, 51, 0.1);
         }}
         </style>""", unsafe_allow_html=True)
         
         with st.container():
-            st.markdown('<div class="user-menu-container">', unsafe_allow_html=True)
+            st.markdown('<div class="premium-menu">', unsafe_allow_html=True)
             
-            # Header con avatar e info del usuario
+            # ── Header con perfil actual ──
             _perfiles_list = {"Malena": 1, "Dani": 2}
             _current_uid = st.session_state.get("usuario_id", 1)
             _nombre_actual = next((n for n, i in _perfiles_list.items() if i == _current_uid), "Usuario")
-            _avatar = _nombre_actual[:1].upper()
+            _avatar = "👩" if _nombre_actual == "Malena" else "👨"
             
             st.markdown(f"""
-            <div class="user-menu-header">
-                <div class="user-menu-avatar">{_avatar}</div>
-                <div class="user-menu-info">
-                    <div class="nombre">👤 {_nombre_actual}</div>
-                    <div class="objetivo">Perfil activo: <strong>{_nombre_actual}</strong></div>
+            <div class="profile-header">
+                <div class="profile-avatar">{_avatar}</div>
+                <div class="profile-info">
+                    <div class="current-profile">{_nombre_actual}</div>
+                    <div class="status">
+                        <span>●</span>
+                        <span>Conectado</span>
+                    </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
-            # Selector de perfil con botones
-            _auth_user_to_id = {"malena": 1, "dani": 2, "malenita88": 1, "danielito99": 2}
-            _forced = _auth_user_to_id.get(str(st.session_state.get("auth_user", "")).strip().lower())
+            # ── Selector de perfiles con tarjetas ──
+            st.markdown('<div class="profiles-container">', unsafe_allow_html=True)
+            st.markdown('<div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #484F58; margin-bottom: 12px; font-weight: 700;">Cambiar a</div>', unsafe_allow_html=True)
             
-            if not _forced:
-                # Selector de perfil mejorado con botones
-                st.markdown('<div class="perfil-selector">', unsafe_allow_html=True)
-                col_m, col_d = st.columns([1, 1])
-                
-                with col_m:
-                    btn_class = "perfil-btn activo" if _current_uid == 1 else "perfil-btn"
-                    if st.button("👩 Malena", key="perfil_malena", use_container_width=True):
-                        if _current_uid != 1:
-                            st.session_state["usuario_id"] = 1
-                            st.session_state.pop("navbar_popover_open", None)
-                            for key in ("plan_data", "plan_cursor", "plan_ia", "diario_data", 
-                                        "ejercicios_data", "ejercicios_init_users", "gc", "gc_failed", "gc_error"):
-                                st.session_state.pop(key, None)
-                            st.cache_data.clear()
-                            st.rerun()
-                
-                with col_d:
-                    btn_class = "perfil-btn activo" if _current_uid == 2 else "perfil-btn"
-                    if st.button("👨 Dani", key="perfil_dani", use_container_width=True):
-                        if _current_uid != 2:
-                            st.session_state["usuario_id"] = 2
-                            st.session_state.pop("navbar_popover_open", None)
-                            for key in ("plan_data", "plan_cursor", "plan_ia", "diario_data", 
-                                        "ejercicios_data", "ejercicios_init_users", "gc", "gc_failed", "gc_error"):
-                                st.session_state.pop(key, None)
-                            st.cache_data.clear()
-                            st.rerun()
-                
-                st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                # Con auth: opción de cambiar cuenta
-                other_name = "Dani" if _current_uid == 1 else "Malena"
-                other_uid = 2 if _current_uid == 1 else 1
-                st.markdown(f'<div style="text-align:center;padding:12px;color:#8B949E;font-size:12px;">Conectado como <strong>{_nombre_actual}</strong></div>', unsafe_allow_html=True)
+            # Obtener datos de ambos perfiles
+            from src.db.db_manager import obtener_perfil
             
-            st.markdown('<div class="menu-divider"></div>', unsafe_allow_html=True)
+            col_p1, col_p2 = st.columns([1, 1])
             
-            # Botones de acción
-            st.markdown('<div class="menu-action">', unsafe_allow_html=True)
-            if st.button("⚙️ Configuración", use_container_width=True, key="menu_settings"):
-                st.info("Configuración disponible pronto.")
+            perfiles_info = []
+            for nombre, uid in _perfiles_list.items():
+                perfil = obtener_perfil(uid) or {}
+                emoji = "👩" if nombre == "Malena" else "👨"
+                objetivo = perfil.get("objetivo_tipo", "Maratón").title() if perfil.get("objetivo_tipo") else "Maratón"
+                genero = perfil.get('genero', 'Atleta')
+                is_active = (uid == _current_uid)
+                perfiles_info.append((nombre, uid, emoji, objetivo, genero, is_active))
+            
+            # Primer perfil (Malena)
+            with col_p1:
+                nombre, uid, emoji, objetivo, genero, is_active = perfiles_info[0]
+                if is_active:
+                    st.markdown(f"""
+                    <div class="profile-card active">
+                        <div class="profile-card-avatar">{emoji}</div>
+                        <div class="profile-card-info">
+                            <div class="profile-card-name">{nombre}</div>
+                            <div class="profile-card-target">{objetivo}</div>
+                        </div>
+                        <div class="profile-card-badge">✓ ACTUAL</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    if st.button(f"👩 {nombre}\n{objetivo}", key="switch_malena", use_container_width=True):
+                        st.session_state["usuario_id"] = uid
+                        st.session_state.pop("navbar_popover_open", None)
+                        for key in ("plan_data", "plan_cursor", "plan_ia", "diario_data", 
+                                    "ejercicios_data", "ejercicios_init_users", "gc", "gc_failed", "gc_error",
+                                    "dashboard_last_user", "diario_last_user", "ejercicios_last_user", 
+                                    "garmin_last_user", "entrenador_last_user"):
+                            st.session_state.pop(key, None)
+                        st.cache_data.clear()
+                        st.rerun()
+            
+            # Segundo perfil (Dani)
+            with col_p2:
+                nombre, uid, emoji, objetivo, genero, is_active = perfiles_info[1]
+                if is_active:
+                    st.markdown(f"""
+                    <div class="profile-card active">
+                        <div class="profile-card-avatar">{emoji}</div>
+                        <div class="profile-card-info">
+                            <div class="profile-card-name">{nombre}</div>
+                            <div class="profile-card-target">{objetivo}</div>
+                        </div>
+                        <div class="profile-card-badge">✓ ACTUAL</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    if st.button(f"👨 {nombre}\n{objetivo}", key="switch_dani", use_container_width=True):
+                        st.session_state["usuario_id"] = uid
+                        st.session_state.pop("navbar_popover_open", None)
+                        for key in ("plan_data", "plan_cursor", "plan_ia", "diario_data", 
+                                    "ejercicios_data", "ejercicios_init_users", "gc", "gc_failed", "gc_error",
+                                    "dashboard_last_user", "diario_last_user", "ejercicios_last_user", 
+                                    "garmin_last_user", "entrenador_last_user"):
+                            st.session_state.pop(key, None)
+                        st.cache_data.clear()
+                        st.rerun()
+            
+            
             st.markdown('</div>', unsafe_allow_html=True)
             
-            st.markdown('<div class="menu-action">', unsafe_allow_html=True)
-            if st.button("🚪 Cerrar sesión", use_container_width=True, key="navbar_logout"):
-                _cm = st.session_state.get("_cm")
-                from src.core.access_control import logout
-                logout(_cm)
-            st.markdown('</div>', unsafe_allow_html=True)
+            # ── Botones de acción ──
+            st.markdown('<div class="menu-actions">', unsafe_allow_html=True)
             
+            col_settings, col_logout = st.columns([1, 1])
+            with col_settings:
+                if st.button("⚙️ Config", use_container_width=True, key="menu_settings_btn"):
+                    st.info("⏳ Configuración disponible pronto.")
+                    
+            with col_logout:
+                if st.button("🚪 Logout", use_container_width=True, key="navbar_logout_btn"):
+                    _cm = st.session_state.get("_cm")
+                    from src.core.access_control import logout
+                    logout(_cm)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
