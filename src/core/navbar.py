@@ -102,7 +102,7 @@ def render_navbar(pagina_activa: str):
                 usuario_id = st.session_state.get("usuario_id", 1)
                 cred = obtener_credenciales_garmin(usuario_id)
                 email = cred[0] if cred else None
-                gc = cargar_sesion_tokens(email)
+                gc = cargar_sesion_tokens(email, usuario_id=usuario_id)
                 if gc is not None:
                     st.session_state["gc"] = gc
             if gc is None:

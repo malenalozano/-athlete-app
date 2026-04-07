@@ -252,7 +252,7 @@ with col_det:
             from src.garmin.garmin_sync import cargar_sesion_tokens
             cred = obtener_credenciales_garmin(user_actual)
             email = cred[0] if cred else None
-            gc = st.session_state.get("gc") or cargar_sesion_tokens(email)
+            gc = st.session_state.get("gc") or cargar_sesion_tokens(email, usuario_id=user_actual)
             if gc is None:
                 st.warning("Conecta tu cuenta Garmin primero en la página Garmin.")
             else:

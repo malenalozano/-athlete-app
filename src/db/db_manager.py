@@ -232,6 +232,7 @@ def init_db():
     _ensure_column(conn, "usuarios", "password_garmin_enc", "TEXT")
     _ensure_column(conn, "usuarios", "fecha_objetivo", "TEXT")   # fecha de la carrera objetivo (YYYY-MM-DD)
     _ensure_column(conn, "usuarios", "objetivo_tipo", "TEXT")    # 'maraton', 'ultramaraton', 'trail', etc.
+    _ensure_column(conn, "usuarios", "garmin_tokens", "TEXT")    # OAuth tokens garth serializados (JSON)
 
     # Sembrar perfiles por defecto (INSERT OR IGNORE preserva datos existentes)
     conn.execute(

@@ -215,7 +215,7 @@ def _render_last_sync_details():
 # Auto-auth: try token first, then saved credentials (single-profile friendly)
 cred = obtener_credenciales_garmin(user_actual)
 if "gc" not in st.session_state and not st.session_state.get("gc_failed"):
-    gc_tok = cargar_sesion_tokens(cred[0] if cred else None)
+    gc_tok = cargar_sesion_tokens(cred[0] if cred else None, usuario_id=user_actual)
     if gc_tok is not None:
         st.session_state["gc"] = gc_tok
     # Importante: no intentar login automático con contraseña al cargar la página,
@@ -262,16 +262,23 @@ with tab_sync:
                 f"<div style='color:{TXT2};font-size:12px;'>No se pudo conectar con Garmin.</div></div>",
                 unsafe_allow_html=True)
 
-            if "429" in str(st.session_state.get("gc_error","")):
-                st.markdown(
-                    f"<div style='background:#1a1200;border:1px solid #f59e0b40;border-radius:8px;"
-                    f"padding:10px 14px;margin-top:8px;font-size:12px;color:#f59e0b;'>"
-                    f"Garmin ha bloqueado temporalmente el login por demasiados intentos (<b>429</b>). "
-                    f"Espera un rato antes de reintentar y evita pulsar varias veces seguidas.<br>"
-                    f"Cuando se desbloquee, puedes inicializar tokens una vez desde terminal:<br>"
-                    f"<code style='background:#0d1117;padding:2px 6px;border-radius:4px;'>"
-                    f"python scripts/garmin_login_once.py</code></div>",
-                    unsafe_allow_html=True)
+            gc_err = str(st.session_state.get("gc_error", ""))
+            if "429" in gc_err or "rate" in gc_err.lower() or "bloqueado" in gc_err.lower():
+                st.warning(
+                    "**Garmin bloquea el login desde servidores cloud.** "
+                    "La solución es hacer el login **una sola vez desde tu ordenador** "
+                    "para que los tokens OAuth queden guardados en la base de datos. "
+                    "Desde ese momento la app no necesita tu contraseña."
+                )
+                st.info(
+                    "**Pasos:**\n"
+                    "1. En tu ordenador (con la app corriendo en local), abre la página Garmin\n"
+                    "2. Introduce tu email y contraseña y pulsa **Guardar y conectar**\n"
+                    "3. Si el login funciona, los tokens se guardarán automáticamente en Turso\n"
+                    "4. Vuelve al Cloud — la próxima carga usará los tokens, sin pedir contraseña"
+                )
+            else:
+                st.error(f"Error: {gc_err}" if gc_err else "")
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("🔄 Reintentar", use_container_width=True):
@@ -312,7 +319,7 @@ with tab_sync:
                                 pw = pass_g.strip() or _get_saved_password(cred)
                                 if not pw:
                                     raise RuntimeError("La contraseña guardada no es válida. Escríbela de nuevo para re-guardarla.")
-                                gc_new = iniciar_sesion_garmin(email_g or cred[0], pw)
+                                gc_new = iniciar_sesion_garmin(email_g or cred[0], pw, usuario_id=user_actual)
                                 st.session_state["gc"] = gc_new
                                 st.session_state.pop("gc_failed", None)
                                 st.cache_data.clear(); st.rerun()
@@ -370,7 +377,7 @@ with tab_sync:
                     try:
                         saved_pw = _get_saved_password(cred)
                         if saved_pw:
-                            gc = iniciar_sesion_garmin(cred[0], saved_pw)
+                            gc = iniciar_sesion_garmin(cred[0], saved_pw, usuario_id=user_actual)
                             st.session_state["gc"] = gc
                         else:
                             st.warning("Tu contraseña guardada de Garmin no es válida. Vuelve a guardarla una vez y quedará recordada.")

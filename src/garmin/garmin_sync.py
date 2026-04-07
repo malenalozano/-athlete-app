@@ -652,7 +652,7 @@ def sincronizar_actividades(email, password, usuario_id, num_actividades=20):
     conn_pre.commit(); conn_pre.close()
 
     # LOGIN — propaga la excepción para que la UI la muestre
-    client = iniciar_sesion_garmin(email, password)
+    client = iniciar_sesion_garmin(email, password, usuario_id=usuario_id)
 
     # FETCH actividades — sin _safe_api_call para que el error sea visible
     try:
@@ -774,15 +774,61 @@ def _load_valid_client_from_home(home: str):
         return None
 
 
-def cargar_sesion_tokens(email: str | None = None):
+def _guardar_tokens_db(usuario_id: int, token_json: str):
+    """Persiste el JSON de tokens garth en la columna garmin_tokens de usuarios."""
+    try:
+        conn = get_db_connection()
+        conn.execute(
+            "UPDATE usuarios SET garmin_tokens=? WHERE id=?",
+            (token_json, usuario_id))
+        conn.commit()
+        conn.close()
+        logger.debug(f"✓ Tokens Garmin guardados en BD para usuario {usuario_id}")
+    except Exception as e:
+        logger.warning(f"No se pudieron guardar tokens en BD: {e}")
+
+
+def _cargar_tokens_db(usuario_id: int):
+    """Carga y valida tokens desde la BD. Devuelve cliente o None."""
+    try:
+        conn = get_db_connection()
+        row = conn.execute(
+            "SELECT garmin_tokens FROM usuarios WHERE id=?", (usuario_id,)
+        ).fetchone()
+        conn.close()
+        if not row or not row[0]:
+            return None
+        token_json = row[0]
+        client = Garmin()
+        client.garth.loads(token_json)
+        client.get_full_name()  # valida / renueva access_token si hace falta
+        # Re-guardar por si el refresh_token generó nuevos tokens
+        try:
+            _guardar_tokens_db(usuario_id, client.garth.dumps())
+        except Exception:
+            pass
+        logger.debug(f"✓ Sesión Garmin cargada desde BD para usuario {usuario_id}")
+        return client
+    except Exception as e:
+        logger.warning(f"Tokens BD inválidos/expirados para usuario {usuario_id}: {e}")
+        return None
+
+
+def cargar_sesion_tokens(email: str | None = None, usuario_id: int | None = None):
     """
-    Carga la sesión SOLO desde tokens garth guardados en disco.
+    Carga la sesión SOLO desde tokens garth (disco primero, BD como fallback).
     NO hace login SSO. NO toca las credenciales.
     Devuelve el cliente Garmin si los tokens existen, o None si no hay tokens.
     El cliente usa el refresh_token automáticamente si el access_token expiró.
     """
+    # 1. Intentar desde archivos en disco (funciona en local)
     for home in _token_homes(email):
         client = _load_valid_client_from_home(home)
+        if client is not None:
+            return client
+    # 2. Fallback: tokens guardados en BD (funciona en Streamlit Cloud)
+    if usuario_id is not None:
+        client = _cargar_tokens_db(usuario_id)
         if client is not None:
             return client
     return None
@@ -869,15 +915,15 @@ def sincronizar_actividades_con_sesion(gc, usuario_id: int, num_actividades: int
         conexion.close()
 
 
-def iniciar_sesion_garmin(email, password):
+def iniciar_sesion_garmin(email, password, usuario_id: int | None = None):
     """
-    Login con prioridad a tokens OAuth guardados (~/.garth_athlete).
+    Login con prioridad a tokens OAuth guardados (disco o BD).
     - Si hay tokens válidos → carga sin tocar SSO (evita 429).
-    - Si no hay tokens → login con credenciales y guarda tokens.
+    - Si no hay tokens → login con credenciales, guarda tokens en disco y en BD.
     Ejecutar scripts/garmin_login_once.py una vez para inicializar tokens.
     """
-    # 1. Intentar con tokens de esta cuenta (y fallback legacy)
-    client = cargar_sesion_tokens(email)
+    # 1. Intentar con tokens de esta cuenta (disco primero, BD como fallback)
+    client = cargar_sesion_tokens(email, usuario_id=usuario_id)
     if client is not None:
         return client
 
@@ -885,17 +931,27 @@ def iniciar_sesion_garmin(email, password):
     client = Garmin(email=email, password=password)
     try:
         client.login()
+        # Guardar en disco (local)
         token_home = os.path.join(GARTH_HOME, _safe_email_slug(email)) if email else GARTH_HOME
-        os.makedirs(token_home, exist_ok=True)
-        client.garth.dump(token_home)
-        logger.debug(f"✓ Tokens guardados en {token_home}")
+        try:
+            os.makedirs(token_home, exist_ok=True)
+            client.garth.dump(token_home)
+            logger.debug(f"✓ Tokens guardados en disco: {token_home}")
+        except Exception as e:
+            logger.warning(f"No se pudieron guardar tokens en disco: {e}")
+        # Guardar en BD (persiste en cloud)
+        if usuario_id is not None:
+            try:
+                _guardar_tokens_db(usuario_id, client.garth.dumps())
+            except Exception as e:
+                logger.warning(f"No se pudieron guardar tokens en BD: {e}")
         return client
     except GarminConnectAuthenticationError as e:
         logger.error(f"❌ Autenticación fallida: {e}")
         msg = str(e)
         if "429" in msg or "rate" in msg.lower():
             raise RuntimeError(
-                "Garmin ha bloqueado temporalmente el login por demasiados intentos (429 Rate Limit). "
+                "Garmin ha bloqueado temporalmente el login por demasiados intentos. "
                 "Espera unos minutos y vuelve a intentar una sola vez."
             ) from e
         raise
@@ -978,7 +1034,7 @@ def sincronizar_biometricos_garmin(email, password, usuario_id, dias=7):
         logger.info("✓ Schema Garmin verificado")
         
         logger.info("→ Iniciando sesión en Garmin...")
-        client = iniciar_sesion_garmin(email, password)
+        client = iniciar_sesion_garmin(email, password, usuario_id=usuario_id)
         logger.info("✓ Sesión iniciada exitosamente")
         
         logger.info("→ Buscando actividades de running recientes...")
