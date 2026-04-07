@@ -39,7 +39,7 @@ with col_h:
         f"Tus ejercicios habituales · Los alias permiten que el diario libre los reconozca</p>",
         unsafe_allow_html=True)
 with col_btn:
-    mostrar_form = st.toggle("＋ Añadir", value=False, key="toggle_form")
+    mostrar_form = st.toggle("＋ Añadir ejercicio", value=False, key="toggle_form")
 
 # ---------------------------------------------------------------------------
 # Formulario de añadir (colapsable)

@@ -414,7 +414,7 @@ with tab_sync:
             )
 
     # ── Panel de verificación ────────────────────────────────────────
-    st.markdown(f"<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
+    st.markdown("<hr style='border:none;border-top:1px solid #21262d;margin:20px 0 12px;'>", unsafe_allow_html=True)
     st.markdown(label_upper("Verificación de campos importados"), unsafe_allow_html=True)
     CAMPOS = ["fecha","tipo_deporte","distancia_m","tiempo_seg","ritmo_medio",
               "fc_media","fc_max","cadencia_media","longitud_zancada_m","potencia_media_w"]

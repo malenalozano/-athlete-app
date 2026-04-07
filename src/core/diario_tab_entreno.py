@@ -311,7 +311,7 @@ div[data-testid="stTextArea"] textarea:focus {
                 "Remo abierto 3x8 27kg\n"
                 "Bíceps Martillo  3x8 22kg"
             ),
-            label_visibility="collapsed",
+            label_visibility="hidden",
         )
 
         if nota.strip():
