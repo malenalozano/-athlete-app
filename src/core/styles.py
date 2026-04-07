@@ -108,11 +108,25 @@ button[kind="secondary"] {{
 }}
 
 /* ── Métricas ── */
+[data-testid="stMetric"] {{
+    background: linear-gradient(180deg, rgba(22,27,34,0.96), rgba(20,25,31,0.96)) !important;
+    border: 1px solid {BORDER_H} !important;
+    border-radius: 14px !important;
+    padding: 12px 14px !important;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03), inset 0 1px 0 rgba(255,255,255,0.02) !important;
+}
+[data-testid="stMetric"] > div {{
+    padding: 0 !important;
+}}
 [data-testid="stMetric"] label {{
     color: {TXT3} !important;
     font-size: 10px !important;
     text-transform: uppercase !important;
     letter-spacing: 0.8px !important;
+}}
+[data-testid="stMetric"] [data-testid="stMetricDelta"] {{
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
 }}
 [data-testid="stMetric"] [data-testid="stMetricValue"] {{
     color: {ACCENT} !important;
