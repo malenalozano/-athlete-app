@@ -33,7 +33,8 @@ from src.core.styles import GLOBAL_CSS
 from src.db.db_manager import (
     init_db, asegurar_tabla_plan_entrenamiento, asegurar_tablas_fuerza,
     asegurar_tablas_premium, asegurar_indices_consulta,
-    asegurar_tabla_ejercicios, asegurar_tabla_lesiones,
+    asegurar_tabla_ejercicios, asegurar_tabla_lesiones, asegurar_tabla_catalogo_ejercicios,
+    get_db_connection,
 )
 st.markdown("""<style>
 [data-testid="stSidebar"]        { display:none!important }
@@ -129,6 +130,9 @@ if not st.session_state.get("_db_init_done", False):
     asegurar_tablas_premium()
     asegurar_indices_consulta()
     asegurar_tabla_lesiones()
+    # Poblar catálogo de ejercicios para ambos usuarios
+    asegurar_tabla_catalogo_ejercicios(usuario_id=1)
+    asegurar_tabla_catalogo_ejercicios(usuario_id=2)
     st.session_state["_db_init_done"] = True
 
 # Exponer el cookie manager para que navbar.py pueda usarlo en logout/switch
@@ -136,9 +140,34 @@ if _cm is not None:
     st.session_state["_cm"] = _cm
 
 # Persistencia usuario + init ejercicios (necesita usuario_id)
+def _get_user_id_from_auth_user(auth_user: str) -> int | None:
+    """Buscar usuario_id dinámicamente desde BD por nombre (auth_user)."""
+    if not auth_user or not isinstance(auth_user, str):
+        return None
+    
+    auth_user_clean = str(auth_user).strip().lower()
+    if not auth_user_clean:
+        return None
+    
+    try:
+        conn = get_db_connection()
+        try:
+            # Buscar usuario por nombre (case-insensitive)
+            row = conn.execute(
+                "SELECT id FROM usuarios WHERE LOWER(nombre) = ?",
+                (auth_user_clean,)
+            ).fetchone()
+            if row:
+                return row[0]
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    
+    return None
+
 auth_user = str(st.session_state.get("auth_user", "")).strip().lower()
-auth_user_to_id = {"malena": 1, "dani": 2, "malenita88": 1, "danielito99": 2}
-forced_uid = auth_user_to_id.get(auth_user)
+forced_uid = _get_user_id_from_auth_user(auth_user)
 
 if forced_uid in (1, 2):
     # Usuario autenticado determina el perfil

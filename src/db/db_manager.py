@@ -578,7 +578,10 @@ def asegurar_tabla_ejercicios(usuario_id: int = 1):
     conn.close()
 
 
-def asegurar_tabla_catalogo_ejercicios():
+def asegurar_tabla_catalogo_ejercicios(usuario_id: int = 1):
+    """Crear tabla catálogo y poblarla con ejercicios por defecto."""
+    from datetime import datetime
+    
     conn = get_db_connection()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS ejercicios_catalogo (
@@ -590,8 +593,47 @@ def asegurar_tabla_catalogo_ejercicios():
             peso_actual REAL DEFAULT 0,
             unidad TEXT DEFAULT 'kg',
             notas TEXT,
+            creado_en TEXT,
             UNIQUE(usuario_id, nombre)
         )""")
+    
+    # Poblar con ejercicios por defecto si está vacía para este usuario
+    existing = conn.execute(
+        "SELECT COUNT(*) FROM ejercicios_catalogo WHERE usuario_id=?",
+        (usuario_id,)
+    ).fetchone()[0]
+    
+    if existing == 0:
+        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ejercicios_base = [
+            ("Hip Thrust",         "Glúteo",          "Glúteo mayor",        0.0, "kg", "Activación glúteos"),
+            ("Sentadilla búlgara", "Glúteo",          "Cuádriceps/Glúteo",   0.0, "kg", "Fuerza unilateral"),
+            ("Abducción cadera",   "Glúteo",          "Glúteo medio",        0.0, "kg", "Estabilizador"),
+            ("Dominadas",          "Tren superior",   "Espalda/Bíceps",      0.0, "reps", "Ejercicio compuesto"),
+            ("Remo con mancuerna", "Espalda",         "Dorsal ancho",        0.0, "kg", "Tracción horizontal"),
+            ("Press banca",        "Tren superior",   "Pecho",               0.0, "kg", "Empuje horizontal"),
+            ("Curl bíceps",        "Tren superior",   "Bíceps",              0.0, "kg", "Aislamiento flexor"),
+            ("Curl femoral",       "Tren inferior",   "Isquiotibial",        0.0, "kg", "Aislamiento posterior"),
+            ("Sentadilla",         "Tren inferior",   "Cuádriceps",          0.0, "kg", "Ejercicio base"),
+            ("Peso muerto",        "Tren inferior",   "Isquiotibial/Glúteo", 0.0, "kg", "Ejercicio base"),
+            ("Abdominales cable",  "Core",            "Abdomen",             0.0, "kg", "Flexión de tronco"),
+            ("Abdominales colgada","Core",            "Abdomen",             0.0, "reps", "Levantamiento de piernas"),
+            ("Press militar",      "Tren superior",   "Hombro",              0.0, "kg", "Empuje vertical"),
+            ("Plancha",            "Core",            "Abdomen/Espalda",     0.0, "segundos", "Isométrico"),
+            ("Fondos",             "Tren superior",   "Tríceps",             0.0, "reps", "Peso corporal"),
+        ]
+        
+        for nombre, grupo, musculo, peso, unidad, notas in ejercicios_base:
+            try:
+                conn.execute(
+                    """INSERT INTO ejercicios_catalogo 
+                       (usuario_id, nombre, grupo_muscular, musculo_principal, peso_actual, unidad, notas, creado_en)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (usuario_id, nombre, grupo, musculo, peso, unidad, notas, ahora)
+                )
+            except Exception:
+                pass  # Skip duplicates
+    
     conn.commit()
     conn.close()
 
@@ -618,11 +660,19 @@ def asegurar_indices_consulta():
     conn = get_db_connection()
     try:
         index_statements = [
+            # Índices principales por usuario_id + fecha (queries más comunes)
             "CREATE INDEX IF NOT EXISTS idx_act_usuario_fecha ON actividades_garmin(usuario_id, fecha)",
             "CREATE INDEX IF NOT EXISTS idx_sueno_usuario_fecha ON datos_sueno(usuario_id, fecha)",
             "CREATE INDEX IF NOT EXISTS idx_fisio_usuario_fecha ON diario_fisiologia(usuario_id, fecha)",
             "CREATE INDEX IF NOT EXISTS idx_fuerza_usuario_fecha ON sesiones_fuerza(usuario_id, fecha)",
             "CREATE INDEX IF NOT EXISTS idx_plan_usuario_semana ON plan_entrenamiento(usuario_id, semana_inicio)",
+            # Índices adicionales para relaciones
+            "CREATE INDEX IF NOT EXISTS idx_biom_usuario_fecha ON datos_biometricos_premium(usuario_id, fecha)",
+            "CREATE INDEX IF NOT EXISTS idx_lesiones_usuario ON lesiones(usuario_id)",
+            "CREATE INDEX IF NOT EXISTS idx_historial_lesiones_usuario ON historial_lesiones(usuario_id)",
+            # Índices para búsquedas por actividad Garmin
+            "CREATE INDEX IF NOT EXISTS idx_act_usuario ON actividades_garmin(usuario_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ejercicios_sesion ON ejercicios_fuerza(sesion_id)",
         ]
         for stmt in index_statements:
             try:
