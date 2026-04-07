@@ -101,6 +101,48 @@ else:
 # ===========================================================================
 if tab1 is not None:
     with tab1:
+        # ─ Personalización del ciclo ─────────────────────────────────────────
+        with st.expander("⚙️ Personalizar ciclo"):
+            col_info, col_input = st.columns([2, 1])
+            with col_info:
+                st.markdown(
+                    "<p style='color:#a3e635;font-size:11px;margin:0;'>Ingresa la duración de tu ciclo menstrual en días. "
+                    "Si lo dejas vacío, se calculará automáticamente.</p>",
+                    unsafe_allow_html=True)
+            with col_input:
+                conn_cycle = get_db_connection()
+                try:
+                    ciclo_actual = conn_cycle.execute(
+                        "SELECT ciclo_dias_personalizado FROM usuarios WHERE id=?",
+                        (user_actual,)).fetchone()
+                    ciclo_val = ciclo_actual[0] if ciclo_actual and ciclo_actual[0] else None
+                except Exception:
+                    ciclo_val = None
+                finally:
+                    conn_cycle.close()
+                
+                new_ciclo = st.number_input(
+                    "Días de ciclo",
+                    min_value=21,
+                    max_value=40,
+                    value=ciclo_val if ciclo_val else 28,
+                    step=1,
+                    label_visibility="collapsed")
+                
+                if st.button("Guardar ciclo", use_container_width=True, size="small"):
+                    conn_upd = get_db_connection()
+                    try:
+                        conn_upd.execute(
+                            "UPDATE usuarios SET ciclo_dias_personalizado=? WHERE id=?",
+                            (int(new_ciclo), user_actual))
+                        conn_upd.commit()
+                        st.success(f"✅ Ciclo guardado: {int(new_ciclo)} días")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                    finally:
+                        conn_upd.close()
+                    st.rerun()
+        
         _conn = get_db_connection()
         _last_bleed_start = _inicio_ultima_regla(_conn, user_actual, datetime.now().date())
         _conn.close()
@@ -196,7 +238,21 @@ if tab1 is not None:
             if df_fisio.empty:
                 st.info("Aún no hay datos. ¡Empieza registrando hoy!")
             else:
-                ciclo_df, _ = predecir_fases_ciclo(df_fisio[["fecha", "fase_ciclo", "sangre"]].copy(), horizonte_dias=120)
+                # Obtener ciclo personalizado si existe
+                conn_ciclo = get_db_connection()
+                try:
+                    ciclo_personalizado = conn_ciclo.execute(
+                        "SELECT ciclo_dias_personalizado FROM usuarios WHERE id=?",
+                        (user_actual,)).fetchone()
+                    ciclo_dias_override = ciclo_personalizado[0] if ciclo_personalizado and ciclo_personalizado[0] else None
+                except Exception:
+                    ciclo_dias_override = None
+                finally:
+                    conn_ciclo.close()
+                
+                ciclo_df, _ = predecir_fases_ciclo(df_fisio[["fecha", "fase_ciclo", "sangre"]].copy(), 
+                                                  horizonte_dias=120,
+                                                  ciclo_dias_personalizado=ciclo_dias_override)
                 if not ciclo_df.empty:
                     hoy = datetime.now().date()
                     if "mes_ciclo_cursor" not in st.session_state:

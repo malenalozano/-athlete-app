@@ -76,10 +76,17 @@ def _inferir_inicios_regla(real_df):
     return inicios
 
 
-def predecir_fases_ciclo(df_fisio, horizonte_dias=90):
-    """Combina registros reales con predicción hacia horizonte_dias días."""
+def predecir_fases_ciclo(df_fisio, horizonte_dias=90, ciclo_dias_personalizado=None):
+    """Combina registros reales con predicción hacia horizonte_dias días.
+    
+    Args:
+        df_fisio: DataFrame con registros de ciclo
+        horizonte_dias: Días a predecir hacia el futuro
+        ciclo_dias_personalizado: Si se proporciona, usar este valor en lugar de calcular automáticamente
+    """
     if df_fisio.empty:
-        return pd.DataFrame(columns=["fecha", "fase_ciclo", "origen"]), 28
+        ciclo_default = ciclo_dias_personalizado if ciclo_dias_personalizado else 28
+        return pd.DataFrame(columns=["fecha", "fase_ciclo", "origen"]), ciclo_default
 
     real = df_fisio.copy()
     real["fecha_dt"] = pd.to_datetime(real["fecha"]).dt.date
@@ -93,8 +100,8 @@ def predecir_fases_ciclo(df_fisio, horizonte_dias=90):
 
     starts = _inferir_inicios_regla(real)
 
-    ciclo_dias = 28
-    if len(starts) >= 2:
+    ciclo_dias = ciclo_dias_personalizado if ciclo_dias_personalizado else 28
+    if not ciclo_dias_personalizado and len(starts) >= 2:
         diffs = [d for d in [(starts[i] - starts[i-1]).days for i in range(1, len(starts))] if 20 <= d <= 40]
         if diffs:
             ciclo_dias = int(round(sum(diffs) / len(diffs)))
