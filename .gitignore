@@ -21,3 +21,6 @@ atleta.db
 .env
 .streamlit/secrets.toml
 src/core/.encryption_key
+
+# Claude Code config local (no subir — cada dev tiene el suyo)
+.claude/settings.local.json
