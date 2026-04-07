@@ -99,7 +99,7 @@ def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
     finally:
         conn.close()
 
-def _adaptar_plan_a_hoy(plan: dict, lunes: datetime, hoy: datetime) -> dict:
+def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datetime) -> dict:
     """Si hoy es miércoles, mantiene solo de miércoles a domingo y rellena pasados con historial."""
     hoy_date = hoy.date()
     dias_adaptados = []
@@ -114,7 +114,7 @@ def _adaptar_plan_a_hoy(plan: dict, lunes: datetime, hoy: datetime) -> dict:
             actvs = conn.execute(
                 "SELECT fecha, tipo, duracion_min, distancia_m/1000.0 as km FROM actividades_garmin "
                 "WHERE usuario_id=? AND fecha >= ? AND fecha < ? ORDER BY fecha",
-                (st.session_state.usuario_id, lunes.strftime("%Y-%m-%d"), hoy_date)
+                (usuario_id, lunes.strftime("%Y-%m-%d"), hoy_date)
             ).fetchall()
             for i in range(dias_pasados):
                 fecha_dia = lunes + timedelta(days=i)
@@ -179,7 +179,7 @@ with c4:
                 try:
                     from src.plan.entrenador import generar_entrenamiento_semana
                     plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
-                    plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, lunes, datetime.now())
+                    plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, user_actual, lunes, datetime.now())
                     st.session_state.plan_data = plan_nuevo
                     st.session_state.plan_ia = True
                 except Exception as e:

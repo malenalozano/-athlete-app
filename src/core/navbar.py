@@ -201,6 +201,10 @@ def render_navbar(pagina_activa: str):
                         except Exception:
                             pass
                     st.session_state.pop("navbar_popover_open", None)
+                    # Limpiar datos específicos del usuario anterior (plan, diario, ejercicios, etc.)
+                    for key in ("plan_data", "plan_cursor", "plan_ia", "diario_data", 
+                                "ejercicios_data", "ejercicios_init_users", "gc", "gc_failed", "gc_error"):
+                        st.session_state.pop(key, None)
                     st.cache_data.clear()
                     st.rerun()
             else:
@@ -217,6 +221,11 @@ def render_navbar(pagina_activa: str):
                     else:
                         st.session_state["usuario_id"] = other_uid
                         st.session_state.pop("navbar_popover_open", None)
+                        # Limpiar datos específicos del usuario anterior
+                        for key in ("plan_data", "plan_cursor", "plan_ia", "diario_data", 
+                                    "ejercicios_data", "ejercicios_init_users", "gc", "gc_failed", "gc_error"):
+                            st.session_state.pop(key, None)
+                        st.cache_data.clear()
                         st.rerun()
 
             st.divider()
