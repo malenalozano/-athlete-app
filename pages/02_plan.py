@@ -8,9 +8,6 @@ import streamlit as st
 from datetime import datetime, timedelta
 
 from src.core.navbar import render_navbar
-from src.plan.motor import generar_plan_semana
-from src.plan.memoria_fuerza import generar_tabla_fuerza_semana
-from src.garmin.workout_builder import crear_workout_garmin, sesion_a_bloques, programar_workout_garmin
 from src.db.db_manager import get_db_connection, obtener_credenciales_garmin
 from src.core.plan_ui_helpers import (
     html_semaforo, html_barra_fase,
@@ -78,6 +75,7 @@ def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
             })
         # Hidratar metadata del plan para que la página siempre tenga estructura completa
         try:
+            from src.plan.motor import generar_plan_semana
             base = generar_plan_semana(usuario_id, lunes)
             if isinstance(base, dict):
                 base["dias"] = dias
@@ -237,6 +235,7 @@ with col_det:
     if tipo in _TIPOS_FUERZA:
         st.markdown(html_detalle_fuerza(dia), unsafe_allow_html=True)
         if fase["dias_fuerza"] > 0:
+            from src.plan.memoria_fuerza import generar_tabla_fuerza_semana
             conn = get_db_connection()
             try:
                 tabla = generar_tabla_fuerza_semana(user_actual, fase, semaforo, conn=conn)
@@ -245,6 +244,7 @@ with col_det:
             st.dataframe(pd.DataFrame(tabla), use_container_width=True, hide_index=True)
 
     elif tipo in _TIPOS_CARRERA:
+        from src.garmin.workout_builder import sesion_a_bloques
         bloques = sesion_a_bloques(dia)
         st.markdown(html_detalle_carrera(dia, bloques), unsafe_allow_html=True)
 

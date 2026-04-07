@@ -28,6 +28,11 @@ require_auth(_cm)
 
 # Ocultar TODO lo nativo de Streamlit + CSS global del sistema de diseño
 from src.core.styles import GLOBAL_CSS
+from src.db.db_manager import (
+    init_db, asegurar_tabla_plan_entrenamiento, asegurar_tablas_fuerza,
+    asegurar_tablas_premium, asegurar_indices_consulta,
+    asegurar_tabla_ejercicios, asegurar_tabla_lesiones,
+)
 st.markdown("""<style>
 [data-testid="stSidebar"]        { display:none!important }
 [data-testid="collapsedControl"] { display:none!important }
@@ -114,18 +119,15 @@ div[data-testid="stDataFrameResizable"] {
 </style>""", unsafe_allow_html=True)
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
-# Init BD
-from src.db.db_manager import (
-    init_db, asegurar_tabla_plan_entrenamiento, asegurar_tablas_fuerza,
-    asegurar_tablas_premium, asegurar_indices_consulta,
-    asegurar_tabla_ejercicios, asegurar_tabla_lesiones,
-)
-init_db()
-asegurar_tabla_plan_entrenamiento()
-asegurar_tablas_fuerza()
-asegurar_tablas_premium()
-asegurar_indices_consulta()
-asegurar_tabla_lesiones()
+# Init BD — pero solo una vez por sesión (evitar overhead en reruns)
+if not st.session_state.get("_db_init_done", False):
+    init_db()
+    asegurar_tabla_plan_entrenamiento()
+    asegurar_tablas_fuerza()
+    asegurar_tablas_premium()
+    asegurar_indices_consulta()
+    asegurar_tabla_lesiones()
+    st.session_state["_db_init_done"] = True
 
 # Exponer el cookie manager para que navbar.py pueda usarlo en logout/switch
 if _cm is not None:
@@ -151,7 +153,14 @@ elif "usuario_id" not in st.session_state:
     else:
         uid = 1
     st.session_state["usuario_id"] = uid
-asegurar_tabla_ejercicios(st.session_state["usuario_id"])
+
+# Init ejercicios del usuario — pero solo una vez por sesión
+_uid = st.session_state["usuario_id"]
+_initialized_users = st.session_state.get("_ejercicios_init_users", set())
+if _uid not in _initialized_users:
+    asegurar_tabla_ejercicios(_uid)
+    _initialized_users.add(_uid)
+    st.session_state["_ejercicios_init_users"] = _initialized_users
 
 # Routing: position="hidden" oculta la navbar nativa
 dashboard  = st.Page("pages/01_dashboard.py",  title="Dashboard",    icon="📊", default=True)

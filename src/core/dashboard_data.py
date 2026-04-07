@@ -46,7 +46,7 @@ def cargar_datos_dashboard(usuario_id):
     conn = get_db_connection()
     try:
         df_act = pd.read_sql_query(
-            "SELECT fecha, distancia_m, ritmo_medio, fc_media FROM actividades_garmin WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 1500",
+            "SELECT fecha, distancia_m, ritmo_medio, fc_media FROM actividades_garmin WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 200",
             conn, params=(usuario_id,),
         )
         try:
