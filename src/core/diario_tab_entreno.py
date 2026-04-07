@@ -230,11 +230,19 @@ def _render_lesiones_inline(usuario_id: int):
                     f"</div></div>",
                     unsafe_allow_html=True)
             with cb:
-                if st.button("✓ Ok", key=f"les_ok_{row['id']}"):
+                if st.button("✓ Ok", key=f"les_ok_{row['id']}", use_container_width=True):
                     c2 = get_db_connection()
-                    c2.execute("UPDATE lesiones SET activa=0, fecha_fin=? WHERE id=?",
-                               (date.today().strftime("%Y-%m-%d"), row["id"]))
-                    c2.commit(); c2.close(); st.rerun()
+                    try:
+                        c2.execute("UPDATE lesiones SET activa=0, fecha_fin=? WHERE id=?",
+                                   (date.today().strftime("%Y-%m-%d"), row["id"]))
+                        c2.commit()
+                        st.success(f"✅ Lesión **{row['tipo']}** resuelta.")
+                    except Exception as e:
+                        st.error(f"Error resolviendo lesión: {e}")
+                    finally:
+                        c2.close()
+                    st.sleep(1)
+                    st.rerun()
 
     with st.expander("+ Registrar lesión"):
         with st.form("form_lesion_inline", clear_on_submit=True):
@@ -249,13 +257,20 @@ def _render_lesiones_inline(usuario_id: int):
             with c2:
                 notas_s = st.text_input("Notas", placeholder="Aparece al bajar escaleras…")
             if st.form_submit_button("Registrar", type="primary", use_container_width=True):
-                conn = get_db_connection()
-                conn.execute(
-                    "INSERT INTO lesiones (usuario_id,tipo,grado,fecha_inicio,activa,notas) "
-                    "VALUES (?,?,?,?,1,?)",
-                    (usuario_id, tipo_s, grado_s, str(f_ini), notas_s.strip() or None))
-                conn.commit(); conn.close()
-                st.success(f"'{tipo_s}' registrada."); st.rerun()
+                try:
+                    conn = get_db_connection()
+                    conn.execute(
+                        "INSERT INTO lesiones (usuario_id,tipo,grado,fecha_inicio,activa,notas) "
+                        "VALUES (?,?,?,?,1,?)",
+                        (usuario_id, tipo_s, grado_s, str(f_ini), notas_s.strip() or None))
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Lesión **{tipo_s}** (Grado {grado_s}) registrada.")
+                except Exception as e:
+                    st.error(f"Error registrando lesión: {e}")
+                    return
+                st.sleep(1)
+                st.rerun()
 
 
 # ---------------------------------------------------------------------------
