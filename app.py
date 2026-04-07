@@ -21,8 +21,9 @@ _cm = None
 try:
     import extra_streamlit_components as stx
     _cm = stx.CookieManager(key="athlete_cm")
-except Exception:
-    pass
+except Exception as e:
+    import logging
+    logging.warning(f"CookieManager failed to initialize: {e}. Cookie-based auth will be unavailable.")
 
 # ✅ AUTENTICACIÓN ACTIVADA — Solo contraseña para acceder (APP_PASSWORD en secrets)
 require_auth(_cm)
@@ -144,15 +145,17 @@ if forced_uid in (1, 2):
     if st.session_state.get("usuario_id") != forced_uid:
         st.session_state["usuario_id"] = forced_uid
 elif "usuario_id" not in st.session_state:
-    # Sin auth requerida: intentar cookie, luego default=1
+    # Sin auth requerida: intentar cookie (con validación), luego default=1
+    uid = 1  # Default seguro
     if _cm is not None:
         try:
             cookie_uid = _cm.get("athlete_uid")
-            uid = int(cookie_uid) if str(cookie_uid) in ("1", "2") else 1
-        except Exception:
+            # ✅ VALIDACIÓN: Solo aceptar cookies con UID válidos
+            if cookie_uid and str(cookie_uid).strip() in ("1", "2"):
+                uid = int(str(cookie_uid).strip())
+        except (ValueError, TypeError, AttributeError):
+            # Cookie corrupta o tipo inválido — usar default
             uid = 1
-    else:
-        uid = 1
     st.session_state["usuario_id"] = uid
 
 # Init ejercicios del usuario — pero solo una vez por sesión

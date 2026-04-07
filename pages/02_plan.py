@@ -94,7 +94,9 @@ def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
             "alertas": [],
             "existe_en_bd": True,
         }
-    except:
+    except Exception as e:
+        import logging
+        logging.error(f"Error cargando plan de BD: {e}")
         return None
     finally:
         conn.close()
@@ -143,6 +145,16 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
     plan["dias"] = dias_adaptados
     return plan
 
+
+# Detectar cuando el usuario cambió en esta página
+if "plan_last_user" not in st.session_state:
+    st.session_state["plan_last_user"] = user_actual
+elif st.session_state["plan_last_user"] != user_actual:
+    # Usuario cambió — limpiar plan
+    st.session_state.pop("plan_cursor", None)
+    st.session_state.pop("plan_data", None)
+    st.session_state.pop("plan_ia", None)
+    st.session_state["plan_last_user"] = user_actual
 
 if "plan_cursor" not in st.session_state:
     st.session_state.plan_cursor = _lunes_de(datetime.now())

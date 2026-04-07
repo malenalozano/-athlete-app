@@ -432,5 +432,5 @@ else:
 if conn:
     try:
         conn.close()
-    except:
+    except Exception:
         pass

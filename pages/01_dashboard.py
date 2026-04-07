@@ -105,8 +105,11 @@ with col_plan:
     lunes_str = inicio_semana(datetime.now()).strftime("%Y-%m-%d")
     try:
         plan_dash = cargar_plan_semana_cache(user_actual, lunes_str)
-    except Exception:
-        plan_dash = st.session_state.get("plan_data")
+    except Exception as e:
+        # No usar fallback viejo — mejor mostrar que hay error
+        import logging
+        logging.error(f"Error cargando plan: {e}")
+        plan_dash = None
     if plan_dash:
         for dia in plan_dash["dias"]:
             bc  = _BADGE.get(dia["tipo"], "#8B949E")
