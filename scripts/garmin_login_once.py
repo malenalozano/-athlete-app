@@ -71,19 +71,37 @@ def main():
         os.makedirs(token_home, exist_ok=True)
         gc.garth.dump(token_home)
         name = gc.get_full_name()
-        print(f"✓ Tokens guardados en {token_home}")
+        print(f"✓ Tokens guardados en DISCO: {token_home}")
         print(f"✓ Sesión activa como: {name}")
-        print("La app ya no necesita hacer login de nuevo.")
+        
+        # IMPORTANTE: Guardar también en BD para que funcione en Cloud
+        try:
+            from src.db.db_manager import get_db_connection
+            conn = get_db_connection()
+            token_json = gc.garth.dumps()
+            conn.execute(
+                "UPDATE usuarios SET garmin_tokens=? WHERE email_garmin=?",
+                (token_json, usuario)
+            )
+            conn.commit()
+            conn.close()
+            print(f"✓ Tokens guardados en BASE DE DATOS (Turso)")
+            print("\n✅ SUCCESS: Tokens guardados en disco Y BD.")
+            print("   La app en Cloud podrá usar estos tokens sin volver a hacer login.")
+        except Exception as e:
+            print(f"\n⚠️  No se pudo guardar en BD: {e}")
+            print("   (Los tokens se guardaron en disco, pero no en Cloud)")
+            
     except Exception as e:
         msg = str(e)
         if "429" in msg:
-            print("ERROR: Garmin bloqueo el intento (429 Too Many Requests).")
-            print("Espera 30-60 minutos sin intentar nada y vuelve a ejecutar este script.")
+            print("❌ ERROR: Garmin bloqueó el intento (429 Too Many Requests).")
+            print("⏱️  Espera 30-60 minutos sin intentar nada y vuelve a ejecutar este script.")
         elif "Authentication" in msg or "auth" in msg.lower():
-            print(f"ERROR de autenticacion: {msg}")
-            print("Comprueba que el email y password sean correctos.")
+            print(f"❌ ERROR de autenticación: {msg}")
+            print("   Comprueba que el email y password sean correctos.")
         else:
-            print(f"ERROR inesperado: {msg}")
+            print(f"❌ ERROR inesperado: {msg}")
         sys.exit(1)
 
 

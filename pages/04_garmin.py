@@ -264,18 +264,25 @@ with tab_sync:
 
             gc_err = str(st.session_state.get("gc_error", ""))
             if "429" in gc_err or "rate" in gc_err.lower() or "bloqueado" in gc_err.lower():
+                st.error(
+                    "🚫 **Garmin ha bloqueado temporalmente el acceso por demasiados intentos de login.**\n\n"
+                    "Esto sucede cuando se intenta login múltiples veces desde servidores cloud. "
+                    "Garmin rechaza estos intentos por seguridad."
+                )
                 st.warning(
-                    "**Garmin bloquea el login desde servidores cloud.** "
-                    "La solución es hacer el login **una sola vez desde tu ordenador** "
-                    "para que los tokens OAuth queden guardados en la base de datos. "
-                    "Desde ese momento la app no necesita tu contraseña."
+                    "**SOLUCIÓN: Login desde tu ordenador local**\n\n"
+                    "El login debe hacerse UNA SOLA VEZ desde tu PC. Los tokens se guardarán y la app "
+                    "los reutilizará sin necesidad de volver a autenticarse.\n\n"
+                    "**Pasos:**\n"
+                    "1. Abre terminal en: `athlete-performance-tracker`\n"
+                    "2. Ejecuta: `.venv\\Scripts\\activate` (Windows) o `source .venv/bin/activate` (Mac/Linux)\n"
+                    "3. Ejecuta: `python scripts/garmin_login_once.py`\n"
+                    "4. Introduce tu email y contraseña de Garmin\n"
+                    "5. ✅ Tokens guardados → Vuelve al Cloud, debería funcionar sin errores"
                 )
                 st.info(
-                    "**Pasos:**\n"
-                    "1. En tu ordenador (con la app corriendo en local), abre la página Garmin\n"
-                    "2. Introduce tu email y contraseña y pulsa **Guardar y conectar**\n"
-                    "3. Si el login funciona, los tokens se guardarán automáticamente en Turso\n"
-                    "4. Vuelve al Cloud — la próxima carga usará los tokens, sin pedir contraseña"
+                    "⏱️ **Tiempo de espera por bloqueo Garmin:** 30-60 minutos desde el último intento fallido.\n\n"
+                    "Si ya ejecutaste el script y aún falla, Garmin podría requerir esperar más tiempo."
                 )
             else:
                 st.error(f"Error: {gc_err}" if gc_err else "")
@@ -283,6 +290,27 @@ with tab_sync:
             with c1:
                 if st.button("🔄 Reintentar", use_container_width=True):
                     st.session_state.pop("gc_failed", None); st.rerun()
+            with c2:
+                if st.button("📖 Ver instrucciones", use_container_width=True, type="secondary"):
+                    with st.expander("ℹ️ Cómo resolver el bloqueo de Garmin"):
+                        st.markdown("""
+### Garmin bloquea login desde Cloud después de 2-3 intentos fallidos
+
+**El login DEBE hacerse una sola vez desde tu ordenador local:**
+
+1. Abre terminal en `athlete-performance-tracker`
+2. `.venv\\Scripts\\activate` (Windows)
+3. `python scripts/garmin_login_once.py`
+4. Introduce tu email y contraseña
+5. Espera a que veas `✅ SUCCESS: Tokens guardados`
+6. Vuelve al Cloud → Debería funcionar
+
+**Tiempo de espera:**
+- 1er intento fallido: 15-30 min
+- 2do intento: 1-2 horas  
+- 3er intento: 24-48 horas
+
+Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
         else:
             dot_color = "#f59e0b"
             st.markdown(
