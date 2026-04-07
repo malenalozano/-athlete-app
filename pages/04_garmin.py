@@ -111,6 +111,14 @@ if "usuario_id" not in st.session_state:
     st.stop()
 user_actual = st.session_state.usuario_id
 
+# Validar que los datos sean consistentes con el usuario actual
+if "garmin_last_user" not in st.session_state:
+    st.session_state["garmin_last_user"] = user_actual
+elif st.session_state["garmin_last_user"] != user_actual:
+    # Usuario cambió — limpiar caches
+    st.cache_data.clear()
+    st.session_state["garmin_last_user"] = user_actual
+
 
 def _get_saved_password(cred_row):
     if not cred_row or not cred_row[1]:

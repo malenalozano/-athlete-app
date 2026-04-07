@@ -37,6 +37,15 @@ if "usuario_id" not in st.session_state:
     st.stop()
 
 usuario_id = st.session_state.get("usuario_id", 1)
+
+# Validar que los datos sean consistentes con el usuario actual
+if "entrenador_last_user" not in st.session_state:
+    st.session_state["entrenador_last_user"] = usuario_id
+elif st.session_state["entrenador_last_user"] != usuario_id:
+    # Usuario cambió — limpiar caches
+    st.cache_data.clear()
+    st.session_state["entrenador_last_user"] = usuario_id
+
 conn = get_db_connection()
 
 # Cargar perfil del usuario actual

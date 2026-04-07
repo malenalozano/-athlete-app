@@ -21,6 +21,15 @@ if "usuario_id" not in st.session_state:
     st.stop()
 user_actual = st.session_state.usuario_id
 
+# Validar que los datos sean consistentes con el usuario actual
+# Si cambió de usuario, limpiar caché y datos del dashboard anterior
+if "dashboard_last_user" not in st.session_state:
+    st.session_state["dashboard_last_user"] = user_actual
+elif st.session_state["dashboard_last_user"] != user_actual:
+    # Usuario cambió — limpiar todos los caches para este dashboard
+    st.cache_data.clear()
+    st.session_state["dashboard_last_user"] = user_actual
+
 perfil = obtener_perfil(user_actual) or {}
 nombre = perfil.get("nombre", "Atleta")
 

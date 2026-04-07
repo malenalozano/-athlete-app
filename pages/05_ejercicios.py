@@ -23,6 +23,14 @@ if "usuario_id" not in st.session_state:
     st.stop()
 user_actual = st.session_state.usuario_id
 
+# Validar que los datos sean consistentes con el usuario actual
+if "ejercicios_last_user" not in st.session_state:
+    st.session_state["ejercicios_last_user"] = user_actual
+elif st.session_state["ejercicios_last_user"] != user_actual:
+    # Usuario cambió — limpiar caches
+    st.cache_data.clear()
+    st.session_state["ejercicios_last_user"] = user_actual
+
 # Recuperar automáticamente sesiones antiguas que quedaron sin enlazar por variantes de nombre.
 _reconciliadas = reconciliar_historial_desde_sesiones(user_actual)
 if _reconciliadas:
