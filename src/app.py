@@ -1810,139 +1810,51 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 2. L"GICA DE LOGIN / SESI"N
-if "usuario_id" not in st.session_state:
- # Intentar cargar el último usuario recordado en este dispositivo
-    ultimo = _leer_ultimo_usuario()
-    if ultimo:
-        st.session_state.usuario_id = ultimo
-        st.rerun()
+# 2. AUTENTICACIÓN
+from src.core.access_control import require_auth, is_auth_required
 
-    st.markdown(
-        """
-        <style>
-        [data-testid="stAppViewContainer"] {
-            background:
-                linear-gradient(135deg, #0E1117 0%, #0A2E0A 52%, #0E1117 100%);
-        }
-        .st-key-login_shell {
-            max-width: 460px;
-            margin: 0 auto;
-            padding: 0 8px;
-        }
-        .login-pill {
-            width: fit-content;
-            margin: 8px auto 24px;
-            padding: 8px 16px;
-            border-radius: 999px;
-            background: rgba(201, 255, 0, 0.20);
-            border: 1px solid rgba(201, 255, 0, 0.40);
-            color: #C9FF00;
-            font-weight: 700;
-            font-size: 0.95rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .login-pill svg { width: 16px; height: 16px; fill: #C9FF00; }
-        .login-wrap { margin: 0 auto; text-align: center; }
-        .login-badge {
-            width: 64px;
-            height: 64px;
-            background: #C9FF00;
-            border-radius: 12px;
-            margin: 0 auto 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 10px 24px rgba(201, 255, 0, 0.50);
-        }
-        .login-badge svg { width: 32px; height: 32px; fill: #0E1117; }
-        .login-title {
-            font-size: 3rem;
-            font-weight: 700;
-            color: #FFFFFF;
-            margin: 0 0 8px;
-            line-height: 1.15;
-        }
-        .login-sub {
-            color: #8B949E;
-            font-size: 1rem;
-            margin: 0 0 26px;
-        }
-        .st-key-login_card {
-            border-radius: 16px;
-            border: 1px solid rgba(201, 255, 0, 0.40);
-            background: linear-gradient(135deg, #161B22 0%, #0E1117 100%);
-            padding: 32px;
-            box-shadow: 0 0 40px rgba(201, 255, 0, 0.15), inset 0 1px 0 rgba(201, 255, 0, 0.10);
-            backdrop-filter: blur(12px);
-        }
-        .st-key-login_card .stButton > button {
-            min-height: 56px;
-            border-radius: 12px !important;
-            font-size: 1.125rem !important;
-            font-weight: 800 !important;
-            letter-spacing: 0;
-            transition: all 0.18s ease;
-            background: linear-gradient(90deg, #30363D 0%, #161B22 100%) !important;
-            color: #FFFFFF !important;
-            border: 1px solid rgba(201, 255, 0, 0.30) !important;
-            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22) !important;
-        }
-        .st-key-login_card .stButton > button:hover {
-            background: linear-gradient(90deg, #C9FF00 0%, #a8d600 100%) !important;
-            color: #0E1117 !important;
-            border: 1px solid rgba(201, 255, 0, 0.95) !important;
-            box-shadow: 0 10px 24px rgba(201, 255, 0, 0.35) !important;
-        }
-        .login-foot {
-            text-align: center;
-            margin-top: 22px;
-            color: #8B949E;
-            font-size: 0.75rem;
-        }
-        @media (max-width: 900px) {
-            .st-key-login_shell { max-width: 100%; }
-            .login-title { font-size: 2.25rem; }
-            .st-key-login_card { padding: 24px 18px; }
-            .st-key-login_card .stButton > button {
-                min-height: 52px;
-                font-size: 1rem !important;
-            }
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    col1, col2, col3 = st.columns([1, 1.15, 1])
-    with col2:
-        with st.container(key="login_shell"):
-            st.markdown('<div class="login-pill"><svg viewBox="0 0 24 24"><path d="M12 12c2.2 0 4-1.8 4-4s-1.8-4-4-4-4 1.8-4 4 1.8 4 4 4zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></svg><span>Athlete Dashboard</span></div>', unsafe_allow_html=True)
-            with st.container(key="login_card"):
-                st.markdown(
-                    """
-                    <div class="login-wrap">
-                        <div class="login-badge">
-                            <svg viewBox="0 0 24 24"><path d="M12 12c2.2 0 4-1.8 4-4s-1.8-4-4-4-4 1.8-4 4 1.8 4 4 4zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></svg>
-                        </div>
-                        <div class="login-title">Proyecto Athlete</div>
-                        <div class="login-sub">Selecciona tu perfil de atleta</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                if st.button("Malena", key="btn_malena", width="stretch"):
-                    st.session_state.usuario_id = 1
-                    _guardar_ultimo_usuario(1)
-                    st.rerun()
-                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-                if st.button("Dani", key="btn_dani", width="stretch"):
-                    st.session_state.usuario_id = 2
-                    _guardar_ultimo_usuario(2)
-                    st.rerun()
-            st.markdown('<div class="login-foot">Sistema personalizado de entrenamiento y seguimiento</div>', unsafe_allow_html=True)
-    st.stop()
+# Inicializar CookieManager para persistencia de sesión entre recargas
+_cm = st.session_state.get("_cm")
+if _cm is None:
+    try:
+        import extra_streamlit_components as stx
+        _cm = stx.CookieManager(key="_app_cm")
+        st.session_state["_cm"] = _cm
+    except Exception:
+        _cm = None
+
+# Si hay contraseñas en secrets.toml → login obligatorio con usuario/contraseña
+if is_auth_required():
+    require_auth(_cm)
+    # Mapear username autenticado a usuario_id
+    if "usuario_id" not in st.session_state and st.session_state.get("auth_ok"):
+        _user_map = {"malena": 1, "dani": 2}
+        _auth_user = str(st.session_state.get("auth_user", "")).strip().lower()
+        _uid = _user_map.get(_auth_user)
+        if _uid:
+            st.session_state["usuario_id"] = _uid
+        else:
+            st.error(f"Usuario '{_auth_user}' no tiene perfil asociado.")
+            st.stop()
+else:
+    # Sin auth configurada: selector de perfil (modo desarrollo local)
+    if "usuario_id" not in st.session_state:
+        ultimo = _leer_ultimo_usuario()
+        if ultimo:
+            st.session_state.usuario_id = ultimo
+            st.rerun()
+        col1, col2, col3 = st.columns([1, 1.15, 1])
+        with col2:
+            st.markdown("### Selecciona tu perfil")
+            if st.button("Malena", use_container_width=True):
+                st.session_state.usuario_id = 1
+                _guardar_ultimo_usuario(1)
+                st.rerun()
+            if st.button("Dani", use_container_width=True):
+                st.session_state.usuario_id = 2
+                _guardar_ultimo_usuario(2)
+                st.rerun()
+        st.stop()
 
 user_actual = st.session_state.get("usuario_id")
 if user_actual is None:

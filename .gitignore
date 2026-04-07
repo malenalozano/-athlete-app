@@ -20,3 +20,4 @@ atleta.db
 # Mis secretos (¡NUNCA SUBIR!)
 .env
 .streamlit/secrets.toml
+src/core/.encryption_key
