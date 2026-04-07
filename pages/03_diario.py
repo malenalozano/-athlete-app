@@ -76,7 +76,7 @@ st.markdown(f"<h2 style='color:#e6edf3;font-weight:600;margin:8px 0 16px;'>Diari
 from src.db.db_manager import obtener_perfil as _obtener_perfil
 _perfil_actual = _obtener_perfil(user_actual) or {}
 _genero_actual = str(_perfil_actual.get("genero", "")).strip().lower()
-_es_mujer = _genero_actual in ("mujer", "female", "f", "w")
+_es_mujer = _genero_actual in ("mujer", "female", "f", "w", "femenino")
 
 _tab_labels = ["📓 Entreno libre", "🏋️ Ejercicios", "🩹 Lesiones"]
 if _es_mujer:
@@ -134,7 +134,7 @@ if tab1 is not None:
 
             st.markdown(label_upper("Registro diario"), unsafe_allow_html=True)
             with st.form(f"fisio_ciclo_{user_actual}"):
-                fecha = st.date_input("Fecha", value=datetime.now().date(), label_visibility="collapsed")
+                fecha = st.date_input("Fecha del registro", value=datetime.now().date(), format="DD/MM/YYYY")
                 st.markdown(label_upper("Sangre"), unsafe_allow_html=True)
                 sangre = st.pills("_s", sangre_opts, selection_mode="single", default="⚪ Sin sangre", label_visibility="collapsed")
                 st.markdown(label_upper("Síntomas"), unsafe_allow_html=True)

@@ -16,9 +16,11 @@ PAGES = [
     ("pages/06_entrenador.py", "Entrenador",   "entrenador"),
 ]
 
+_NAV = ".main .block-container > div > [data-testid='stVerticalBlock'] > [data-testid='stHorizontalBlock']:first-child"
+
 _CSS = f"""<style>
-/* ── Topbar container — selector específico para evitar contaminar columnas anidadas ── */
-.main .block-container > div > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-child {{
+/* ── Topbar container ── */
+{_NAV} {{
     background: {CARD} !important;
     border-bottom: 1px solid {BORDER} !important;
     padding: 0 16px !important;
@@ -26,19 +28,38 @@ _CSS = f"""<style>
     align-items: center !important;
     min-height: 52px !important;
 }}
-/* Page links dentro del topbar */
-.main .block-container > div > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-child [data-testid="stPageLink"] p {{
-    font-size: 13px !important;
-    color: {TXT2} !important;
-    padding: 16px 12px !important;
-    margin: 0 !important;
-    border-bottom: 2px solid transparent !important;
-    transition: color 0.15s, border-color 0.15s !important;
+/* Page-link style: no wrapping, consistent height */
+{_NAV} [data-testid="stPageLink"] {{
     display: flex !important;
     align-items: center !important;
+    height: 52px !important;
 }}
-.main .block-container > div > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-child [data-testid="stPageLink"]:hover p {{
+{_NAV} [data-testid="stPageLink"] p {{
+    font-size: 13px !important;
+    color: {TXT2} !important;
+    padding: 0 4px !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    border-bottom: 2px solid transparent !important;
+    transition: color 0.15s !important;
+}}
+{_NAV} [data-testid="stPageLink"] p::before {{
+    content: '' !important;
+    display: inline-block !important;
+    width: 6px !important;
+    height: 6px !important;
+    border-radius: 50% !important;
+    background: {TXT3} !important;
+    flex-shrink: 0 !important;
+}}
+{_NAV} [data-testid="stPageLink"]:hover p {{
     color: #c9d1d9 !important;
+}}
+{_NAV} [data-testid="stPageLink"]:hover p::before {{
+    background: #c9d1d9 !important;
 }}
 </style>"""
 
@@ -55,8 +76,8 @@ def render_navbar(pagina_activa: str):
     auth_user = str(st.session_state.get("auth_user", "")).strip()
     avatar_letter = (auth_user[:1] or "?").upper()
 
-    # Columnas: logo | nav items | spacer | sync | avatar
-    cols = st.columns([2.0, 1.05, 1.2, 0.95, 1.05, 1.15, 1.25, 3.35, 0.45, 0.45])
+    # Columnas: logo | Dashboard | Plan semanal | Diario | Garmin | Ejercicios | Entrenador | spacer | sync | avatar
+    cols = st.columns([1.8, 1.1, 1.6, 0.95, 0.95, 1.3, 1.35, 2.65, 0.5, 0.5])
 
     with cols[0]:
         st.markdown(
@@ -76,11 +97,6 @@ def render_navbar(pagina_activa: str):
                     f"{_dot(True)}{label}</div>",
                     unsafe_allow_html=True)
             else:
-                # Wrap page_link in a flex div so the dot appears before the link text
-                st.markdown(
-                    f"<div style='display:flex;align-items:center;padding-left:2px;'>"
-                    f"{_dot(False)}</div>",
-                    unsafe_allow_html=True)
                 st.page_link(path, label=label)
 
     # Botón sync — llama a sincronizar_todo_con_sesion si hay sesión activa
@@ -160,15 +176,51 @@ def render_navbar(pagina_activa: str):
     # Popover del menú de usuario (rendereado abajo del navbar)
     if st.session_state.get("navbar_popover_open", False):
         with st.container(border=True):
-            st.markdown(f"**{auth_user}**")
+            st.markdown(f"**{auth_user or 'Usuario'}**")
+            st.divider()
+
+            # Cambiar perfil (solo si no hay auth por contraseña que lo fuerce)
+            _auth_user_to_id = {"malena": 1, "dani": 2, "malenita88": 1, "danielito99": 2}
+            _current_uid = st.session_state.get("usuario_id", 1)
+            _forced = _auth_user_to_id.get(auth_user)
+            if not _forced:
+                # Sin auth forzada: mostrar selector de perfil
+                _perfiles = {"Malena": 1, "Dani": 2}
+                _nombre_actual = next((n for n, i in _perfiles.items() if i == _current_uid), "Malena")
+                _elegido = st.radio("Perfil", list(_perfiles.keys()),
+                                    index=list(_perfiles.keys()).index(_nombre_actual),
+                                    key="navbar_perfil_radio", horizontal=True)
+                if _perfiles[_elegido] != _current_uid:
+                    st.session_state["usuario_id"] = _perfiles[_elegido]
+                    _cm = st.session_state.get("_cm")
+                    if _cm is not None:
+                        try:
+                            from datetime import datetime, timedelta
+                            _cm.set("athlete_uid", str(_perfiles[_elegido]),
+                                    expires_at=datetime.now() + timedelta(days=30))
+                        except Exception:
+                            pass
+                    st.session_state.pop("navbar_popover_open", None)
+                    st.cache_data.clear()
+                    st.rerun()
+            else:
+                # Con auth: mostrar el perfil actual, ofrecer cambiar cuenta
+                other_name = "Dani" if _current_uid == 1 else "Malena"
+                other_uid  = 2 if _current_uid == 1 else 1
+                if st.button(f"Cambiar a {other_name}", key="navbar_switch", use_container_width=True):
+                    # Solo posible si el otro username también existe en secrets
+                    from src.core.access_control import _get_users_from_secrets
+                    _users = _get_users_from_secrets()
+                    _other_user = other_name.lower()
+                    if _other_user in _users:
+                        st.info(f"Inicia sesión como {other_name} para cambiar de perfil.")
+                    else:
+                        st.session_state["usuario_id"] = other_uid
+                        st.session_state.pop("navbar_popover_open", None)
+                        st.rerun()
+
             st.divider()
             if st.button("🚪 Cerrar sesión", key="navbar_logout", use_container_width=True):
-                st.session_state.pop("auth_ok", None)
-                st.session_state.pop("auth_user", None)
-                st.session_state.pop("usuario_id", None)
-                st.session_state.pop("gc", None)
-                st.session_state.pop("gc_failed", None)
-                st.session_state.pop("gc_error", None)
-                st.session_state.pop("navbar_popover_open", None)
-                st.cache_data.clear()
-                st.rerun()
+                _cm = st.session_state.get("_cm")
+                from src.core.access_control import logout
+                logout(_cm)

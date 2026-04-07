@@ -10,7 +10,7 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 
 _ESQUEMAS = {
-    "Acondicionamiento":    {"series": 3, "reps": "12-15", "pct_1rm": 0.67, "nota": "65-70% 1RM, foco glúteo"},
+    "Acondicionamiento":    {"series": 3, "reps": "12-15", "pct_1rm": 0.67, "nota": "65-70% 1RM, hipertrofia funcional"},
     "Preparación General":  {"series": 4, "reps": "4-6",   "pct_1rm": 0.875,"nota": "85-90% 1RM, fuerza máxima"},
     "Preparación Específica":{"series": 2,"reps": "8",     "pct_1rm": 0.80, "nota": "Mantenimiento de peso"},
     "Pico de Forma":        {"series": 2, "reps": "8-10",  "pct_1rm": 0.75, "nota": "Funcional/movilidad"},

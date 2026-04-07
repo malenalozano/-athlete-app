@@ -279,11 +279,14 @@ div[data-testid="stTextArea"] textarea:focus {
 }
 </style>""", unsafe_allow_html=True)
 
-    if "resultado_ia"       not in st.session_state: st.session_state.resultado_ia       = None
-    if "sesiones_detectadas" not in st.session_state: st.session_state.sesiones_detectadas = []
-    if "cal_cursor"          not in st.session_state:
+    _k_res  = f"resultado_ia_{usuario_id}"
+    _k_ses  = f"sesiones_detectadas_{usuario_id}"
+    _k_cal  = f"cal_cursor_{usuario_id}"
+    if _k_res not in st.session_state: st.session_state[_k_res] = None
+    if _k_ses not in st.session_state: st.session_state[_k_ses] = []
+    if _k_cal not in st.session_state:
         hoy = date.today()
-        st.session_state.cal_cursor = (hoy.year, hoy.month)
+        st.session_state[_k_cal] = (hoy.year, hoy.month)
 
     col_izq, col_der = st.columns([1, 1], gap="large")
 
@@ -298,7 +301,7 @@ div[data-testid="stTextArea"] textarea:focus {
         nota = st.text_area(
             "nota",
             height=150,
-            key="nota_fuerza",
+            key=f"nota_fuerza_{usuario_id}",
             placeholder=(
                 "Lunes\n"
                 "Hip Thrust 3x8 30kg  no he terminado la serie\n"
@@ -342,16 +345,16 @@ div[data-testid="stTextArea"] textarea:focus {
                         "fecha": fecha_seg, "res": res, "texto": texto_seg,
                         "meta": meta, "nota_estado": nota_estado, "vinculo_running": vinculo,
                     })
-            st.session_state.sesiones_detectadas = sesiones_prep
-            st.session_state.resultado_ia = True
+            st.session_state[_k_ses] = sesiones_prep
+            st.session_state[_k_res] = True
             st.rerun()
 
         _card_close()
 
         # ── Sección 2: Resultado ────────────────────────────────────────
-        if st.session_state.resultado_ia and st.session_state.sesiones_detectadas:
+        if st.session_state[_k_res] and st.session_state[_k_ses]:
             _card_open()
-            for ses in st.session_state.sesiones_detectadas:
+            for ses in st.session_state[_k_ses]:
                 res_s     = ses["res"]
                 fecha_obj = ses.get("fecha")
                 fecha_str = fecha_obj.strftime("%d %b %Y") if fecha_obj else "?"
@@ -441,18 +444,18 @@ div[data-testid="stTextArea"] textarea:focus {
 
             _card_close()
 
-            n = len(st.session_state.sesiones_detectadas)
+            n = len(st.session_state[_k_ses])
             col_g, col_c = st.columns([3, 1])
             with col_g:
                 if st.button(
                     f"💾 Guardar {n} sesión{'es' if n>1 else ''}",
                     use_container_width=True, type="primary"
                 ):
-                    _guardar_sesiones(usuario_id, st.session_state.sesiones_detectadas)
+                    _guardar_sesiones(usuario_id, st.session_state[_k_ses])
             with col_c:
                 if st.button("✕ Descartar", use_container_width=True):
-                    st.session_state.resultado_ia = None
-                    st.session_state.sesiones_detectadas = []
+                    st.session_state[_k_res] = None
+                    st.session_state[_k_ses] = []
                     st.rerun()
 
         # ── Sección 3: Lesiones activas inline ──────────────────────────
@@ -468,16 +471,16 @@ div[data-testid="stTextArea"] textarea:focus {
         _card_open()
         st.markdown(label_upper("Calendario del mes"), unsafe_allow_html=True)
 
-        anio_cal, mes_cal = st.session_state.cal_cursor
+        anio_cal, mes_cal = st.session_state[_k_cal]
         MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                     "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
         nav_l, nav_c, nav_r = st.columns([1, 4, 1])
         with nav_l:
-            if st.button("◀", key="cal_prev"):
+            if st.button("◀", key=f"cal_prev_{usuario_id}"):
                 m, y = mes_cal - 1, anio_cal
                 if m < 1: m, y = 12, y - 1
-                st.session_state.cal_cursor = (y, m)
+                st.session_state[_k_cal] = (y, m)
                 st.rerun()
         with nav_c:
             st.markdown(
@@ -486,10 +489,10 @@ div[data-testid="stTextArea"] textarea:focus {
                 f"{MESES_ES[mes_cal-1]} {anio_cal}</div>",
                 unsafe_allow_html=True)
         with nav_r:
-            if st.button("▶", key="cal_next"):
+            if st.button("▶", key=f"cal_next_{usuario_id}"):
                 m, y = mes_cal + 1, anio_cal
                 if m > 12: m, y = 1, y + 1
-                st.session_state.cal_cursor = (y, m)
+                st.session_state[_k_cal] = (y, m)
                 st.rerun()
 
         dias_mes = _cargar_dias_mes(usuario_id, anio_cal, mes_cal)
@@ -809,8 +812,8 @@ def _guardar_sesiones(usuario_id: int, sesiones: list):
         st.cache_data.clear()
         n = len(sesiones)
         st.success(f"✅ {n} sesión{'es' if n>1 else ''} guardada{'s' if n>1 else ''}")
-        st.session_state.resultado_ia = None
-        st.session_state.sesiones_detectadas = []
+        st.session_state[f"resultado_ia_{usuario_id}"] = None
+        st.session_state[f"sesiones_detectadas_{usuario_id}"] = []
         st.rerun()
     except Exception as e:
         st.error(f"Error SQL: {e}")

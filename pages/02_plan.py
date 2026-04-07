@@ -189,7 +189,7 @@ with c4:
                     st.stop()
             st.rerun()
     with c4b:
-        sin_ia = st.checkbox("Sin IA", key="plan_sin_ia", label_visibility="collapsed")
+        sin_ia = st.checkbox("Sin IA", key="plan_sin_ia")
         if sin_ia:
             st.session_state.plan_ia = False
 

@@ -16,7 +16,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-require_auth()
+# CookieManager MUST be instantiated before any st.stop() calls so the iframe renders.
+_cm = None
+try:
+    import extra_streamlit_components as stx
+    _cm = stx.CookieManager(key="athlete_cm")
+except Exception:
+    pass
+
+require_auth(_cm)
 
 # Ocultar TODO lo nativo de Streamlit + CSS global del sistema de diseño
 from src.core.styles import GLOBAL_CSS
@@ -119,22 +127,30 @@ asegurar_tablas_premium()
 asegurar_indices_consulta()
 asegurar_tabla_lesiones()
 
+# Exponer el cookie manager para que navbar.py pueda usarlo en logout/switch
+if _cm is not None:
+    st.session_state["_cm"] = _cm
+
 # Persistencia usuario + init ejercicios (necesita usuario_id)
-from src.core.ui_helpers_a import _leer_ultimo_usuario, _guardar_ultimo_usuario
 auth_user = str(st.session_state.get("auth_user", "")).strip().lower()
 auth_user_to_id = {"malena": 1, "dani": 2, "malenita88": 1, "danielito99": 2}
 forced_uid = auth_user_to_id.get(auth_user)
 
 if forced_uid in (1, 2):
-    # Si hay login, el usuario autenticado manda siempre sobre la preferencia local.
+    # Usuario autenticado determina el perfil
     if st.session_state.get("usuario_id") != forced_uid:
         st.session_state["usuario_id"] = forced_uid
-        _guardar_ultimo_usuario(forced_uid)
 elif "usuario_id" not in st.session_state:
-    uid = _leer_ultimo_usuario()
-    st.session_state["usuario_id"] = uid if uid else 1
-    if not uid:
-        _guardar_ultimo_usuario(1)
+    # Sin auth requerida: intentar cookie, luego default=1
+    if _cm is not None:
+        try:
+            cookie_uid = _cm.get("athlete_uid")
+            uid = int(cookie_uid) if str(cookie_uid) in ("1", "2") else 1
+        except Exception:
+            uid = 1
+    else:
+        uid = 1
+    st.session_state["usuario_id"] = uid
 asegurar_tabla_ejercicios(st.session_state["usuario_id"])
 
 # Routing: position="hidden" oculta la navbar nativa

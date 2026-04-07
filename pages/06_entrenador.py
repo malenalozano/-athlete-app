@@ -10,10 +10,12 @@ from datetime import datetime, timedelta
 from src.core.navbar import render_navbar
 from src.plan.helpers import cargar_datos_plan
 from src.plan.reglas import (
-    obtener_fase_macrociclo, calcular_semaforo, aplicar_restricciones_lesion,
+    obtener_fase_macrociclo, obtener_fase_macrociclo_usuario,
+    calcular_semaforo, aplicar_restricciones_lesion,
     evaluar_cadencia, calcular_volumen_semana, evaluar_eficiencia_aerobica,
     ajustar_por_ciclo
 )
+from src.db.db_manager import obtener_perfil as _obtener_perfil
 from src.plan.motor import generar_plan_semana
 from src.plan.memoria_fuerza import generar_tabla_fuerza_semana
 from src.db.db_manager import get_db_connection
@@ -36,6 +38,13 @@ if "usuario_id" not in st.session_state:
 
 usuario_id = st.session_state.get("usuario_id", 1)
 conn = get_db_connection()
+
+# Cargar perfil del usuario actual
+_perfil = _obtener_perfil(usuario_id) or {}
+_genero = str(_perfil.get("genero", "")).strip().lower()
+_es_mujer = _genero in ("mujer", "female", "f", "w", "femenino")
+_objetivo_tipo = str(_perfil.get("objetivo_tipo", "")).strip().lower()
+_objetivo_label = "Ultra" if "ultra" in _objetivo_tipo else "Maratón"
 
 # ============================================================================
 # SECCIÓN 1: DATOS BIOMÉTRICOS ACTUALES
@@ -163,10 +172,17 @@ except Exception as e:
 st.markdown("---")
 st.header("📅 3. Fase del Macrociclo")
 
-fase = obtener_fase_macrociclo()
-fecha_objetivo = datetime.strptime('2027-02-21', '%Y-%m-%d')
-dias_restantes = (fecha_objetivo - datetime.now()).days
-semanas_restantes = dias_restantes // 7
+fase = obtener_fase_macrociclo_usuario(usuario_id)
+_fecha_obj_str = _perfil.get("fecha_objetivo")
+if _fecha_obj_str:
+    try:
+        fecha_objetivo = datetime.strptime(str(_fecha_obj_str), '%Y-%m-%d')
+        dias_restantes = (fecha_objetivo - datetime.now()).days
+        semanas_restantes = dias_restantes // 7
+    except Exception:
+        dias_restantes = semanas_restantes = None
+else:
+    dias_restantes = semanas_restantes = None
 
 col_fase1, col_fase2 = st.columns(2)
 
@@ -176,8 +192,8 @@ with col_fase1:
     st.warning(f"**Días Fuerza Recomendados:** {fase['dias_fuerza']} días")
 
 with col_fase2:
-    st.metric("Días hasta Maratón", dias_restantes)
-    st.metric("Semanas hasta Maratón", semanas_restantes)
+    st.metric(f"Días hasta {_objetivo_label}", dias_restantes if dias_restantes is not None else "—")
+    st.metric(f"Semanas hasta {_objetivo_label}", semanas_restantes if semanas_restantes is not None else "—")
 
 st.markdown(f"""
 **Enfoque de Carrera:** {fase['enfoque_running']}
@@ -219,32 +235,34 @@ st.markdown(f"""
 """)
 
 # ============================================================================
-# SECCIÓN 5: CICLO MENSTRUAL (Malena)
+# SECCIÓN 5: CICLO MENSTRUAL (solo perfiles femeninos)
 # ============================================================================
 
-st.markdown("---")
-st.header("🩸 5. Ciclo Menstrual - Ajustes")
+ciclo_data = None
+if _es_mujer:
+    st.markdown("---")
+    st.header("🩸 5. Ciclo Menstrual - Ajustes")
 
-ciclo_data = datos.get("ciclo_menstrual") or datos.get("fase_ciclo")
+    ciclo_data = datos.get("ciclo_menstrual") or datos.get("fase_ciclo")
 
-if ciclo_data:
-    col_ciclo1, col_ciclo2, col_ciclo3 = st.columns(3)
-    
-    with col_ciclo1:
-        fase_txt = ciclo_data.get('fase') or ciclo_data.get('fase_nombre') or 'Desconocida'
-        origen_txt = ciclo_data.get('origen')
-        st.info(f"**Fase:** {fase_txt}" + (f" ({origen_txt})" if origen_txt else ""))
-    
-    with col_ciclo2:
-        st.metric("Multiplicador Volumen", f"{ciclo_data.get('multiplicador_volumen', 1.0):.2f}x")
-    
-    with col_ciclo3:
-        st.metric("¿Permitir Calidad?", "Sí" if ciclo_data.get('permitir_calidad', True) else "No")
-    
-    if ciclo_data.get('hidratacion_extra'):
-        st.warning("💧 **Fase de estrés hormonal:** Aumentar hidratación y electrolitos")
-else:
-    st.info("No hay datos de ciclo menstrual. Añade tu ciclo en la pestaña Diario.")
+    if ciclo_data:
+        col_ciclo1, col_ciclo2, col_ciclo3 = st.columns(3)
+
+        with col_ciclo1:
+            fase_txt = ciclo_data.get('fase') or ciclo_data.get('fase_nombre') or 'Desconocida'
+            origen_txt = ciclo_data.get('origen')
+            st.info(f"**Fase:** {fase_txt}" + (f" ({origen_txt})" if origen_txt else ""))
+
+        with col_ciclo2:
+            st.metric("Multiplicador Volumen", f"{ciclo_data.get('multiplicador_volumen', 1.0):.2f}x")
+
+        with col_ciclo3:
+            st.metric("¿Permitir Calidad?", "Sí" if ciclo_data.get('permitir_calidad', True) else "No")
+
+        if ciclo_data.get('hidratacion_extra'):
+            st.warning("💧 **Fase de estrés hormonal:** Aumentar hidratación y electrolitos")
+    else:
+        st.info("No hay datos de ciclo menstrual. Añade tu ciclo en la pestaña Diario.")
 
 # ============================================================================
 # SECCIÓN 6: RESTRICCIONES & LESIONES
@@ -391,7 +409,7 @@ if plan:
     with summary_col2:
         st.markdown(f"""
         ### Ajustes Aplicados
-        - **Ciclo Menstrual:** {ciclo_data.get('fase_nombre', 'N/A') if ciclo_data else 'N/A'}
+        - **Ciclo Menstrual:** {ciclo_data.get('fase_nombre', 'N/A') if (_es_mujer and ciclo_data) else ('N/A' if _es_mujer else 'No aplica')}
         - **Cadencia Drills:** {'Sí - Incluir 5min técnica' if cadencia_eval['necesita_drills'] else 'No necesarios'}
         - **Lesiones Activas:** {'Sí - Aplicadas sustituciones' if datos.get('lesiones_activas') else 'Ninguna'}
         - **Fase del Macrociclo:** {fase['fase_nombre']}

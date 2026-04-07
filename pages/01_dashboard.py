@@ -64,8 +64,10 @@ def _delta_fmt(v):
 c1, c2, c3, c4 = st.columns(4, gap="large")
 c1.metric("Km (7 días)",  f"{res['km']:.1f} km", _delta_fmt(res["km_delta"]))
 c2.metric("Fuerza (7 días)", res["fuerza"],       _delta_fmt(res["fuerza_delta"]))
-c3.metric("Sueño medio",  f"{res['sueno']:.1f} h" if res["sueno"] else "—", _delta_fmt(res["sueno_delta"]))
-c4.metric("HRV medio",    f"{res['hrv']:.0f} ms"  if res["hrv"]   else "—", _delta_fmt(res["hrv_delta"]))
+c3.metric("Sueño medio",  f"{res['sueno']:.1f} h" if res["sueno"] else "Sin datos",
+          _delta_fmt(res["sueno_delta"]), help="Requiere sincronización con Garmin")
+c4.metric("HRV medio",    f"{res['hrv']:.0f} ms"  if res["hrv"]   else "Sin datos",
+          _delta_fmt(res["hrv_delta"]), help="Requiere sincronización con Garmin")
 
 # ---------------------------------------------------------------------------
 # 3. Macrociclo — 5 fases + barra global hacia el objetivo
@@ -109,7 +111,8 @@ with col_plan:
                 f"<span style='color:#8B949E;font-size:0.75rem;'>{sub}</span></div>",
                 unsafe_allow_html=True)
     else:
-        st.info("No se pudo cargar el plan. Ve a **Plan Semanal** y genera uno.")
+        st.info("Aún no hay plan para esta semana.")
+        st.page_link("pages/02_plan.py", label="→ Ir a Plan Semanal y generar uno")
 
 with col_pesos:
     st.subheader("Progresión de pesos")
