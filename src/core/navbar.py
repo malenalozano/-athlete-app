@@ -86,7 +86,7 @@ def render_navbar(pagina_activa: str):
     # Botón sync — llama a sincronizar_todo_con_sesion si hay sesión activa
     with cols[7]:
         st.markdown("""<style>
-        div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"]:first-child
+        .main .block-container > div > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-child
         button[kind="secondary"] {
             width:32px !important; height:32px !important; padding:0 !important;
             border-radius:50% !important; border:1px solid #30363d !important;
@@ -139,7 +139,7 @@ def render_navbar(pagina_activa: str):
         # CSS para estilizar el botón como avatar
         st.markdown(
             f"""<style>
-            [data-testid="stHorizontalBlock"] [kind="secondary"] {{
+            .main .block-container > div > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-child button[kind="secondary"] {{
                 width: 32px !important;
                 height: 32px !important;
                 padding: 0 !important;

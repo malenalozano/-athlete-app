@@ -23,7 +23,7 @@ from src.core.styles import apply_custom_css
 apply_custom_css()
 render_navbar("entrenador")
 
-st.title("🧠 Entrenador - Análisis de Datos & Decisiones")
+st.title("🧠 Entrenador — Análisis de Datos y Decisiones")
 st.markdown("""
 Esta página muestra **TODO** lo que el sistema analiza para generar tu plan semanal.
 Datos en tiempo real, decisiones del código y próximas acciones.

@@ -320,7 +320,7 @@ with tab_sync:
                                 st.session_state["gc_failed"] = True
                                 st.session_state["gc_error"] = str(e)
                                 if "429" in str(e):
-                                    st.error("Garmin ha bloqueado temporalmente el acceso (429). Espera unos minutos y vuelve a intentar una sola vez.")
+                                    st.error("Garmin ha limitado temporalmente los intentos de conexión. Espera unos minutos antes de intentarlo de nuevo.")
                                 else:
                                     st.error(f"Error al conectar: {e}")
             st.markdown("</div>", unsafe_allow_html=True)

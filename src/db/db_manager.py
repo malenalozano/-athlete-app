@@ -510,6 +510,8 @@ def asegurar_tablas_premium():
         ("recovery_hours", "REAL"),
         ("spo2", "REAL"),
         ("potencia_media_w", "REAL"),
+        ("training_status", "TEXT"),
+        ("vo2max", "REAL"),
     ]:
         _ensure_column(conn, "datos_biometricos_premium", col_name, col_type)
 

@@ -1,7 +1,7 @@
 import os
 import re
 from dotenv import load_dotenv
-import google.generativeai as genai
+import google.genai as genai
 from src.db.db_manager import get_db_connection
 
 load_dotenv()
@@ -224,6 +224,16 @@ def _parsear_nota_local(texto: str, catalogo: dict | None = None) -> list:
     return datos
 
 
+class _GeminiModel:
+    """Thin wrapper around google.genai client to match the old generate_content(.text) API."""
+    def __init__(self, client, model_name):
+        self._client = client
+        self._model_name = model_name
+
+    def generate_content(self, prompt):
+        return self._client.models.generate_content(model=self._model_name, contents=prompt)
+
+
 def _inicializar_modelo():
     global _modelo, _gemini_disponible, _gemini_error
 
@@ -236,18 +246,17 @@ def _inicializar_modelo():
         return None
 
     try:
-        genai.configure(api_key=api_key)
+        client = genai.Client(api_key=api_key)
         nombre_modelo = "gemini-1.5-flash"
         try:
-            for m in genai.list_models():
-                if "generateContent" in m.supported_generation_methods and "gemini" in m.name:
+            for m in client.models.list():
+                if hasattr(m, "name") and "gemini" in m.name:
                     nombre_modelo = m.name
                     break
         except Exception:
-            # Si no se puede listar modelos, seguimos con el valor por defecto.
             pass
 
-        _modelo = genai.GenerativeModel(nombre_modelo)
+        _modelo = _GeminiModel(client, nombre_modelo)
         _gemini_disponible = True
         _gemini_error = None
         return _modelo

@@ -4,6 +4,6 @@ pandas
 plotly
 python-dotenv
 libsql; python_version < "3.14"
-google-generativeai
+google-genai
 pypdf
 cryptography
