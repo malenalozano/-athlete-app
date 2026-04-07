@@ -175,61 +175,162 @@ def render_navbar(pagina_activa: str):
     
     # Popover del menú de usuario (rendereado abajo del navbar)
     if st.session_state.get("navbar_popover_open", False):
-        with st.container(border=True):
-            st.markdown(f"**{auth_user or 'Usuario'}**")
-            st.divider()
-
-            # Cambiar perfil (solo si no hay auth por contraseña que lo fuerce)
-            _auth_user_to_id = {"malena": 1, "dani": 2, "malenita88": 1, "danielito99": 2}
+        # Estilos para el menú mejorado
+        st.markdown(f"""<style>
+        .user-menu-container {{
+            background: linear-gradient(135deg, #0E1117 0%, #0A2E0A 52%, #0E1117 100%);
+            border: 1px solid {ACCENT}30;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }}
+        .user-menu-header {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }}
+        .user-menu-avatar {{
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, {ACCENT}, {ACCENT}80);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 20px;
+            color: #0E1117;
+            box-shadow: 0 4px 12px {ACCENT}40;
+        }}
+        .user-menu-info {{
+            flex: 1;
+        }}
+        .user-menu-info .nombre {{
+            font-weight: 700;
+            color: #C9FF00;
+            font-size: 15px;
+            margin-bottom: 4px;
+        }}
+        .user-menu-info .objetivo {{
+            font-size: 12px;
+            color: #8B949E;
+        }}
+        .perfil-selector {{
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }}
+        .perfil-btn {{
+            flex: 1;
+            padding: 12px;
+            border: 2px solid {ACCENT}40;
+            border-radius: 8px;
+            background: transparent;
+            color: #8B949E;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-align: center;
+        }}
+        .perfil-btn.activo {{
+            border-color: {ACCENT}!important;
+            background: {ACCENT}20!important;
+            color: {ACCENT}!important;
+            box-shadow: 0 0 16px {ACCENT}30;
+        }}
+        .perfil-btn:hover {{
+            border-color: {ACCENT}80;
+            color: #C9D1D9;
+        }}
+        .menu-divider {{
+            height: 1px;
+            background: {BORDER};
+            margin: 12px 0;
+        }}
+        .menu-action {{
+            margin-bottom: 8px;
+        }}
+        .menu-action button {{
+            width: 100%!important;
+            font-size: 13px!important;
+        }}
+        </style>""", unsafe_allow_html=True)
+        
+        with st.container():
+            st.markdown('<div class="user-menu-container">', unsafe_allow_html=True)
+            
+            # Header con avatar e info del usuario
+            _perfiles_list = {"Malena": 1, "Dani": 2}
             _current_uid = st.session_state.get("usuario_id", 1)
-            _forced = _auth_user_to_id.get(auth_user)
+            _nombre_actual = next((n for n, i in _perfiles_list.items() if i == _current_uid), "Usuario")
+            _avatar = _nombre_actual[:1].upper()
+            
+            st.markdown(f"""
+            <div class="user-menu-header">
+                <div class="user-menu-avatar">{_avatar}</div>
+                <div class="user-menu-info">
+                    <div class="nombre">👤 {_nombre_actual}</div>
+                    <div class="objetivo">Perfil activo: <strong>{_nombre_actual}</strong></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Selector de perfil con botones
+            _auth_user_to_id = {"malena": 1, "dani": 2, "malenita88": 1, "danielito99": 2}
+            _forced = _auth_user_to_id.get(str(st.session_state.get("auth_user", "")).strip().lower())
+            
             if not _forced:
-                # Sin auth forzada: mostrar selector de perfil
-                _perfiles = {"Malena": 1, "Dani": 2}
-                _nombre_actual = next((n for n, i in _perfiles.items() if i == _current_uid), "Malena")
-                _elegido = st.radio("Perfil", list(_perfiles.keys()),
-                                    index=list(_perfiles.keys()).index(_nombre_actual),
-                                    key="navbar_perfil_radio", horizontal=True)
-                if _perfiles[_elegido] != _current_uid:
-                    st.session_state["usuario_id"] = _perfiles[_elegido]
-                    _cm = st.session_state.get("_cm")
-                    if _cm is not None:
-                        try:
-                            from datetime import datetime, timedelta
-                            _cm.set("athlete_uid", str(_perfiles[_elegido]),
-                                    expires_at=datetime.now() + timedelta(days=30))
-                        except Exception:
-                            pass
-                    st.session_state.pop("navbar_popover_open", None)
-                    # Limpiar datos específicos del usuario anterior (plan, diario, ejercicios, etc.)
-                    for key in ("plan_data", "plan_cursor", "plan_ia", "diario_data", 
-                                "ejercicios_data", "ejercicios_init_users", "gc", "gc_failed", "gc_error"):
-                        st.session_state.pop(key, None)
-                    st.cache_data.clear()
-                    st.rerun()
+                # Selector de perfil mejorado con botones
+                st.markdown('<div class="perfil-selector">', unsafe_allow_html=True)
+                col_m, col_d = st.columns([1, 1])
+                
+                with col_m:
+                    btn_class = "perfil-btn activo" if _current_uid == 1 else "perfil-btn"
+                    if st.button("👩 Malena", key="perfil_malena", use_container_width=True):
+                        if _current_uid != 1:
+                            st.session_state["usuario_id"] = 1
+                            st.session_state.pop("navbar_popover_open", None)
+                            for key in ("plan_data", "plan_cursor", "plan_ia", "diario_data", 
+                                        "ejercicios_data", "ejercicios_init_users", "gc", "gc_failed", "gc_error"):
+                                st.session_state.pop(key, None)
+                            st.cache_data.clear()
+                            st.rerun()
+                
+                with col_d:
+                    btn_class = "perfil-btn activo" if _current_uid == 2 else "perfil-btn"
+                    if st.button("👨 Dani", key="perfil_dani", use_container_width=True):
+                        if _current_uid != 2:
+                            st.session_state["usuario_id"] = 2
+                            st.session_state.pop("navbar_popover_open", None)
+                            for key in ("plan_data", "plan_cursor", "plan_ia", "diario_data", 
+                                        "ejercicios_data", "ejercicios_init_users", "gc", "gc_failed", "gc_error"):
+                                st.session_state.pop(key, None)
+                            st.cache_data.clear()
+                            st.rerun()
+                
+                st.markdown('</div>', unsafe_allow_html=True)
             else:
-                # Con auth: mostrar el perfil actual, ofrecer cambiar cuenta
+                # Con auth: opción de cambiar cuenta
                 other_name = "Dani" if _current_uid == 1 else "Malena"
-                other_uid  = 2 if _current_uid == 1 else 1
-                if st.button(f"Cambiar a {other_name}", key="navbar_switch", use_container_width=True):
-                    # Solo posible si el otro username también existe en secrets
-                    from src.core.access_control import _get_users_from_secrets
-                    _users = _get_users_from_secrets()
-                    _other_user = other_name.lower()
-                    if _other_user in _users:
-                        st.info(f"Inicia sesión como {other_name} para cambiar de perfil.")
-                    else:
-                        st.session_state["usuario_id"] = other_uid
-                        st.session_state.pop("navbar_popover_open", None)
-                        # Limpiar datos específicos del usuario anterior
-                        for key in ("plan_data", "plan_cursor", "plan_ia", "diario_data", 
-                                    "ejercicios_data", "ejercicios_init_users", "gc", "gc_failed", "gc_error"):
-                            st.session_state.pop(key, None)
-                        st.cache_data.clear()
-                        st.rerun()
-
-            st.divider()
-            if st.button("🚪 Cerrar sesión", key="navbar_logout", use_container_width=True):
+                other_uid = 2 if _current_uid == 1 else 1
+                st.markdown(f'<div style="text-align:center;padding:12px;color:#8B949E;font-size:12px;">Conectado como <strong>{_nombre_actual}</strong></div>', unsafe_allow_html=True)
+            
+            st.markdown('<div class="menu-divider"></div>', unsafe_allow_html=True)
+            
+            # Botones de acción
+            st.markdown('<div class="menu-action">', unsafe_allow_html=True)
+            if st.button("⚙️ Configuración", use_container_width=True, key="menu_settings"):
+                st.info("Configuración disponible pronto.")
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('<div class="menu-action">', unsafe_allow_html=True)
+            if st.button("🚪 Cerrar sesión", use_container_width=True, key="navbar_logout"):
                 _cm = st.session_state.get("_cm")
                 from src.core.access_control import logout
                 logout(_cm)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
