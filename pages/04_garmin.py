@@ -2,6 +2,10 @@
 pages/4_garmin.py — Garmin Connect: sync + historial.
 """
 
+import warnings
+# Suprimir warning de pandas sobre Turso HTTP connection (no es SQLAlchemy pero funciona)
+warnings.filterwarnings("ignore", message=".*pandas only supports SQLAlchemy.*")
+
 import pandas as pd
 import streamlit as st
 from datetime import datetime, timedelta
@@ -265,24 +269,21 @@ with tab_sync:
             gc_err = str(st.session_state.get("gc_error", ""))
             if "429" in gc_err or "rate" in gc_err.lower() or "bloqueado" in gc_err.lower():
                 st.error(
-                    "🚫 **Garmin ha bloqueado temporalmente el acceso por demasiados intentos de login.**\n\n"
-                    "Esto sucede cuando se intenta login múltiples veces desde servidores cloud. "
-                    "Garmin rechaza estos intentos por seguridad."
+                    "🚫 **GARMIN BLOQUEADO TEMPORALMENTE**\n\n"
+                    "Garmin ha detectado múltiples intentos de login y bloqueó el acceso por seguridad.\n\n"
+                    "**Razón**: Cada intento fallido desde Cloud reinicia el contador de bloqueo.\n"
+                    "**Solución**: NO intentar más desde aquí. Espera 24-48 horas sin intentos."
                 )
                 st.warning(
-                    "**SOLUCIÓN: Login desde tu ordenador local**\n\n"
-                    "El login debe hacerse UNA SOLA VEZ desde tu PC. Los tokens se guardarán y la app "
-                    "los reutilizará sin necesidad de volver a autenticarse.\n\n"
-                    "**Pasos:**\n"
-                    "1. Abre terminal en: `athlete-performance-tracker`\n"
-                    "2. Ejecuta: `.venv\\Scripts\\activate` (Windows) o `source .venv/bin/activate` (Mac/Linux)\n"
-                    "3. Ejecuta: `python scripts/garmin_login_once.py`\n"
-                    "4. Introduce tu email y contraseña de Garmin\n"
-                    "5. ✅ Tokens guardados → Vuelve al Cloud, debería funcionar sin errores"
-                )
-                st.info(
-                    "⏱️ **Tiempo de espera por bloqueo Garmin:** 30-60 minutos desde el último intento fallido.\n\n"
-                    "Si ya ejecutaste el script y aún falla, Garmin podría requerir esperar más tiempo."
+                    "⏰ **ACCIÓN INMEDIATA RECOMENDADA**:\n\n"
+                    "✅ **Dentro de 24-48 HORAS**, ejecuta en tu ordenador:\n"
+                    "```bash\n"
+                    "cd athlete-performance-tracker\n"
+                    ".venv\\Scripts\\activate\n"
+                    "python scripts/garmin_login_once.py\n"
+                    "```\n\n"
+                    "✅ Luego vuelve al Cloud y debería funcionar.\n\n"
+                    "🚫 **NO intentes nada antes de 24-48 horas** — solo reiniciará el bloqueo."
                 )
             else:
                 st.error(f"Error: {gc_err}" if gc_err else "")
