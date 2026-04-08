@@ -785,32 +785,13 @@ def _load_valid_client_from_home(home: str):
     try:
         client = Garmin()
         client.garth.load(home)
-        
-        # Validar con timeout
-        result_container = [False]
-        exception_container = [None]
-        
-        def _validate():
-            try:
-                client.get_full_name()
-                result_container[0] = True
-            except Exception as e:
-                exception_container[0] = e
-        
-        thread = Thread(target=_validate, daemon=True)
-        thread.start()
-        thread.join(timeout=10)  # 10 segundos para validación
-        
-        if not result_container[0]:
-            if exception_container[0]:
-                raise exception_container[0]
-            else:
-                raise TimeoutError("Validación de token expirada")
-        
-        logger.debug(f"✓ Sesión Garmin válida cargada desde {home}")
+        # No validamos con API call aquí — garth renueva el access_token
+        # automáticamente al primer uso real. Validar aquí genera requests
+        # innecesarios a Garmin y puede provocar bloqueos 429.
+        logger.debug(f"✓ Tokens cargados desde disco: {home}")
         return client
     except Exception as e:
-        logger.warning(f"Tokens inválidos/expirados en {home}: {type(e).__name__}: {e}")
+        logger.warning(f"Tokens inválidos en {home}: {type(e).__name__}: {e}")
         return None
 
 
@@ -829,7 +810,12 @@ def _guardar_tokens_db(usuario_id: int, token_json: str):
 
 
 def _cargar_tokens_db(usuario_id: int):
-    """Carga y valida tokens desde la BD. Devuelve cliente o None."""
+    """Carga tokens desde la BD sin validar. Devuelve cliente o None.
+
+    No hacemos ninguna llamada API aquí: garth renueva el access_token
+    automáticamente en el primer uso real. Validar en cada carga de página
+    genera requests innecesarios a Garmin y provoca bloqueos 429.
+    """
     try:
         conn = get_db_connection()
         row = conn.execute(
@@ -841,37 +827,10 @@ def _cargar_tokens_db(usuario_id: int):
         token_json = row[0]
         client = Garmin()
         client.garth.loads(token_json)
-        
-        # Validar con timeout
-        result_container = [False]
-        exception_container = [None]
-        
-        def _validate():
-            try:
-                client.get_full_name()  # valida / renueva access_token si hace falta
-                result_container[0] = True
-            except Exception as e:
-                exception_container[0] = e
-        
-        thread = Thread(target=_validate, daemon=True)
-        thread.start()
-        thread.join(timeout=10)  # 10 segundos para validación
-        
-        if not result_container[0]:
-            if exception_container[0]:
-                raise exception_container[0]
-            else:
-                raise TimeoutError("Validación de token expirada")
-        
-        # Re-guardar por si el refresh_token generó nuevos tokens
-        try:
-            _guardar_tokens_db(usuario_id, client.garth.dumps())
-        except Exception:
-            pass
-        logger.debug(f"✓ Sesión Garmin cargada desde BD para usuario {usuario_id}")
+        logger.debug(f"✓ Tokens Garmin cargados desde BD para usuario {usuario_id}")
         return client
     except Exception as e:
-        logger.warning(f"Tokens BD inválidos/expirados para usuario {usuario_id}: {e}")
+        logger.warning(f"Tokens BD inválidos para usuario {usuario_id}: {type(e).__name__}: {e}")
         return None
 
 
@@ -1218,6 +1177,14 @@ def sincronizar_biometricos_garmin(email, password, usuario_id, dias=7):
         raise
 
 
+def _persistir_tokens_si_cambiaron(gc, usuario_id: int):
+    """Re-guarda tokens en BD tras sync por si garth refrescó el access_token."""
+    try:
+        _guardar_tokens_db(usuario_id, gc.garth.dumps())
+    except Exception as e:
+        logger.warning(f"No se pudieron re-persistir tokens tras sync: {e}")
+
+
 def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
     """
     Sincronización completa usando sesión ya autenticada (sin SSO).
@@ -1386,6 +1353,9 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
             _guardar_acwr_diario(usuario_id, fecha_iso)
         except Exception:
             pass
+
+    # ── 4. Re-persistir tokens por si garth refrescó el access_token ──────
+    _persistir_tokens_si_cambiaron(gc, usuario_id)
 
     return {
         "actividades": act_guardadas,

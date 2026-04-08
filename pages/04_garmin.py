@@ -277,21 +277,10 @@ with tab_sync:
             gc_err = str(st.session_state.get("gc_error", ""))
             if "429" in gc_err or "rate" in gc_err.lower() or "bloqueado" in gc_err.lower():
                 st.error(
-                    "🚫 **GARMIN BLOQUEADO TEMPORALMENTE**\n\n"
-                    "Garmin ha detectado múltiples intentos de login y bloqueó el acceso por seguridad.\n\n"
-                    "**Razón**: Cada intento fallido desde Cloud reinicia el contador de bloqueo.\n"
-                    "**Solución**: NO intentar más desde aquí. Espera 24-48 horas sin intentos."
-                )
-                st.warning(
-                    "⏰ **ACCIÓN INMEDIATA RECOMENDADA**:\n\n"
-                    "✅ **Dentro de 24-48 HORAS**, ejecuta en tu ordenador:\n"
-                    "```bash\n"
-                    "cd athlete-performance-tracker\n"
-                    ".venv\\Scripts\\activate\n"
-                    "python scripts/garmin_login_once.py\n"
-                    "```\n\n"
-                    "✅ Luego vuelve al Cloud y debería funcionar.\n\n"
-                    "🚫 **NO intentes nada antes de 24-48 horas** — solo reiniciará el bloqueo."
+                    "**Garmin bloqueado temporalmente (error 429)**\n\n"
+                    "Garmin ha detectado demasiados intentos de login recientes.\n\n"
+                    "**No intentes reconectar ahora** — solo alargarías el bloqueo.\n"
+                    "Espera 24-48 horas y luego vuelve a introducir tus credenciales aquí una sola vez."
                 )
             else:
                 st.error(f"Error: {gc_err}" if gc_err else "")
@@ -432,21 +421,14 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
             n_dias = st.number_input("Días a sincronizar", min_value=1, max_value=30, value=7)
             if st.form_submit_button("↻ Sincronizar todo", use_container_width=True, type="primary"):
                 gc = st.session_state.get("gc")
-                if gc is None and cred and cred[0]:
-                    try:
-                        saved_pw = _get_saved_password(cred)
-                        if saved_pw:
-                            gc = iniciar_sesion_garmin(cred[0], saved_pw, usuario_id=user_actual)
-                            st.session_state["gc"] = gc
-                        else:
-                            st.warning("Tu contraseña guardada de Garmin no es válida. Vuelve a guardarla una vez y quedará recordada.")
-                    except Exception as e:
-                        st.session_state["gc_failed"] = True
-                        st.session_state["gc_error"] = str(e)
-                        gc = None
+                # Intentar cargar tokens guardados (sin hacer login SSO)
+                if gc is None:
+                    gc = cargar_sesion_tokens(cred[0] if cred else None, usuario_id=user_actual)
+                    if gc is not None:
+                        st.session_state["gc"] = gc
 
                 if gc is None:
-                    st.warning("Primero conecta tu cuenta Garmin.")
+                    st.warning("Primero conecta tu cuenta Garmin en el panel de la izquierda.")
                 else:
                     with st.spinner("Sincronizando actividades y biométricos…"):
                         try:
