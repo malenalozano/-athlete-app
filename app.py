@@ -25,8 +25,8 @@ except Exception as e:
     import logging
     logging.warning(f"CookieManager failed to initialize: {e}. Cookie-based auth will be unavailable.")
 
-# ✅ AUTENTICACIÓN ACTIVADA — Solo contraseña para acceder (APP_PASSWORD en secrets)
-require_auth(_cm)
+# ⏸️ AUTENTICACIÓN DESACTIVADA TEMPORALMENTE — Se activará más adelante cuando tengamos la versión final
+# require_auth(_cm)
 
 # Ocultar TODO lo nativo de Streamlit + CSS global del sistema de diseño
 from src.core.styles import GLOBAL_CSS
