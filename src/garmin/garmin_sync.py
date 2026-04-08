@@ -3,6 +3,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from threading import Thread
+import garth as _garth_lib
 from garminconnect import Garmin, GarminConnectConnectionError, GarminConnectAuthenticationError
 from dotenv import load_dotenv
 from src.db.db_manager import get_db_connection
@@ -779,15 +780,39 @@ def _token_homes(email: str | None = None):
     return homes
 
 
+def _make_garmin_with_garth(garth_client) -> "Garmin":
+    """Crea un objeto Garmin e inyecta un garth client ya autenticado.
+
+    Bypass del constructor de Garmin para evitar que garth.Client()
+    falle por incompatibilidades (e.g. Python 3.14 + urllib3).
+    """
+    try:
+        gc = Garmin()
+        # Si el constructor tuvo éxito pero no asignó garth, lo forzamos
+        gc.garth = garth_client
+        return gc
+    except Exception:
+        # Construcción manual mínima si Garmin() falla
+        gc = object.__new__(Garmin)
+        gc.username = None
+        gc.password = None
+        gc.is_cn = False
+        gc.prompt_mfa = None
+        gc.return_on_mfa = False
+        gc.display_name = None
+        gc.full_name = None
+        gc.unit_system = None
+        gc.garth = garth_client
+        return gc
+
+
 def _load_valid_client_from_home(home: str):
     if not os.path.exists(home) or not os.listdir(home):
         return None
     try:
-        client = Garmin()
-        client.garth.load(home)
-        # No validamos con API call aquí — garth renueva el access_token
-        # automáticamente al primer uso real. Validar aquí genera requests
-        # innecesarios a Garmin y puede provocar bloqueos 429.
+        garth_client = _garth_lib.Client()
+        garth_client.load(home)
+        client = _make_garmin_with_garth(garth_client)
         logger.debug(f"✓ Tokens cargados desde disco: {home}")
         return client
     except Exception as e:
@@ -810,12 +835,7 @@ def _guardar_tokens_db(usuario_id: int, token_json: str):
 
 
 def _cargar_tokens_db(usuario_id: int):
-    """Carga tokens desde la BD sin validar. Devuelve cliente o None.
-
-    No hacemos ninguna llamada API aquí: garth renueva el access_token
-    automáticamente en el primer uso real. Validar en cada carga de página
-    genera requests innecesarios a Garmin y provoca bloqueos 429.
-    """
+    """Carga tokens desde la BD sin hacer llamadas a Garmin API."""
     try:
         conn = get_db_connection()
         row = conn.execute(
@@ -825,8 +845,9 @@ def _cargar_tokens_db(usuario_id: int):
         if not row or not row[0]:
             return None
         token_json = row[0]
-        client = Garmin()
-        client.garth.loads(token_json)
+        garth_client = _garth_lib.Client()
+        garth_client.loads(token_json)
+        client = _make_garmin_with_garth(garth_client)
         logger.debug(f"✓ Tokens Garmin cargados desde BD para usuario {usuario_id}")
         return client
     except Exception as e:
