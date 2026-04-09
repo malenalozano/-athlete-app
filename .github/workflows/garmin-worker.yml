@@ -2,8 +2,17 @@ name: Garmin Worker Daily Sync
 
 on:
   workflow_dispatch:
+    inputs:
+      dias:
+        description: "Días a sincronizar"
+        required: false
+        default: "7"
+      usuario:
+        description: "ID de usuario (vacío = todos)"
+        required: false
+        default: ""
   schedule:
-    - cron: "0 9 * * *"
+    - cron: "0 6 * * *"   # 6 AM UTC = 8 AM España
 
 jobs:
   sync-garmin:
@@ -28,5 +37,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Garmin worker
-        run: python garmin_worker.py --dias 7 --actividades 25
+      - name: Run Garmin cloud worker (uses stored tokens)
+        run: |
+          DIAS="${{ github.event.inputs.dias || '7' }}"
+          USUARIO="${{ github.event.inputs.usuario || '' }}"
+          if [ -n "$USUARIO" ]; then
+            python garmin_worker_cloud.py --dias "$DIAS" --usuario "$USUARIO"
+          else
+            python garmin_worker_cloud.py --dias "$DIAS"
+          fi

@@ -68,7 +68,6 @@ def _safe_int(value, default: int = 0) -> int:
     except Exception:
         return default
 
-@st.cache_data(ttl=300, show_spinner=False)
 def cargar_biblioteca(usuario_id: int) -> pd.DataFrame:
     conn = get_db_connection()
     try:
@@ -82,7 +81,6 @@ def cargar_biblioteca(usuario_id: int) -> pd.DataFrame:
         conn.close()
 
 
-@st.cache_data(ttl=300, show_spinner=False)
 def stats_ejercicio(ejercicio_id: int, usuario_id: int) -> dict:
     """Último peso, mejor peso y series habituales desde historial_ejercicio."""
     conn = get_db_connection()

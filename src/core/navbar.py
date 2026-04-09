@@ -140,24 +140,7 @@ def render_navbar(pagina_activa: str):
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
-                        err_str = str(e)
-                        err_low = err_str.lower()
-                        if any(k in err_low for k in ["401", "authentication", "token", "unauthorized", "expired", "invalid"]):
-                            st.error("🔑 Sesión Garmin expirada. Ve a la página Garmin y reconecta.")
-                            from src.db.db_manager import get_db_connection as _gdc
-                            try:
-                                _c = _gdc()
-                                _c.execute("UPDATE usuarios SET garmin_tokens=NULL WHERE id=?", (usuario_id,))
-                                _c.close()
-                            except Exception:
-                                pass
-                            st.session_state.pop("gc", None)
-                        elif "429" in err_str or "rate" in err_low:
-                            st.error("⏳ Garmin bloqueado temporalmente (429). Espera unas horas.")
-                        elif any(k in err_low for k in ["timeout", "connection", "network", "ssl"]):
-                            st.error(f"🌐 Error de red al contactar Garmin. Reintenta en unos minutos.")
-                        else:
-                            st.error(f"❌ Error sync: {err_str[:200]}")
+                        st.error(f"Error sync: {e}")
 
     # Avatar con popover dropdown para logout
     with cols[8]:
