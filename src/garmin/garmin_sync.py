@@ -3,8 +3,17 @@ import logging
 import re
 from datetime import datetime, timedelta
 from threading import Thread
-import garth as _garth_lib
-from garminconnect import Garmin, GarminConnectConnectionError, GarminConnectAuthenticationError
+try:
+    import garth as _garth_lib
+except ImportError:
+    _garth_lib = None
+
+try:
+    from garminconnect import Garmin, GarminConnectConnectionError, GarminConnectAuthenticationError
+except ImportError:
+    Garmin = None
+    GarminConnectConnectionError = Exception
+    GarminConnectAuthenticationError = Exception
 from dotenv import load_dotenv
 from src.db.db_manager import get_db_connection
 

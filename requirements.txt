@@ -1,9 +1,9 @@
 streamlit>=1.40.0
 garminconnect>=0.2.38
+garth>=0.4.47
 pandas
 plotly
 python-dotenv
-libsql; python_version < "3.14"
 google-genai
 pypdf
 cryptography

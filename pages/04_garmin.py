@@ -17,11 +17,23 @@ from src.core.styles import (
     label_upper, badge, tipo_color, format_hours,
 )
 from src.db.db_manager import get_db_connection, obtener_credenciales_garmin
-from src.garmin.garmin_sync import (
-    sincronizar_todo_con_sesion, sincronizar_actividades_con_sesion,
-    sincronizar_biometricos_garmin, obtener_datos_sueno, guardar_sueno_db,
-    iniciar_sesion_garmin, cargar_sesion_tokens,
-)
+try:
+    from src.garmin.garmin_sync import (
+        sincronizar_todo_con_sesion, sincronizar_actividades_con_sesion,
+        sincronizar_biometricos_garmin, obtener_datos_sueno, guardar_sueno_db,
+        iniciar_sesion_garmin, cargar_sesion_tokens,
+    )
+    _GARMIN_SYNC_OK = True
+except ImportError as _e:
+    _GARMIN_SYNC_OK = False
+    _GARMIN_IMPORT_ERR = str(_e)
+    def sincronizar_todo_con_sesion(*a, **kw): return None
+    def sincronizar_actividades_con_sesion(*a, **kw): return None
+    def sincronizar_biometricos_garmin(*a, **kw): return None
+    def obtener_datos_sueno(*a, **kw): return None
+    def guardar_sueno_db(*a, **kw): return None
+    def iniciar_sesion_garmin(*a, **kw): return None
+    def cargar_sesion_tokens(*a, **kw): return None
 from src.core.seguridad import encriptar_password, desencriptar_password
 
 render_navbar("garmin")
