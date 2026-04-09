@@ -129,7 +129,7 @@ if tab1 is not None:
                     step=1,
                     label_visibility="collapsed")
                 
-                if st.button("Guardar ciclo", use_container_width=True, size="small"):
+                if st.button("Guardar ciclo", use_container_width=True):
                     conn_upd = get_db_connection()
                     try:
                         conn_upd.execute(
