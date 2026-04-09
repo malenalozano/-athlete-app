@@ -31,10 +31,13 @@ elif st.session_state["ejercicios_last_user"] != user_actual:
     st.cache_data.clear()
     st.session_state["ejercicios_last_user"] = user_actual
 
-# Recuperar automáticamente sesiones antiguas que quedaron sin enlazar por variantes de nombre.
-_reconciliadas = reconciliar_historial_desde_sesiones(user_actual)
-if _reconciliadas:
-    st.caption(f"Se recuperaron {_reconciliadas} registros históricos desde Entreno libre.")
+# Recuperar automáticamente sesiones antiguas — solo una vez por sesión (no en cada rerun).
+_recon_key = f"_ejercicios_reconciled_{user_actual}"
+if not st.session_state.get(_recon_key):
+    _reconciliadas = reconciliar_historial_desde_sesiones(user_actual)
+    st.session_state[_recon_key] = True
+    if _reconciliadas:
+        st.cache_data.clear()  # Invalidar caché para reflejar nuevos registros
 
 # ---------------------------------------------------------------------------
 # Header

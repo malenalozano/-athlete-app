@@ -200,7 +200,7 @@ def _render_last_sync_details():
         if acts:
             df_a = pd.DataFrame(acts)
             cols = [c for c in ["fecha", "tipo_deporte", "km", "min", "fc_media"] if c in df_a.columns]
-            st.dataframe(df_a[cols], use_container_width=True, hide_index=True)
+            st.dataframe(df_a[cols], width="stretch", hide_index=True)
         else:
             st.caption("No se importaron actividades nuevas en la última sync.")
 
@@ -210,7 +210,7 @@ def _render_last_sync_details():
             df_b = pd.DataFrame(bio)
             df_b = _mark_pending_df(df_b, ["sleep_score"])
             cols = [c for c in ["fecha", "hrv_ms", "fc_reposo", "sleep_score", "spo2", "estres_medio"] if c in df_b.columns]
-            st.dataframe(df_b[cols], use_container_width=True, hide_index=True)
+            st.dataframe(df_b[cols], width="stretch", hide_index=True)
         else:
             st.caption("No hubo días biométricos nuevos en la última sync.")
 
@@ -223,7 +223,7 @@ def _render_last_sync_details():
                     if c in df_s.columns:
                         df_s[c] = df_s[c].apply(lambda v: format_hours(v) if pd.notna(v) and str(v) != "Pendiente Garmin" else v)
                 cols = [c for c in ["fecha", "horas_totales", "score", "sleep_profundo_horas", "sleep_rem_horas", "sleep_vigilia_horas", "despertares"] if c in df_s.columns]
-                st.dataframe(df_s[cols], use_container_width=True, hide_index=True)
+                st.dataframe(df_s[cols], width="stretch", hide_index=True)
 # Auto-auth: try token first, then saved credentials (single-profile friendly)
 cred = obtener_credenciales_garmin(user_actual)
 if "gc" not in st.session_state and not st.session_state.get("gc_failed"):
@@ -443,35 +443,7 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                             }
                             st.cache_data.clear(); st.rerun()
                         except Exception as e:
-                            err_str = str(e)
-                            err_low = err_str.lower()
-                            if any(k in err_low for k in ["401", "authentication", "token", "unauthorized", "expired", "invalid"]):
-                                st.error(
-                                    "🔑 **Sesión de Garmin expirada** — Los tokens han caducado.\n\n"
-                                    "Desconecta y vuelve a conectar tu cuenta Garmin en el panel izquierdo."
-                                )
-                                # Limpiar tokens para forzar reconexión
-                                try:
-                                    _c = get_db_connection()
-                                    _c.execute("UPDATE usuarios SET garmin_tokens=NULL WHERE id=?", (user_actual,))
-                                    _c.commit(); _c.close()
-                                except Exception:
-                                    pass
-                                st.session_state.pop("gc", None)
-                                st.session_state.pop("gc_failed", None)
-                            elif "429" in err_str or "rate" in err_low or "bloqueado" in err_low:
-                                st.error(
-                                    "⏳ **Garmin ha bloqueado las peticiones (429)**.\n\n"
-                                    "Espera 15–30 minutos antes de volver a intentarlo."
-                                )
-                            elif any(k in err_low for k in ["timeout", "timed out", "connection", "network", "ssl", "connect"]):
-                                st.error(
-                                    f"🌐 **Error de red** — No se pudo conectar con Garmin.\n\n"
-                                    f"Inténtalo de nuevo en unos minutos. Detalle: `{err_str[:200]}`"
-                                )
-                            else:
-                                st.error(f"❌ Error al sincronizar: `{err_str[:300]}`")
-                                st.info("💡 Si el error persiste, desconecta y vuelve a conectar tu cuenta Garmin.")
+                            st.error(f"Error: {e}")
 
         evt = _resolve_last_sync_event()
         if evt:

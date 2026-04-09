@@ -172,79 +172,51 @@ def progreso_fuerza_grupos(df_fuerza):
 
 @st.cache_data(ttl=1800)
 def resumen_semana_con_delta(usuario_id) -> dict:
-    """Métricas 7d con delta — optimizado: 4 queries en 1 sola llamada HTTP a Turso."""
+    """Métricas 7d con delta vs los 7 días anteriores."""
+    conn = get_db_connection()
     f7  = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
     f14 = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
-    uid = int(usuario_id)
-
-    # Aggregation queries: each returns (valor_actual_7d, valor_prev_7d)
-    sqls = [
-        f"SELECT COALESCE(SUM(CASE WHEN fecha>='{f7}' THEN distancia_m ELSE 0 END),0),"
-        f"COALESCE(SUM(CASE WHEN fecha>='{f14}' AND fecha<'{f7}' THEN distancia_m ELSE 0 END),0)"
-        f" FROM actividades_garmin WHERE usuario_id={uid}",
-        f"SELECT COALESCE(SUM(CASE WHEN fecha>='{f7}' THEN 1 ELSE 0 END),0),"
-        f"COALESCE(SUM(CASE WHEN fecha>='{f14}' AND fecha<'{f7}' THEN 1 ELSE 0 END),0)"
-        f" FROM sesiones_fuerza WHERE usuario_id={uid}",
-        f"SELECT AVG(CASE WHEN fecha>='{f7}' THEN horas_totales END),"
-        f"AVG(CASE WHEN fecha>='{f14}' AND fecha<'{f7}' THEN horas_totales END)"
-        f" FROM datos_sueno WHERE usuario_id={uid}",
-        f"SELECT AVG(CASE WHEN fecha>='{f7}' THEN hrv_ms END),"
-        f"AVG(CASE WHEN fecha>='{f14}' AND fecha<'{f7}' THEN hrv_ms END)"
-        f" FROM datos_biometricos_premium WHERE usuario_id={uid}",
-    ]
-
-    conn = get_db_connection()
     try:
-        from src.db.db_manager import TursoHTTPConnection
-        if isinstance(conn, TursoHTTPConnection):
-            # 1 HTTP round-trip para las 4 queries
-            raw = conn._send(sqls)
-            def _parse(r):
-                rows = r.get("response", {}).get("result", {}).get("rows", [])
-                if not rows:
-                    return None, None
-                cells = rows[0]
-                def _v(c):
-                    if not c or c.get("type") == "null":
-                        return None
-                    try:
-                        return float(c["value"])
-                    except Exception:
-                        return None
-                return (_v(cells[0]) if len(cells) > 0 else None,
-                        _v(cells[1]) if len(cells) > 1 else None)
-            km_m, km_p_raw = _parse(raw[0])
-            fc_f, fp_f     = _parse(raw[1])
-            sc,   sp        = _parse(raw[2])
-            hc,   hp        = _parse(raw[3])
-        else:
-            # SQLite — una query por tabla (4 en vez de 8)
-            def _row(sql):
-                r = conn.execute(sql).fetchone()
-                if not r:
-                    return None, None
-                return r[0], (r[1] if len(r) > 1 else None)
-            km_m, km_p_raw = _row(sqls[0])
-            fc_f, fp_f     = _row(sqls[1])
-            sc,   sp        = _row(sqls[2])
-            hc,   hp        = _row(sqls[3])
-    except Exception:
-        km_m = km_p_raw = fc_f = fp_f = 0
-        sc = sp = hc = hp = None
+        def _km(desde, hasta=None):
+            q = "SELECT distancia_m FROM actividades_garmin WHERE usuario_id=? AND fecha>=?"
+            p = [usuario_id, desde]
+            if hasta:
+                q += " AND fecha<?"; p.append(hasta)
+            return pd.read_sql_query(q, conn, params=p)
+        def _cnt(t, desde, hasta=None):
+            q = f"SELECT COUNT(*) AS n FROM {t} WHERE usuario_id=? AND fecha>=?"
+            p = [usuario_id, desde]
+            if hasta:
+                q += " AND fecha<?"; p.append(hasta)
+            return pd.read_sql_query(q, conn, params=p)
+        def _avg(t, col, desde, hasta=None):
+            q = f"SELECT {col} FROM {t} WHERE usuario_id=? AND fecha>=? AND {col} IS NOT NULL"
+            p = [usuario_id, desde]
+            if hasta:
+                q += " AND fecha<?"; p.append(hasta)
+            return pd.read_sql_query(q, conn, params=p)
+
+        ac, ap = _km(f7), _km(f14, f7)
+        fc, fp = _cnt("sesiones_fuerza", f7), _cnt("sesiones_fuerza", f14, f7)
+        sc, sp = _avg("datos_sueno", "horas_totales", f7), _avg("datos_sueno", "horas_totales", f14, f7)
+        hc, hp = _avg("datos_biometricos_premium", "hrv_ms", f7), _avg("datos_biometricos_premium", "hrv_ms", f14, f7)
     finally:
         conn.close()
 
-    km_c = (km_m or 0) / 1000
-    km_p = (km_p_raw / 1000) if km_p_raw else None
-    fc   = int(fc_f or 0)
-    fp   = int(fp_f or 0)
-
+    def _val(df, col="distancia_m"): return float(df[col].sum() / 1000) if not df.empty and col == "distancia_m" else (float(df[col].mean()) if not df.empty else None)
+    def _n(df): return int(df.iloc[0]["n"]) if not df.empty else 0
     def _d(c, p): return round(c - p, 1) if c is not None and p is not None else None
 
+    km_c = float(ac["distancia_m"].sum() / 1000) if not ac.empty else 0.0
+    km_p = float(ap["distancia_m"].sum() / 1000) if not ap.empty else None
+    s_c = float(sc["horas_totales"].mean()) if not sc.empty else None
+    s_p = float(sp["horas_totales"].mean()) if not sp.empty else None
+    h_c = float(hc["hrv_ms"].mean()) if not hc.empty else None
+    h_p = float(hp["hrv_ms"].mean()) if not hp.empty else None
     return {"km": km_c, "km_delta": _d(km_c, km_p),
-            "fuerza": fc, "fuerza_delta": _d(fc, fp),
-            "sueno": sc, "sueno_delta": _d(sc, sp),
-            "hrv": hc, "hrv_delta": _d(hc, hp)}
+            "fuerza": _n(fc), "fuerza_delta": _d(_n(fc), _n(fp)),
+            "sueno": s_c, "sueno_delta": _d(s_c, s_p),
+            "hrv": h_c, "hrv_delta": _d(h_c, h_p)}
 
 
 @st.cache_data(ttl=300)

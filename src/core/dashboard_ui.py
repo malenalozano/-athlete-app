@@ -326,7 +326,7 @@ def render_grafico_sueno(usuario_id: int):
         xaxis=dict(color="#484f58", tickfont=dict(size=10), showgrid=False),
         font=dict(color="#8b949e"),
     )
-    st.plotly_chart(fig, use_container_width=True, key="sueno_chart")
+    st.plotly_chart(fig, width="stretch", key="sueno_chart")
 
     # Análisis de la última noche sincronizada
     if len(df) > 0:
