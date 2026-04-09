@@ -855,6 +855,40 @@ def _cargar_tokens_db(usuario_id: int):
         return None
 
 
+def _parchar_garth_sin_refresh(gc):
+    """
+    Monkey-patch garth para que NO llame a refresh_oauth2() automáticamente
+    cuando el token haya "caducado" según el timestamp local. En su lugar,
+    extiende el expires_at para que garth intente la llamada directamente:
+    si Garmin acepta el token (a veces lo hace ligeramente expirado), sync OK;
+    si Garmin devuelve 401 se propaga como error normal.
+    Esto evita el 429 en el endpoint de SSO exchange en entornos cloud.
+    """
+    import time
+    try:
+        if gc is None or not hasattr(gc, "garth"):
+            return gc
+        oauth2 = gc.garth.oauth2_token
+        if oauth2 is None:
+            return gc
+        # Si ya es válido, no hacemos nada
+        if not getattr(oauth2, "expired", False):
+            return gc
+        # Token expirado: extender expires_at 2 horas para evitar el refresh_oauth2 automático
+        # El token real puede seguir siendo válido en Garmin aunque el timestamp local diga que no
+        try:
+            gc.garth.oauth2_token = oauth2.__class__(
+                **{**{f: getattr(oauth2, f) for f in oauth2.__dataclass_fields__},
+                   "expires_at": int(time.time()) + 7200}
+            )
+            logger.debug("Extendido expires_at del token OAuth2 para evitar refresh SSO")
+        except Exception:
+            pass
+    except Exception as e:
+        logger.debug(f"No se pudo parchear garth: {e}")
+    return gc
+
+
 def cargar_sesion_tokens(email: str | None = None, usuario_id: int | None = None):
     """
     Carga la sesión SOLO desde tokens garth (disco primero, BD como fallback).
@@ -881,6 +915,7 @@ def sincronizar_actividades_con_sesion(gc, usuario_id: int, num_actividades: int
     Devuelve el número de actividades sincronizadas.
     Propaga excepciones para que la UI las muestre.
     """
+    gc = _parchar_garth_sin_refresh(gc)
     _ensure_garmin_schema()
     conn_pre = get_db_connection()
     _ensure_column(conn_pre, "actividades_garmin", "calorias", "REAL")
@@ -1212,6 +1247,8 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
     Solo sincroniza actividades/días no guardados aún.
     Devuelve dict con claves 'actividades' y 'dias_bio'.
     """
+    # Parchear garth para evitar refresh_oauth2 automático (previene 429 en cloud)
+    gc = _parchar_garth_sin_refresh(gc)
     _ensure_garmin_schema()
     conn_pre = get_db_connection()
     _ensure_column(conn_pre, "actividades_garmin", "calorias", "REAL")
