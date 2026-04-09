@@ -186,6 +186,30 @@ def get_db_connection():
     return conn
 
 
+def _exec_batch(conn, sqls: list, ignore_errors: bool = True) -> None:
+    """Execute multiple SQL statements in ONE HTTP call (Turso) or loop (SQLite).
+
+    This is the main performance optimization: instead of 80+ round-trips to
+    Turso on startup, all DDL goes in a single pipeline request.
+    """
+    if not sqls:
+        return
+    if isinstance(conn, TursoHTTPConnection):
+        results = conn._send(sqls)
+        if not ignore_errors:
+            for r in results:
+                if r.get("type") == "error":
+                    raise sqlite3.OperationalError(
+                        r.get("error", {}).get("message", "Turso error"))
+    else:
+        for sql in sqls:
+            try:
+                conn.execute(sql)
+            except Exception:
+                if not ignore_errors:
+                    raise
+
+
 def _column_exists(conn, table_name, column_name):
     rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
     return any(row[1] == column_name for row in rows)
@@ -197,94 +221,188 @@ def _ensure_column(conn, table_name, column_name, column_type):
 
 
 def init_db():
+    """Initialize all database tables, migrations and indexes in ONE HTTP call to Turso.
+
+    All DDL is batched into a single _exec_batch call so Streamlit Cloud
+    startup goes from ~80 HTTP round-trips to ~1.
+    """
     conn = get_db_connection()
-    # Tabla Usuarios
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT,
-            edad INTEGER,
-            genero TEXT,
-            peso REAL,
-            objetivo TEXT,
-            carrera INTEGER,
-            fuerza INTEGER,
-            nivel TEXT,
-            ritmo TEXT,
-            email_garmin TEXT,
-            password_garmin TEXT,
-            password_garmin_enc TEXT,
-            rol TEXT
-        )
-        """
-    )
-
-    # Migraciones ligeras para bases creadas con esquemas previos.
-    _ensure_column(conn, "usuarios", "edad", "INTEGER")
-    _ensure_column(conn, "usuarios", "genero", "TEXT")
-    _ensure_column(conn, "usuarios", "peso", "REAL")
-    _ensure_column(conn, "usuarios", "objetivo", "TEXT")
-    _ensure_column(conn, "usuarios", "carrera", "INTEGER")
-    _ensure_column(conn, "usuarios", "fuerza", "INTEGER")
-    _ensure_column(conn, "usuarios", "nivel", "TEXT")
-    _ensure_column(conn, "usuarios", "ritmo", "TEXT")
-    _ensure_column(conn, "usuarios", "password_garmin_enc", "TEXT")
-    _ensure_column(conn, "usuarios", "fecha_objetivo", "TEXT")   # fecha de la carrera objetivo (YYYY-MM-DD)
-    _ensure_column(conn, "usuarios", "objetivo_tipo", "TEXT")    # 'maraton', 'ultramaraton', 'trail', etc.
-    _ensure_column(conn, "usuarios", "garmin_tokens", "TEXT")    # OAuth tokens garth serializados (JSON)
-    _ensure_column(conn, "usuarios", "ciclo_dias_personalizado", "INTEGER")  # Ciclo menstrual personalizado (días)
-
-    # Sembrar perfiles por defecto (INSERT OR IGNORE preserva datos existentes)
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO usuarios
-            (id, nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
-             fecha_objetivo, objetivo_tipo)
-        VALUES (1, 'Malena', 22, 'Mujer', 58.0,
-                'Maratón Sub 3:30 — 21 Feb 2027', 1, 1, 'Intermedio', '5:30',
-                '2027-02-21', 'maraton')
-        """
-    )
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO usuarios
-            (id, nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
-             fecha_objetivo, objetivo_tipo)
-        VALUES (2, 'Dani', 26, 'Hombre', 72.0,
-                'Ultramaratón 100km — Sep 2026', 1, 1, 'Intermedio', '5:00',
-                '2026-09-19', 'ultramaraton')
-        """
-    )
-
-    # Tabla de ejercicios por defecto (personalizados por usuario)
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS ejercicios_por_defecto (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            ejercicio TEXT,
-            grupo_muscular TEXT,
-            musculo_principal TEXT
-        )''')
-
-    # Tabla Garmin
-    conn.execute("CREATE TABLE IF NOT EXISTS actividades_garmin (id_actividad TEXT PRIMARY KEY, usuario_id INTEGER, fecha TEXT, tipo_deporte TEXT, distancia_m REAL, tiempo_seg REAL, ritmo_medio REAL, fc_media INTEGER, fc_max INTEGER)")
-    # Tabla Fisio
-    conn.execute("CREATE TABLE IF NOT EXISTS diario_fisiologia (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT, fase_ciclo TEXT, fatiga_subjetiva INTEGER, dolor_notas TEXT)")
-    _ensure_column(conn, "diario_fisiologia", "sangre", "TEXT")
-    _ensure_column(conn, "diario_fisiologia", "sintomas", "TEXT")
-    _ensure_column(conn, "diario_fisiologia", "estado_animo", "TEXT")
-    _ensure_column(conn, "diario_fisiologia", "feedback_entreno", "TEXT")
-    # Tabla Fuerza (Corregida con todas las columnas)
-    conn.execute('''CREATE TABLE IF NOT EXISTS entrenamientos_fuerza (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT, ejercicio TEXT,
-        peso REAL, series INTEGER, repeticiones INTEGER, grupo_muscular TEXT, rpe INTEGER,
-        musculo_principal TEXT, notas TEXT)''')
-    _ensure_column(conn, "entrenamientos_fuerza", "usuario_id", "INTEGER")
+    _exec_batch(conn, _ALL_SCHEMA_SQL, ignore_errors=True)
     conn.commit()
     conn.close()
 
 
+# ---------------------------------------------------------------------------
+# All DDL collected into a single list — sent in ONE Turso HTTP pipeline call.
+# ALTER TABLE migrations use ignore_errors=True so duplicate-column errors
+# are silently skipped (the column already exists on an established DB).
+# ---------------------------------------------------------------------------
+_ALL_SCHEMA_SQL = [
+    # ── Tables ──────────────────────────────────────────────────────────────
+    """CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT, edad INTEGER, genero TEXT, peso REAL, objetivo TEXT,
+        carrera INTEGER, fuerza INTEGER, nivel TEXT, ritmo TEXT,
+        email_garmin TEXT, password_garmin TEXT, password_garmin_enc TEXT, rol TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS ejercicios_por_defecto (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER,
+        ejercicio TEXT, grupo_muscular TEXT, musculo_principal TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS actividades_garmin (
+        id_actividad TEXT PRIMARY KEY, usuario_id INTEGER, fecha TEXT,
+        tipo_deporte TEXT, distancia_m REAL, tiempo_seg REAL,
+        ritmo_medio REAL, fc_media INTEGER, fc_max INTEGER
+    )""",
+    """CREATE TABLE IF NOT EXISTS diario_fisiologia (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT,
+        fase_ciclo TEXT, fatiga_subjetiva INTEGER, dolor_notas TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS entrenamientos_fuerza (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT,
+        ejercicio TEXT, peso REAL, series INTEGER, repeticiones INTEGER,
+        grupo_muscular TEXT, rpe INTEGER, musculo_principal TEXT, notas TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS plan_entrenamiento (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER,
+        semana_inicio TEXT, fecha TEXT, tipo TEXT, sesion TEXT,
+        detalles TEXT, duracion_min INTEGER, intensidad TEXT, creado_en TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS sesiones_fuerza (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT,
+        nota_original TEXT, resumen TEXT, created_at TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS ejercicios_fuerza (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, sesion_id INTEGER, ejercicio TEXT,
+        peso REAL, series INTEGER, repeticiones INTEGER, grupo_muscular TEXT,
+        musculo_principal TEXT, rpe INTEGER
+    )""",
+    """CREATE TABLE IF NOT EXISTS datos_biometricos_premium (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT,
+        hrv_ms REAL, fc_reposo INTEGER, fc_maxima INTEGER, cadencia_media REAL,
+        longitud_zancada_m REAL, tiempo_contacto_ms REAL, oscilacion_vertical_cm REAL,
+        sleep_score INTEGER, carga_aguda REAL, carga_cronica REAL,
+        estres_vital INTEGER, rpe_sesion INTEGER, sensacion_notas TEXT,
+        disponibilidad_min INTEGER, UNIQUE(usuario_id, fecha)
+    )""",
+    """CREATE TABLE IF NOT EXISTS historial_lesiones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER,
+        fecha_inicio TEXT, zona TEXT, tipo TEXT, activa INTEGER DEFAULT 1,
+        notas TEXT, fecha_fin TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS estudios_referencia (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER,
+        titulo TEXT, categoria TEXT, archivo_path TEXT, resumen TEXT,
+        texto_extraido TEXT, creado_en TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS datos_sueno (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT,
+        horas_totales REAL, score INTEGER, UNIQUE(usuario_id, fecha)
+    )""",
+    """CREATE TABLE IF NOT EXISTS ejercicios_biblioteca (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER,
+        nombre TEXT NOT NULL, grupo_muscular TEXT, musculo_principal TEXT,
+        tipo TEXT DEFAULT 'Fuerza', alias TEXT, notas TEXT,
+        activo INTEGER DEFAULT 1, creado_en TEXT, UNIQUE(usuario_id, nombre)
+    )""",
+    """CREATE TABLE IF NOT EXISTS historial_ejercicio (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, ejercicio_id INTEGER,
+        usuario_id INTEGER, fecha TEXT, peso REAL, series INTEGER,
+        repeticiones INTEGER, rpe INTEGER, notas TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS ejercicios_catalogo (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER,
+        nombre TEXT NOT NULL, grupo_muscular TEXT, musculo_principal TEXT,
+        peso_actual REAL DEFAULT 0, unidad TEXT DEFAULT 'kg', notas TEXT,
+        creado_en TEXT, UNIQUE(usuario_id, nombre)
+    )""",
+    """CREATE TABLE IF NOT EXISTS lesiones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER,
+        tipo TEXT, grado INTEGER, fecha_inicio TEXT, fecha_fin TEXT,
+        activa INTEGER DEFAULT 1, notas TEXT
+    )""",
+
+    # ── Migrations (ALTER TABLE ADD COLUMN — ignored if column already exists) ──
+    "ALTER TABLE usuarios ADD COLUMN edad INTEGER",
+    "ALTER TABLE usuarios ADD COLUMN genero TEXT",
+    "ALTER TABLE usuarios ADD COLUMN peso REAL",
+    "ALTER TABLE usuarios ADD COLUMN objetivo TEXT",
+    "ALTER TABLE usuarios ADD COLUMN carrera INTEGER",
+    "ALTER TABLE usuarios ADD COLUMN fuerza INTEGER",
+    "ALTER TABLE usuarios ADD COLUMN nivel TEXT",
+    "ALTER TABLE usuarios ADD COLUMN ritmo TEXT",
+    "ALTER TABLE usuarios ADD COLUMN password_garmin_enc TEXT",
+    "ALTER TABLE usuarios ADD COLUMN fecha_objetivo TEXT",
+    "ALTER TABLE usuarios ADD COLUMN objetivo_tipo TEXT",
+    "ALTER TABLE usuarios ADD COLUMN garmin_tokens TEXT",
+    "ALTER TABLE usuarios ADD COLUMN ciclo_dias_personalizado INTEGER",
+    "ALTER TABLE diario_fisiologia ADD COLUMN sangre TEXT",
+    "ALTER TABLE diario_fisiologia ADD COLUMN sintomas TEXT",
+    "ALTER TABLE diario_fisiologia ADD COLUMN estado_animo TEXT",
+    "ALTER TABLE diario_fisiologia ADD COLUMN feedback_entreno TEXT",
+    "ALTER TABLE entrenamientos_fuerza ADD COLUMN usuario_id INTEGER",
+    "ALTER TABLE ejercicios_fuerza ADD COLUMN sensaciones TEXT",
+    "ALTER TABLE sesiones_fuerza ADD COLUMN tipo_registro TEXT",
+    "ALTER TABLE sesiones_fuerza ADD COLUMN actividad_garmin_id TEXT",
+    "ALTER TABLE sesiones_fuerza ADD COLUMN nota_estado TEXT",
+    "ALTER TABLE sesiones_fuerza ADD COLUMN lesion_flag INTEGER",
+    "ALTER TABLE datos_biometricos_premium ADD COLUMN training_readiness INTEGER",
+    "ALTER TABLE datos_biometricos_premium ADD COLUMN body_battery INTEGER",
+    "ALTER TABLE datos_biometricos_premium ADD COLUMN body_battery_min INTEGER",
+    "ALTER TABLE datos_biometricos_premium ADD COLUMN body_battery_max INTEGER",
+    "ALTER TABLE datos_biometricos_premium ADD COLUMN estres_medio REAL",
+    "ALTER TABLE datos_biometricos_premium ADD COLUMN recovery_hours REAL",
+    "ALTER TABLE datos_biometricos_premium ADD COLUMN spo2 REAL",
+    "ALTER TABLE datos_biometricos_premium ADD COLUMN potencia_media_w REAL",
+    "ALTER TABLE datos_biometricos_premium ADD COLUMN training_status TEXT",
+    "ALTER TABLE datos_biometricos_premium ADD COLUMN vo2max REAL",
+    "ALTER TABLE datos_sueno ADD COLUMN sleep_profundo_horas REAL",
+    "ALTER TABLE datos_sueno ADD COLUMN sleep_rem_horas REAL",
+    "ALTER TABLE datos_sueno ADD COLUMN sleep_vigilia_horas REAL",
+    "ALTER TABLE datos_sueno ADD COLUMN despertares INTEGER",
+    "ALTER TABLE actividades_garmin ADD COLUMN potencia_media_w REAL",
+    "ALTER TABLE actividades_garmin ADD COLUMN cadencia_media REAL",
+    "ALTER TABLE actividades_garmin ADD COLUMN longitud_zancada_m REAL",
+    "ALTER TABLE actividades_garmin ADD COLUMN tiempo_contacto_ms REAL",
+    "ALTER TABLE actividades_garmin ADD COLUMN oscilacion_vertical_cm REAL",
+
+    # ── Indexes ──────────────────────────────────────────────────────────────
+    "CREATE INDEX IF NOT EXISTS idx_act_usuario_fecha ON actividades_garmin(usuario_id, fecha)",
+    "CREATE INDEX IF NOT EXISTS idx_sueno_usuario_fecha ON datos_sueno(usuario_id, fecha)",
+    "CREATE INDEX IF NOT EXISTS idx_fisio_usuario_fecha ON diario_fisiologia(usuario_id, fecha)",
+    "CREATE INDEX IF NOT EXISTS idx_fuerza_usuario_fecha ON sesiones_fuerza(usuario_id, fecha)",
+    "CREATE INDEX IF NOT EXISTS idx_plan_usuario_semana ON plan_entrenamiento(usuario_id, semana_inicio)",
+    "CREATE INDEX IF NOT EXISTS idx_biom_usuario_fecha ON datos_biometricos_premium(usuario_id, fecha)",
+    "CREATE INDEX IF NOT EXISTS idx_lesiones_usuario ON lesiones(usuario_id)",
+    "CREATE INDEX IF NOT EXISTS idx_historial_lesiones_usuario ON historial_lesiones(usuario_id)",
+    "CREATE INDEX IF NOT EXISTS idx_act_usuario ON actividades_garmin(usuario_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ejercicios_sesion ON ejercicios_fuerza(sesion_id)",
+    "CREATE INDEX IF NOT EXISTS idx_hist_ej_usuario ON historial_ejercicio(ejercicio_id, usuario_id, fecha)",
+
+    # ── Default profiles (INSERT OR IGNORE — preserves existing data) ────────
+    """INSERT OR IGNORE INTO usuarios
+        (id, nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
+         fecha_objetivo, objetivo_tipo)
+       VALUES (1, 'Malena', 22, 'Mujer', 58.0,
+               'Maratón Sub 3:30 — 21 Feb 2027', 1, 1, 'Intermedio', '5:30',
+               '2027-02-21', 'maraton')""",
+    """INSERT OR IGNORE INTO usuarios
+        (id, nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
+         fecha_objetivo, objetivo_tipo)
+       VALUES (2, 'Dani', 26, 'Hombre', 72.0,
+               'Ultramaratón 100km — Sep 2026', 1, 1, 'Intermedio', '5:00',
+               '2026-09-19', 'ultramaraton')""",
+]
+
+
+def _cache(fn):
+    """Apply st.cache_data when Streamlit is available, else identity."""
+    if st is not None:
+        return st.cache_data(ttl=3600)(fn)
+    return fn
+
+
+@_cache
 def obtener_perfil(usuario_id):
     conn = get_db_connection()
     row = conn.execute(
@@ -374,312 +492,76 @@ def obtener_credenciales_garmin(usuario_id):
     return row
 
 
-init_db()
-
-
-def asegurar_tabla_plan_entrenamiento():
-    conn = get_db_connection()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS plan_entrenamiento (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            semana_inicio TEXT,
-            fecha TEXT,
-            tipo TEXT,
-            sesion TEXT,
-            detalles TEXT,
-            duracion_min INTEGER,
-            intensidad TEXT,
-            creado_en TEXT
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
-
-
-def asegurar_tablas_fuerza():
-    conn = get_db_connection()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS sesiones_fuerza (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            fecha TEXT,
-            nota_original TEXT,
-            resumen TEXT,
-            created_at TEXT
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS ejercicios_fuerza (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sesion_id INTEGER,
-            ejercicio TEXT,
-            peso REAL,
-            series INTEGER,
-            repeticiones INTEGER,
-            grupo_muscular TEXT,
-            musculo_principal TEXT,
-            rpe INTEGER
-        )
-        """
-    )
-    _ensure_column(conn, "ejercicios_fuerza", "sensaciones", "TEXT")
-    _ensure_column(conn, "sesiones_fuerza", "tipo_registro", "TEXT")
-    _ensure_column(conn, "sesiones_fuerza", "actividad_garmin_id", "TEXT")
-    _ensure_column(conn, "sesiones_fuerza", "nota_estado", "TEXT")
-    _ensure_column(conn, "sesiones_fuerza", "lesion_flag", "INTEGER")
-    conn.commit()
-    conn.close()
-
-
-def asegurar_tablas_premium():
-    conn = get_db_connection()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS datos_biometricos_premium (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            fecha TEXT,
-            hrv_ms REAL,
-            fc_reposo INTEGER,
-            fc_maxima INTEGER,
-            cadencia_media REAL,
-            longitud_zancada_m REAL,
-            tiempo_contacto_ms REAL,
-            oscilacion_vertical_cm REAL,
-            sleep_score INTEGER,
-            carga_aguda REAL,
-            carga_cronica REAL,
-            estres_vital INTEGER,
-            rpe_sesion INTEGER,
-            sensacion_notas TEXT,
-            disponibilidad_min INTEGER,
-            UNIQUE(usuario_id, fecha)
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS historial_lesiones (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            fecha_inicio TEXT,
-            zona TEXT,
-            tipo TEXT,
-            activa INTEGER DEFAULT 1,
-            notas TEXT,
-            fecha_fin TEXT
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS estudios_referencia (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            titulo TEXT,
-            categoria TEXT,
-            archivo_path TEXT,
-            resumen TEXT,
-            texto_extraido TEXT,
-            creado_en TEXT
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS datos_sueno (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            fecha TEXT,
-            horas_totales REAL,
-            score INTEGER,
-            UNIQUE(usuario_id, fecha)
-        )
-        """
-    )
-    for col_name, col_type in [
-        ("training_readiness", "INTEGER"),
-        ("body_battery", "INTEGER"),
-        ("body_battery_min", "INTEGER"),
-        ("body_battery_max", "INTEGER"),
-        ("estres_medio", "REAL"),
-        ("recovery_hours", "REAL"),
-        ("spo2", "REAL"),
-        ("potencia_media_w", "REAL"),
-        ("training_status", "TEXT"),
-        ("vo2max", "REAL"),
-    ]:
-        _ensure_column(conn, "datos_biometricos_premium", col_name, col_type)
-
-    for col_name, col_type in [
-        ("sleep_profundo_horas", "REAL"),
-        ("sleep_rem_horas", "REAL"),
-        ("sleep_vigilia_horas", "REAL"),
-        ("despertares", "INTEGER"),
-    ]:
-        _ensure_column(conn, "datos_sueno", col_name, col_type)
-
-    for col_name, col_type in [
-        ("potencia_media_w", "REAL"),
-        ("cadencia_media", "REAL"),
-        ("longitud_zancada_m", "REAL"),
-        ("tiempo_contacto_ms", "REAL"),
-        ("oscilacion_vertical_cm", "REAL"),
-    ]:
-        _ensure_column(conn, "actividades_garmin", col_name, col_type)
-
-    conn.commit()
-    conn.close()
+# These are now no-ops — everything is batched inside init_db().
+# Kept for backward compatibility with any callers.
+def asegurar_tabla_plan_entrenamiento(): pass
+def asegurar_tablas_fuerza(): pass
+def asegurar_tablas_premium(): pass
+def asegurar_tabla_lesiones(): pass
+def asegurar_indices_consulta(): pass
 
 
 def asegurar_tabla_ejercicios(usuario_id: int = 1):
-    """Crea ejercicios_biblioteca + historial_ejercicio y siembra ejercicios por defecto."""
-    from src.db.models import CREATE_EJERCICIOS_BIBLIOTECA, CREATE_HISTORIAL_EJERCICIO
-    import json
+    """Seed ejercicios_biblioteca per user using a single batch INSERT OR IGNORE."""
     from datetime import datetime
-
+    ahora = datetime.now().strftime("%Y-%m-%d")
+    defaults = [
+        ("Hip Thrust",          "Glúteo",        "Glúteo mayor",         "Fuerza", '["HT","hip thrust"]'),
+        ("Sentadilla búlgara",  "Glúteo",        "Cuádriceps, glúteo",   "Fuerza", '["búlgara","bulgara","split squat"]'),
+        ("Abducción cadera",    "Glúteo",        "Glúteo medio",         "Fuerza", '["abducción","abduccion"]'),
+        ("Dominadas",           "Tren superior", "Espalda, bíceps",      "Fuerza", '["pull up","pullup","dominada"]'),
+        ("Remo con mancuerna",  "Espalda",       "Dorsal",               "Fuerza", '["remo","remo mancuerna","remo barra"]'),
+        ("Press banca",         "Tren superior", "Pecho",                "Fuerza", '["press","banca","press pecho"]'),
+        ("Curl bíceps",         "Tren superior", "Bíceps",               "Fuerza", '["curl","biceps","curl biceps","bíceps martillo"]'),
+        ("Curl femoral",        "Tren inferior", "Isquiotibial",         "Fuerza", '["femoral","curl femoral","isquio"]'),
+        ("Sentadilla",          "Tren inferior", "Cuádriceps",           "Fuerza", '["squat","sentadilla libre","sentadillas"]'),
+        ("Peso muerto",         "Tren inferior", "Isquiotibial, glúteo", "Fuerza", '["deadlift","PM","peso muerto rumano"]'),
+        ("Abdominales en cable","Core",          "Abdomen",              "Fuerza", '["abs en polea","abs cable","abdominales polea","abdominales cable"]'),
+        ("Abdominales colgada", "Core",          "Abdomen",              "Fuerza", '["abs colgado","colgadas","abdominales colgados"]'),
+        ("Press militar",       "Tren superior", "Hombro",               "Fuerza", '["press hombro","militar","press overhead"]'),
+        ("Plancha",             "Core",          "Core",                 "Fuerza", '["plank","plancha abdominal","isométrico"]'),
+    ]
+    # Build all inserts and send as a single batch (no SELECT COUNT check needed)
+    inserts = [
+        f"INSERT OR IGNORE INTO ejercicios_biblioteca "
+        f"(usuario_id,nombre,grupo_muscular,musculo_principal,tipo,alias,activo,creado_en) "
+        f"VALUES ({usuario_id},'{n}','{g}','{m}','{t}','{a}',1,'{ahora}')"
+        for n, g, m, t, a in defaults
+    ]
     conn = get_db_connection()
-    conn.execute(CREATE_EJERCICIOS_BIBLIOTECA)
-    conn.execute(CREATE_HISTORIAL_EJERCICIO)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_hist_ej_usuario ON historial_ejercicio(ejercicio_id, usuario_id, fecha)")
-
-    # Sembrar ejercicios por defecto si la tabla está vacía para este usuario
-    existing = conn.execute("SELECT COUNT(*) FROM ejercicios_biblioteca WHERE usuario_id=?", (usuario_id,)).fetchone()[0]
-    if existing == 0:
-        ahora = datetime.now().strftime("%Y-%m-%d")
-        defaults = [
-            ("Hip Thrust",         "Glúteo",        "Glúteo mayor",          "Fuerza",    '["HT","hip thrust"]'),
-            ("Sentadilla búlgara", "Glúteo",        "Cuádriceps, glúteo",    "Fuerza",    '["búlgara","bulgara","split squat"]'),
-            ("Abducción cadera",   "Glúteo",        "Glúteo medio",          "Fuerza",    '["abducción","abduccion"]'),
-            ("Dominadas",          "Tren superior", "Espalda, bíceps",       "Fuerza",    '["pull up","pullup","dominada"]'),
-            ("Remo con mancuerna", "Espalda",       "Dorsal",                "Fuerza",    '["remo","remo mancuerna","remo barra"]'),
-            ("Press banca",        "Tren superior", "Pecho",                 "Fuerza",    '["press","banca","press pecho"]'),
-            ("Curl bíceps",        "Tren superior", "Bíceps",                "Fuerza",    '["curl","biceps","curl biceps","bíceps martillo"]'),
-            ("Curl femoral",       "Tren inferior", "Isquiotibial",          "Fuerza",    '["femoral","curl femoral","isquio"]'),
-            ("Sentadilla",         "Tren inferior", "Cuádriceps",            "Fuerza",    '["squat","sentadilla libre","sentadillas"]'),
-            ("Peso muerto",        "Tren inferior", "Isquiotibial, glúteo",  "Fuerza",    '["deadlift","PM","peso muerto rumano"]'),
-            ("Abdominales en cable","Core",         "Abdomen",               "Fuerza",    '["abs en polea","abs cable","abdominales polea","abdominales cable"]'),
-            ("Abdominales colgada", "Core",         "Abdomen",               "Fuerza",    '["abs colgado","colgadas","abdominales colgados"]'),
-            ("Press militar",      "Tren superior", "Hombro",                "Fuerza",    '["press hombro","militar","press overhead"]'),
-            ("Plancha",            "Core",          "Core",                  "Fuerza",    '["plank","plancha abdominal","isométrico"]'),
-        ]
-        for n, g, m, t, a in defaults:
-            conn.execute(
-                "INSERT OR IGNORE INTO ejercicios_biblioteca "
-                "(usuario_id,nombre,grupo_muscular,musculo_principal,tipo,alias,activo,creado_en) "
-                "VALUES (?,?,?,?,?,?,1,?)",
-                (usuario_id, n, g, m, t, a, ahora))
+    _exec_batch(conn, inserts, ignore_errors=True)
     conn.commit()
     conn.close()
 
 
 def asegurar_tabla_catalogo_ejercicios(usuario_id: int = 1):
-    """Crear tabla catálogo y poblarla con ejercicios por defecto."""
+    """Seed ejercicios_catalogo per user using a single batch INSERT OR IGNORE."""
     from datetime import datetime
-    
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ejercicios_base = [
+        ("Hip Thrust",          "Glúteo",        "Glúteo mayor",        0.0, "kg",       "Activación glúteos"),
+        ("Sentadilla búlgara",  "Glúteo",        "Cuádriceps/Glúteo",   0.0, "kg",       "Fuerza unilateral"),
+        ("Abducción cadera",    "Glúteo",        "Glúteo medio",        0.0, "kg",       "Estabilizador"),
+        ("Dominadas",           "Tren superior", "Espalda/Bíceps",      0.0, "reps",     "Ejercicio compuesto"),
+        ("Remo con mancuerna",  "Espalda",       "Dorsal ancho",        0.0, "kg",       "Tracción horizontal"),
+        ("Press banca",         "Tren superior", "Pecho",               0.0, "kg",       "Empuje horizontal"),
+        ("Curl bíceps",         "Tren superior", "Bíceps",              0.0, "kg",       "Aislamiento flexor"),
+        ("Curl femoral",        "Tren inferior", "Isquiotibial",        0.0, "kg",       "Aislamiento posterior"),
+        ("Sentadilla",          "Tren inferior", "Cuádriceps",          0.0, "kg",       "Ejercicio base"),
+        ("Peso muerto",         "Tren inferior", "Isquiotibial/Glúteo", 0.0, "kg",       "Ejercicio base"),
+        ("Abdominales cable",   "Core",          "Abdomen",             0.0, "kg",       "Flexión de tronco"),
+        ("Abdominales colgada", "Core",          "Abdomen",             0.0, "reps",     "Levantamiento de piernas"),
+        ("Press militar",       "Tren superior", "Hombro",              0.0, "kg",       "Empuje vertical"),
+        ("Plancha",             "Core",          "Abdomen/Espalda",     0.0, "segundos", "Isométrico"),
+        ("Fondos",              "Tren superior", "Tríceps",             0.0, "reps",     "Peso corporal"),
+    ]
+    inserts = [
+        f"INSERT OR IGNORE INTO ejercicios_catalogo "
+        f"(usuario_id, nombre, grupo_muscular, musculo_principal, peso_actual, unidad, notas, creado_en) "
+        f"VALUES ({usuario_id},'{nombre}','{grupo}','{musculo}',{peso},'{unidad}','{notas}','{ahora}')"
+        for nombre, grupo, musculo, peso, unidad, notas in ejercicios_base
+    ]
     conn = get_db_connection()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS ejercicios_catalogo (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            nombre TEXT NOT NULL,
-            grupo_muscular TEXT,
-            musculo_principal TEXT,
-            peso_actual REAL DEFAULT 0,
-            unidad TEXT DEFAULT 'kg',
-            notas TEXT,
-            creado_en TEXT,
-            UNIQUE(usuario_id, nombre)
-        )""")
-    
-    # Poblar con ejercicios por defecto si está vacía para este usuario
-    existing = conn.execute(
-        "SELECT COUNT(*) FROM ejercicios_catalogo WHERE usuario_id=?",
-        (usuario_id,)
-    ).fetchone()[0]
-    
-    if existing == 0:
-        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ejercicios_base = [
-            ("Hip Thrust",         "Glúteo",          "Glúteo mayor",        0.0, "kg", "Activación glúteos"),
-            ("Sentadilla búlgara", "Glúteo",          "Cuádriceps/Glúteo",   0.0, "kg", "Fuerza unilateral"),
-            ("Abducción cadera",   "Glúteo",          "Glúteo medio",        0.0, "kg", "Estabilizador"),
-            ("Dominadas",          "Tren superior",   "Espalda/Bíceps",      0.0, "reps", "Ejercicio compuesto"),
-            ("Remo con mancuerna", "Espalda",         "Dorsal ancho",        0.0, "kg", "Tracción horizontal"),
-            ("Press banca",        "Tren superior",   "Pecho",               0.0, "kg", "Empuje horizontal"),
-            ("Curl bíceps",        "Tren superior",   "Bíceps",              0.0, "kg", "Aislamiento flexor"),
-            ("Curl femoral",       "Tren inferior",   "Isquiotibial",        0.0, "kg", "Aislamiento posterior"),
-            ("Sentadilla",         "Tren inferior",   "Cuádriceps",          0.0, "kg", "Ejercicio base"),
-            ("Peso muerto",        "Tren inferior",   "Isquiotibial/Glúteo", 0.0, "kg", "Ejercicio base"),
-            ("Abdominales cable",  "Core",            "Abdomen",             0.0, "kg", "Flexión de tronco"),
-            ("Abdominales colgada","Core",            "Abdomen",             0.0, "reps", "Levantamiento de piernas"),
-            ("Press militar",      "Tren superior",   "Hombro",              0.0, "kg", "Empuje vertical"),
-            ("Plancha",            "Core",            "Abdomen/Espalda",     0.0, "segundos", "Isométrico"),
-            ("Fondos",             "Tren superior",   "Tríceps",             0.0, "reps", "Peso corporal"),
-        ]
-        
-        for nombre, grupo, musculo, peso, unidad, notas in ejercicios_base:
-            try:
-                conn.execute(
-                    """INSERT INTO ejercicios_catalogo 
-                       (usuario_id, nombre, grupo_muscular, musculo_principal, peso_actual, unidad, notas, creado_en)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (usuario_id, nombre, grupo, musculo, peso, unidad, notas, ahora)
-                )
-            except Exception:
-                pass  # Skip duplicates
-    
+    _exec_batch(conn, inserts, ignore_errors=True)
     conn.commit()
     conn.close()
-
-
-def asegurar_tabla_lesiones():
-    conn = get_db_connection()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS lesiones (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            tipo TEXT,
-            grado INTEGER,
-            fecha_inicio TEXT,
-            fecha_fin TEXT,
-            activa INTEGER DEFAULT 1,
-            notas TEXT
-        )""")
-    conn.commit()
-    conn.close()
-
-
-def asegurar_indices_consulta():
-    """Crea índices de lectura frecuente sin romper si alguna tabla aún no existe."""
-    conn = get_db_connection()
-    try:
-        index_statements = [
-            # Índices principales por usuario_id + fecha (queries más comunes)
-            "CREATE INDEX IF NOT EXISTS idx_act_usuario_fecha ON actividades_garmin(usuario_id, fecha)",
-            "CREATE INDEX IF NOT EXISTS idx_sueno_usuario_fecha ON datos_sueno(usuario_id, fecha)",
-            "CREATE INDEX IF NOT EXISTS idx_fisio_usuario_fecha ON diario_fisiologia(usuario_id, fecha)",
-            "CREATE INDEX IF NOT EXISTS idx_fuerza_usuario_fecha ON sesiones_fuerza(usuario_id, fecha)",
-            "CREATE INDEX IF NOT EXISTS idx_plan_usuario_semana ON plan_entrenamiento(usuario_id, semana_inicio)",
-            # Índices adicionales para relaciones
-            "CREATE INDEX IF NOT EXISTS idx_biom_usuario_fecha ON datos_biometricos_premium(usuario_id, fecha)",
-            "CREATE INDEX IF NOT EXISTS idx_lesiones_usuario ON lesiones(usuario_id)",
-            "CREATE INDEX IF NOT EXISTS idx_historial_lesiones_usuario ON historial_lesiones(usuario_id)",
-            # Índices para búsquedas por actividad Garmin
-            "CREATE INDEX IF NOT EXISTS idx_act_usuario ON actividades_garmin(usuario_id)",
-            "CREATE INDEX IF NOT EXISTS idx_ejercicios_sesion ON ejercicios_fuerza(sesion_id)",
-        ]
-        for stmt in index_statements:
-            try:
-                conn.execute(stmt)
-            except Exception:
-                pass
-        conn.commit()
-    finally:
-        conn.close()

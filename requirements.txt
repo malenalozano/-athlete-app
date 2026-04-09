@@ -1,5 +1,5 @@
-streamlit
-garminconnect==0.2.38
+streamlit>=1.40.0
+garminconnect>=0.2.38
 pandas
 plotly
 python-dotenv
@@ -8,3 +8,5 @@ google-genai
 pypdf
 cryptography
 extra-streamlit-components
+requests>=2.32.0
+urllib3>=2.0.0

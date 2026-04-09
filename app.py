@@ -31,9 +31,7 @@ except Exception as e:
 # Ocultar TODO lo nativo de Streamlit + CSS global del sistema de diseño
 from src.core.styles import GLOBAL_CSS
 from src.db.db_manager import (
-    init_db, asegurar_tabla_plan_entrenamiento, asegurar_tablas_fuerza,
-    asegurar_tablas_premium, asegurar_indices_consulta,
-    asegurar_tabla_ejercicios, asegurar_tabla_lesiones, asegurar_tabla_catalogo_ejercicios,
+    init_db, asegurar_tabla_ejercicios, asegurar_tabla_catalogo_ejercicios,
     get_db_connection,
 )
 st.markdown("""<style>
@@ -122,15 +120,9 @@ div[data-testid="stDataFrameResizable"] {
 </style>""", unsafe_allow_html=True)
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
-# Init BD — pero solo una vez por sesión (evitar overhead en reruns)
+# Init BD — una sola vez por sesión (un único HTTP batch a Turso)
 if not st.session_state.get("_db_init_done", False):
-    init_db()
-    asegurar_tabla_plan_entrenamiento()
-    asegurar_tablas_fuerza()
-    asegurar_tablas_premium()
-    asegurar_indices_consulta()
-    asegurar_tabla_lesiones()
-    # Poblar catálogo de ejercicios para ambos usuarios
+    init_db()  # All DDL in one HTTP call
     asegurar_tabla_catalogo_ejercicios(usuario_id=1)
     asegurar_tabla_catalogo_ejercicios(usuario_id=2)
     st.session_state["_db_init_done"] = True
@@ -167,7 +159,11 @@ def _get_user_id_from_auth_user(auth_user: str) -> int | None:
     return None
 
 auth_user = str(st.session_state.get("auth_user", "")).strip().lower()
-forced_uid = _get_user_id_from_auth_user(auth_user)
+# Cache the DB lookup in session_state to avoid an extra HTTP call on every rerun
+_forced_uid_key = f"_forced_uid_{auth_user}"
+if _forced_uid_key not in st.session_state:
+    st.session_state[_forced_uid_key] = _get_user_id_from_auth_user(auth_user)
+forced_uid = st.session_state[_forced_uid_key]
 
 if forced_uid in (1, 2):
     # Usuario autenticado determina el perfil
