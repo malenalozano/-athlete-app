@@ -3,10 +3,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from threading import Thread
-try:
-    import garth as _garth_lib
-except ImportError:
-    _garth_lib = None
+from pathlib import Path
 
 try:
     from garminconnect import Garmin, GarminConnectConnectionError, GarminConnectAuthenticationError
@@ -789,41 +786,18 @@ def _token_homes(email: str | None = None):
     return homes
 
 
-def _make_garmin_with_garth(garth_client) -> "Garmin":
-    """Crea un objeto Garmin e inyecta un garth client ya autenticado.
-
-    Bypass del constructor de Garmin para evitar que garth.Client()
-    falle por incompatibilidades (e.g. Python 3.14 + urllib3).
-    """
-    try:
-        gc = Garmin()
-        # Si el constructor tuvo éxito pero no asignó garth, lo forzamos
-        gc.garth = garth_client
-        return gc
-    except Exception:
-        # Construcción manual mínima si Garmin() falla
-        gc = object.__new__(Garmin)
-        gc.username = None
-        gc.password = None
-        gc.is_cn = False
-        gc.prompt_mfa = None
-        gc.return_on_mfa = False
-        gc.display_name = None
-        gc.full_name = None
-        gc.unit_system = None
-        gc.garth = garth_client
-        return gc
-
-
 def _load_valid_client_from_home(home: str):
-    if not os.path.exists(home) or not os.listdir(home):
+    """Carga tokens DI (garminconnect >= 0.3) desde disco."""
+    token_file = Path(home).expanduser() / "garmin_tokens.json"
+    if not token_file.exists():
         return None
     try:
-        garth_client = _garth_lib.Client()
-        garth_client.load(home)
-        client = _make_garmin_with_garth(garth_client)
+        gc = Garmin()
+        gc.client.load(str(Path(home).expanduser()))
+        if not gc.client.is_authenticated:
+            return None
         logger.debug(f"✓ Tokens cargados desde disco: {home}")
-        return client
+        return gc
     except Exception as e:
         logger.warning(f"Tokens inválidos en {home}: {type(e).__name__}: {e}")
         return None
@@ -844,7 +818,7 @@ def _guardar_tokens_db(usuario_id: int, token_json: str):
 
 
 def _cargar_tokens_db(usuario_id: int):
-    """Carga tokens desde la BD sin hacer llamadas a Garmin API."""
+    """Carga tokens DI (garminconnect >= 0.3) desde la BD."""
     try:
         conn = get_db_connection()
         row = conn.execute(
@@ -854,11 +828,12 @@ def _cargar_tokens_db(usuario_id: int):
         if not row or not row[0]:
             return None
         token_json = row[0]
-        garth_client = _garth_lib.Client()
-        garth_client.loads(token_json)
-        client = _make_garmin_with_garth(garth_client)
+        gc = Garmin()
+        gc.client.loads(token_json)
+        if not gc.client.is_authenticated:
+            return None
         logger.debug(f"✓ Tokens Garmin cargados desde BD para usuario {usuario_id}")
-        return client
+        return gc
     except Exception as e:
         logger.warning(f"Tokens BD inválidos para usuario {usuario_id}: {type(e).__name__}: {e}")
         return None
@@ -866,35 +841,9 @@ def _cargar_tokens_db(usuario_id: int):
 
 def _parchar_garth_sin_refresh(gc):
     """
-    Monkey-patch garth para que NO llame a refresh_oauth2() automáticamente
-    cuando el token haya "caducado" según el timestamp local. En su lugar,
-    extiende el expires_at para que garth intente la llamada directamente:
-    si Garmin acepta el token (a veces lo hace ligeramente expirado), sync OK;
-    si Garmin devuelve 401 se propaga como error normal.
-    Esto evita el 429 en el endpoint de SSO exchange en entornos cloud.
+    Garminconnect >= 0.3 usa tokens DI propios que se refrescan sin SSO.
+    No se necesita monkey-patch; esta función es un no-op por compatibilidad.
     """
-    import time
-    try:
-        if gc is None or not hasattr(gc, "garth"):
-            return gc
-        oauth2 = gc.garth.oauth2_token
-        if oauth2 is None:
-            return gc
-        # Si ya es válido, no hacemos nada
-        if not getattr(oauth2, "expired", False):
-            return gc
-        # Token expirado: extender expires_at 2 horas para evitar el refresh_oauth2 automático
-        # El token real puede seguir siendo válido en Garmin aunque el timestamp local diga que no
-        try:
-            gc.garth.oauth2_token = oauth2.__class__(
-                **{**{f: getattr(oauth2, f) for f in oauth2.__dataclass_fields__},
-                   "expires_at": int(time.time()) + 7200}
-            )
-            logger.debug("Extendido expires_at del token OAuth2 para evitar refresh SSO")
-        except Exception:
-            pass
-    except Exception as e:
-        logger.debug(f"No se pudo parchear garth: {e}")
     return gc
 
 
@@ -1039,14 +988,14 @@ def iniciar_sesion_garmin(email, password, usuario_id: int | None = None):
         token_home = os.path.join(GARTH_HOME, _safe_email_slug(email)) if email else GARTH_HOME
         try:
             os.makedirs(token_home, exist_ok=True)
-            client.garth.dump(token_home)
+            client.client.dump(token_home)
             logger.debug(f"✓ Tokens guardados en disco: {token_home}")
         except Exception as e:
             logger.warning(f"No se pudieron guardar tokens en disco: {e}")
         # Guardar en BD (persiste en cloud)
         if usuario_id is not None:
             try:
-                _guardar_tokens_db(usuario_id, client.garth.dumps())
+                _guardar_tokens_db(usuario_id, client.client.dumps())
             except Exception as e:
                 logger.warning(f"No se pudieron guardar tokens en BD: {e}")
         return client
@@ -1243,9 +1192,9 @@ def sincronizar_biometricos_garmin(email, password, usuario_id, dias=7):
 
 
 def _persistir_tokens_si_cambiaron(gc, usuario_id: int):
-    """Re-guarda tokens en BD tras sync por si garth refrescó el access_token."""
+    """Re-guarda tokens DI en BD tras sync por si se refrescaron."""
     try:
-        _guardar_tokens_db(usuario_id, gc.garth.dumps())
+        _guardar_tokens_db(usuario_id, gc.client.dumps())
     except Exception as e:
         logger.warning(f"No se pudieron re-persistir tokens tras sync: {e}")
 

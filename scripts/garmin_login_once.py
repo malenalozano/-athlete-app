@@ -51,16 +51,19 @@ def main():
     token_home = _token_home_for_email(usuario)
 
     # Comprobar si ya hay tokens válidos para esta cuenta
-    if os.path.exists(token_home) and os.listdir(token_home):
+    from pathlib import Path
+    token_file = Path(token_home) / "garmin_tokens.json"
+    if token_file.exists():
         print(f"Tokens existentes en {token_home} — verificando...")
         try:
             from garminconnect import Garmin
             gc = Garmin()
-            gc.garth.load(token_home)
-            name = gc.get_full_name()
-            print(f"✓ Tokens válidos. Sesión activa como: {name}")
-            print("No es necesario volver a hacer login.")
-            return
+            gc.client.load(token_home)
+            if gc.client.is_authenticated:
+                name = gc.get_full_name()
+                print(f"✓ Tokens válidos. Sesión activa como: {name}")
+                print("No es necesario volver a hacer login.")
+                return
         except Exception:
             print("Tokens expirados o inválidos — haciendo login fresco...\n")
 
@@ -69,16 +72,16 @@ def main():
         gc = Garmin(email=usuario, password=password)
         gc.login()
         os.makedirs(token_home, exist_ok=True)
-        gc.garth.dump(token_home)
+        gc.client.dump(token_home)
         name = gc.get_full_name()
         print(f"✓ Tokens guardados en DISCO: {token_home}")
         print(f"✓ Sesión activa como: {name}")
-        
+
         # IMPORTANTE: Guardar también en BD para que funcione en Cloud
         try:
             from src.db.db_manager import get_db_connection
             conn = get_db_connection()
-            token_json = gc.garth.dumps()
+            token_json = gc.client.dumps()
             conn.execute(
                 "UPDATE usuarios SET garmin_tokens=? WHERE email_garmin=?",
                 (token_json, usuario)
