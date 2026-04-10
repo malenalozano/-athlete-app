@@ -145,7 +145,7 @@ def programar_workout_garmin(gc, workout_id: str, fecha: str) -> bool:
     Retorna True si éxito, False si falla (no lanza excepción).
     """
     try:
-        gc.garth.post(
+        gc.client.post(
             "connectapi",
             f"/workout-service/schedule/{int(workout_id)}",
             json={"date": fecha},
