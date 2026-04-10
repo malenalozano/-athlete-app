@@ -1,6 +1,7 @@
 import os
 import logging
 import re
+import json
 from datetime import datetime, timedelta
 from threading import Thread
 from pathlib import Path
@@ -20,6 +21,66 @@ load_dotenv()
 # Configurar logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+# Archivo de bloqueo 429
+_BLOCKADE_FILE = os.path.expanduser("~/.garth_athlete/.blockade.json")
+
+
+def check_garmin_blockade():
+    """
+    Verifica si hay un bloqueo 429 activo de Garmin.
+    Devuelve dict con info del bloqueo, o None si no hay bloqueo.
+    """
+    if not os.path.exists(_BLOCKADE_FILE):
+        return None
+    
+    try:
+        with open(_BLOCKADE_FILE, 'r') as f:
+            data = json.load(f)
+        
+        blocked_until_str = data.get('blocked_until')
+        if not blocked_until_str:
+            return None
+        
+        blocked_until_dt = datetime.fromisoformat(blocked_until_str)
+        now = datetime.now()
+        
+        if now < blocked_until_dt:
+            remaining = blocked_until_dt - now
+            return {
+                'is_blocked': True,
+                'remaining_seconds': remaining.total_seconds(),
+                'remaining_hours': remaining.total_seconds() / 3600,
+                'blocked_until': blocked_until_str,
+                'reason': data.get('reason', 'Unknown')
+            }
+        else:
+            # Bloqueo ha expirado, limpiar
+            try:
+                os.remove(_BLOCKADE_FILE)
+            except Exception:
+                pass
+            return None
+    except Exception as e:
+        logger.debug(f"Error verificando bloqueo: {e}")
+        return None
+
+
+def _record_429_blockade(hours=48):
+    """Registra un bloqueo 429 por N horas."""
+    blocked_until = datetime.now() + timedelta(hours=hours)
+    os.makedirs(os.path.dirname(_BLOCKADE_FILE), exist_ok=True)
+    
+    try:
+        with open(_BLOCKADE_FILE, 'w') as f:
+            json.dump({
+                'blocked_until': blocked_until.isoformat(),
+                'reason': '429 Too Many Requests from Garmin',
+                'created_at': datetime.now().isoformat()
+            }, f)
+        logger.warning(f"Bloqueo registrado hasta: {blocked_until.isoformat()}")
+    except Exception as e:
+        logger.warning(f"No se pudo guardar bloqueo: {e}")
 
 
 def _column_exists(conn, table_name, column_name):
@@ -872,8 +933,22 @@ def sincronizar_actividades_con_sesion(gc, usuario_id: int, num_actividades: int
     Sincroniza usando un cliente Garmin ya autenticado.
     Devuelve el número de actividades sincronizadas.
     Propaga excepciones para que la UI las muestre.
+    
+    Nota: Si el cliente es None o inválido, lanza RuntimeError.
     """
+    if gc is None:
+        raise RuntimeError("⚠️  Cliente Garmin no autenticado. Conecta tu cuenta nuevamente.")
+    
+    # Parchear garth para evitar refresh_oauth2 automático (previene 429 en cloud)
     gc = _parchar_garth_sin_refresh(gc)
+    
+    # Validar que el token sea fresco antes de empezar
+    if not _check_token_freshness(gc):
+        raise RuntimeError(
+            "🔑 Token expirado o inválido. La sesión ha caducado. "
+            "Desconecta y vuelve a conectar tu cuenta Garmin para refrescar los tokens."
+        )
+    
     _ensure_garmin_schema()
     conn_pre = get_db_connection()
     _ensure_column(conn_pre, "actividades_garmin", "calorias", "REAL")
@@ -881,7 +956,17 @@ def sincronizar_actividades_con_sesion(gc, usuario_id: int, num_actividades: int
 
     try:
         actividades = gc.get_activities(0, num_actividades)
+    except GarminConnectAuthenticationError as e:
+        logger.error(f"❌ Error de autenticación en get_activities: {e}")
+        raise RuntimeError(
+            "🔑 Error de autenticación con Garmin. Tu sesión ha expirado. "
+            "Desconecta y vuelve a conectar tu cuenta."
+        ) from e
+    except GarminConnectConnectionError as e:
+        logger.error(f"❌ Error de conexión en get_activities: {e}")
+        raise RuntimeError(f"❌ Error de conexión con Garmin: {e}") from e
     except Exception as e:
+        logger.error(f"❌ Error al obtener actividades: {type(e).__name__}: {e}")
         raise RuntimeError(f"Error al obtener actividades: {e}") from e
 
     if not actividades:
@@ -944,24 +1029,82 @@ def sincronizar_actividades_con_sesion(gc, usuario_id: int, num_actividades: int
         return actividades_sincronizadas
     except Exception as e:
         conexion.rollback()
-        raise RuntimeError(f"Error al guardar en BD: {e}") from e
+        logger.error(f"❌ Error al guardar actividades: {e}")
+        raise RuntimeError(f"Error al guardar actividades en BD: {e}") from e
     finally:
         conexion.close()
 
 
-def iniciar_sesion_garmin(email, password, usuario_id: int | None = None):
+def _check_token_freshness(gc):
+    """
+    Verifica si el cliente tiene un token válido (al menos 5 min de validez).
+    Devuelve True si el token es válido, False si expira pronto.
+    """
+    if not gc:
+        return False
+    try:
+        if not hasattr(gc, "garth") or not gc.garth:
+            return False
+        oauth2 = gc.garth.oauth2_token
+        if oauth2 is None:
+            return False
+        # Si ya está marcado como expirado
+        if getattr(oauth2, "expired", False):
+            return False
+        # Validar tiempo de expiración (más de 5 minutos)
+        expires_at = getattr(oauth2, "expires_at", None)
+        if expires_at is None:
+            return True  # Sin info de expiración, asumir válido
+        import time
+        tiempo_restante = expires_at - int(time.time())
+        return tiempo_restante > 300  # Más de 5 minutos
+    except Exception as e:
+        logger.debug(f"Error verificando token: {e}")
+        return False
+
+
+def iniciar_sesion_garmin(email, password, usuario_id: int | None = None, force_fresh_login: bool = False):
     """
     Login con prioridad a tokens OAuth guardados (disco o BD).
     - Si hay tokens válidos → carga sin tocar SSO (evita 429).
-    - Si no hay tokens → login con credenciales, guarda tokens en disco y en BD.
+    - Si no hay tokens válidos → login con credenciales, guarda tokens en disco y en BD.
+    
+    Args:
+        email: Email de Garmin
+        password: Contraseña de Garmin
+        usuario_id: ID de usuario para guardar tokens en BD
+        force_fresh_login: Si True, ignora tokens existentes y hace login fresco
+    
     Ejecutar scripts/garmin_login_once.py una vez para inicializar tokens.
     """
-    # 1. Intentar con tokens de esta cuenta (disco primero, BD como fallback)
-    client = cargar_sesion_tokens(email, usuario_id=usuario_id)
-    if client is not None:
-        return client
-
-    # 2. Login fresco con credenciales
+    # 1. Verificar si hay bloqueo 429 activo
+    blockade = check_garmin_blockade()
+    if blockade and blockade['is_blocked']:
+        hours = int(blockade['remaining_hours'])
+        minutes = int((blockade['remaining_hours'] % 1) * 60)
+        msg = (
+            f"🚫 Garmin está bloqueando las peticiones desde esta IP (error 429).\n\n"
+            f"⏳ Tiempo restante de bloqueo: {hours}h {minutes}m\n"
+            f"   (hasta {blockade['blocked_until']})\n\n"
+            f"📍 Para resolver:\n"
+            f"   1. Espera el tiempo indicado arriba\n"
+            f"   2. NO intentes ejecutar este script antes (alargaría el bloqueo)\n"
+            f"   3. Cuando pase el tiempo, vuelve a ejecutar en terminal:\n"
+            f"      python scripts/garmin_login_once.py"
+        )
+        raise RuntimeError(msg)
+    
+    # 2. Intentar con tokens de esta cuenta PRIMERO (disco primero, BD como fallback)
+    if not force_fresh_login:
+        client = cargar_sesion_tokens(email, usuario_id=usuario_id)
+        if client is not None and _check_token_freshness(client):
+            logger.debug("✅ Token válido cargado desde almacenamiento")
+            return client
+        elif client is not None:
+            logger.debug("⚠️  Token expirado, realizando login fresco")
+    
+    # 3. Login fresco con credenciales (solo si es necesario)
+    logger.info(f"🔑 Iniciando login fresco para {email}...")
     client = Garmin(email=email, password=password)
     try:
         # Login con timeout
@@ -984,36 +1127,63 @@ def iniciar_sesion_garmin(email, password, usuario_id: int | None = None):
                 raise exception_container[0]
             else:
                 raise TimeoutError("Login en Garmin expiró (timeout)")
+        
+        logger.info("✅ Login exitoso en Garmin")
+        
         # Guardar en disco (local)
         token_home = os.path.join(GARTH_HOME, _safe_email_slug(email)) if email else GARTH_HOME
         try:
             os.makedirs(token_home, exist_ok=True)
-            client.client.dump(token_home)
-            logger.debug(f"✓ Tokens guardados en disco: {token_home}")
+            client.garth.dump(token_home)
+            logger.info(f"✓ Tokens guardados en disco: {token_home}")
         except Exception as e:
             logger.warning(f"No se pudieron guardar tokens en disco: {e}")
+        
         # Guardar en BD (persiste en cloud)
         if usuario_id is not None:
             try:
-                _guardar_tokens_db(usuario_id, client.client.dumps())
+                _guardar_tokens_db(usuario_id, client.garth.dumps())
+                logger.info(f"✓ Tokens guardados en BD para usuario {usuario_id}")
             except Exception as e:
                 logger.warning(f"No se pudieron guardar tokens en BD: {e}")
+            except Exception as e:
+                logger.warning(f"No se pudieron guardar tokens en BD: {e}")
+        
         return client
     except GarminConnectAuthenticationError as e:
         logger.error(f"❌ Autenticación fallida: {e}")
         msg = str(e)
-        if "429" in msg or "rate" in msg.lower():
+        
+        # Detectar y registrar bloqueo 429
+        if "429" in msg or "rate" in msg.lower() or "Too Many Requests" in msg:
+            _record_429_blockade(hours=48)
             raise RuntimeError(
-                "Garmin ha bloqueado temporalmente el login por demasiados intentos. "
-                "Espera unos minutos y vuelve a intentar una sola vez."
+                "🚫 Garmin ha bloqueado las peticiones por demasiados intentos (Error 429).\n\n"
+                "⏳ Bloqueo activo durante 48 horas.\n\n"
+                "📍 No hagas nada por ahora:\n"
+                "   • Espera 48 horas completas\n"
+                "   • NO intentes ejecutar este script de nuevo\n"
+                "   • La app en Cloud seguirá funcionando con tokens ya guardados\n\n"
+                "🔄 Cuando pasen 48 horas, ejecuta en terminal:\n"
+                "   python scripts/garmin_login_once.py"
             ) from e
-        raise
+        
+        raise RuntimeError(f"Error de autenticación: {e}") from e
     except GarminConnectConnectionError as e:
         logger.error(f"❌ Conexión fallida: {e}")
-        raise
+        raise RuntimeError(f"Error de conexión con Garmin: {e}") from e
+    except TimeoutError as e:
+        logger.error(f"❌ Timeout en login: {e}")
+        raise RuntimeError(f"El login tardó demasiado. Intenta más tarde: {e}") from e
     except Exception as e:
         logger.error(f"❌ Error inesperado: {type(e).__name__}: {e}")
-        raise
+        
+        # Si es error de red, posiblemente sea también bloqueo
+        msg = str(e)
+        if "429" in msg or "Too Many Requests" in msg:
+            _record_429_blockade(hours=48)
+        
+        raise RuntimeError(f"Error al realizar login: {type(e).__name__}: {e}") from e
 
 
 def obtener_datos_sueno(client, fecha):
@@ -1205,6 +1375,16 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
     Solo sincroniza actividades/días no guardados aún.
     Devuelve dict con claves 'actividades' y 'dias_bio'.
     """
+    if gc is None:
+        raise RuntimeError("⚠️  Cliente Garmin no autenticado. Conecta tu cuenta nuevamente.")
+    
+    # Validar que el token sea fresco antes de empezar
+    if not _check_token_freshness(gc):
+        raise RuntimeError(
+            "🔑 Token expirado o inválido. La sesión ha caducado. "
+            "Desconecta y vuelve a conectar tu cuenta Garmin para refrescar los tokens."
+        )
+    
     # Parchear garth para evitar refresh_oauth2 automático (previene 429 en cloud)
     gc = _parchar_garth_sin_refresh(gc)
     _ensure_garmin_schema()
@@ -1228,7 +1408,17 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
 
     try:
         todas = gc.get_activities(0, 50) or []
+    except GarminConnectAuthenticationError as e:
+        logger.error(f"❌ Error de autenticación: {e}")
+        raise RuntimeError(
+            "🔑 Error de autenticación con Garmin. Tu sesión ha expirado. "
+            "Desconecta y vuelve a conectar tu cuenta."
+        ) from e
+    except GarminConnectConnectionError as e:
+        logger.error(f"❌ Error de conexión: {e}")
+        raise RuntimeError(f"❌ Error de conexión con Garmin: {e}") from e
     except Exception as e:
+        logger.error(f"❌ Error al obtener actividades: {type(e).__name__}: {e}")
         raise RuntimeError(f"Error al obtener actividades: {e}") from e
 
     actividades_nuevas = [
@@ -1300,6 +1490,7 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
             conexion.commit()
         except Exception as e:
             conexion.rollback()
+            logger.error(f"❌ Error al guardar actividades: {e}")
             raise RuntimeError(f"Error al guardar actividades: {e}") from e
         finally:
             conexion.close()
@@ -1329,6 +1520,12 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
                     "sleep_profundo_horas": sleep_metrics.get("sleep_profundo_horas"),
                     "sleep_rem_horas": sleep_metrics.get("sleep_rem_horas"),
                 })
+        except GarminConnectAuthenticationError:
+            logger.warning(f"Token expiró al obtener sueño para {fecha_iso}")
+            raise RuntimeError(
+                "🔑 Token expirado durante la sincronización. "
+                "Desconecta y vuelve a conectar tu cuenta."
+            )
         except Exception:
             sleep_metrics = None
 
@@ -1348,31 +1545,17 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
             if _has_useful_daily_metrics(daily_metrics):
                 guardar_metricas_premium_db(usuario_id, daily_metrics)
                 dias_bio += 1
-                biometricos_importados.append({
-                    "fecha": fecha_iso,
-                    "hrv_ms": daily_metrics.get("hrv_ms"),
-                    "fc_reposo": daily_metrics.get("fc_reposo"),
-                    "spo2": daily_metrics.get("spo2"),
-                    "estres_medio": daily_metrics.get("estres_medio"),
-                    "body_battery_max": daily_metrics.get("body_battery_max"),
-                    "body_battery_min": daily_metrics.get("body_battery_min"),
-                    "sleep_score": daily_metrics.get("sleep_score"),
-                })
-        except Exception:
-            pass
+                biometricos_importados.append(daily_metrics)
+        except GarminConnectAuthenticationError:
+            logger.warning(f"Token expiró al obtener métricas para {fecha_iso}")
+            raise RuntimeError(
+                "🔑 Token expirado durante la sincronización. "
+                "Desconecta y vuelve a conectar tu cuenta."
+            )
+        except Exception as e:
+            logger.warning(f"Error al obtener métricas para {fecha_iso}: {e}")
 
-    # ── 3. Calcular y guardar ACWR para los últimos días ───────────────────
-    for i in range(dias):
-        fecha = (datetime.now() - timedelta(days=i)).date()
-        fecha_iso = fecha.strftime("%Y-%m-%d")
-        try:
-            _guardar_acwr_diario(usuario_id, fecha_iso)
-        except Exception:
-            pass
-
-    # ── 4. Re-persistir tokens por si garth refrescó el access_token ──────
-    _persistir_tokens_si_cambiaron(gc, usuario_id)
-
+    logger.info(f"✅ Sincronización completa: {act_guardadas} actividades, {dias_bio} días bio, {dias_sueno} días sueño")
     return {
         "actividades": act_guardadas,
         "dias_bio": dias_bio,

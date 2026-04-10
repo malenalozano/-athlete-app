@@ -21,7 +21,7 @@ try:
     from src.garmin.garmin_sync import (
         sincronizar_todo_con_sesion, sincronizar_actividades_con_sesion,
         sincronizar_biometricos_garmin, obtener_datos_sueno, guardar_sueno_db,
-        iniciar_sesion_garmin, cargar_sesion_tokens,
+        iniciar_sesion_garmin, cargar_sesion_tokens, check_garmin_blockade,
     )
     _GARMIN_SYNC_OK = True
 except ImportError as _e:
@@ -34,9 +34,26 @@ except ImportError as _e:
     def guardar_sueno_db(*a, **kw): return None
     def iniciar_sesion_garmin(*a, **kw): return None
     def cargar_sesion_tokens(*a, **kw): return None
+    def check_garmin_blockade(*a, **kw): return None
 from src.core.seguridad import encriptar_password, desencriptar_password
 
 render_navbar("garmin")
+
+# Verificar si hay bloqueo 429 activo
+_blockade = check_garmin_blockade()
+if _blockade and _blockade.get('is_blocked'):
+    hours = int(_blockade['remaining_hours'])
+    minutes = int((_blockade['remaining_hours'] % 1) * 60)
+    
+    st.error(
+        f"🚫 **Garmin bloqueado por error 429 (demasiados intentos)**\n\n"
+        f"Tiempo restante de bloqueo: **{hours}h {minutes}m**\n"
+        f"(hasta {_blockade['blocked_until'].split('T')[1][:5]})\n\n"
+        f"**⚠️  No intentes conectar ni sincronizar ahora** — alargaría el bloqueo.\n\n"
+        f"Los datos guardados seguirán siendo accesibles. "
+        f"Cuando pase el bloqueo, vuelve a conectar desde tu ordenador:\n"
+        f"`python scripts/garmin_login_once.py`"
+    )
 
 st.markdown(
     """
@@ -387,8 +404,18 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                             except Exception as e:
                                 st.session_state["gc_failed"] = True
                                 st.session_state["gc_error"] = str(e)
-                                if "429" in str(e):
-                                    st.error("Garmin ha limitado temporalmente los intentos de conexión. Espera unos minutos antes de intentarlo de nuevo.")
+                                err_str = str(e)
+                                err_low = err_str.lower()
+                                
+                                # Errores específicos 429
+                                if "429" in err_str or "bloqueado" in err_low:
+                                    st.error(
+                                        "🚫 **Garmin ha bloqueado las peticiones (error 429)**\n\n"
+                                        "Se registró un bloqueo por 48 horas por demasiados intentos. "
+                                        "**NO intentes connecting de nuevo ahora** — alargaría el bloqueo.\n\n"
+                                        "Cuando pase el tiempo, vuelve a intentar desde tu ordenador executando:\n"
+                                        "`python scripts/garmin_login_once.py`"
+                                    )
                                 else:
                                     st.error(f"Error al conectar: {e}")
             st.markdown("</div>", unsafe_allow_html=True)
@@ -441,7 +468,10 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                         st.session_state["gc"] = gc
 
                 if gc is None:
-                    st.warning("Primero conecta tu cuenta Garmin en el panel de la izquierda.")
+                    st.error(
+                        "🔑 **Cuenta no conectada** — No hay sesión activa de Garmin.\n\n"
+                        "Conecta tu cuenta en el panel izquierdo bajo '**Sin conectar**'."
+                    )
                 else:
                     with st.spinner("Sincronizando actividades y biométricos…"):
                         try:
@@ -454,15 +484,15 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                                 "source": "garmin",
                                 "result": r,
                             }
+                            st.success(f"✅ Sincronización exitosa: {r.get('actividades', 0)} actividades, {r.get('dias_bio', 0)} días biométricos")
                             st.cache_data.clear(); st.rerun()
-                        except Exception as e:
+                        except RuntimeError as e:
                             err_str = str(e)
                             err_low = err_str.lower()
-                            if any(k in err_low for k in ["401", "authentication", "token", "unauthorized", "expired", "invalid"]):
-                                st.error(
-                                    "🔑 **Sesión de Garmin expirada** — Los tokens han caducado.\n\n"
-                                    "Desconecta y vuelve a conectar tu cuenta Garmin en el panel izquierdo."
-                                )
+                            
+                            # Errores de autenticación / token expirado
+                            if any(k in err_low for k in ["401", "token expirado", "token", "unauthorized", "expired", "invalid", "desconecta"]):
+                                st.error(f"🔑 **Error de sesión** — {err_str}")
                                 # Limpiar tokens para forzar reconexión
                                 try:
                                     _c = get_db_connection()
@@ -472,19 +502,35 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                                     pass
                                 st.session_state.pop("gc", None)
                                 st.session_state.pop("gc_failed", None)
-                            elif "429" in err_str or "rate" in err_low or "bloqueado" in err_low:
+                            
+                            # Error 429 - Bloqueado by Garmin
+                            elif "429" in err_str or "bloqueado" in err_low or "rate" in err_low:
                                 st.error(
-                                    "⏳ **Garmin ha bloqueado las peticiones (429)**.\n\n"
-                                    "Espera 15–30 minutos antes de volver a intentarlo."
+                                    "⏳ **Garmin bloqueado temporalmente (error 429)**\n\n"
+                                    f"{err_str}\n\n"
+                                    "**Acción recomendada:**\n"
+                                    "1. Espera 24-48 horas\n"
+                                    "2. Desconecta tu cuenta (panel izquierdo)\n"
+                                    "3. Reconecta introduciendo tus credenciales UNA SOLA VEZ\n\n"
+                                    "No intentes sincronizar ni reconectar antes de esperar el tiempo completo."
                                 )
-                            elif any(k in err_low for k in ["timeout", "timed out", "connection", "network", "ssl", "connect"]):
+                            
+                            # Connection / Network errors
+                            elif any(k in err_low for k in ["timeout", "timed out", "connection", "network", "ssl", "connect", "error de conexión"]):
                                 st.error(
                                     f"🌐 **Error de red** — No se pudo conectar con Garmin.\n\n"
-                                    f"Inténtalo de nuevo en unos minutos. Detalle: `{err_str[:200]}`"
+                                    f"Detalle: `{err_str[:200]}`\n\n"
+                                    "Inténtalo de nuevo en unos minutos."
                                 )
+                            
+                            # Other errors
                             else:
-                                st.error(f"❌ Error al sincronizar: `{err_str[:300]}`")
-                                st.info("💡 Si el error persiste, desconecta y vuelve a conectar tu cuenta Garmin.")
+                                st.error(f"❌ Error al sincronizar:\n\n`{err_str[:500]}`")
+                                st.info("💡 Si el error persiste, desconecta (panel izquierdo) y vuelve a conectar tu cuenta.")
+                        except Exception as e:
+                            err_str = str(e)
+                            st.error(f"❌ Error inesperado: `{err_str[:300]}`")
+                            st.info("💡 Si el problema continúa, reinicia la aplicación o contacta con soporte.")
 
         evt = _resolve_last_sync_event()
         if evt:
