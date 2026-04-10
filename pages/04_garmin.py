@@ -39,6 +39,13 @@ from src.core.seguridad import encriptar_password, desencriptar_password
 
 render_navbar("garmin")
 
+_worker_api_url = ""
+_worker_api_token = ""
+if hasattr(st, "secrets"):
+    _worker_api_url = str(st.secrets.get("WORKER_API_URL", "")).strip()
+    _worker_api_token = str(st.secrets.get("WORKER_API_TOKEN", "")).strip()
+_worker_enabled = bool(_worker_api_url and _worker_api_token)
+
 # Verificar si hay bloqueo 429 activo
 _blockade = check_garmin_blockade()
 _is_blocked = bool(_blockade and _blockade.get('is_blocked'))
@@ -158,6 +165,18 @@ def _get_saved_password(cred_row):
         return desencriptar_password(cred_row[1])
     except Exception:
         return None
+
+
+def _sync_via_worker_api(usuario_id: int, dias: int):
+    if not _worker_enabled:
+        return None
+    endpoint = _worker_api_url.rstrip("/") + "/sync/manual"
+    headers = {
+        "Authorization": f"Bearer {_worker_api_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {"usuario_id": int(usuario_id), "dias": int(dias)}
+    return _requests.post(endpoint, json=payload, headers=headers, timeout=90)
 
 
 def _resolve_last_sync_event():
@@ -428,6 +447,9 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
     with col_act:
         st.markdown(label_upper("Sincronizar"), unsafe_allow_html=True)
 
+        if _worker_enabled:
+            st.info("🛡️ Modo anti-429 activo: esta sincronización se ejecuta en Worker externo (IP estable).")
+
         conn = get_db_connection()
         try:
             df_last = pd.read_sql_query(
@@ -482,7 +504,23 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                 else:
                     with st.spinner("Sincronizando actividades y biométricos…"):
                         try:
-                            r = sincronizar_todo_con_sesion(gc, user_actual, dias=int(n_dias))
+                            if _worker_enabled:
+                                resp = _sync_via_worker_api(user_actual, int(n_dias))
+                                if resp is None:
+                                    raise RuntimeError("Worker API no configurada")
+                                if resp.status_code == 200:
+                                    body = resp.json() or {}
+                                    r = body.get("result") or {}
+                                elif resp.status_code == 401:
+                                    raise RuntimeError("Worker API rechazó autenticación. Revisa WORKER_API_TOKEN.")
+                                elif resp.status_code == 409:
+                                    raise RuntimeError("Ya hay una sincronización en curso para este usuario en el worker.")
+                                elif resp.status_code == 429:
+                                    raise RuntimeError("Worker reporta bloqueo 429 activo. Espera a que termine el bloqueo antes de reintentar.")
+                                else:
+                                    raise RuntimeError(f"Worker API error ({resp.status_code}): {resp.text[:200]}")
+                            else:
+                                r = sincronizar_todo_con_sesion(gc, user_actual, dias=int(n_dias))
                             ts = datetime.now().strftime("%d/%m %H:%M")
                             st.session_state["g_sync"] = ts
                             st.session_state["g_sync_r"] = r
