@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from getpass import getpass
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # Setup logging (igual a la app real)
 logging.basicConfig(
@@ -17,9 +17,9 @@ logging.basicConfig(
 )
 
 # Importar exactamente lo que usa app.py
-from garmin_sync import sincronizar_biometricos_garmin, iniciar_sesion_garmin, obtener_datos_sueno
-from db.db_manager import obtener_credenciales_garmin
-from seguridad import desencriptar_password
+from src.garmin.garmin_sync import sincronizar_biometricos_garmin, iniciar_sesion_garmin, obtener_datos_sueno
+from src.db.db_manager import obtener_credenciales_garmin
+from src.core.seguridad import desencriptar_password
 from datetime import datetime, timedelta
 
 def main():

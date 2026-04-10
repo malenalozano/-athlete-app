@@ -8,12 +8,12 @@ import sys
 import json
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import logging
 logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
 
-from garmin_sync import (
+from src.garmin.garmin_sync import (
     _extract_daily_metrics,
     _extract_sleep_metrics,
     _extract_activity_metrics,
