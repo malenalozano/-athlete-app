@@ -83,6 +83,27 @@ def _record_429_blockade(hours=48):
         logger.warning(f"No se pudo guardar bloqueo: {e}")
 
 
+def _clear_blockade_record():
+    """Limpia el registro local de bloqueo 429, si existe."""
+    try:
+        if os.path.exists(_BLOCKADE_FILE):
+            os.remove(_BLOCKADE_FILE)
+    except Exception as e:
+        logger.debug(f"No se pudo limpiar bloqueo local: {e}")
+
+
+def _token_store(client):
+    """
+    Devuelve el backend de tokens compatible con la versión instalada.
+    Soporta tanto `gc.garth` como `gc.client`.
+    """
+    if hasattr(client, "garth") and getattr(client, "garth", None) is not None:
+        return client.garth
+    if hasattr(client, "client") and getattr(client, "client", None) is not None:
+        return client.client
+    return None
+
+
 def _column_exists(conn, table_name, column_name):
     rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
     return any(row[1] == column_name for row in rows)
@@ -854,8 +875,11 @@ def _load_valid_client_from_home(home: str):
         return None
     try:
         gc = Garmin()
-        gc.client.load(str(Path(home).expanduser()))
-        if not gc.client.is_authenticated:
+        store = _token_store(gc)
+        if store is None:
+            return None
+        store.load(str(Path(home).expanduser()))
+        if hasattr(store, "is_authenticated") and not store.is_authenticated:
             return None
         logger.debug(f"✓ Tokens cargados desde disco: {home}")
         return gc
@@ -890,8 +914,11 @@ def _cargar_tokens_db(usuario_id: int):
             return None
         token_json = row[0]
         gc = Garmin()
-        gc.client.loads(token_json)
-        if not gc.client.is_authenticated:
+        store = _token_store(gc)
+        if store is None:
+            return None
+        store.loads(token_json)
+        if hasattr(store, "is_authenticated") and not store.is_authenticated:
             return None
         logger.debug(f"✓ Tokens Garmin cargados desde BD para usuario {usuario_id}")
         return gc
@@ -1043,11 +1070,13 @@ def _check_token_freshness(gc):
     if not gc:
         return False
     try:
-        if not hasattr(gc, "garth") or not gc.garth:
+        store = _token_store(gc)
+        if store is None:
             return False
-        oauth2 = gc.garth.oauth2_token
+        oauth2 = getattr(store, "oauth2_token", None)
         if oauth2 is None:
-            return False
+            # Si no hay metadatos de expiración, permitimos seguir y que la API confirme validez.
+            return True
         # Si ya está marcado como expirado
         if getattr(oauth2, "expired", False):
             return False
@@ -1134,7 +1163,10 @@ def iniciar_sesion_garmin(email, password, usuario_id: int | None = None, force_
         token_home = os.path.join(GARTH_HOME, _safe_email_slug(email)) if email else GARTH_HOME
         try:
             os.makedirs(token_home, exist_ok=True)
-            client.garth.dump(token_home)
+            store = _token_store(client)
+            if store is None:
+                raise RuntimeError("No se encontró backend de tokens en cliente Garmin")
+            store.dump(token_home)
             logger.info(f"✓ Tokens guardados en disco: {token_home}")
         except Exception as e:
             logger.warning(f"No se pudieron guardar tokens en disco: {e}")
@@ -1142,12 +1174,14 @@ def iniciar_sesion_garmin(email, password, usuario_id: int | None = None, force_
         # Guardar en BD (persiste en cloud)
         if usuario_id is not None:
             try:
-                _guardar_tokens_db(usuario_id, client.garth.dumps())
+                store = _token_store(client)
+                if store is None:
+                    raise RuntimeError("No se encontró backend de tokens en cliente Garmin")
+                _guardar_tokens_db(usuario_id, store.dumps())
                 logger.info(f"✓ Tokens guardados en BD para usuario {usuario_id}")
             except Exception as e:
                 logger.warning(f"No se pudieron guardar tokens en BD: {e}")
-            except Exception as e:
-                logger.warning(f"No se pudieron guardar tokens en BD: {e}")
+        _clear_blockade_record()
         
         return client
     except GarminConnectAuthenticationError as e:
@@ -1364,7 +1398,10 @@ def sincronizar_biometricos_garmin(email, password, usuario_id, dias=7):
 def _persistir_tokens_si_cambiaron(gc, usuario_id: int):
     """Re-guarda tokens DI en BD tras sync por si se refrescaron."""
     try:
-        _guardar_tokens_db(usuario_id, gc.client.dumps())
+        store = _token_store(gc)
+        if store is None:
+            return
+        _guardar_tokens_db(usuario_id, store.dumps())
     except Exception as e:
         logger.warning(f"No se pudieron re-persistir tokens tras sync: {e}")
 

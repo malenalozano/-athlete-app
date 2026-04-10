@@ -41,6 +41,7 @@ render_navbar("garmin")
 
 # Verificar si hay bloqueo 429 activo
 _blockade = check_garmin_blockade()
+_is_blocked = bool(_blockade and _blockade.get('is_blocked'))
 if _blockade and _blockade.get('is_blocked'):
     hours = int(_blockade['remaining_hours'])
     minutes = int((_blockade['remaining_hours'] % 1) * 60)
@@ -354,6 +355,9 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                 email_g = st.text_input("Email Garmin", value=email_def).strip()
                 pass_g  = st.text_input("Contraseña", type="password", help="Vacía = mantener actual")
                 if st.form_submit_button("Guardar y conectar", type="primary", use_container_width=True):
+                    if _is_blocked:
+                        st.error("Bloqueo 429 activo. Espera a que termine el contador antes de reconectar.")
+                        st.stop()
                     # Validar email más estrictamente
                     email_valid = True
                     if email_g:
@@ -460,6 +464,9 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
         with st.form("sync_todo"):
             n_dias = st.number_input("Días a sincronizar", min_value=1, max_value=30, value=7)
             if st.form_submit_button("↻ Sincronizar todo", use_container_width=True, type="primary"):
+                if _is_blocked:
+                    st.error("⏳ Bloqueo 429 activo. No sincronices hasta que finalice el tiempo de bloqueo.")
+                    st.stop()
                 gc = st.session_state.get("gc")
                 # Intentar cargar tokens guardados (sin hacer login SSO)
                 if gc is None:

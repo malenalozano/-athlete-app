@@ -30,6 +30,15 @@ def _token_home_for_email(email: str) -> str:
     return os.path.join(GARTH_HOME, _safe_email_slug(email))
 
 
+def _token_store(gc):
+    """Compatibilidad entre garminconnect con backend `garth` o `client`."""
+    if hasattr(gc, "garth") and getattr(gc, "garth", None) is not None:
+        return gc.garth
+    if hasattr(gc, "client") and getattr(gc, "client", None) is not None:
+        return gc.client
+    return None
+
+
 def _check_blockade():
     """Verifica si hay un bloqueo 429 activo y cuánto tiempo queda."""
     if not os.path.exists(BLOCKADE_FILE):
@@ -137,7 +146,10 @@ def main():
         try:
             from garminconnect import Garmin
             gc = Garmin()
-            gc.garth.load(token_home)
+            store = _token_store(gc)
+            if store is None:
+                raise RuntimeError("No se encontró backend de tokens en Garmin")
+            store.load(token_home)
             name = gc.get_full_name()
             print(f"✓ Tokens válidos. Sesión activa como: {name}")
             print("No es necesario volver a hacer login.")
@@ -159,7 +171,10 @@ def main():
         gc = Garmin(email=usuario, password=password)
         gc.login()
         os.makedirs(token_home, exist_ok=True)
-        gc.client.dump(token_home)
+        store = _token_store(gc)
+        if store is None:
+            raise RuntimeError("No se encontró backend de tokens en Garmin")
+        store.dump(token_home)
         name = gc.get_full_name()
         print(f"✓ Tokens guardados en DISCO: {token_home}")
         print(f"✓ Sesión activa como: {name}")
@@ -168,7 +183,7 @@ def main():
         try:
             from src.db.db_manager import get_db_connection
             conn = get_db_connection()
-            token_json = gc.client.dumps()
+            token_json = store.dumps()
             conn.execute(
                 "UPDATE usuarios SET garmin_tokens=? WHERE email_garmin=?",
                 (token_json, usuario)
