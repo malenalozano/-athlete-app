@@ -247,18 +247,20 @@ def calcular_semaforo(hrv_actual, hrv_media_7d, sleep_score,
     if razones_rojo:
         return {
             "color": "rojo",
-            "mensaje": "Adaptación fallida — " + "; ".join(razones_rojo) + ". Solo regenerativo.",
-            "multiplicador_volumen": 0.5,
-            "permitir_calidad": False,
-            "causa": list(set(causa_rojo)),  # Deduplicar causas
+            "mensaje": "Adaptación fallida — " + "; ".join(razones_rojo) + ". Considera regenerativo.",
+            "multiplicador_volumen": 1.0,  # NO modifica automáticamente
+            "permitir_calidad": True,  # NO bloquea automáticamente
+            "causa": list(set(causa_rojo)),
+            "nota": "⚠️ Este es solo un AVISO. El plan NO se modifica automáticamente. Usa el 'Target Intensity' diario para decidir qué hacer.",
         }
     if razones_ambar:
         return {
             "color": "ambar",
-            "mensaje": "Recuperación subóptima — " + "; ".join(razones_ambar) + ". No buscar PR, -20% series.",
-            "multiplicador_volumen": 0.8,
-            "permitir_calidad": False,
+            "mensaje": "Recuperación subóptima — " + "; ".join(razones_ambar) + ". Monitorear.",
+            "multiplicador_volumen": 1.0,  # NO modifica automáticamente
+            "permitir_calidad": True,  # NO bloquea automáticamente
             "causa": list(set(causa_ambar)),
+            "nota": "ℹ️ Este es solo un AVISO. El plan NO se modifica automáticamente. Usa el 'Target Intensity' diario para decidir qué hacer.",
         }
     return {
         "color": "verde",
@@ -673,6 +675,76 @@ def resumen_fases_plan(plan):
         semanas_por_fase[s["fase"]] = semanas_por_fase.get(s["fase"], 0) + 1
     return [{"fase": f["nombre"], "semanas": semanas_por_fase.get(f["nombre"], 0),
              "resumen": f["resumen"]} for f in fases_def]
+
+
+# ---------------------------------------------------------------------------
+# BEVEL-INSPIRED: TARGET INTENSITY (HRV Baseline Comparison)
+# ---------------------------------------------------------------------------
+
+def calcular_target_intensidad_bevel(hrv_actual, hrv_media_60d):
+    """
+    Calcula la "capacidad" de entrenamiento del día basada en HRV vs media 60 días.
+    Es la "joya de corona" de Bevel: compara HRV actual contra tu baseline personal.
+
+    Si HRV > baseline → puedes dar más caña (intensidad permitida sube)
+    Si HRV < baseline → sé conservador (intensidad recomendada baja)
+
+    Retorna:
+    {
+        "hrv_baseline_60d": float,
+        "hrv_today": float,
+        "hrv_vs_baseline_pct": float,  # % respecto a baseline
+        "intensity_allowance": "Alta" | "Moderada" | "Baja" | "Regenerativa",
+        "recommendation": str,  # Consejo específico
+        "intensity_modifier": float,  # 1.2 = puedes más, 0.8 = sé conservador
+    }
+    """
+    if not hrv_actual or not hrv_media_60d or hrv_media_60d <= 0:
+        return {
+            "hrv_baseline_60d": None,
+            "hrv_today": hrv_actual,
+            "hrv_vs_baseline_pct": None,
+            "intensity_allowance": "Moderada",
+            "recommendation": "Sin datos de baseline — sigue plan normal.",
+            "intensity_modifier": 1.0,
+        }
+
+    hrv_actual = float(hrv_actual)
+    hrv_baseline_60d = float(hrv_media_60d)
+
+    # % respecto a baseline (+ = mejor, - = peor)
+    hrv_pct = ((hrv_actual - hrv_baseline_60d) / hrv_baseline_60d) * 100
+
+    # Determinar allowance e intensity modifier
+    if hrv_pct > 15:
+        intensity_allowance = "Alta"
+        intensity_modifier = 1.2
+        recommendation = f"Excelente recuperación (HRV +{hrv_pct:.0f}% vs baseline). Puedes mantener sesión de calidad completa."
+    elif hrv_pct > 5:
+        intensity_allowance = "Moderada"
+        intensity_modifier = 1.0
+        recommendation = f"Recuperación buena (HRV +{hrv_pct:.0f}% vs baseline). Sesión normal según plan."
+    elif hrv_pct > -5:
+        intensity_allowance = "Moderada"
+        intensity_modifier = 1.0
+        recommendation = f"Recuperación estable (HRV {hrv_pct:.0f}% vs baseline). Mantén el plan."
+    elif hrv_pct > -15:
+        intensity_allowance = "Baja"
+        intensity_modifier = 0.8
+        recommendation = f"Recuperación subóptima (HRV {hrv_pct:.0f}% vs baseline). Reduce volumen -20% o convierte en Z2."
+    else:
+        intensity_allowance = "Regenerativa"
+        intensity_modifier = 0.5
+        recommendation = f"Recuperación muy baja (HRV {hrv_pct:.0f}% vs baseline). Solo regenerativo/descanso recomendado."
+
+    return {
+        "hrv_baseline_60d": round(hrv_baseline_60d, 1),
+        "hrv_today": round(hrv_actual, 1),
+        "hrv_vs_baseline_pct": round(hrv_pct, 1),
+        "intensity_allowance": intensity_allowance,
+        "recommendation": recommendation,
+        "intensity_modifier": intensity_modifier,
+    }
 
 
 # ---------------------------------------------------------------------------

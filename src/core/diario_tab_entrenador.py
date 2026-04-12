@@ -188,14 +188,44 @@ def render_tab_entrenador(usuario_id: int) -> None:
     with c3:
         st.metric("Multiplicador", f"{semaforo.get('multiplicador_volumen', 1.0):.2f}x")
 
+    # Semáforo message (now just a warning, doesn't auto-modify plan)
     st.info(semaforo.get("mensaje", "Sin mensaje de recuperación"))
+    if semaforo.get("nota"):
+        st.caption(semaforo.get("nota"))
 
     # Semáforo causa
     causa = semaforo.get("causa", [])
     if causa:
         st.caption(f"🎯 Causas: {', '.join(causa)}")
 
-    # --- HRV Recovery Status ---
+    # --- TARGET INTENSITY (Bevel-inspired: HRV vs 60-day baseline) ---
+    st.markdown("**🎯 Recomendación de Intensidad - Basada en tu HRV hoy**")
+    target_int = datos.get("target_intensidad", {})
+    if target_int and target_int.get("hrv_baseline_60d"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            allowance = target_int.get("intensity_allowance", "—")
+            allowance_emoji = {
+                "Alta": "🚀",
+                "Moderada": "✅",
+                "Baja": "⚠️",
+                "Regenerativa": "🔵"
+            }.get(allowance, "❓")
+            st.metric("Intensidad Permitida", f"{allowance_emoji} {allowance}")
+        with c2:
+            st.metric("HRV hoy", f"{target_int.get('hrv_today'):.0f} ms")
+        with c3:
+            st.metric("Baseline 60d", f"{target_int.get('hrv_baseline_60d'):.0f} ms")
+
+        hrv_vs_baseline = target_int.get("hrv_vs_baseline_pct", 0)
+        st.metric("HRV vs Baseline", f"{hrv_vs_baseline:+.1f}%")
+
+        # Recomendación específica
+        rec = target_int.get("recommendation", "")
+        if rec:
+            st.success(rec)
+
+    # --- HRV Recovery Status (complementary metabolic info) ---
     st.markdown("**Evaluación HRV - Recuperación vs Strain**")
     hrv_recovery = datos.get("hrv_recovery", {})
     if hrv_recovery:

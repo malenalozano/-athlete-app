@@ -139,6 +139,7 @@ def cargar_datos_plan(usuario_id: int) -> dict:
     conn = get_db_connection()
     fecha_7d = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
     fecha_28d = (datetime.now() - timedelta(days=28)).strftime("%Y-%m-%d")
+    fecha_60d = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
     try:
         df_bio = pd.read_sql_query(
             """SELECT fecha, hrv_ms, fc_reposo, sleep_score, spo2, estres_medio,
@@ -250,12 +251,24 @@ def cargar_datos_plan(usuario_id: int) -> dict:
         conn.close()
 
     # --- HRV ---
-    hrv_actual = hrv_media = None
+    hrv_actual = hrv_media = hrv_media_60d = None
     if not df_bio.empty:
         df_h = df_bio.dropna(subset=["hrv_ms"])
         if not df_h.empty:
             hrv_actual = float(df_h.iloc[0]["hrv_ms"])
             hrv_media = float(df_h["hrv_ms"].mean())
+
+    # --- HRV 60-day baseline (Bevel-style) ---
+    try:
+        df_bio_60d = pd.read_sql_query(
+            """SELECT hrv_ms FROM datos_biometricos_premium
+               WHERE usuario_id=? AND fecha>=? AND hrv_ms IS NOT NULL
+               ORDER BY fecha DESC""",
+            conn, params=(usuario_id, fecha_60d))
+        if not df_bio_60d.empty:
+            hrv_media_60d = float(df_bio_60d["hrv_ms"].mean())
+    except Exception:
+        pass
 
     # --- FC Reposo (buscar en últimos 7d, luego fallback a 28d) ---
     fc_reposo = None
@@ -390,7 +403,7 @@ def cargar_datos_plan(usuario_id: int) -> dict:
             })
 
     # --- HRV Recovery Evaluation ---
-    from src.plan.reglas import evaluar_hrv_recovery
+    from src.plan.reglas import evaluar_hrv_recovery, calcular_target_intensidad_bevel
     hrv_list = df_bio["hrv_ms"].dropna().tolist() if not df_bio.empty else []
     hrv_recovery = evaluar_hrv_recovery(
         hrv_data=hrv_list,
@@ -402,10 +415,15 @@ def cargar_datos_plan(usuario_id: int) -> dict:
         carga_cronica=df_carga["carga_cronica"].iloc[0] if not df_carga.empty else None,
     )
 
+    # --- Target Intensity (Bevel: HRV vs 60-day baseline) ---
+    target_intensidad = calcular_target_intensidad_bevel(hrv_actual, hrv_media_60d)
+
     return {
         "hrv_actual": hrv_actual,
         "hrv_media_7d": hrv_media,
+        "hrv_media_60d": hrv_media_60d,
         "hrv_recovery": hrv_recovery,
+        "target_intensidad": target_intensidad,
         "fc_reposo": fc_reposo,
         "sleep_score": sleep_score,
         "sleep_breakdown": sleep_breakdown,
