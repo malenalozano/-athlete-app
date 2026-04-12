@@ -12,7 +12,12 @@ from src.core.dashboard_data import (
     inicio_semana, cargar_plan_semana_cache,
 )
 from src.core.dashboard_ui import obtener_estado_ciclo_malena, render_macrociclo, render_grafico_sueno, obtener_titulo_macrociclo
+from src.core.dashboard_visuals import (
+    render_strain_recovery_donuts, render_rhr_card, render_heatmap_training_intensity,
+    render_metrics_sparklines,
+)
 from src.plan.reglas import obtener_fase_macrociclo
+from src.db.db_manager import get_db_connection
 
 render_navbar("dashboard")
 
@@ -90,6 +95,44 @@ st.divider()
 
 # ---------------------------------------------------------------------------
 # 4. Columnas: plan semana (con cache) | progresión pesos
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+conn = get_db_connection()
+try:
+    st.subheader("💓 Estado de Recuperación - Bevel Style")
+
+    # RHR Card
+    render_rhr_card(user_actual, conn)
+
+    st.divider()
+
+    # Donuts: Recovery vs Strain
+    st.subheader("🎯 Recovery vs Strain")
+    try:
+        from src.plan.helpers import cargar_datos_plan
+        datos = cargar_datos_plan(user_actual)
+        recovery_score = datos.get("hrv_recovery", {}).get("recovery_score", 50)
+        render_strain_recovery_donuts(recovery_score)
+    except Exception as e:
+        st.caption(f"No se pudo cargar datos de recuperación: {e}")
+
+    st.divider()
+
+    # Sparklines: Métrica de últimos 7 días
+    render_metrics_sparklines(user_actual, conn)
+
+    st.divider()
+
+    # Heatmap: Intensidad de entrenamientos
+    st.subheader("🗓️ Intensidad por semana")
+    render_heatmap_training_intensity(user_actual, conn)
+
+    st.divider()
+finally:
+    conn.close()
+
+# ---------------------------------------------------------------------------
+# 6. Grid biométrico Garmin (1×7)
 # ---------------------------------------------------------------------------
 _EMOJIS = {"Tirada Larga":"🏃","Progresiva":"📈","Tempo (umbral)":"⚡","Intervalos VO2max":"🔥",
            "Carrera Z2":"🚶","Regenerativo":"💧","Fuerza":"💪","Fuerza Activ.":"💪",
