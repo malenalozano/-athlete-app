@@ -14,17 +14,34 @@ import numpy as np
 # 1. DONUT CHARTS (STRAIN vs RECOVERY)
 # ============================================================================
 
-def render_strain_recovery_donuts(recovery_score, strain_score=None):
+def render_strain_recovery_donuts(recovery_score, acwr=None):
     """
-    Renderiza dos anillos (donut charts) para Recovery y Strain.
-    recovery_score: 0-100
-    strain_score: 0-100 (si es None, calcula como 100 - recovery_score)
-    """
-    if strain_score is None:
-        strain_score = 100 - recovery_score
+    Renderiza dos anillos (donut charts) independientes:
 
-    # Asegurar que están en rango 0-100
+    LEFT - Recovery (0-100): Estado fisiológico (HRV + sleep + stress + battery)
+    RIGHT - Strain (0-100): Carga acumulada (ACWR normalizado)
+
+    ACWR (Acute/Chronic Workload):
+    - 0.8-1.3 = normal (strain 0-50%)
+    - > 1.5 = muy alto (strain 100%)
+    - < 0.8 = bajo (strain ~0%)
+    """
+    if acwr is None:
+        acwr = 1.0
+
+    acwr = float(acwr)
     recovery_score = max(0, min(100, recovery_score))
+
+    # Normalizar ACWR a escala 0-100 para strain
+    # ACWR 0.8 = 0%, ACWR 1.3 = 50%, ACWR 1.5 = 100%
+    if acwr < 0.8:
+        strain_score = 0
+    elif acwr > 1.5:
+        strain_score = 100
+    else:
+        # Mapeo lineal: 0.8->0%, 1.5->100%
+        strain_score = ((acwr - 0.8) / (1.5 - 0.8)) * 100
+
     strain_score = max(0, min(100, strain_score))
 
     col1, col2 = st.columns(2)
@@ -32,56 +49,58 @@ def render_strain_recovery_donuts(recovery_score, strain_score=None):
     # RECOVERY DONUT
     with col1:
         fig_recovery = go.Figure(data=[go.Pie(
-            labels=["Recovery", "Remaining"],
+            labels=["Recovered", "Depleted"],
             values=[recovery_score, 100 - recovery_score],
-            hole=0.7,
+            hole=0.75,
             marker=dict(colors=["#00C8C8", "#2a2a2a"]),
             textposition="inside",
             hoverinfo="label+percent",
         )])
         fig_recovery.update_layout(
             title="Recovery Status",
-            height=300,
+            height=280,
             showlegend=False,
             paper_bgcolor="#1A1A1A",
             plot_bgcolor="#1A1A1A",
-            font=dict(color="#FFFFFF", size=12),
-            margin=dict(l=0, r=0, t=30, b=0),
+            font=dict(color="#FFFFFF", size=11),
+            margin=dict(l=0, r=0, t=25, b=0),
         )
         fig_recovery.add_annotation(
             text=f"{int(recovery_score)}%",
             x=0.5, y=0.5,
-            font=dict(size=24, color="#00C8C8"),
+            font=dict(size=20, color="#00C8C8", family="Arial Black"),
             showarrow=False,
         )
         st.plotly_chart(fig_recovery, use_container_width=True, config={"displayModeBar": False})
+        st.caption("HRV + sleep + stress + battery")
 
     # STRAIN DONUT
     with col2:
         fig_strain = go.Figure(data=[go.Pie(
-            labels=["Strain", "Remaining"],
+            labels=["Accumulated", "Available"],
             values=[strain_score, 100 - strain_score],
-            hole=0.7,
+            hole=0.75,
             marker=dict(colors=["#FF6B6B", "#2a2a2a"]),
             textposition="inside",
             hoverinfo="label+percent",
         )])
         fig_strain.update_layout(
-            title="Strain Status",
-            height=300,
+            title="Strain Load",
+            height=280,
             showlegend=False,
             paper_bgcolor="#1A1A1A",
             plot_bgcolor="#1A1A1A",
-            font=dict(color="#FFFFFF", size=12),
-            margin=dict(l=0, r=0, t=30, b=0),
+            font=dict(color="#FFFFFF", size=11),
+            margin=dict(l=0, r=0, t=25, b=0),
         )
         fig_strain.add_annotation(
             text=f"{int(strain_score)}%",
             x=0.5, y=0.5,
-            font=dict(size=24, color="#FF6B6B"),
+            font=dict(size=20, color="#FF6B6B", family="Arial Black"),
             showarrow=False,
         )
         st.plotly_chart(fig_strain, use_container_width=True, config={"displayModeBar": False})
+        st.caption(f"ACWR: {acwr:.2f} (Agudo/Crónico)")
 
 
 # ============================================================================
@@ -129,13 +148,13 @@ def render_heatmap_training_intensity(usuario_id, conn, dias=60):
         ))
         fig.update_layout(
             title="Intensidad de Entrenamiento (últimos 60 días)",
-            height=400,
+            height=250,
             paper_bgcolor="#1A1A1A",
             plot_bgcolor="#1A1A1A",
-            font=dict(color="#FFFFFF"),
+            font=dict(color="#FFFFFF", size=10),
             xaxis_title="Día de la semana",
             yaxis_title="Semana",
-            margin=dict(l=0, r=0, t=30, b=0),
+            margin=dict(l=0, r=0, t=25, b=0),
         )
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     except Exception as e:
@@ -164,20 +183,20 @@ def render_sparkline_metric(label, values, color="#C9FF00", unit=""):
     current = clean_vals[-1] if clean_vals else 0
     value_text = f"{current:.1f}{unit}" if isinstance(current, (int, float)) else str(current)
 
-    # Crear sparkline con Plotly
+    # Crear sparkline con Plotly (más compacto)
     fig = go.Figure(data=[
         go.Scatter(
             y=clean_vals,
             mode="lines",
-            line=dict(color=color, width=2),
+            line=dict(color=color, width=1.5),
             fill="tozeroy",
-            fillcolor=color.replace(")", ", 0.1)") if "rgb" in color else color + "20",
+            fillcolor=color.replace(")", ", 0.08)") if "rgb" in color else color + "15",
             hoverinfo="skip",
             showlegend=False,
         )
     ])
     fig.update_layout(
-        height=60,
+        height=50,
         margin=dict(l=0, r=0, t=0, b=0),
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
@@ -185,12 +204,8 @@ def render_sparkline_metric(label, values, color="#C9FF00", unit=""):
         plot_bgcolor="rgba(0,0,0,0)",
     )
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.markdown(f"**{label}**")
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    with col2:
-        st.metric(label, value_text)
+    st.markdown(f"**{label}**: `{value_text}`")
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 # ============================================================================

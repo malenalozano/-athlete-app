@@ -94,45 +94,42 @@ render_macrociclo(user_actual)
 st.divider()
 
 # ---------------------------------------------------------------------------
-# 4. Columnas: plan semana (con cache) | progresión pesos
-# ---------------------------------------------------------------------------
+# 5. Recovery & Load Analysis (Compact)
 # ---------------------------------------------------------------------------
 conn = get_db_connection()
 try:
-    st.subheader("💓 Estado de Recuperación - Bevel Style")
+    st.subheader("💓 Recovery & Load Analysis")
 
     # RHR Card
     render_rhr_card(user_actual, conn)
 
-    st.divider()
-
-    # Donuts: Recovery vs Strain
-    st.subheader("🎯 Recovery vs Strain")
+    # Donuts: Recovery vs Strain (Independent metrics)
     try:
         from src.plan.helpers import cargar_datos_plan
         datos = cargar_datos_plan(user_actual)
         recovery_score = datos.get("hrv_recovery", {}).get("recovery_score", 50)
-        render_strain_recovery_donuts(recovery_score)
+        acwr = datos.get("acwr", 1.0)
+        render_strain_recovery_donuts(recovery_score, acwr)
     except Exception as e:
         st.caption(f"No se pudo cargar datos de recuperación: {e}")
 
     st.divider()
 
-    # Sparklines: Métrica de últimos 7 días
+    # Sparklines: Métricas de últimos 7 días (Compact)
     render_metrics_sparklines(user_actual, conn)
 
     st.divider()
 
     # Heatmap: Intensidad de entrenamientos
-    st.subheader("🗓️ Intensidad por semana")
     render_heatmap_training_intensity(user_actual, conn)
 
-    st.divider()
 finally:
     conn.close()
 
+st.divider()
+
 # ---------------------------------------------------------------------------
-# 6. Grid biométrico Garmin (1×7)
+# 6. Plan semana + Progresión pesos
 # ---------------------------------------------------------------------------
 _EMOJIS = {"Tirada Larga":"🏃","Progresiva":"📈","Tempo (umbral)":"⚡","Intervalos VO2max":"🔥",
            "Carrera Z2":"🚶","Regenerativo":"💧","Fuerza":"💪","Fuerza Activ.":"💪",
