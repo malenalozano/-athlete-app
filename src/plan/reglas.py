@@ -673,3 +673,116 @@ def resumen_fases_plan(plan):
         semanas_por_fase[s["fase"]] = semanas_por_fase.get(s["fase"], 0) + 1
     return [{"fase": f["nombre"], "semanas": semanas_por_fase.get(f["nombre"], 0),
              "resumen": f["resumen"]} for f in fases_def]
+
+
+# ---------------------------------------------------------------------------
+# HRV RECOVERY EVALUATION
+# ---------------------------------------------------------------------------
+
+def evaluar_hrv_recovery(hrv_data, sleep_score, estres_medio, body_battery_min,
+                         body_battery_max, carga_aguda, carga_cronica):
+    """
+    Evalúa Recovery vs Strain basado en HRV trend, sueño, estrés y carga de entrenamiento.
+
+    Retorna:
+    {
+        "status": "green" | "yellow" | "red",
+        "recovery_score": 0-100,
+        "hrv_trend": "increasing" | "stable" | "decreasing",
+        "hrv_change_pct": float,  # cambio % en últimos 7 días
+        "readiness": "Ready to train" | "Proceed with caution" | "Prioritize recovery",
+        "causas": str,  # razones del status
+    }
+    """
+    recovery_score = 50  # base score
+    causas = []
+
+    # HRV Trend (últimos 7 días): si tenemos lista de HRV
+    hrv_trend = "stable"
+    hrv_change_pct = 0
+
+    if isinstance(hrv_data, list) and len(hrv_data) >= 2:
+        # Asumir que hrv_data está ordenado descendente (más reciente primero)
+        hrv_reciente = float(hrv_data[0]) if hrv_data[0] else 0
+        hrv_pasado = float(hrv_data[-1]) if hrv_data[-1] else hrv_reciente
+
+        if hrv_pasado > 0:
+            hrv_change_pct = ((hrv_reciente - hrv_pasado) / hrv_pasado) * 100
+
+            if hrv_change_pct > 5:
+                hrv_trend = "increasing"
+                recovery_score += 15
+                causas.append("HRV aumentando (↑ recuperación)")
+            elif hrv_change_pct < -5:
+                hrv_trend = "decreasing"
+                recovery_score -= 15
+                causas.append("HRV disminuyendo (↓ fatiga acumulada)")
+            else:
+                causas.append("HRV estable")
+
+    # Sleep Score
+    if sleep_score:
+        sleep_score_val = float(sleep_score)
+        if sleep_score_val >= 75:
+            recovery_score += 10
+            causas.append(f"Sueño excelente ({sleep_score_val:.0f}/100)")
+        elif sleep_score_val >= 60:
+            causas.append(f"Sueño adecuado ({sleep_score_val:.0f}/100)")
+        elif sleep_score_val >= 50:
+            recovery_score -= 10
+            causas.append(f"Sueño deficiente ({sleep_score_val:.0f}/100)")
+        else:
+            recovery_score -= 15
+            causas.append(f"Sueño muy bajo ({sleep_score_val:.0f}/100)")
+
+    # Stress Level
+    if estres_medio is not None:
+        estres_val = float(estres_medio)
+        if estres_val <= 25:
+            recovery_score += 5
+        elif estres_val >= 50:
+            recovery_score -= 10
+            causas.append(f"Estrés elevado ({estres_val:.0f}/100)")
+
+    # Body Battery
+    if body_battery_min is not None and body_battery_max is not None:
+        battery_range = float(body_battery_max) - float(body_battery_min)
+        if battery_range >= 60:
+            recovery_score += 5
+            causas.append(f"Batería completa ({body_battery_max:.0f}%)")
+        elif battery_range < 30:
+            recovery_score -= 10
+            causas.append(f"Batería baja ({body_battery_max:.0f}%)")
+
+    # Training Load (ACWR)
+    if carga_aguda is not None and carga_cronica is not None:
+        acwr = float(carga_aguda) / float(carga_cronica) if float(carga_cronica) > 0 else 1
+        if acwr > 1.5:
+            recovery_score -= 15
+            causas.append(f"Carga muy alto (ACWR {acwr:.2f})")
+        elif acwr > 1.3:
+            recovery_score -= 5
+            causas.append(f"Carga moderado (ACWR {acwr:.2f})")
+
+    # Clamp score
+    recovery_score = max(0, min(100, recovery_score))
+
+    # Determine status and readiness
+    if recovery_score >= 70:
+        status = "green"
+        readiness = "Ready to train"
+    elif recovery_score >= 50:
+        status = "yellow"
+        readiness = "Proceed with caution"
+    else:
+        status = "red"
+        readiness = "Prioritize recovery"
+
+    return {
+        "status": status,
+        "recovery_score": int(recovery_score),
+        "hrv_trend": hrv_trend,
+        "hrv_change_pct": round(hrv_change_pct, 1),
+        "readiness": readiness,
+        "causas": " • ".join(causas) if causas else "Estado neutral",
+    }

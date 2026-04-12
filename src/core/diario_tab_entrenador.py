@@ -195,6 +195,33 @@ def render_tab_entrenador(usuario_id: int) -> None:
     if causa:
         st.caption(f"🎯 Causas: {', '.join(causa)}")
 
+    # --- HRV Recovery Status ---
+    st.markdown("**Evaluación HRV - Recuperación vs Strain**")
+    hrv_recovery = datos.get("hrv_recovery", {})
+    if hrv_recovery:
+        hrv_status = hrv_recovery.get("status", "yellow")
+        hrv_status_emoji = {"green": "🟢", "yellow": "🟡", "red": "🔴"}.get(hrv_status, "⚪")
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("Estado", f"{hrv_status_emoji} {hrv_status.upper()}")
+        with c2:
+            st.metric("Recovery Score", f"{hrv_recovery.get('recovery_score', '—')}/100")
+        with c3:
+            hrv_trend = hrv_recovery.get("hrv_trend", "stable")
+            trend_emoji = {"increasing": "📈", "decreasing": "📉", "stable": "➡️"}.get(hrv_trend, "❓")
+            st.metric("HRV Trend", f"{trend_emoji} {hrv_trend}")
+        with c4:
+            hrv_change_pct = hrv_recovery.get("hrv_change_pct", 0)
+            st.metric("Cambio 7d", f"{hrv_change_pct:+.1f}%")
+
+        readiness = hrv_recovery.get("readiness", "—")
+        st.metric("Readiness", readiness, help="Recomendación basada en HRV y factores de recuperación")
+
+        causas_hrv = hrv_recovery.get("causas", "")
+        if causas_hrv:
+            st.caption(f"📋 {causas_hrv}")
+
     st.markdown("---")
     if not es_hombre:
         # === Sección ciclo menstrual — solo mujeres ===

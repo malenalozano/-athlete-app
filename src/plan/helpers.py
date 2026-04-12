@@ -389,9 +389,23 @@ def cargar_datos_plan(usuario_id: int) -> dict:
                 "training_effect_anaerobico": row.get("training_effect_anaerobico"),
             })
 
+    # --- HRV Recovery Evaluation ---
+    from src.plan.reglas import evaluar_hrv_recovery
+    hrv_list = df_bio["hrv_ms"].dropna().tolist() if not df_bio.empty else []
+    hrv_recovery = evaluar_hrv_recovery(
+        hrv_data=hrv_list,
+        sleep_score=sleep_score,
+        estres_medio=estres_medio,
+        body_battery_min=body_battery_min,
+        body_battery_max=body_battery_max,
+        carga_aguda=df_carga["carga_aguda"].iloc[0] if not df_carga.empty else None,
+        carga_cronica=df_carga["carga_cronica"].iloc[0] if not df_carga.empty else None,
+    )
+
     return {
         "hrv_actual": hrv_actual,
         "hrv_media_7d": hrv_media,
+        "hrv_recovery": hrv_recovery,
         "fc_reposo": fc_reposo,
         "sleep_score": sleep_score,
         "sleep_breakdown": sleep_breakdown,
