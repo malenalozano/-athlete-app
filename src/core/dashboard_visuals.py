@@ -11,6 +11,17 @@ import numpy as np
 
 
 # ============================================================================
+# HELPER: Convertir colores hex a rgba
+# ============================================================================
+
+def _hex_to_rgba(hex_color, alpha=0.15):
+    """Convierte #RRGGBB a rgba(r, g, b, alpha)"""
+    hex_color = hex_color.lstrip('#')
+    r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+# ============================================================================
 # 1. DONUT CHARTS (STRAIN vs RECOVERY)
 # ============================================================================
 
@@ -109,15 +120,16 @@ def render_strain_recovery_donuts(recovery_score, acwr=None):
 
 def render_heatmap_training_intensity(usuario_id, conn, dias=60):
     """
-    Renderiza heatmap mostrando intensidad de entrenamiento por día.
-    Días más oscuros = entrenamientos más intensos.
+    Renderiza calendario-heatmap de intensidad de entrenamiento (60 días).
+    Visualización tipo: semana x día con escala de colores Bevel.
+    Verde oscuro = bajo | Amarillo = moderado | Rojo intenso = alto
     """
     try:
         df = pd.read_sql_query(
             """SELECT fecha, training_effect_aerobico, training_effect_anaerobico
                FROM actividades_garmin
                WHERE usuario_id=? AND fecha >= date('now', '-' || ? || ' days')
-               ORDER BY fecha DESC""",
+               ORDER BY fecha ASC""",
             conn, params=(usuario_id, dias))
 
         if df.empty:
@@ -125,40 +137,75 @@ def render_heatmap_training_intensity(usuario_id, conn, dias=60):
             return
 
         df["fecha"] = pd.to_datetime(df["fecha"])
-        df["week"] = df["fecha"].dt.isocalendar().week
-        df["day"] = df["fecha"].dt.day_name()
         df["intensity"] = (df["training_effect_aerobico"].fillna(0) +
                           df["training_effect_anaerobico"].fillna(0)) / 2
 
-        # Crear matriz semana x día
+        # Crear matriz: semana x día
+        df["year_week"] = df["fecha"].dt.strftime("%Y-W%U")
+        df["day_of_week"] = df["fecha"].dt.day_name()
         df["day_num"] = df["fecha"].dt.dayofweek  # 0=Lunes, 6=Domingo
-        heatmap_pivot = df.pivot_table(
+
+        heatmap_data = df.pivot_table(
             values="intensity",
-            index="week",
+            index="year_week",
             columns="day_num",
-            aggfunc="max"
+            aggfunc="max",
+            fill_value=0
         )
 
+        # Normalizar intensidad a 0-1 para colorscale
+        max_intensity = heatmap_data.max().max() or 1
+        heatmap_normalized = heatmap_data / max_intensity
+
+        # Escala personalizada Bevel: Verde oscuro → Amarillo → Rojo
+        custom_colorscale = [
+            [0.0, "#0D3D2C"],      # Verde muy oscuro (sin entrenar)
+            [0.2, "#1A6B4F"],      # Verde oscuro
+            [0.4, "#4CAF50"],      # Verde
+            [0.6, "#FFE082"],      # Amarillo (moderado)
+            [0.8, "#FF8A65"],      # Naranja
+            [1.0, "#FF4444"],      # Rojo incandescente (muy intenso)
+        ]
+
         fig = go.Figure(data=go.Heatmap(
-            z=heatmap_pivot.values,
+            z=heatmap_normalized.values,
             x=["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
-            y=heatmap_pivot.index,
-            colorscale="RdYlGn",
-            hovertemplate="Semana %{y}, %{x}<br>Intensidad: %{z:.1f}<extra></extra>",
+            y=[f"Sem {i+1}" for i in range(len(heatmap_normalized))],
+            colorscale=custom_colorscale,
+            hovertemplate="<b>%{y} - %{x}</b><br>Intensidad: %{z:.0%}<extra></extra>",
+            colorbar=dict(
+                title="Intensidad",
+                thickness=15,
+                len=0.7,
+            ),
+            showscale=True,
         ))
+
         fig.update_layout(
-            title="Intensidad de Entrenamiento (últimos 60 días)",
-            height=250,
+            title="📅 Mapa de Calor - Intensidad de Entrenamientos (últimos 60 días)",
+            title_font_size=14,
+            height=400,
             paper_bgcolor="#1A1A1A",
             plot_bgcolor="#1A1A1A",
             font=dict(color="#FFFFFF", size=10),
             xaxis_title="Día de la semana",
+            xaxis_title_font_size=11,
             yaxis_title="Semana",
-            margin=dict(l=0, r=0, t=25, b=0),
+            yaxis_title_font_size=11,
+            margin=dict(l=60, r=80, t=50, b=50),
+            xaxis=dict(side="bottom"),
         )
+
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+        # Legend
+        st.caption(
+            "🟩 **Verde**: bajo | 🟨 **Amarillo**: moderado | 🟥 **Rojo**: alto"
+        )
+
     except Exception as e:
-        st.caption(f"Error al renderizar heatmap: {e}")
+        st.error(f"Error al renderizar heatmap: {e}")
+        st.caption("Intenta sincronizar datos desde Garmin en la sección de **Garmin**")
 
 
 # ============================================================================
@@ -184,13 +231,16 @@ def render_sparkline_metric(label, values, color="#C9FF00", unit=""):
     value_text = f"{current:.1f}{unit}" if isinstance(current, (int, float)) else str(current)
 
     # Crear sparkline con Plotly (más compacto)
+    # Usar rgba para fillcolor
+    fillcolor = _hex_to_rgba(color, alpha=0.12)
+
     fig = go.Figure(data=[
         go.Scatter(
             y=clean_vals,
             mode="lines",
             line=dict(color=color, width=1.5),
             fill="tozeroy",
-            fillcolor=color.replace(")", ", 0.08)") if "rgb" in color else color + "15",
+            fillcolor=fillcolor,
             hoverinfo="skip",
             showlegend=False,
         )
