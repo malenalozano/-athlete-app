@@ -14,11 +14,49 @@ import numpy as np
 # HELPER: Convertir colores hex a rgba
 # ============================================================================
 
-def _hex_to_rgba(hex_color, alpha=0.15):
-    """Convierte #RRGGBB a rgba(r, g, b, alpha)"""
-    hex_color = hex_color.lstrip('#')
-    r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-    return f"rgba({r}, {g}, {b}, {alpha})"
+def _hex_to_rgba(color, alpha=0.15):
+    """Convierte color HEX a rgba(r,g,b,a), compatible con Plotly."""
+    if not isinstance(color, str):
+        return f"rgba(201, 255, 0, {alpha})"
+
+    color = color.strip()
+    if color.startswith("rgba("):
+        if alpha is None:
+            return color
+        body = color[5:-1]
+        parts = [p.strip() for p in body.split(",")]
+        if len(parts) >= 3:
+            return f"rgba({parts[0]}, {parts[1]}, {parts[2]}, {alpha})"
+        return f"rgba(201, 255, 0, {alpha})"
+
+    if color.startswith("rgb("):
+        body = color[4:-1]
+        parts = [p.strip() for p in body.split(",")]
+        if len(parts) >= 3:
+            a = alpha if alpha is not None else 1
+            return f"rgba({parts[0]}, {parts[1]}, {parts[2]}, {a})"
+        return f"rgba(201, 255, 0, {alpha})"
+
+    hex_color = color.lstrip('#')
+
+    # #RGB -> #RRGGBB
+    if len(hex_color) == 3:
+        hex_color = "".join(ch * 2 for ch in hex_color)
+
+    # #RRGGBBAA -> ignorar AA en favor de alpha explícito para Plotly
+    if len(hex_color) == 8:
+        hex_color = hex_color[:6]
+
+    if len(hex_color) != 6:
+        return f"rgba(201, 255, 0, {alpha})"
+
+    try:
+        r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return f"rgba(201, 255, 0, {alpha})"
+
+    a = alpha if alpha is not None else 1
+    return f"rgba({r}, {g}, {b}, {a})"
 
 
 # ============================================================================
@@ -232,13 +270,14 @@ def render_sparkline_metric(label, values, color="#C9FF00", unit=""):
 
     # Crear sparkline con Plotly (más compacto)
     # Usar rgba para fillcolor
+    line_color = _hex_to_rgba(color, alpha=1)
     fillcolor = _hex_to_rgba(color, alpha=0.12)
 
     fig = go.Figure(data=[
         go.Scatter(
             y=clean_vals,
             mode="lines",
-            line=dict(color=color, width=1.5),
+            line=dict(color=line_color, width=1.5),
             fill="tozeroy",
             fillcolor=fillcolor,
             hoverinfo="skip",

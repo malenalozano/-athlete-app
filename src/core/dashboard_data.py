@@ -123,6 +123,129 @@ def construir_checkpoints_objetivo(perfil, df_act):
     return pd.DataFrame(filas)
 
 
+def _fmt_tiempo_segundos(segundos):
+    if segundos is None:
+        return "-"
+    total = int(round(float(segundos)))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
+@st.cache_data(ttl=1800)
+def checkpoints_objetivo_dashboard(usuario_id, objetivo_tipo=None):
+    """Tarjetas de rendimiento por distancia con estado automático Hecho/Pendiente."""
+    objetivo_txt = (objetivo_tipo or "").strip().lower()
+    if objetivo_txt in ("ultramaraton", "ultra", "trail_ultra"):
+        return []
+
+    objetivos = [
+        {
+            "titulo": "5K",
+            "meta_seg": 22 * 60 + 30,
+            "meta_txt": "Sub 22:30",
+            "dist_min_km": 4.6,
+            "dist_max_km": 5.4,
+            "detalle": "Demuestra la velocidad máxima necesaria",
+            "accent": "#00db81",
+        },
+        {
+            "titulo": "10K",
+            "meta_seg": 46 * 60 + 30,
+            "meta_txt": "Sub 46:30",
+            "dist_min_km": 9.2,
+            "dist_max_km": 10.8,
+            "detalle": "Confirma umbral y capacidad de sostener el ritmo",
+            "accent": "#1ec8ff",
+        },
+        {
+            "titulo": "Media Maratón",
+            "meta_seg": 1 * 3600 + 42 * 60,
+            "meta_txt": "Sub 1h42",
+            "dist_min_km": 20.0,
+            "dist_max_km": 22.2,
+            "detalle": "El checkpoint definitivo para el ritmo de maratón",
+            "accent": "#a855f7",
+        },
+    ]
+
+    conn = get_db_connection()
+    try:
+        df = pd.read_sql_query(
+            "SELECT distancia_m, tiempo_seg, ritmo_medio, tipo_deporte "
+            "FROM actividades_garmin WHERE usuario_id = ?",
+            conn,
+            params=(usuario_id,),
+        )
+    finally:
+        conn.close()
+
+    if df.empty:
+        return [
+            {
+                **cp,
+                "estado": "Pendiente",
+                "hecho": False,
+                "mejor_seg": None,
+                "mejor_txt": "-",
+                "estado_txt": "Pendiente",
+                "estado_hint": "Sin registros",
+            }
+            for cp in objetivos
+        ]
+
+    deporte = df.get("tipo_deporte", pd.Series([""] * len(df))).fillna("").astype(str).str.lower()
+    filtro_run = (
+        deporte.str.contains("run")
+        | deporte.str.contains("carrer")
+        | deporte.str.contains("trail")
+        | deporte.str.contains("tread")
+    )
+    if filtro_run.any():
+        df = df[filtro_run].copy()
+    else:
+        df = df.copy()
+
+    df["distancia_m"] = pd.to_numeric(df.get("distancia_m"), errors="coerce")
+    df["tiempo_seg"] = pd.to_numeric(df.get("tiempo_seg"), errors="coerce")
+    df["ritmo_medio"] = pd.to_numeric(df.get("ritmo_medio"), errors="coerce")
+    df["km"] = df["distancia_m"] / 1000.0
+
+    sin_tiempo = df["tiempo_seg"].isna() | (df["tiempo_seg"] <= 0)
+    tiene_ritmo = df["ritmo_medio"].notna() & (df["ritmo_medio"] > 0)
+    tiene_km = df["km"].notna() & (df["km"] > 0)
+    df.loc[sin_tiempo & tiene_ritmo & tiene_km, "tiempo_seg"] = (
+        df.loc[sin_tiempo & tiene_ritmo & tiene_km, "ritmo_medio"]
+        * 60.0
+        * df.loc[sin_tiempo & tiene_ritmo & tiene_km, "km"]
+    )
+
+    tarjetas = []
+    for cp in objetivos:
+        bloque = df[
+            (df["km"] >= cp["dist_min_km"])
+            & (df["km"] <= cp["dist_max_km"])
+            & (df["tiempo_seg"].notna())
+            & (df["tiempo_seg"] > 0)
+        ]
+        mejor_seg = float(bloque["tiempo_seg"].min()) if not bloque.empty else None
+        hecho = mejor_seg is not None and mejor_seg <= float(cp["meta_seg"])
+        tarjetas.append(
+            {
+                **cp,
+                "estado": "Hecho" if hecho else "Pendiente",
+                "hecho": hecho,
+                "mejor_seg": mejor_seg,
+                "mejor_txt": _fmt_tiempo_segundos(mejor_seg) if mejor_seg is not None else "-",
+                "estado_txt": "Hecho" if hecho else "Pendiente",
+                "estado_hint": "Objetivo logrado" if hecho else ("Por mejorar" if mejor_seg is not None else "Sin registros"),
+            }
+        )
+    return tarjetas
+
+
 def progreso_running(df_act):
     if df_act.empty:
         return pd.DataFrame()

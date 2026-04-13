@@ -75,13 +75,172 @@ def _delta_fmt(v):
     if v is None or v == 0: return None
     return f"+{v}" if v > 0 else str(v)
 
-c1, c2, c3, c4 = st.columns(4, gap="large")
-c1.metric("Km (7 días)",  f"{res['km']:.1f} km", _delta_fmt(res["km_delta"]))
-c2.metric("Fuerza (7 días)", res["fuerza"],       _delta_fmt(res["fuerza_delta"]))
-c3.metric("Sueño medio",  f"{res['sueno']:.1f} h" if res["sueno"] else "Sin datos",
-          _delta_fmt(res["sueno_delta"]), help="Requiere sincronización con Garmin")
-c4.metric("HRV medio",    f"{res['hrv']:.0f} ms"  if res["hrv"]   else "Sin datos",
-          _delta_fmt(res["hrv_delta"]), help="Requiere sincronización con Garmin")
+def _delta_badge(v, positivos_arriba=True, decimales=1):
+    if v is None:
+        return "-"
+    try:
+        num = float(v)
+    except (TypeError, ValueError):
+        return "-"
+    if num == 0:
+        return "- 0"
+    sube = num > 0
+    mejora = sube if positivos_arriba else not sube
+    flecha = "↗" if mejora else "↘"
+    signo = "+" if num > 0 else ""
+    return f"{flecha} {signo}{num:.{decimales}f}"
+
+st.markdown(
+    """
+    <style>
+    .kpi-title {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        font-size:2rem;
+        font-weight:700;
+        color:#ffffff;
+        margin:4px 0 10px;
+    }
+    .kpi-grid {
+        display:grid;
+        grid-template-columns:repeat(4, minmax(180px, 1fr));
+        gap:14px;
+        margin-bottom:4px;
+    }
+    .kpi-card {
+        background:linear-gradient(165deg, #141b27 0%, #101722 100%);
+        border:1px solid rgba(255,255,255,0.04);
+        border-left:4px solid var(--kpi-accent);
+        border-radius:16px;
+        padding:14px 16px 12px;
+        min-height:108px;
+        box-shadow:0 12px 28px rgba(0,0,0,0.22);
+    }
+    .kpi-top {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+        margin-bottom:10px;
+    }
+    .kpi-label {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        color:#b4c0cf;
+        font-size:0.82rem;
+        font-weight:700;
+        text-transform:uppercase;
+        letter-spacing:0.55px;
+    }
+    .kpi-chip {
+        background:#273241;
+        color:#9da9b8;
+        border-radius:7px;
+        font-size:0.74rem;
+        font-weight:600;
+        padding:4px 8px;
+        line-height:1;
+    }
+    .kpi-value {
+        color:#ffffff;
+        font-size:2.15rem;
+        font-weight:800;
+        line-height:1;
+        margin:2px 0 10px;
+    }
+    .kpi-delta {
+        display:inline-block;
+        border-radius:7px;
+        padding:4px 8px;
+        font-size:0.8rem;
+        font-weight:700;
+        line-height:1;
+    }
+    .kpi-delta.pos {
+        color:#19db8a;
+        background:rgba(25, 219, 138, 0.15);
+    }
+    .kpi-delta.neg {
+        color:#ff8a5b;
+        background:rgba(255, 138, 91, 0.12);
+    }
+    .kpi-delta.neu {
+        color:#a9b3c0;
+        background:rgba(169, 179, 192, 0.14);
+    }
+    @media (max-width: 1024px) {
+        .kpi-grid { grid-template-columns:repeat(2, minmax(180px, 1fr)); }
+    }
+    @media (max-width: 640px) {
+        .kpi-grid { grid-template-columns:1fr; }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+km_val = f"{(res.get('km') or 0):.1f}"
+fuerza_val = str(int(res.get("fuerza") or 0))
+sueno_raw = res.get("sueno")
+sueno_val = f"{float(sueno_raw):.1f}" if sueno_raw else "-"
+hrv_raw = res.get("hrv")
+hrv_val = f"{float(hrv_raw):.0f}" if hrv_raw else "-"
+
+km_delta_num = float(res.get("km_delta") or 0)
+fuerza_delta_num = float(res.get("fuerza_delta") or 0)
+sueno_delta_num = float(res.get("sueno_delta") or 0)
+hrv_delta_num = float(res.get("hrv_delta") or 0)
+
+km_delta_cls = "pos" if km_delta_num > 0 else ("neg" if km_delta_num < 0 else "neu")
+fuerza_delta_cls = "pos" if fuerza_delta_num > 0 else ("neg" if fuerza_delta_num < 0 else "neu")
+sueno_delta_cls = "pos" if sueno_delta_num > 0 else ("neg" if sueno_delta_num < 0 else "neu")
+hrv_delta_cls = "pos" if hrv_delta_num > 0 else ("neg" if hrv_delta_num < 0 else "neu")
+
+st.markdown(
+    f"""
+    <div class='kpi-title'>
+        <span style='color:#b7ff33;'>⏱</span>
+        <span>Resumen Últimos 7 Días</span>
+    </div>
+    <div class='kpi-grid'>
+        <div class='kpi-card' style='--kpi-accent:#00db81;'>
+            <div class='kpi-top'>
+                <div class='kpi-label'><span style='color:#00db81;'>⌁</span> KM</div>
+                <span class='kpi-chip'>Últimos 7 días</span>
+            </div>
+            <div class='kpi-value'>{km_val}</div>
+            <span class='kpi-delta {km_delta_cls}'>{_delta_badge(res.get('km_delta'), positivos_arriba=True, decimales=1)}</span>
+        </div>
+        <div class='kpi-card' style='--kpi-accent:#3b82f6;'>
+            <div class='kpi-top'>
+                <div class='kpi-label'><span style='color:#3b82f6;'>∿</span> HRV MEDIO</div>
+                <span class='kpi-chip'>ms</span>
+            </div>
+            <div class='kpi-value'>{hrv_val}</div>
+            <span class='kpi-delta {hrv_delta_cls}'>{_delta_badge(res.get('hrv_delta'), positivos_arriba=True, decimales=1)}</span>
+        </div>
+        <div class='kpi-card' style='--kpi-accent:#a855f7;'>
+            <div class='kpi-top'>
+                <div class='kpi-label'><span style='color:#a855f7;'>✤</span> FUERZA</div>
+                <span class='kpi-chip'>Sesiones</span>
+            </div>
+            <div class='kpi-value'>{fuerza_val}</div>
+            <span class='kpi-delta {fuerza_delta_cls}'>{_delta_badge(res.get('fuerza_delta'), positivos_arriba=True, decimales=0)}</span>
+        </div>
+        <div class='kpi-card' style='--kpi-accent:#ff7a1a;'>
+            <div class='kpi-top'>
+                <div class='kpi-label'><span style='color:#ff7a1a;'>◔</span> SUEÑO MEDIO</div>
+                <span class='kpi-chip'>h/noche</span>
+            </div>
+            <div class='kpi-value'>{sueno_val}</div>
+            <span class='kpi-delta {sueno_delta_cls}'>{_delta_badge(res.get('sueno_delta'), positivos_arriba=True, decimales=1)}</span>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ---------------------------------------------------------------------------
 # 3. Macrociclo — 5 fases + barra global hacia el objetivo

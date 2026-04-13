@@ -4,6 +4,7 @@ Layout: dos columnas. Izq: textarea + resultado + lesiones. Der: historial + cal
 """
 
 import calendar
+import unicodedata
 import pandas as pd
 import streamlit as st
 from datetime import datetime, date, timedelta
@@ -20,6 +21,113 @@ from src.core.ai_coach import procesar_nota_fuerza
 
 # Tipos de running para el calendario
 _RUNNING_KW = {"running", "trail", "treadmill", "indoor_running", "street_running", "caminata"}
+_DEFAULT_SPORT_EMOJI = "🏅"
+
+
+def _normalizar_txt(txt: str) -> str:
+    t = str(txt or "").strip().lower()
+    if not t:
+        return ""
+    t = "".join(c for c in unicodedata.normalize("NFD", t) if unicodedata.category(c) != "Mn")
+    t = " ".join(t.split())
+    return t
+
+
+def _emoji_deporte(tipo_deporte: str) -> str:
+    t = _normalizar_txt(tipo_deporte)
+    if not t:
+        return _DEFAULT_SPORT_EMOJI
+
+    exactos = {
+        "carrera": "🏃",
+        "carrera en pista": "🏃",
+        "carrera en cinta": "🏃",
+        "trail running": "🏔️",
+        "ultra run": "🏃",
+        "caminar e interior": "🚶",
+        "senderismo": "🥾",
+        "ciclismo": "🚴",
+        "ciclismo de montana": "🚵",
+        "ciclismo en interior": "🚴",
+        "natacion en piscina": "🏊",
+        "natacion en aguas abiertas": "🏊",
+        "paddle surf": "🏄",
+        "remo e interior": "🚣",
+        "kayak": "🛶",
+        "fuerza": "🏋️",
+        "cardio": "❤️",
+        "hiit": "⚡",
+        "yoga": "🧘",
+        "pilates": "🤸",
+        "eliptica": "🔄",
+        "step": "🪜",
+        "subida de pisos": "🏢",
+        "esqui": "🎿",
+        "tenis": "🎾",
+        "padel": "🎾",
+    }
+    if t in exactos:
+        return exactos[t]
+
+    patrones = [
+        ("trail", "🏔️"),
+        ("ultra", "🏃"),
+        ("run", "🏃"),
+        ("running", "🏃"),
+        ("treadmill", "🏃"),
+        ("walk", "🚶"),
+        ("caminar", "🚶"),
+        ("sender", "🥾"),
+        ("hike", "🥾"),
+        ("ciclismo", "🚴"),
+        ("cycling", "🚴"),
+        ("bike", "🚴"),
+        ("mountain", "🚵"),
+        ("mtb", "🚵"),
+        ("natacion", "🏊"),
+        ("swim", "🏊"),
+        ("paddle", "🏄"),
+        ("surf", "🏄"),
+        ("row", "🚣"),
+        ("remo", "🚣"),
+        ("kayak", "🛶"),
+        ("strength", "🏋️"),
+        ("fuerza", "🏋️"),
+        ("cardio", "❤️"),
+        ("hiit", "⚡"),
+        ("yoga", "🧘"),
+        ("pilates", "🤸"),
+        ("elipt", "🔄"),
+        ("ellipt", "🔄"),
+        ("step", "🪜"),
+        ("stair", "🏢"),
+        ("esqui", "🎿"),
+        ("ski", "🎿"),
+        ("tenis", "🎾"),
+        ("tennis", "🎾"),
+        ("padel", "🎾"),
+    ]
+    for patron, emoji in patrones:
+        if patron in t:
+            return emoji
+
+    return _DEFAULT_SPORT_EMOJI
+
+
+def _dia_del_mes(fecha_val, anio: int, mes: int):
+    """Devuelve el dia del mes si la fecha pertenece a anio/mes; si no, None."""
+    txt = str(fecha_val or "").strip()
+    if not txt:
+        return None
+    try:
+        dt = pd.to_datetime(txt, errors="coerce")
+        if pd.isna(dt):
+            return None
+        if int(dt.year) == int(anio) and int(dt.month) == int(mes):
+            return int(dt.day)
+    except Exception:
+        return None
+    return None
 
 
 def _card_open() -> None:
@@ -53,6 +161,38 @@ def _safe_float(value):
         return None
 
 
+def _borrar_sesion_guardada(usuario_id: int, sesion_id) -> tuple[bool, str]:
+    """Borra una sesion del diario validando que pertenezca al usuario activo."""
+    try:
+        sid = int(sesion_id)
+    except Exception:
+        return False, "ID de sesion invalido"
+
+    uid_txt = str(usuario_id).strip()
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            "DELETE FROM ejercicios_fuerza "
+            "WHERE sesion_id IN ("
+            "SELECT id FROM sesiones_fuerza WHERE id=? AND CAST(usuario_id AS TEXT)=?"
+            ")",
+            (sid, uid_txt),
+        )
+        cur = conn.execute(
+            "DELETE FROM sesiones_fuerza WHERE id=? AND CAST(usuario_id AS TEXT)=?",
+            (sid, uid_txt),
+        )
+        conn.commit()
+
+        if getattr(cur, "rowcount", 1) == 0:
+            return False, "No hubo cambios al intentar borrar"
+        return True, "Sesion borrada"
+    except Exception as e:
+        return False, f"Error al borrar: {e}"
+    finally:
+        conn.close()
+
+
 def _formatear_ritmo_min_km(ritmo_medio):
     valor = _safe_float(ritmo_medio)
     if valor is None or valor <= 0:
@@ -77,46 +217,71 @@ def _formatear_bpm(fc_media):
 # ---------------------------------------------------------------------------
 
 def _cargar_dias_mes(usuario_id: int, anio: int, mes: int) -> dict:
-    """Devuelve {dia: tipo} donde tipo ∈ 'run','gym','both','rest'."""
-    mes_str = f"{anio:04d}-{mes:02d}"
+    """Devuelve {dia: {'tipo': 'run'|'gym'|'both'|'sport', 'emoji': str}}."""
+    uid_txt = str(usuario_id).strip()
     conn = get_db_connection()
     try:
-        # Sesiones de fuerza del mes
+        # Cargar por usuario y filtrar mes en Python para tolerar formatos distintos de fecha.
         rows_f = conn.execute(
             "SELECT fecha, tipo_registro FROM sesiones_fuerza "
-            "WHERE usuario_id=? AND fecha LIKE ?",
-            (usuario_id, f"{mes_str}%")).fetchall()
-        # Actividades Garmin del mes
+            "WHERE CAST(usuario_id AS TEXT)=?",
+            (uid_txt,)).fetchall()
         rows_g = conn.execute(
             "SELECT fecha, tipo_deporte FROM actividades_garmin "
-            "WHERE usuario_id=? AND fecha LIKE ?",
-            (usuario_id, f"{mes_str}%")).fetchall()
+            "WHERE CAST(usuario_id AS TEXT)=?",
+            (uid_txt,)).fetchall()
     except Exception:
         rows_f = rows_g = []
     finally:
         conn.close()
 
-    dias: dict[int, str] = {}
+    dias: dict[int, dict] = {}
 
     for fecha_s, tipo_r in rows_f:
-        try:
-            d = int(fecha_s[8:10])
-        except Exception:
+        d = _dia_del_mes(fecha_s, anio, mes)
+        if d is None:
             continue
         tipo_r = (tipo_r or "").lower()
         if tipo_r in ("fuerza", "mixto", "general"):
-            dias[d] = "both" if dias.get(d) == "run" else "gym"
+            actual = dias.get(d)
+            if actual and actual.get("tipo") in ("run", "sport"):
+                sport_emoji = actual.get("emoji") or _DEFAULT_SPORT_EMOJI
+                dias[d] = {"tipo": "both", "emoji": f"🏋️{sport_emoji}"}
+            else:
+                dias[d] = {"tipo": "gym", "emoji": "🏋️"}
 
     for fecha_s, tipo_d in rows_g:
-        try:
-            d = int(fecha_s[8:10])
-        except Exception:
+        d = _dia_del_mes(fecha_s, anio, mes)
+        if d is None:
             continue
         tipo_d = (tipo_d or "").lower()
         es_run = any(k in tipo_d for k in _RUNNING_KW)
-        if es_run:
-            actual = dias.get(d)
-            dias[d] = "both" if actual == "gym" else "run"
+        es_gym = any(k in tipo_d for k in ("strength", "fuerza"))
+        emoji_dep = _emoji_deporte(tipo_d)
+        actual = dias.get(d)
+
+        if not actual:
+            dias[d] = {"tipo": "gym" if es_gym else ("run" if es_run else "sport"), "emoji": emoji_dep}
+            continue
+
+        tipo_actual = actual.get("tipo", "")
+        if tipo_actual == "gym":
+            if es_gym:
+                if actual.get("emoji") in ("", _DEFAULT_SPORT_EMOJI):
+                    actual["emoji"] = emoji_dep
+            else:
+                dias[d] = {"tipo": "both", "emoji": f"🏋️{emoji_dep}"}
+            continue
+
+        if es_gym:
+            dias[d] = {"tipo": "both", "emoji": f"🏋️{actual.get('emoji') or _DEFAULT_SPORT_EMOJI}"}
+            continue
+
+        if tipo_actual == "sport" and es_run:
+            actual["tipo"] = "run"
+
+        if actual.get("emoji") in ("", _DEFAULT_SPORT_EMOJI) and emoji_dep:
+            actual["emoji"] = emoji_dep
 
     return dias
 
@@ -126,6 +291,7 @@ def html_calendario_entreno(dias_mes: dict, anio: int, mes: int) -> str:
         "run":  {"bg": "#1a3a1a", "border": "#a3e635", "dot": "#a3e635", "emoji": "🏃"},
         "gym":  {"bg": "#1e1b3a", "border": "#818cf8", "dot": "#a78bfa", "emoji": "🏋️"},
         "both": {"bg": "#1a2a1a", "border": "#a3e635", "dot": "#a3e635", "emoji": "💪🏃"},
+        "sport": {"bg": "#162338", "border": "#60a5fa", "dot": "#93c5fd", "emoji": _DEFAULT_SPORT_EMOJI},
     }
     hoy = date.today()
     primer_dia, total_dias = calendar.monthrange(anio, mes)
@@ -143,11 +309,12 @@ def html_calendario_entreno(dias_mes: dict, anio: int, mes: int) -> str:
         celdas.append("<div></div>")
 
     for dia in range(1, total_dias + 1):
-        tipo = dias_mes.get(dia, "")
+        info = dias_mes.get(dia, {})
+        tipo = info.get("tipo", "") if isinstance(info, dict) else str(info)
         cfg = colores.get(tipo, {})
         bg     = cfg.get("bg", "#161b22")
         border = cfg.get("border", "#21262d")
-        emoji  = cfg.get("emoji", "")
+        emoji  = info.get("emoji", cfg.get("emoji", "")) if isinstance(info, dict) else cfg.get("emoji", "")
         es_hoy = (anio == hoy.year and mes == hoy.month and dia == hoy.day)
         border_hoy = f"border:2px solid #a3e635; box-shadow:0 0 0 2px #a3e63522;" if es_hoy else f"border:2px solid {border};"
         color_txt = cfg.get("dot", "#484f58") if tipo else "#484f58"
@@ -174,6 +341,7 @@ def html_calendario_entreno(dias_mes: dict, anio: int, mes: int) -> str:
     <span style='font-size:10px;color:#a3e635;'>🏃 Carrera</span>
     <span style='font-size:10px;color:#818cf8;'>🏋️ Fuerza</span>
     <span style='font-size:10px;color:#22d3ee;'>💪 Ambos</span>
+        <span style='font-size:10px;color:#93c5fd;'>🏅 Otros deportes</span>
   </div>
 </div>"""
 
@@ -241,7 +409,6 @@ def _render_lesiones_inline(usuario_id: int):
                         st.error(f"Error resolviendo lesión: {e}")
                     finally:
                         c2.close()
-                    st.sleep(1)
                     st.rerun()
 
     with st.expander("+ Registrar lesión"):
@@ -269,7 +436,6 @@ def _render_lesiones_inline(usuario_id: int):
                 except Exception as e:
                     st.error(f"Error registrando lesión: {e}")
                     return
-                st.sleep(1)
                 st.rerun()
 
 
@@ -319,12 +485,8 @@ div[data-testid="stTextArea"] textarea:focus {
             key=f"nota_fuerza_{usuario_id}",
             placeholder=(
                 "Lunes\n"
-                "Hip Thrust 3x8 30kg  no he terminado la serie\n"
-                "Búlgaras 14kg  3x8  me he sentido débil\n\n"
-                "Martes\n"
-                "Dominadas 3x6  no termino\n"
-                "Remo abierto 3x8 27kg\n"
-                "Bíceps Martillo  3x8 22kg"
+                "Hip Thrust 3x8 30kg - no he terminado la serie\n"
+                "Búlgaras 14kg  3x8 - me he sentido débil\n"
             ),
             label_visibility="hidden",
         )
@@ -523,8 +685,8 @@ div[data-testid="stTextArea"] textarea:focus {
 
         # ── Sección 2: Stats del mes ────────────────────────────────────
         _card_open()
-        n_gym = sum(1 for t in dias_mes.values() if t in ("gym", "both"))
-        n_run = sum(1 for t in dias_mes.values() if t in ("run", "both"))
+        n_gym = sum(1 for t in dias_mes.values() if isinstance(t, dict) and t.get("tipo") in ("gym", "both"))
+        n_run = sum(1 for t in dias_mes.values() if isinstance(t, dict) and t.get("tipo") in ("run", "both"))
         n_tot = len(dias_mes)
         st.markdown(label_upper("Stats del mes"), unsafe_allow_html=True)
         c1, c2, c3 = st.columns(3)
@@ -542,6 +704,7 @@ div[data-testid="stTextArea"] textarea:focus {
             f"<span style='display:flex;align-items:center;gap:6px;'><span style='width:8px;height:8px;border-radius:50%;background:#a3e635;display:inline-block;'></span>🏃 Carrera</span>"
             f"<span style='display:flex;align-items:center;gap:6px;'><span style='width:8px;height:8px;border-radius:50%;background:#a78bfa;display:inline-block;'></span>🏋️ Fuerza</span>"
             f"<span style='display:flex;align-items:center;gap:6px;'><span style='width:8px;height:8px;border-radius:50%;background:#60a5fa;display:inline-block;'></span>💪🏃 Ambos</span>"
+            f"<span style='display:flex;align-items:center;gap:6px;'><span style='width:8px;height:8px;border-radius:50%;background:#93c5fd;display:inline-block;'></span>🏅 Otros deportes</span>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -550,6 +713,9 @@ div[data-testid="stTextArea"] textarea:focus {
         # ── Sección 4: Sesiones guardadas ──────────────────────────────
         _card_open()
         st.markdown(label_upper("Sesiones guardadas"), unsafe_allow_html=True)
+        key_del_ok = f"del_ok_{usuario_id}"
+        if key_del_ok in st.session_state:
+            st.success(st.session_state.pop(key_del_ok))
         conn = get_db_connection()
         try:
             df_hist = pd.read_sql_query(
@@ -710,15 +876,12 @@ div[data-testid="stTextArea"] textarea:focus {
                         col_si, col_no = st.columns(2)
                         with col_si:
                             if st.button("Sí, borrar", key=f"confirm_si_{sesion_id_val}", type="primary"):
-                                c_del = get_db_connection()
-                                try:
-                                    c_del.execute("DELETE FROM ejercicios_fuerza WHERE sesion_id=?", (sesion_id_val,))
-                                    c_del.execute("DELETE FROM sesiones_fuerza WHERE id=? AND usuario_id=?",
-                                                  (sesion_id_val, usuario_id))
-                                    c_del.commit()
-                                finally:
-                                    c_del.close()
+                                ok_del, msg_del = _borrar_sesion_guardada(usuario_id, sesion_id_val)
                                 st.session_state[key_confirm] = False
+                                if not ok_del:
+                                    st.error(msg_del)
+                                else:
+                                    st.session_state[f"del_ok_{usuario_id}"] = "Sesión borrada"
                                 st.rerun()
                         with col_no:
                             if st.button("Cancelar", key=f"confirm_no_{sesion_id_val}"):
