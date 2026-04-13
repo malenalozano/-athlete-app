@@ -79,255 +79,150 @@ _dias_left = (_fecha_obj - _date.today()).days
 _semanas_left = _dias_left // 7
 _obj_nombre = perfil.get("objetivo_nombre") or "Valencia Marathon"
 
+# ---------------------------------------------------------------------------
+# Compute KPI data
+# ---------------------------------------------------------------------------
+res = resumen_semana_con_delta(user_actual)
+km_val = f"{(res.get('km') or 0):.1f}"
+fuerza_val = str(int(res.get("fuerza") or 0))
+sueno_raw = res.get("sueno")
+sueno_val = f"{float(sueno_raw):.1f}" if sueno_raw else "—"
+hrv_raw = res.get("hrv")
+hrv_val = f"{float(hrv_raw):.0f}" if hrv_raw else "—"
+
+km_delta_num     = float(res.get("km_delta") or 0)
+fuerza_delta_num = float(res.get("fuerza_delta") or 0)
+sueno_delta_num  = float(res.get("sueno_delta") or 0)
+hrv_delta_num    = float(res.get("hrv_delta") or 0)
+
+def _delta_html(num, decimales=1):
+    if num == 0:
+        return '<span style="font-size:0.75rem;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(125,133,144,0.12);color:#8B949E;">— 0</span>'
+    signo = "+" if num > 0 else ""
+    color = "#22c55e" if num > 0 else "#f85149"
+    bg = "rgba(34,197,94,0.1)" if num > 0 else "rgba(248,81,73,0.1)"
+    flecha = "↗" if num > 0 else "↘"
+    return f'<span style="font-size:0.75rem;font-weight:700;padding:3px 8px;border-radius:6px;background:{bg};color:{color};">{flecha} {signo}{num:.{decimales}f}</span>'
+
+# Ciclo badge for female users
+_ciclo_badge_html = ""
+if estado_ciclo:
+    _fase_c = estado_ciclo.get("fase", "")
+    _dia_c  = estado_ciclo.get("dia_ciclo", "")
+    _ciclo_badge_html = f'<span style="background:rgba(236,72,153,0.2);color:#f9a8d4;border:1px solid rgba(236,72,153,0.3);border-radius:9999px;padding:4px 12px;font-size:0.75rem;font-weight:600;">🌸 {_fase_c}{(" — Día " + str(_dia_c)) if _dia_c else ""}</span>'
+
+# ---------------------------------------------------------------------------
+# 1. Hero Greeting Section
+# ---------------------------------------------------------------------------
 st.markdown(f"""
-<style>
-.ath-inicio-header {{
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 1rem;
-    margin-bottom: 1.1rem;
-}}
-.ath-inicio-greeting h2 {{
-    font-size: 1.75rem;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    color: #e6edf3;
-    margin: 0 0 0.2rem;
-}}
-.ath-inicio-greeting .sub {{
-    font-size: 0.85rem;
-    color: #7d8590;
-    margin: 0;
-}}
-.ath-inicio-greeting .sub b {{ color: #a3e635; font-weight: 600; }}
-.ath-countdown-pill {{
-    display: flex;
-    align-items: center;
-    gap: 1.25rem;
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 12px;
-    padding: 0.65rem 1.25rem;
-    flex-shrink: 0;
-}}
-.ath-cd-item {{ text-align: center; }}
-.ath-cd-val {{
-    font-size: 1.4rem;
-    font-weight: 800;
-    color: #a3e635;
-    line-height: 1;
-}}
-.ath-cd-lbl {{
-    font-size: 0.68rem;
-    color: #7d8590;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}}
-.ath-cd-sep {{ width: 1px; height: 30px; background: #30363d; }}
-.ath-cd-target {{ font-size: 0.8rem; color: #7d8590; }}
-.ath-cd-target span {{ color: #e6edf3; font-weight: 600; }}
-</style>
-<div class="ath-inicio-header">
-    <div class="ath-inicio-greeting">
-        <h2>{saludo}, {nombre}{ciclo_emoji} ✦</h2>
-        <p class="sub">{fecha_es} &nbsp;·&nbsp; Fase: <b>{fase_hoy['fase_nombre']}</b>{(' &nbsp;·&nbsp; Ciclo: <b>' + fase_ciclo_txt + '</b>') if fase_ciclo_txt else ''}</p>
+<div style="
+  position:relative;
+  border-radius:16px;
+  padding:2rem;
+  overflow:hidden;
+  background:linear-gradient(135deg,rgba(201,255,0,0.08) 0%,rgba(0,212,255,0.06) 40%,rgba(168,85,247,0.08) 100%);
+  border:1px solid rgba(201,255,0,0.2);
+  box-shadow:0 0 60px rgba(201,255,0,0.05),0 0 100px rgba(0,212,255,0.04);
+  margin-bottom:1.5rem;
+">
+  <div style="position:absolute;top:-80px;right:-80px;width:320px;height:320px;border-radius:50%;opacity:0.1;filter:blur(60px);background:radial-gradient(circle,#C9FF00,transparent);pointer-events:none;"></div>
+  <div style="position:absolute;bottom:-80px;left:-80px;width:240px;height:240px;border-radius:50%;opacity:0.08;filter:blur(60px);background:radial-gradient(circle,#00D4FF,transparent);pointer-events:none;"></div>
+  <div style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:1.5rem;flex-wrap:wrap;">
+    <div>
+      <h1 style="font-size:2.25rem;font-weight:800;color:white;margin:0 0 0.5rem;line-height:1.2;">
+        {saludo}, <span style="background:linear-gradient(90deg,#C9FF00,#00D4FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">{nombre}</span> 👋
+      </h1>
+      <p style="color:#8B949E;font-size:0.875rem;margin:0 0 1rem;">{fecha_es}</p>
+      <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">
+        {_ciclo_badge_html}
+        <span style="background:rgba(59,130,246,0.2);color:#93c5fd;border:1px solid rgba(59,130,246,0.3);border-radius:9999px;padding:4px 12px;font-size:0.75rem;font-weight:600;">🗓 Fase: {fase_hoy['fase_nombre']}</span>
+      </div>
     </div>
-    <div class="ath-countdown-pill">
-        <div class="ath-cd-item">
-            <div class="ath-cd-val">{_dias_left}</div>
-            <div class="ath-cd-lbl">Días</div>
-        </div>
-        <div class="ath-cd-sep"></div>
-        <div class="ath-cd-item">
-            <div class="ath-cd-val">{_semanas_left}</div>
-            <div class="ath-cd-lbl">Semanas</div>
-        </div>
-        <div class="ath-cd-sep"></div>
-        <div class="ath-cd-item">
-            <div class="ath-cd-target">🎯 <span>{_obj_nombre}</span></div>
-            <div class="ath-cd-target" style="margin-top:2px">{_fecha_obj.strftime('%d %b %Y')}</div>
-        </div>
+    <div style="border-radius:16px;padding:1.25rem 2rem;text-align:center;flex-shrink:0;background:linear-gradient(135deg,rgba(0,212,255,0.12),rgba(59,130,246,0.1));border:1px solid rgba(0,212,255,0.3);box-shadow:0 0 24px rgba(0,212,255,0.15);">
+      <p style="font-size:0.65rem;color:#8B949E;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 0.25rem;">Objetivo principal</p>
+      <p style="font-size:1rem;font-weight:800;color:white;margin:0 0 0.25rem;">{_obj_nombre}</p>
+      <p style="font-size:1.875rem;font-weight:900;margin:0.25rem 0 0;background:linear-gradient(90deg,#00D4FF,#C9FF00);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">{_dias_left} días</p>
+      <p style="font-size:0.65rem;color:#8B949E;margin:0.25rem 0 0;">{_fecha_obj.strftime('%d %b %Y')} · {_semanas_left} semanas</p>
     </div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 2. Métricas 7d con delta
+# 2. KPI Cards — Figma style
 # ---------------------------------------------------------------------------
-res = resumen_semana_con_delta(user_actual)
+st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 1rem;">
+  <span style="color:#C9FF00;font-size:1.1rem;">◈</span>
+  <span style="font-size:0.85rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Resumen Últimos 7 Días</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.35),transparent);margin-left:0.5rem;"></div>
+</div>
+""", unsafe_allow_html=True)
 
-def _delta_fmt(v):
-    if v is None or v == 0: return None
-    return f"+{v}" if v > 0 else str(v)
+_kpi_cols = st.columns(4, gap="small")
 
-def _delta_badge(v, positivos_arriba=True, decimales=1):
-    if v is None:
-        return "-"
-    try:
-        num = float(v)
-    except (TypeError, ValueError):
-        return "-"
-    if num == 0:
-        return "- 0"
-    sube = num > 0
-    mejora = sube if positivos_arriba else not sube
-    flecha = "↗" if mejora else "↘"
-    signo = "+" if num > 0 else ""
-    return f"{flecha} {signo}{num:.{decimales}f}"
-
-st.markdown(
-    """
-    <style>
-    .kpi-section-label {
-        font-size: 0.73rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #7d8590;
-        margin: 0 0 0.75rem;
-    }
-    .kpi-grid {
-        display:grid;
-        grid-template-columns:repeat(4, minmax(180px, 1fr));
-        gap:12px;
-        margin-bottom:1.5rem;
-    }
-    .kpi-card {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-left: 3px solid var(--kpi-accent);
-        border-radius: 12px;
-        padding: 1.1rem 1.25rem 0.9rem;
-        min-height: 108px;
-        transition: border-color 0.2s;
-    }
-    .kpi-card:hover { border-color: var(--kpi-accent); }
-    .kpi-top {
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        gap:8px;
-        margin-bottom:8px;
-    }
-    .kpi-label {
-        display:flex;
-        align-items:center;
-        gap:6px;
-        color:#7d8590;
-        font-size:0.75rem;
-        font-weight:700;
-        text-transform:uppercase;
-        letter-spacing:0.06em;
-    }
-    .kpi-chip {
-        background: #1c2330;
-        color: #7d8590;
-        border-radius: 6px;
-        font-size: 0.7rem;
-        font-weight: 600;
-        padding: 3px 7px;
-        line-height: 1;
-    }
-    .kpi-value {
-        color: #e6edf3;
-        font-size: 2rem;
-        font-weight: 800;
-        line-height: 1;
-        margin: 2px 0 10px;
-        letter-spacing: -0.03em;
-    }
-    .kpi-delta {
-        display: inline-block;
-        border-radius: 6px;
-        padding: 3px 8px;
-        font-size: 0.78rem;
-        font-weight: 700;
-        line-height: 1;
-    }
-    .kpi-delta.pos { color: #3fb950; background: rgba(63,185,80,0.12); }
-    .kpi-delta.neg { color: #f85149; background: rgba(248,81,73,0.1); }
-    .kpi-delta.neu { color: #7d8590; background: rgba(125,133,144,0.12); }
-    @media (max-width: 1024px) {
-        .kpi-grid { grid-template-columns:repeat(2, minmax(180px, 1fr)); }
-    }
-    @media (max-width: 640px) {
-        .kpi-grid { grid-template-columns:1fr; }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-km_val = f"{(res.get('km') or 0):.1f}"
-fuerza_val = str(int(res.get("fuerza") or 0))
-sueno_raw = res.get("sueno")
-sueno_val = f"{float(sueno_raw):.1f}" if sueno_raw else "-"
-hrv_raw = res.get("hrv")
-hrv_val = f"{float(hrv_raw):.0f}" if hrv_raw else "-"
-
-km_delta_num = float(res.get("km_delta") or 0)
-fuerza_delta_num = float(res.get("fuerza_delta") or 0)
-sueno_delta_num = float(res.get("sueno_delta") or 0)
-hrv_delta_num = float(res.get("hrv_delta") or 0)
-
-km_delta_cls = "pos" if km_delta_num > 0 else ("neg" if km_delta_num < 0 else "neu")
-fuerza_delta_cls = "pos" if fuerza_delta_num > 0 else ("neg" if fuerza_delta_num < 0 else "neu")
-sueno_delta_cls = "pos" if sueno_delta_num > 0 else ("neg" if sueno_delta_num < 0 else "neu")
-hrv_delta_cls = "pos" if hrv_delta_num > 0 else ("neg" if hrv_delta_num < 0 else "neu")
-
-st.markdown(
-    f"""
-    <p class='kpi-section-label'>Últimos 7 días · Resumen</p>
-    <div class='kpi-grid'>
-        <div class='kpi-card' style='--kpi-accent:#a3e635;'>
-            <div class='kpi-top'>
-                <div class='kpi-label'><span style='color:#a3e635;'>⌁</span> Km carrera</div>
-                <span class='kpi-chip'>7 días</span>
-            </div>
-            <div class='kpi-value'>{km_val}</div>
-            <span class='kpi-delta {km_delta_cls}'>{_delta_badge(res.get('km_delta'), positivos_arriba=True, decimales=1)}</span>
-        </div>
-        <div class='kpi-card' style='--kpi-accent:#58a6ff;'>
-            <div class='kpi-top'>
-                <div class='kpi-label'><span style='color:#58a6ff;'>∿</span> HRV medio</div>
-                <span class='kpi-chip'>ms</span>
-            </div>
-            <div class='kpi-value'>{hrv_val}</div>
-            <span class='kpi-delta {hrv_delta_cls}'>{_delta_badge(res.get('hrv_delta'), positivos_arriba=True, decimales=1)}</span>
-        </div>
-        <div class='kpi-card' style='--kpi-accent:#a371f7;'>
-            <div class='kpi-top'>
-                <div class='kpi-label'><span style='color:#a371f7;'>✤</span> Fuerza</div>
-                <span class='kpi-chip'>sesiones</span>
-            </div>
-            <div class='kpi-value'>{fuerza_val}</div>
-            <span class='kpi-delta {fuerza_delta_cls}'>{_delta_badge(res.get('fuerza_delta'), positivos_arriba=True, decimales=0)}</span>
-        </div>
-        <div class='kpi-card' style='--kpi-accent:#e3b341;'>
-            <div class='kpi-top'>
-                <div class='kpi-label'><span style='color:#e3b341;'>◔</span> Sueño medio</div>
-                <span class='kpi-chip'>h/noche</span>
-            </div>
-            <div class='kpi-value'>{sueno_val}</div>
-            <span class='kpi-delta {sueno_delta_cls}'>{_delta_badge(res.get('sueno_delta'), positivos_arriba=True, decimales=1)}</span>
-        </div>
+def _kpi_card(col, label, value, period, delta_html_str, border_color, icon_char):
+    col.markdown(f"""
+<div style="background:#161B22;border-left:4px solid {border_color};border-top:0;border-right:0;border-bottom:0;border-radius:12px;padding:1.4rem 1.2rem 1rem;min-height:110px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+    <div style="display:flex;align-items:center;gap:0.4rem;">
+      <span style="color:{border_color};font-size:1rem;">{icon_char}</span>
+      <span style="font-size:0.72rem;color:#8B949E;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">{label}</span>
     </div>
-    """,
-    unsafe_allow_html=True,
-)
+    <span style="font-size:0.68rem;color:#8B949E;background:#30363D;padding:3px 8px;border-radius:6px;">{period}</span>
+  </div>
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;">
+    <span style="font-size:1.875rem;font-weight:800;color:white;line-height:1;">{value}</span>
+    {delta_html_str}
+  </div>
+</div>""", unsafe_allow_html=True)
+
+_kpi_card(_kpi_cols[0], "KM",          km_val,     "Últimos 7 días", _delta_html(km_delta_num, 1),     "#22c55e", "👟")
+_kpi_card(_kpi_cols[1], "HRV",         hrv_val,    "ms",             _delta_html(hrv_delta_num, 0),    "#3b82f6", "♡")
+_kpi_card(_kpi_cols[2], "FUERZA",      fuerza_val, "sesiones",       _delta_html(fuerza_delta_num, 0), "#a855f7", "💪")
+_kpi_card(_kpi_cols[3], "SUEÑO MEDIO", sueno_val,  "h/noche",        _delta_html(sueno_delta_num, 1),  "#f97316", "🌙")
+
+st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 3. Macrociclo — 5 fases + barra global hacia el objetivo
-# DYNAMIC TITLE v2 - Updated 2026-04-06
+# 3. Macrociclo
 # ---------------------------------------------------------------------------
 titulo_macrociclo = obtener_titulo_macrociclo(user_actual)
-st.subheader(titulo_macrociclo)
+st.markdown(f"""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
+  <span style="color:#00D4FF;font-size:1.1rem;">↗</span>
+  <span style="font-size:0.85rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">{titulo_macrociclo}</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(0,212,255,0.35),transparent);margin-left:0.5rem;"></div>
+</div>
+""", unsafe_allow_html=True)
 render_macrociclo(user_actual)
 
+st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# 4. Checkpoints de rendimiento
+# ---------------------------------------------------------------------------
 objetivos_cards = checkpoints_objetivo_dashboard(user_actual, _objetivo_tipo)
+_total_chk = len(objetivos_cards) if objetivos_cards else 0
+_completados = sum(1 for c in (objetivos_cards or []) if c.get("hecho"))
+_pct_chk = int(100 * _completados / _total_chk) if _total_chk else 0
+
+st.markdown(f"""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
+  <span style="color:#C9FF00;font-size:1.1rem;">◎</span>
+  <span style="font-size:0.85rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Checkpoints de Rendimiento</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.35),transparent);margin-left:0.5rem;"></div>
+</div>
+<div style="border-radius:16px;padding:1.25rem;margin-bottom:1rem;background:linear-gradient(135deg,rgba(201,255,0,0.06),rgba(0,212,255,0.04));border:1px solid rgba(201,255,0,0.2);">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+    <span style="font-size:0.875rem;color:white;"><span style="font-weight:700;color:#C9FF00;">{_completados}</span> de <span style="font-weight:700;">{_total_chk}</span> checkpoints completados</span>
+    <span style="font-size:0.875rem;font-weight:700;color:#C9FF00;">{_pct_chk}%</span>
+  </div>
+  <div style="height:12px;border-radius:9999px;overflow:hidden;background:rgba(48,54,61,0.8);">
+    <div style="height:100%;border-radius:9999px;width:{_pct_chk}%;background:linear-gradient(90deg,#C9FF00,#00D4FF);box-shadow:0 0 10px rgba(201,255,0,0.5);transition:width 0.5s;"></div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 render_objetivos_rendimiento_cards(objetivos_cards)
 
 st.divider()
