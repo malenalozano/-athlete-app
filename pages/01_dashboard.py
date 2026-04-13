@@ -223,7 +223,35 @@ st.markdown(f"""
   </div>
 </div>
 """, unsafe_allow_html=True)
-render_objetivos_rendimiento_cards(objetivos_cards)
+# Renderizar tarjetas directamente con st.columns para evitar problemas de sanitización CSS
+if objetivos_cards:
+    _chk_cols = st.columns(len(objetivos_cards), gap="small")
+    for _col, _card in zip(_chk_cols, objetivos_cards):
+        _done = bool(_card.get("hecho"))
+        _accent = _card.get("accent", "#00db81")
+        _badge_color = "#00db81" if _done else "#ff9f43"
+        _badge_bg = "rgba(0,219,129,0.12)" if _done else "rgba(255,159,67,0.12)"
+        _badge_border = "rgba(0,219,129,0.5)" if _done else "rgba(255,159,67,0.5)"
+        _badge_txt = "HECHO" if _done else "PENDIENTE"
+        _hint = str(_card.get("estado_hint") or "").upper()
+        _hint_color = "#00db81" if _done else "#ff9f43"
+        _col.markdown(f"""
+<div style="background:linear-gradient(165deg,#0f1724 0%,#101928 100%);border:1px solid {_accent}55;border-radius:16px;padding:1.25rem 1.25rem 1rem;min-height:200px;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:0.5rem;">
+    <div>
+      <div style="color:{_accent};font-size:1.05rem;font-weight:800;">{_card.get("titulo","-")}</div>
+      <div style="color:white;font-size:1rem;font-weight:700;margin-top:3px;">{_card.get("meta_txt","-")}</div>
+    </div>
+    <span style="color:{_badge_color};background:{_badge_bg};border:1px solid {_badge_border};border-radius:9999px;font-size:0.72rem;font-weight:700;padding:5px 10px;white-space:nowrap;">{_badge_txt}</span>
+  </div>
+  <div style="color:#9fb0c4;font-size:0.85rem;min-height:40px;margin-bottom:0.75rem;">{_card.get("detalle","")}</div>
+  <div style="height:1px;background:{_accent}44;margin-bottom:0.75rem;"></div>
+  <div style="color:#9db0c8;font-size:0.82rem;margin-bottom:4px;">Mejor Marca</div>
+  <div style="display:flex;align-items:baseline;gap:8px;">
+    <span style="color:{_accent};font-size:1.05rem;font-weight:800;">{_card.get("mejor_txt","-")}</span>
+    <span style="color:{_hint_color};font-size:0.85rem;font-weight:700;">{_hint}</span>
+  </div>
+</div>""", unsafe_allow_html=True)
 
 st.divider()
 
