@@ -483,3 +483,36 @@ def cargar_plan_semana_cache(usuario_id: int, lunes_str: str) -> dict:
         return generar_plan_semana(usuario_id, lunes)
     except Exception:
         return {}
+
+
+@st.cache_data(ttl=1800)
+def cargar_km_por_semana(usuario_id: int, semanas: int = 8) -> pd.DataFrame:
+    """
+    Devuelve DataFrame con columnas [week_label, km_semana, sesiones]
+    para las últimas N semanas de running (actividades_garmin).
+    """
+    conn = get_db_connection()
+    try:
+        df = pd.read_sql_query(
+            """SELECT fecha, distancia_m FROM actividades_garmin
+               WHERE usuario_id=?
+               AND tipo_actividad IN ('running','trail_running','treadmill_running','track_running')
+               AND fecha >= date('now', '-' || ? || ' days')
+               ORDER BY fecha ASC""",
+            conn, params=(usuario_id, semanas * 7))
+        if df.empty:
+            return pd.DataFrame(columns=["week_label", "km_semana", "sesiones"])
+        df["fecha_dt"] = pd.to_datetime(df["fecha"]).dt.tz_localize(None)
+        df["km"]       = df["distancia_m"].fillna(0) / 1000
+        df["week"]     = df["fecha_dt"].dt.to_period("W-MON").dt.start_time
+        agg = df.groupby("week", as_index=False).agg(
+            km_semana=("km", "sum"),
+            sesiones=("km",  "size"),
+        ).sort_values("week")
+        # Etiqueta legible "Sem DD/MM"
+        agg["week_label"] = agg["week"].dt.strftime("%-d/%m")
+        return agg[["week_label", "km_semana", "sesiones"]]
+    except Exception:
+        return pd.DataFrame(columns=["week_label", "km_semana", "sesiones"])
+    finally:
+        conn.close()

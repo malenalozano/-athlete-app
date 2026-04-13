@@ -10,6 +10,7 @@ from src.core.navbar import render_navbar
 from src.core.dashboard_data import (
     resumen_semana_con_delta, metricas_garmin, progresion_pesos_ejercicios,
     inicio_semana, cargar_plan_semana_cache, checkpoints_objetivo_dashboard,
+    cargar_km_por_semana,
 )
 from src.core.dashboard_ui import (
     obtener_estado_ciclo_malena,
@@ -19,7 +20,7 @@ from src.core.dashboard_ui import (
     render_objetivos_rendimiento_cards,
 )
 from src.core.dashboard_visuals import (
-    render_strain_recovery_donuts, render_rhr_card, render_heatmap_training_intensity,
+    render_strain_recovery_donuts, render_rhr_card,
     render_metrics_sparklines,
 )
 from src.plan.reglas import obtener_fase_macrociclo
@@ -32,7 +33,6 @@ if "usuario_id" not in st.session_state:
     st.stop()
 user_actual = st.session_state.usuario_id
 
-# Validar que los datos sean consistentes con el usuario actual
 if "dashboard_last_user" not in st.session_state:
     st.session_state["dashboard_last_user"] = user_actual
 elif st.session_state["dashboard_last_user"] != user_actual:
@@ -43,7 +43,7 @@ perfil = obtener_perfil(user_actual) or {}
 nombre = perfil.get("nombre", "Atleta")
 
 # ---------------------------------------------------------------------------
-# 1. Saludo contextual + Countdown objetivo
+# Datos base
 # ---------------------------------------------------------------------------
 _DIAS_ES  = {"Monday":"Lunes","Tuesday":"Martes","Wednesday":"Miércoles",
              "Thursday":"Jueves","Friday":"Viernes","Saturday":"Sábado","Sunday":"Domingo"}
@@ -66,30 +66,27 @@ _genero_dash = str(perfil.get("genero", "")).strip().lower()
 _es_mujer_dash = _genero_dash in ("mujer", "female", "f", "w")
 estado_ciclo = obtener_estado_ciclo_malena(user_actual) if _es_mujer_dash else None
 fase_ciclo_txt = estado_ciclo["fase"] if estado_ciclo else ""
-ciclo_emoji = " 🌙" if fase_ciclo_txt else ""
 
-# Countdown al objetivo
 from datetime import date as _date
 _fecha_obj_str = str(perfil.get("fecha_objetivo") or "2027-02-21")
 try:
     _fecha_obj = _date.fromisoformat(_fecha_obj_str[:10])
 except Exception:
     _fecha_obj = _date(2027, 2, 21)
-_dias_left = (_fecha_obj - _date.today()).days
+_dias_left    = (_fecha_obj - _date.today()).days
 _semanas_left = _dias_left // 7
-_obj_nombre = perfil.get("objetivo_nombre") or "Valencia Marathon"
+_obj_nombre   = perfil.get("objetivo_nombre") or "Valencia Marathon"
 
 # ---------------------------------------------------------------------------
-# Compute KPI data
+# KPI data
 # ---------------------------------------------------------------------------
 res = resumen_semana_con_delta(user_actual)
-km_val = f"{(res.get('km') or 0):.1f}"
-fuerza_val = str(int(res.get("fuerza") or 0))
-sueno_raw = res.get("sueno")
-sueno_val = f"{float(sueno_raw):.1f}" if sueno_raw else "—"
-hrv_raw = res.get("hrv")
-hrv_val = f"{float(hrv_raw):.0f}" if hrv_raw else "—"
-
+km_val       = f"{(res.get('km') or 0):.1f}"
+fuerza_val   = str(int(res.get("fuerza") or 0))
+sueno_raw    = res.get("sueno")
+sueno_val    = f"{float(sueno_raw):.1f}" if sueno_raw else "—"
+hrv_raw      = res.get("hrv")
+hrv_val      = f"{float(hrv_raw):.0f}" if hrv_raw else "—"
 km_delta_num     = float(res.get("km_delta") or 0)
 fuerza_delta_num = float(res.get("fuerza_delta") or 0)
 sueno_delta_num  = float(res.get("sueno_delta") or 0)
@@ -100,11 +97,10 @@ def _delta_html(num, decimales=1):
         return '<span style="font-size:0.75rem;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(125,133,144,0.12);color:#8B949E;">— 0</span>'
     signo = "+" if num > 0 else ""
     color = "#22c55e" if num > 0 else "#f85149"
-    bg = "rgba(34,197,94,0.1)" if num > 0 else "rgba(248,81,73,0.1)"
+    bg    = "rgba(34,197,94,0.1)" if num > 0 else "rgba(248,81,73,0.1)"
     flecha = "↗" if num > 0 else "↘"
     return f'<span style="font-size:0.75rem;font-weight:700;padding:3px 8px;border-radius:6px;background:{bg};color:{color};">{flecha} {signo}{num:.{decimales}f}</span>'
 
-# Ciclo badge for female users
 _ciclo_badge_html = ""
 if estado_ciclo:
     _fase_c = estado_ciclo.get("fase", "")
@@ -112,7 +108,7 @@ if estado_ciclo:
     _ciclo_badge_html = f'<span style="background:rgba(236,72,153,0.2);color:#f9a8d4;border:1px solid rgba(236,72,153,0.3);border-radius:9999px;padding:4px 12px;font-size:0.75rem;font-weight:600;">🌸 {_fase_c}{(" — Día " + str(_dia_c)) if _dia_c else ""}</span>'
 
 # ---------------------------------------------------------------------------
-# 1. Hero Greeting Section
+# 1. Hero Greeting
 # ---------------------------------------------------------------------------
 st.markdown(f"""
 <div style="
@@ -123,7 +119,7 @@ st.markdown(f"""
   background:linear-gradient(135deg,rgba(201,255,0,0.08) 0%,rgba(0,212,255,0.06) 40%,rgba(168,85,247,0.08) 100%);
   border:1px solid rgba(201,255,0,0.2);
   box-shadow:0 0 60px rgba(201,255,0,0.05),0 0 100px rgba(0,212,255,0.04);
-  margin-bottom:1.5rem;
+  margin-bottom:0.75rem;
 ">
   <div style="position:absolute;top:-80px;right:-80px;width:320px;height:320px;border-radius:50%;opacity:0.1;filter:blur(60px);background:radial-gradient(circle,#C9FF00,transparent);pointer-events:none;"></div>
   <div style="position:absolute;bottom:-80px;left:-80px;width:240px;height:240px;border-radius:50%;opacity:0.08;filter:blur(60px);background:radial-gradient(circle,#00D4FF,transparent);pointer-events:none;"></div>
@@ -149,7 +145,23 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 2. KPI Cards — Figma style
+# Recordatorio analítica (justo bajo el hero)
+# ---------------------------------------------------------------------------
+FECHA_ANALITICA = datetime(2026, 5, 1)
+dias_anal = (FECHA_ANALITICA - datetime.now()).days
+if dias_anal < 0:
+    st.info("🩸 Analítica completada. Siguiente revisión: noviembre 2026.")
+elif dias_anal < 15:
+    st.error(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). ¡Pide cita urgente!")
+elif dias_anal < 30:
+    st.warning(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). Empieza a gestionar cita.")
+else:
+    st.info(f"🩸 Próxima analítica: 1 mayo 2026 (en {dias_anal} días).")
+
+st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# 2. KPI Cards
 # ---------------------------------------------------------------------------
 st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 1rem;">
@@ -203,9 +215,9 @@ st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 # 4. Checkpoints de rendimiento
 # ---------------------------------------------------------------------------
 objetivos_cards = checkpoints_objetivo_dashboard(user_actual, _objetivo_tipo)
-_total_chk = len(objetivos_cards) if objetivos_cards else 0
+_total_chk   = len(objetivos_cards) if objetivos_cards else 0
 _completados = sum(1 for c in (objetivos_cards or []) if c.get("hecho"))
-_pct_chk = int(100 * _completados / _total_chk) if _total_chk else 0
+_pct_chk     = int(100 * _completados / _total_chk) if _total_chk else 0
 
 st.markdown(f"""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
@@ -223,18 +235,18 @@ st.markdown(f"""
   </div>
 </div>
 """, unsafe_allow_html=True)
-# Renderizar tarjetas directamente con st.columns para evitar problemas de sanitización CSS
+
 if objetivos_cards:
     _chk_cols = st.columns(len(objetivos_cards), gap="small")
     for _col, _card in zip(_chk_cols, objetivos_cards):
-        _done = bool(_card.get("hecho"))
-        _accent = _card.get("accent", "#00db81")
-        _badge_color = "#00db81" if _done else "#ff9f43"
-        _badge_bg = "rgba(0,219,129,0.12)" if _done else "rgba(255,159,67,0.12)"
-        _badge_border = "rgba(0,219,129,0.5)" if _done else "rgba(255,159,67,0.5)"
-        _badge_txt = "HECHO" if _done else "PENDIENTE"
-        _hint = str(_card.get("estado_hint") or "").upper()
-        _hint_color = "#00db81" if _done else "#ff9f43"
+        _done         = bool(_card.get("hecho"))
+        _accent       = _card.get("accent", "#00db81")
+        _badge_color  = "#00db81" if _done else "#ff9f43"
+        _badge_bg     = "rgba(0,219,129,0.12)" if _done else "rgba(255,159,67,0.12)"
+        _badge_border = "rgba(0,219,129,0.5)"  if _done else "rgba(255,159,67,0.5)"
+        _badge_txt    = "HECHO" if _done else "PENDIENTE"
+        _hint         = str(_card.get("estado_hint") or "").upper()
+        _hint_color   = "#00db81" if _done else "#ff9f43"
         _col.markdown(f"""
 <div style="background:linear-gradient(165deg,#0f1724 0%,#101928 100%);border:1px solid {_accent}55;border-radius:16px;padding:1.25rem 1.25rem 1rem;min-height:200px;">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:0.5rem;">
@@ -253,62 +265,161 @@ if objetivos_cards:
   </div>
 </div>""", unsafe_allow_html=True)
 
-st.divider()
+st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 5. Recovery & Load Analysis (Compact)
+# 5. Progreso de Running — Últimas 8 Semanas
 # ---------------------------------------------------------------------------
+import plotly.graph_objects as go
+
+st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
+  <span style="color:#22c55e;font-size:1.1rem;">👟</span>
+  <span style="font-size:0.85rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Progreso de Running — Últimas 8 Semanas</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(34,197,94,0.35),transparent);margin-left:0.5rem;"></div>
+</div>
+""", unsafe_allow_html=True)
+
+_df_run = cargar_km_por_semana(user_actual, semanas=8)
+
+if _df_run.empty:
+    st.markdown(
+        "<div style='background:#161B22;border:1px solid rgba(34,197,94,0.15);border-radius:12px;padding:1.5rem;text-align:center;"
+        "color:#484F58;font-size:0.875rem;'>Sin datos de running aún — sincroniza Garmin para ver tu progresión.</div>",
+        unsafe_allow_html=True)
+else:
+    _labels  = _df_run["week_label"].tolist()
+    _km_vals = _df_run["km_semana"].round(1).tolist()
+    _ses_vals = _df_run["sesiones"].tolist()
+    _max_km  = max(_km_vals) if _km_vals else 1
+
+    # Color: la semana actual (última) en lima brillante, el resto en verde oscuro
+    _bar_colors = ["rgba(34,197,94,0.45)"] * len(_km_vals)
+    if _bar_colors:
+        _bar_colors[-1] = "#C9FF00"
+
+    fig_run = go.Figure()
+    fig_run.add_trace(go.Bar(
+        x=_labels,
+        y=_km_vals,
+        marker=dict(
+            color=_bar_colors,
+            cornerradius=6,
+            line=dict(width=0),
+        ),
+        text=[f"{v} km" for v in _km_vals],
+        textposition="outside",
+        textfont=dict(color="#8B949E", size=10),
+        hovertemplate="<b>Semana %{x}</b><br>%{y:.1f} km<extra></extra>",
+        showlegend=False,
+    ))
+    fig_run.update_layout(
+        height=220,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=0, r=0, t=24, b=0),
+        xaxis=dict(
+            showgrid=False, zeroline=False,
+            tickfont=dict(color="#8B949E", size=10),
+            showline=False,
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="rgba(48,54,61,0.5)",
+            zeroline=False,
+            tickfont=dict(color="#8B949E", size=10),
+            showline=False,
+            ticksuffix=" km",
+        ),
+        bargap=0.35,
+        font=dict(family="Inter, sans-serif"),
+    )
+    st.plotly_chart(fig_run, use_container_width=True, config={"displayModeBar": False})
+
+    # Mini stats bajo el gráfico
+    _total_8sem = sum(_km_vals)
+    _prom_sem   = _total_8sem / len(_km_vals) if _km_vals else 0
+    _mejor_sem  = max(_km_vals) if _km_vals else 0
+    _stat_cols  = st.columns(3, gap="small")
+    for _sc, (_lbl, _val, _col_) in zip(_stat_cols, [
+        ("Total 8 sem", f"{_total_8sem:.0f} km", "#C9FF00"),
+        ("Media semanal", f"{_prom_sem:.1f} km", "#00D4FF"),
+        ("Mejor semana", f"{_mejor_sem:.1f} km", "#22c55e"),
+    ]):
+        _sc.markdown(
+            f"<div style='background:#161B22;border-radius:10px;padding:0.6rem 0.8rem;text-align:center;'>"
+            f"<div style='color:#8B949E;font-size:0.68rem;font-weight:700;text-transform:uppercase;"
+            f"letter-spacing:.06em;margin-bottom:2px;'>{_lbl}</div>"
+            f"<div style='color:{_col_};font-size:1.1rem;font-weight:800;'>{_val}</div>"
+            f"</div>",
+            unsafe_allow_html=True)
+
+st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# 6. Recovery & Carga (donuts + RHR + sparklines)
+# ---------------------------------------------------------------------------
+st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
+  <span style="color:#00D4FF;font-size:1.1rem;">◉</span>
+  <span style="font-size:0.85rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Recovery & Carga</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(0,212,255,0.35),transparent);margin-left:0.5rem;"></div>
+</div>
+""", unsafe_allow_html=True)
+
 conn = get_db_connection()
 try:
-    st.subheader("💓 Recovery & Load Analysis")
-
-    # RHR Card
+    # RHR card
     render_rhr_card(user_actual, conn)
 
-    # Donuts: Recovery vs Strain (Independent metrics)
+    # Donuts Recovery / Strain
     try:
         from src.plan.helpers import cargar_datos_plan
-        datos = cargar_datos_plan(user_actual)
+        datos         = cargar_datos_plan(user_actual)
         recovery_score = datos.get("hrv_recovery", {}).get("recovery_score", 50)
-        acwr = datos.get("acwr", 1.0)
+        acwr           = datos.get("acwr", 1.0)
         render_strain_recovery_donuts(recovery_score, acwr)
     except Exception as e:
-        st.caption(f"No se pudo cargar datos de recuperación: {e}")
+        st.caption(f"Sin datos de recuperación: {e}")
 
-    st.divider()
+    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
 
-    # Sparklines: Métricas de últimos 7 días (Compact)
+    # Sparklines
+    st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 0.75rem;">
+  <span style="font-size:0.72rem;font-weight:700;color:#8B949E;text-transform:uppercase;letter-spacing:.07em;">Tendencias — últimos 7 días</span>
+  <div style="flex:1;height:1px;background:rgba(48,54,61,0.8);margin-left:0.5rem;"></div>
+</div>""", unsafe_allow_html=True)
     render_metrics_sparklines(user_actual, conn)
-
-    st.divider()
-
-    # Heatmap: Intensidad de entrenamientos
-    render_heatmap_training_intensity(user_actual, conn)
 
 finally:
     conn.close()
 
-st.divider()
+st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 6. Plan semana + Progresión pesos
+# 7. Plan Esta Semana + Progresión de Pesos
 # ---------------------------------------------------------------------------
 _EMOJIS = {"Tirada Larga":"🏃","Progresiva":"📈","Tempo (umbral)":"⚡","Intervalos VO2max":"🔥",
            "Carrera Z2":"🚶","Regenerativo":"💧","Fuerza":"💪","Fuerza Activ.":"💪",
            "Fuerza Tren Superior":"💪","Descanso":"🛌","Movilidad":"🧘","Sustitución":"🔄","Rodaje Corto":"🏃"}
-_BADGE  = {"Fuerza":"#9B59B6","Tirada Larga":"#C9FF00","Progresiva":"#C9FF00","Carrera Z2":"#C9FF00",
-           "Tempo (umbral)":"#C9FF00","Regenerativo":"#00C8C8","Intervalos VO2max":"#FF6B6B",
+_BADGE  = {"Fuerza":"#a855f7","Tirada Larga":"#C9FF00","Progresiva":"#C9FF00","Carrera Z2":"#22c55e",
+           "Tempo (umbral)":"#f97316","Regenerativo":"#00D4FF","Intervalos VO2max":"#ef4444",
            "Descanso":"#3a4150","Movilidad":"#3a4150"}
 
 col_plan, col_pesos = st.columns(2, gap="large")
 
 with col_plan:
-    st.subheader("Plan esta semana")
+    st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:0 0 1rem;">
+  <span style="color:#C9FF00;font-size:1rem;">📋</span>
+  <span style="font-size:0.82rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Plan Esta Semana</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.3),transparent);margin-left:0.4rem;"></div>
+</div>""", unsafe_allow_html=True)
     lunes_str = inicio_semana(datetime.now()).strftime("%Y-%m-%d")
     try:
         plan_dash = cargar_plan_semana_cache(user_actual, lunes_str)
     except Exception as e:
-        # No usar fallback viejo — mejor mostrar que hay error
         import logging
         logging.error(f"Error cargando plan: {e}")
         plan_dash = None
@@ -317,39 +428,55 @@ with col_plan:
             bc  = _BADGE.get(dia["tipo"], "#8B949E")
             sub = f"{dia['km']} km" if dia["km"] else f"{dia['duracion_min']}'"
             st.markdown(
-                f"<div style='display:flex;justify-content:space-between;align-items:center;"
-                f"background:#131D2B;border-radius:8px;padding:6px 12px;margin-bottom:7px;'>"
-                f"<span style='color:#C9E1FF;font-size:0.82rem;font-weight:700;min-width:70px;'>{dia['dia']}</span>"
-                f"<span style='color:{bc};font-size:0.82rem;flex:1;padding:0 8px;'>"
+                f"<div style='display:flex;align-items:center;gap:8px;"
+                f"background:linear-gradient(135deg,#0f1724,#101928);border:1px solid rgba(255,255,255,0.05);"
+                f"border-left:3px solid {bc}44;border-radius:10px;padding:7px 12px;margin-bottom:6px;'>"
+                f"<span style='color:#8B949E;font-size:0.78rem;font-weight:700;min-width:68px;'>{dia['dia']}</span>"
+                f"<span style='color:{bc};font-size:0.82rem;flex:1;font-weight:600;'>"
                 f"{_EMOJIS.get(dia['tipo'],'📅')} {dia['tipo']}</span>"
-                f"<span style='color:#8B949E;font-size:0.75rem;'>{sub}</span></div>",
+                f"<span style='color:#6b7280;font-size:0.72rem;'>{sub}</span></div>",
                 unsafe_allow_html=True)
     else:
         st.info("Aún no hay plan para esta semana.")
         st.page_link("pages/02_plan.py", label="→ Ir a Plan Semanal y generar uno")
 
 with col_pesos:
-    st.subheader("Progresión de pesos")
+    st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:0 0 1rem;">
+  <span style="color:#a855f7;font-size:1rem;">💪</span>
+  <span style="font-size:0.82rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Progresión de Pesos</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(168,85,247,0.3),transparent);margin-left:0.4rem;"></div>
+</div>""", unsafe_allow_html=True)
     df_pesos = progresion_pesos_ejercicios(user_actual)
     if df_pesos.empty:
         st.info("Registra sesiones de fuerza en el **Diario** para ver la progresión.")
     else:
         for _, row in df_pesos.iterrows():
-            color = "#00C896" if row["_trend"] == "up" else ("#FF6B6B" if row["_trend"] == "dn" else "#8B949E")
+            trend_color = "#00db81" if row["_trend"] == "up" else ("#ef4444" if row["_trend"] == "dn" else "#8B949E")
+            trend_icon  = "↑" if row["_trend"] == "up" else ("↓" if row["_trend"] == "dn" else "—")
             st.markdown(
-                f"<div style='display:flex;justify-content:space-between;align-items:center;"
-                f"background:#131D2B;border-radius:8px;padding:6px 12px;margin-bottom:7px;'>"
-                f"<span style='color:#C9E1FF;font-size:0.82rem;flex:1;'>{row['Ejercicio']}</span>"
-                f"<span style='color:#d8e9db;font-size:0.82rem;margin:0 8px;'>{row['Peso']} kg &nbsp; {row['S×R']}</span>"
-                f"<span style='color:{color};font-weight:800;font-size:0.82rem;'>{row['Δ']}</span></div>",
+                f"<div style='display:flex;align-items:center;gap:8px;"
+                f"background:linear-gradient(135deg,#0f1724,#101928);border:1px solid rgba(168,85,247,0.1);"
+                f"border-left:3px solid rgba(168,85,247,0.4);border-radius:10px;padding:7px 12px;margin-bottom:6px;'>"
+                f"<span style='color:#C9E1FF;font-size:0.8rem;flex:1;font-weight:600;'>{row['Ejercicio']}</span>"
+                f"<span style='color:#9ca3af;font-size:0.78rem;margin:0 6px;'>{row['Peso']} kg&nbsp;{row['S×R']}</span>"
+                f"<span style='color:{trend_color};font-weight:800;font-size:0.82rem;min-width:20px;text-align:right;'>"
+                f"{trend_icon} {row['Δ']}</span></div>",
                 unsafe_allow_html=True)
 
-st.divider()
+st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 5. Grid biométrico Garmin (1×7)
+# 8. Biométricos Garmin
 # ---------------------------------------------------------------------------
-st.subheader("Biométricos Garmin (últimos 7 días)")
+st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
+  <span style="color:#3b82f6;font-size:1.1rem;">⌚</span>
+  <span style="font-size:0.85rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Biométricos Garmin — últimos 7 días</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(59,130,246,0.35),transparent);margin-left:0.5rem;"></div>
+</div>
+""", unsafe_allow_html=True)
+
 met = metricas_garmin(user_actual)
 
 if all(v is None for v in met.values()):
@@ -358,50 +485,41 @@ if all(v is None for v in met.values()):
                 "Sin datos Garmin aún — sincroniza en la página de <b>Garmin</b> para ver tus métricas."
                 "</div>", unsafe_allow_html=True)
 else:
-    def _card(label, value, unit="", max_val=100, color="#C9FF00"):
+    def _bio_card(label, value, unit="", max_val=100, color="#C9FF00"):
         v_str = f"{value:.0f} {unit}".strip() if value is not None else "—"
         pct   = min(int(100 * float(value) / max_val), 100) if value is not None else 0
-        return (f"<div style='background:#131D2B;border:1px solid rgba(201,255,0,0.15);"
-                f"border-radius:8px;padding:8px 10px;min-height:74px;'>"
-                f"<div style='color:#8B949E;font-size:0.62rem;font-weight:700;text-transform:uppercase;line-height:1.1;'>{label}</div>"
-                f"<div style='color:{color};font-weight:800;font-size:0.95rem;margin:4px 0;'>{v_str}</div>"
-                f"<div style='background:#0c2922;border-radius:3px;height:4px;'>"
-                f"<div style='background:{color};width:{pct}%;height:4px;border-radius:3px;'></div></div></div>")
+        return (f"<div style='background:#0f1724;border:1px solid rgba(201,255,0,0.1);"
+                f"border-radius:10px;padding:10px 12px;min-height:78px;'>"
+                f"<div style='color:#8B949E;font-size:0.62rem;font-weight:700;text-transform:uppercase;"
+                f"letter-spacing:.07em;line-height:1.1;margin-bottom:6px;'>{label}</div>"
+                f"<div style='color:{color};font-weight:800;font-size:0.95rem;margin-bottom:6px;'>{v_str}</div>"
+                f"<div style='background:rgba(48,54,61,0.6);border-radius:3px;height:3px;'>"
+                f"<div style='background:{color};width:{pct}%;height:3px;border-radius:3px;'></div></div></div>")
 
-    acwr_color = "#FF6B6B" if (met["acwr"] or 0) > 1.3 else "#C9FF00"
-    cards = [
-        ("HRV", met["hrv"], "ms", 80, "#C9FF00"),
-        ("Sueño", met["sueno_h"], "h", 9, "#7EB8E0"),
-        ("Score sueño", met["sueno_score"], "", 100, "#7EB8E0"),
-        ("Cadencia", met["cadencia"], "spm", 200, "#00C896"),
-        ("ACWR", met["acwr"], "", 1.5, acwr_color),
-        ("FC Reposo", met["fc_reposo"], "bpm", 80, "#C9E1FF"),
-        ("Estrés", met["estres"], "", 100, "#F5A623"),
+    acwr_color = "#ef4444" if (met["acwr"] or 0) > 1.3 else "#C9FF00"
+    bio_cards = [
+        ("HRV",        met["hrv"],         "ms",  80,   "#00D4FF"),
+        ("Sueño",      met["sueno_h"],      "h",   9,    "#7EB8E0"),
+        ("Score Sueño",met["sueno_score"],  "",    100,  "#7EB8E0"),
+        ("Cadencia",   met["cadencia"],     "spm", 200,  "#22c55e"),
+        ("ACWR",       met["acwr"],         "",    1.5,  acwr_color),
+        ("FC Reposo",  met["fc_reposo"],    "bpm", 80,   "#C9E1FF"),
+        ("Estrés",     met["estres"],       "",    100,  "#f97316"),
     ]
     row = st.columns(7, gap="small")
-    for col, (lbl, val, unit, mx, colr) in zip(row, cards):
-        col.markdown(_card(lbl, val, unit, mx, colr), unsafe_allow_html=True)
+    for col, (lbl, val, unit, mx, colr) in zip(row, bio_cards):
+        col.markdown(_bio_card(lbl, val, unit, mx, colr), unsafe_allow_html=True)
 
-st.divider()
-
-# ---------------------------------------------------------------------------
-# 6. Recordatorio analítica
-# ---------------------------------------------------------------------------
-FECHA_ANALITICA = datetime(2026, 5, 1)
-dias_anal = (FECHA_ANALITICA - datetime.now()).days
-if dias_anal < 0:
-    st.info("🩸 Analítica completada. Siguiente revisión: noviembre 2026.")
-elif dias_anal < 15:
-    st.error(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). ¡Pide cita urgente!")
-elif dias_anal < 30:
-    st.warning(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). Empieza a gestionar cita.")
-else:
-    st.info(f"🩸 Próxima analítica: 1 mayo 2026 (en {dias_anal} días).")
-
-st.divider()
+st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 7. Gráfico de sueño — última semana
+# 9. Gráfico de sueño
 # ---------------------------------------------------------------------------
-st.subheader("😴 Sueño — última semana")
+st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
+  <span style="color:#f97316;font-size:1.1rem;">🌙</span>
+  <span style="font-size:0.85rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Sueño — última semana</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(249,115,22,0.35),transparent);margin-left:0.5rem;"></div>
+</div>
+""", unsafe_allow_html=True)
 render_grafico_sueno(user_actual)
