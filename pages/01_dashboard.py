@@ -33,11 +33,9 @@ if "usuario_id" not in st.session_state:
 user_actual = st.session_state.usuario_id
 
 # Validar que los datos sean consistentes con el usuario actual
-# Si cambió de usuario, limpiar caché y datos del dashboard anterior
 if "dashboard_last_user" not in st.session_state:
     st.session_state["dashboard_last_user"] = user_actual
 elif st.session_state["dashboard_last_user"] != user_actual:
-    # Usuario cambió — limpiar todos los caches para este dashboard
     st.cache_data.clear()
     st.session_state["dashboard_last_user"] = user_actual
 
@@ -45,7 +43,7 @@ perfil = obtener_perfil(user_actual) or {}
 nombre = perfil.get("nombre", "Atleta")
 
 # ---------------------------------------------------------------------------
-# 1. Saludo contextual en español
+# 1. Saludo contextual + Countdown objetivo
 # ---------------------------------------------------------------------------
 _DIAS_ES  = {"Monday":"Lunes","Tuesday":"Martes","Wednesday":"Miércoles",
              "Thursday":"Jueves","Friday":"Viernes","Saturday":"Sábado","Sunday":"Domingo"}
@@ -68,9 +66,93 @@ _genero_dash = str(perfil.get("genero", "")).strip().lower()
 _es_mujer_dash = _genero_dash in ("mujer", "female", "f", "w")
 estado_ciclo = obtener_estado_ciclo_malena(user_actual) if _es_mujer_dash else None
 fase_ciclo_txt = estado_ciclo["fase"] if estado_ciclo else ""
-ciclo_sub = f" · Ciclo: **{fase_ciclo_txt}**" if fase_ciclo_txt else ""
-st.markdown(f"## {saludo}, {nombre} 👋")
-st.caption(f"{fecha_es} · Fase: **{fase_hoy['fase_nombre']}**{ciclo_sub}")
+ciclo_emoji = " 🌙" if fase_ciclo_txt else ""
+
+# Countdown al objetivo
+from datetime import date as _date
+_fecha_obj_str = str(perfil.get("fecha_objetivo") or "2027-02-21")
+try:
+    _fecha_obj = _date.fromisoformat(_fecha_obj_str[:10])
+except Exception:
+    _fecha_obj = _date(2027, 2, 21)
+_dias_left = (_fecha_obj - _date.today()).days
+_semanas_left = _dias_left // 7
+_obj_nombre = perfil.get("objetivo_nombre") or "Valencia Marathon"
+
+st.markdown(f"""
+<style>
+.ath-inicio-header {{
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.1rem;
+}}
+.ath-inicio-greeting h2 {{
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: #e6edf3;
+    margin: 0 0 0.2rem;
+}}
+.ath-inicio-greeting .sub {{
+    font-size: 0.85rem;
+    color: #7d8590;
+    margin: 0;
+}}
+.ath-inicio-greeting .sub b {{ color: #a3e635; font-weight: 600; }}
+.ath-countdown-pill {{
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 0.65rem 1.25rem;
+    flex-shrink: 0;
+}}
+.ath-cd-item {{ text-align: center; }}
+.ath-cd-val {{
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #a3e635;
+    line-height: 1;
+}}
+.ath-cd-lbl {{
+    font-size: 0.68rem;
+    color: #7d8590;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}}
+.ath-cd-sep {{ width: 1px; height: 30px; background: #30363d; }}
+.ath-cd-target {{ font-size: 0.8rem; color: #7d8590; }}
+.ath-cd-target span {{ color: #e6edf3; font-weight: 600; }}
+</style>
+<div class="ath-inicio-header">
+    <div class="ath-inicio-greeting">
+        <h2>{saludo}, {nombre}{ciclo_emoji} ✦</h2>
+        <p class="sub">{fecha_es} &nbsp;·&nbsp; Fase: <b>{fase_hoy['fase_nombre']}</b>{(' &nbsp;·&nbsp; Ciclo: <b>' + fase_ciclo_txt + '</b>') if fase_ciclo_txt else ''}</p>
+    </div>
+    <div class="ath-countdown-pill">
+        <div class="ath-cd-item">
+            <div class="ath-cd-val">{_dias_left}</div>
+            <div class="ath-cd-lbl">Días</div>
+        </div>
+        <div class="ath-cd-sep"></div>
+        <div class="ath-cd-item">
+            <div class="ath-cd-val">{_semanas_left}</div>
+            <div class="ath-cd-lbl">Semanas</div>
+        </div>
+        <div class="ath-cd-sep"></div>
+        <div class="ath-cd-item">
+            <div class="ath-cd-target">🎯 <span>{_obj_nombre}</span></div>
+            <div class="ath-cd-target" style="margin-top:2px">{_fecha_obj.strftime('%d %b %Y')}</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # 2. Métricas 7d con delta
@@ -99,83 +181,75 @@ def _delta_badge(v, positivos_arriba=True, decimales=1):
 st.markdown(
     """
     <style>
-    .kpi-title {
-        display:flex;
-        align-items:center;
-        gap:8px;
-        font-size:2rem;
-        font-weight:700;
-        color:#ffffff;
-        margin:4px 0 10px;
+    .kpi-section-label {
+        font-size: 0.73rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #7d8590;
+        margin: 0 0 0.75rem;
     }
     .kpi-grid {
         display:grid;
         grid-template-columns:repeat(4, minmax(180px, 1fr));
-        gap:14px;
-        margin-bottom:4px;
+        gap:12px;
+        margin-bottom:1.5rem;
     }
     .kpi-card {
-        background:linear-gradient(165deg, #141b27 0%, #101722 100%);
-        border:1px solid rgba(255,255,255,0.04);
-        border-left:4px solid var(--kpi-accent);
-        border-radius:16px;
-        padding:14px 16px 12px;
-        min-height:108px;
-        box-shadow:0 12px 28px rgba(0,0,0,0.22);
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-left: 3px solid var(--kpi-accent);
+        border-radius: 12px;
+        padding: 1.1rem 1.25rem 0.9rem;
+        min-height: 108px;
+        transition: border-color 0.2s;
     }
+    .kpi-card:hover { border-color: var(--kpi-accent); }
     .kpi-top {
         display:flex;
         align-items:center;
         justify-content:space-between;
         gap:8px;
-        margin-bottom:10px;
+        margin-bottom:8px;
     }
     .kpi-label {
         display:flex;
         align-items:center;
-        gap:8px;
-        color:#b4c0cf;
-        font-size:0.82rem;
+        gap:6px;
+        color:#7d8590;
+        font-size:0.75rem;
         font-weight:700;
         text-transform:uppercase;
-        letter-spacing:0.55px;
+        letter-spacing:0.06em;
     }
     .kpi-chip {
-        background:#273241;
-        color:#9da9b8;
-        border-radius:7px;
-        font-size:0.74rem;
-        font-weight:600;
-        padding:4px 8px;
-        line-height:1;
+        background: #1c2330;
+        color: #7d8590;
+        border-radius: 6px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 3px 7px;
+        line-height: 1;
     }
     .kpi-value {
-        color:#ffffff;
-        font-size:2.15rem;
-        font-weight:800;
-        line-height:1;
-        margin:2px 0 10px;
+        color: #e6edf3;
+        font-size: 2rem;
+        font-weight: 800;
+        line-height: 1;
+        margin: 2px 0 10px;
+        letter-spacing: -0.03em;
     }
     .kpi-delta {
-        display:inline-block;
-        border-radius:7px;
-        padding:4px 8px;
-        font-size:0.8rem;
-        font-weight:700;
-        line-height:1;
+        display: inline-block;
+        border-radius: 6px;
+        padding: 3px 8px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        line-height: 1;
     }
-    .kpi-delta.pos {
-        color:#19db8a;
-        background:rgba(25, 219, 138, 0.15);
-    }
-    .kpi-delta.neg {
-        color:#ff8a5b;
-        background:rgba(255, 138, 91, 0.12);
-    }
-    .kpi-delta.neu {
-        color:#a9b3c0;
-        background:rgba(169, 179, 192, 0.14);
-    }
+    .kpi-delta.pos { color: #3fb950; background: rgba(63,185,80,0.12); }
+    .kpi-delta.neg { color: #f85149; background: rgba(248,81,73,0.1); }
+    .kpi-delta.neu { color: #7d8590; background: rgba(125,133,144,0.12); }
     @media (max-width: 1024px) {
         .kpi-grid { grid-template-columns:repeat(2, minmax(180px, 1fr)); }
     }
@@ -206,38 +280,35 @@ hrv_delta_cls = "pos" if hrv_delta_num > 0 else ("neg" if hrv_delta_num < 0 else
 
 st.markdown(
     f"""
-    <div class='kpi-title'>
-        <span style='color:#b7ff33;'>⏱</span>
-        <span>Resumen Últimos 7 Días</span>
-    </div>
+    <p class='kpi-section-label'>Últimos 7 días · Resumen</p>
     <div class='kpi-grid'>
-        <div class='kpi-card' style='--kpi-accent:#00db81;'>
+        <div class='kpi-card' style='--kpi-accent:#a3e635;'>
             <div class='kpi-top'>
-                <div class='kpi-label'><span style='color:#00db81;'>⌁</span> KM</div>
-                <span class='kpi-chip'>Últimos 7 días</span>
+                <div class='kpi-label'><span style='color:#a3e635;'>⌁</span> Km carrera</div>
+                <span class='kpi-chip'>7 días</span>
             </div>
             <div class='kpi-value'>{km_val}</div>
             <span class='kpi-delta {km_delta_cls}'>{_delta_badge(res.get('km_delta'), positivos_arriba=True, decimales=1)}</span>
         </div>
-        <div class='kpi-card' style='--kpi-accent:#3b82f6;'>
+        <div class='kpi-card' style='--kpi-accent:#58a6ff;'>
             <div class='kpi-top'>
-                <div class='kpi-label'><span style='color:#3b82f6;'>∿</span> HRV MEDIO</div>
+                <div class='kpi-label'><span style='color:#58a6ff;'>∿</span> HRV medio</div>
                 <span class='kpi-chip'>ms</span>
             </div>
             <div class='kpi-value'>{hrv_val}</div>
             <span class='kpi-delta {hrv_delta_cls}'>{_delta_badge(res.get('hrv_delta'), positivos_arriba=True, decimales=1)}</span>
         </div>
-        <div class='kpi-card' style='--kpi-accent:#a855f7;'>
+        <div class='kpi-card' style='--kpi-accent:#a371f7;'>
             <div class='kpi-top'>
-                <div class='kpi-label'><span style='color:#a855f7;'>✤</span> FUERZA</div>
-                <span class='kpi-chip'>Sesiones</span>
+                <div class='kpi-label'><span style='color:#a371f7;'>✤</span> Fuerza</div>
+                <span class='kpi-chip'>sesiones</span>
             </div>
             <div class='kpi-value'>{fuerza_val}</div>
             <span class='kpi-delta {fuerza_delta_cls}'>{_delta_badge(res.get('fuerza_delta'), positivos_arriba=True, decimales=0)}</span>
         </div>
-        <div class='kpi-card' style='--kpi-accent:#ff7a1a;'>
+        <div class='kpi-card' style='--kpi-accent:#e3b341;'>
             <div class='kpi-top'>
-                <div class='kpi-label'><span style='color:#ff7a1a;'>◔</span> SUEÑO MEDIO</div>
+                <div class='kpi-label'><span style='color:#e3b341;'>◔</span> Sueño medio</div>
                 <span class='kpi-chip'>h/noche</span>
             </div>
             <div class='kpi-value'>{sueno_val}</div>
