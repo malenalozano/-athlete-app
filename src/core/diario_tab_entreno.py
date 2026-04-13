@@ -469,7 +469,7 @@ div[data-testid="stTextArea"] textarea:focus {
         hoy = date.today()
         st.session_state[_k_cal] = (hoy.year, hoy.month)
 
-    col_izq, col_der = st.columns([1, 1], gap="large")
+    col_izq, col_der = st.columns([1, 1.8], gap="large")
 
     # ======================================================================
     # COLUMNA IZQUIERDA

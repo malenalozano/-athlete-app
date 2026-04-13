@@ -496,7 +496,7 @@ def cargar_km_por_semana(usuario_id: int, semanas: int = 8) -> pd.DataFrame:
         df = pd.read_sql_query(
             """SELECT fecha, distancia_m FROM actividades_garmin
                WHERE usuario_id=?
-               AND tipo_actividad IN ('running','trail_running','treadmill_running','track_running')
+               AND tipo_deporte IN ('running','trail_running','treadmill_running','track_running')
                AND fecha >= date('now', '-' || ? || ' days')
                ORDER BY fecha ASC""",
             conn, params=(usuario_id, semanas * 7))

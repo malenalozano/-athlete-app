@@ -145,22 +145,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# Recordatorio analítica (justo bajo el hero)
-# ---------------------------------------------------------------------------
-FECHA_ANALITICA = datetime(2026, 5, 1)
-dias_anal = (FECHA_ANALITICA - datetime.now()).days
-if dias_anal < 0:
-    st.info("🩸 Analítica completada. Siguiente revisión: noviembre 2026.")
-elif dias_anal < 15:
-    st.error(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). ¡Pide cita urgente!")
-elif dias_anal < 30:
-    st.warning(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). Empieza a gestionar cita.")
-else:
-    st.info(f"🩸 Próxima analítica: 1 mayo 2026 (en {dias_anal} días).")
-
-st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
-
-# ---------------------------------------------------------------------------
 # 2. KPI Cards
 # ---------------------------------------------------------------------------
 st.markdown("""
@@ -523,3 +507,19 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 render_grafico_sueno(user_actual)
+
+st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# 10. Recordatorio analítica (al final del dashboard)
+# ---------------------------------------------------------------------------
+FECHA_ANALITICA = datetime(2026, 5, 1)
+dias_anal = (FECHA_ANALITICA - datetime.now()).days
+if dias_anal < 0:
+    st.info("🩸 Analítica completada. Siguiente revisión: noviembre 2026.")
+elif dias_anal < 15:
+    st.error(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). ¡Pide cita urgente!")
+elif dias_anal < 30:
+    st.warning(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). Empieza a gestionar cita.")
+else:
+    st.info(f"🩸 Próxima analítica: 1 mayo 2026 (en {dias_anal} días).")

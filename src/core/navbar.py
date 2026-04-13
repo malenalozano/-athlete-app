@@ -14,7 +14,6 @@ PAGES = [
     ("pages/02_plan.py",       "Plan",       "plan",       "📋", "#00D4FF", "rgba(0,212,255,0.15)",  "rgba(0,212,255,0.7)",  "0 0 16px rgba(0,212,255,0.35)"),
     ("pages/03_diario.py",     "Diario",     "diario",     "✏️", "#A855F7", "rgba(168,85,247,0.15)", "rgba(168,85,247,0.7)", "0 0 16px rgba(168,85,247,0.35)"),
     ("pages/04_garmin.py",     "Garmin",     "garmin",     "⌚", "#3B82F6", "rgba(59,130,246,0.15)", "rgba(59,130,246,0.7)", "0 0 16px rgba(59,130,246,0.35)"),
-    ("pages/05_ejercicios.py", "Ejercicios", "ejercicios", "💪", "#F97316", "rgba(249,115,22,0.15)", "rgba(249,115,22,0.7)", "0 0 16px rgba(249,115,22,0.35)"),
     ("pages/06_entrenador.py", "Entrenador", "entrenador", "🤖", "#6366F1", "rgba(99,102,241,0.15)", "rgba(99,102,241,0.7)", "0 0 16px rgba(99,102,241,0.35)"),
 ]
 
@@ -140,7 +139,7 @@ def render_navbar(pagina_activa: str):
     avatar_letter = (auth_user[:1] or "?").upper()
 
     # columns: logo | 6 páginas | spacer | sync | avatar
-    cols = st.columns([2.4, 1.0, 0.9, 1.0, 0.95, 1.2, 1.3, 2.6, 1.4])
+    cols = st.columns([2.4, 1.0, 0.9, 1.0, 0.95, 1.3, 3.5, 1.4])
 
     # Logo
     with cols[0]:
@@ -155,7 +154,7 @@ def render_navbar(pagina_activa: str):
                 st.page_link(path, label=f"{icon} {label}")
 
     # Sync button
-    with cols[7]:
+    with cols[6]:
         if st.button("↻", key="navbar_sync", help="Sincronizar Garmin (últimos 7 días)"):
             gc = st.session_state.get("gc")
             if gc is None:
@@ -227,7 +226,7 @@ def render_navbar(pagina_activa: str):
     _opciones      = list(_perfiles_dict.keys())
     _idx_actual    = next((i for i, k in enumerate(_opciones) if _perfiles_dict[k] == _current_uid), 0)
 
-    with cols[8]:
+    with cols[7]:
         _sel = st.selectbox(
             "usuario",
             _opciones,

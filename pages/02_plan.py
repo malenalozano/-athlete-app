@@ -194,6 +194,28 @@ with c4:
                     plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, user_actual, lunes, datetime.now())
                     st.session_state.plan_data = plan_nuevo
                     st.session_state.plan_ia = True
+                    # Auto-guardar en BD para que el plan persista siempre
+                    _semana_str = lunes.strftime("%Y-%m-%d")
+                    _conn_save = get_db_connection()
+                    try:
+                        _conn_save.execute(
+                            "DELETE FROM plan_entrenamiento WHERE usuario_id=? AND semana_inicio=?",
+                            (user_actual, _semana_str))
+                        for _d in plan_nuevo.get("dias", []):
+                            _desc = _d.get("descripcion_ia") or _d.get("alerta", "")
+                            _conn_save.execute(
+                                "INSERT INTO plan_entrenamiento "
+                                "(usuario_id,semana_inicio,fecha,tipo,sesion,duracion_min,intensidad,creado_en) "
+                                "VALUES (?,?,?,?,?,?,?,?)",
+                                (user_actual, _semana_str, _d["fecha"], _d["tipo"], _desc,
+                                 _d["duracion_min"], _d["intensidad"],
+                                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                        _conn_save.commit()
+                        st.cache_data.clear()
+                    except Exception:
+                        pass
+                    finally:
+                        _conn_save.close()
                 except Exception as e:
                     st.error(f"❌ Error generando plan:\n\n{str(e)}")
                     st.stop()
