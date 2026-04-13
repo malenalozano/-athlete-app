@@ -499,12 +499,12 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
             60 if not tpl["carrera"] and tpl["fuerza_p"] else 30)
 
         alerta = ""
-        # Semáforo ROJO
+        # Semáforo ROJO — solo advertencia, no modifica el plan
         if semaforo["color"] == "rojo" and tipo not in ("Descanso", "Regenerativo"):
             if tpl["carrera"]:
-                tipo, km, dur, alerta = "Regenerativo", 4, 35, "⛔ Semáforo rojo → regenerativo"
+                alerta = "⛔ Semáforo rojo — considera bajar intensidad"
             elif tpl["fuerza_p"]:
-                tipo, dur, alerta = "Movilidad", 25, "⛔ Semáforo rojo → movilidad"
+                alerta = "⛔ Semáforo rojo — considera movilidad en vez de fuerza"
 
         # Semáforo ÁMBAR: no calidad — FIX: parentizar correctamente el `or`
         elif semaforo["color"] == "ambar" and (
