@@ -269,7 +269,17 @@ def render_sparkline_metric(label, values, color="#C9FF00", unit=""):
     value_text = f"{current:.1f}{unit}" if isinstance(current, (int, float)) else str(current)
 
     # Crear sparkline con Plotly (más compacto)
-    # Usar rgba para fillcolor
+    # Defensa extra: Plotly no acepta #RRGGBBAA en fillcolor.
+    def _sanitize_plotly_color(raw_color, alpha=1):
+        if isinstance(raw_color, str) and raw_color.startswith("#") and len(raw_color) == 9:
+            return _hex_to_rgba(raw_color, alpha=alpha)
+        if isinstance(raw_color, str) and raw_color.startswith("rgba("):
+            return _hex_to_rgba(raw_color, alpha=alpha)
+        if isinstance(raw_color, str) and raw_color.startswith("rgb("):
+            return _hex_to_rgba(raw_color, alpha=alpha)
+        return raw_color
+
+    color = _sanitize_plotly_color(color, alpha=1)
     line_color = _hex_to_rgba(color, alpha=1)
     fillcolor = _hex_to_rgba(color, alpha=0.12)
 
