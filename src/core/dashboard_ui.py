@@ -62,6 +62,140 @@ def render_checkpoints_moderno(df_check, objetivo_txt="actual"):
                 )
 
 
+def render_objetivos_rendimiento_cards(tarjetas):
+    """Renderiza 3 tarjetas de objetivo (5K, 10K, media) con estado dinámico."""
+    if not tarjetas:
+        return
+
+    st.markdown(
+        """
+        <style>
+        .goal-grid {
+            display:grid;
+            grid-template-columns:repeat(3, minmax(220px, 1fr));
+            gap:16px;
+            margin:10px 0 8px;
+        }
+        .goal-card {
+            background:linear-gradient(165deg, #0f1724 0%, #101928 100%);
+            border:1px solid color-mix(in srgb, var(--goal-accent) 58%, #1f2937 42%);
+            border-radius:18px;
+            padding:18px 18px 14px;
+            box-shadow:0 12px 30px rgba(0,0,0,0.24);
+        }
+        .goal-top {
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap:10px;
+            margin-bottom:8px;
+        }
+        .goal-title {
+            color:var(--goal-accent);
+            font-size:1.05rem;
+            font-weight:800;
+            line-height:1.2;
+        }
+        .goal-target {
+            color:#ffffff;
+            font-size:1.02rem;
+            font-weight:700;
+            margin:3px 0 12px;
+        }
+        .goal-badge {
+            border-radius:999px;
+            font-size:0.75rem;
+            font-weight:700;
+            line-height:1;
+            padding:6px 10px;
+            border:1px solid transparent;
+            text-transform:uppercase;
+            letter-spacing:0.2px;
+            white-space:nowrap;
+        }
+        .goal-badge.done {
+            color:#00db81;
+            border-color:rgba(0, 219, 129, 0.65);
+            background:rgba(0, 219, 129, 0.12);
+        }
+        .goal-badge.pending {
+            color:#ff9f43;
+            border-color:rgba(255, 159, 67, 0.68);
+            background:rgba(255, 159, 67, 0.12);
+        }
+        .goal-detail {
+            color:#9fb0c4;
+            font-size:0.9rem;
+            min-height:44px;
+            margin-bottom:14px;
+        }
+        .goal-sep {
+            height:1px;
+            background:color-mix(in srgb, var(--goal-accent) 55%, #233042 45%);
+            opacity:0.55;
+            margin-bottom:12px;
+        }
+        .goal-sub {
+            color:#9db0c8;
+            font-size:0.88rem;
+            margin-bottom:5px;
+        }
+        .goal-mark {
+            display:flex;
+            align-items:baseline;
+            gap:8px;
+        }
+        .goal-mark-time {
+            color:var(--goal-accent);
+            font-size:1.05rem;
+            font-weight:800;
+            line-height:1;
+        }
+        .goal-mark-hint {
+            color:#ff9f43;
+            font-size:0.9rem;
+            font-weight:700;
+        }
+        .goal-mark-hint.done {
+            color:#00db81;
+        }
+        @media (max-width: 1100px) {
+            .goal-grid { grid-template-columns:1fr; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    cards_html = []
+    for card in tarjetas:
+        done = bool(card.get("hecho"))
+        badge_txt = "HECHO" if done else "PENDIENTE"
+        hint = str(card.get("estado_hint") or "").upper()
+        cards_html.append(
+            f"""
+            <div class='goal-card' style='--goal-accent:{card.get("accent", "#00db81")};'>
+                <div class='goal-top'>
+                    <div>
+                        <div class='goal-title'>{card.get("titulo", "-")}</div>
+                        <div class='goal-target'>{card.get("meta_txt", "-")}</div>
+                    </div>
+                    <span class='goal-badge {'done' if done else 'pending'}'>{badge_txt}</span>
+                </div>
+                <div class='goal-detail'>{card.get("detalle", "")}</div>
+                <div class='goal-sep'></div>
+                <div class='goal-sub'>Mejor Marca</div>
+                <div class='goal-mark'>
+                    <span class='goal-mark-time'>{card.get("mejor_txt", "-")}</span>
+                    <span class='goal-mark-hint {'done' if done else ''}'>{hint}</span>
+                </div>
+            </div>
+            """
+        )
+
+    st.markdown(f"<div class='goal-grid'>{''.join(cards_html)}</div>", unsafe_allow_html=True)
+
+
 @st.cache_data(ttl=120, show_spinner=False)
 def obtener_estado_ciclo_malena(usuario_id: int = 1):
     """Estado actual del ciclo solo para Malena (usuario_id=1).

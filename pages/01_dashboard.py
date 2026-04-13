@@ -9,9 +9,15 @@ from src.db.db_manager import obtener_perfil
 from src.core.navbar import render_navbar
 from src.core.dashboard_data import (
     resumen_semana_con_delta, metricas_garmin, progresion_pesos_ejercicios,
-    inicio_semana, cargar_plan_semana_cache,
+    inicio_semana, cargar_plan_semana_cache, checkpoints_objetivo_dashboard,
 )
-from src.core.dashboard_ui import obtener_estado_ciclo_malena, render_macrociclo, render_grafico_sueno, obtener_titulo_macrociclo
+from src.core.dashboard_ui import (
+    obtener_estado_ciclo_malena,
+    render_macrociclo,
+    render_grafico_sueno,
+    obtener_titulo_macrociclo,
+    render_objetivos_rendimiento_cards,
+)
 from src.core.dashboard_visuals import (
     render_strain_recovery_donuts, render_rhr_card, render_heatmap_training_intensity,
     render_metrics_sparklines,
@@ -249,6 +255,9 @@ st.markdown(
 titulo_macrociclo = obtener_titulo_macrociclo(user_actual)
 st.subheader(titulo_macrociclo)
 render_macrociclo(user_actual)
+
+objetivos_cards = checkpoints_objetivo_dashboard(user_actual, _objetivo_tipo)
+render_objetivos_rendimiento_cards(objetivos_cards)
 
 st.divider()
 
