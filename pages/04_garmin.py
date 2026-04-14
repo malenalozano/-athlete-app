@@ -672,11 +672,11 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
     # ── GitHub Actions sync (fallback cuando Garmin bloquea la IP del cloud) ──
     _gh_pat = st.secrets.get("GITHUB_PAT", "") if hasattr(st, "secrets") else ""
     if _gh_pat:
-            st.markdown("<hr style='border:none;border-top:1px solid #1e2a3b;margin:14px 0 10px;'>", unsafe_allow_html=True)
-            st.markdown(
-                f"<div style='font-size:11px;color:{TXT3};margin-bottom:8px;'>"
-                f"🤖 Alternativa si Garmin bloquea esta IP:</div>",
-                unsafe_allow_html=True)
+        st.markdown("<hr style='border:none;border-top:1px solid #1e2a3b;margin:14px 0 10px;'>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='font-size:11px;color:{TXT3};margin-bottom:8px;'>"
+            f"🤖 Alternativa si Garmin bloquea esta IP:</div>",
+            unsafe_allow_html=True)
 
         if st.button("🚀 Sync vía GitHub Actions", use_container_width=True, key="gh_sync_btn",
                      help="Lanza la sincronización desde GitHub (diferente IP, evita el bloqueo 429)"):
@@ -715,6 +715,12 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
 
         if st.session_state.get("gh_sync_triggered"):
             st.caption(f"⏳ Última ejecución lanzada: {st.session_state['gh_sync_triggered']} · [Ver en GitHub Actions](https://github.com/malenalozano/athlete-performance-tracker/actions)")
+
+    # ── HRV 7-day chart ──────────────────────────────────────────────
+    conn = get_db_connection()
+    try:
+        df_hrv = pd.read_sql_query("""
+            SELECT fecha, hrv_ms
             FROM datos_biometricos_premium
             WHERE usuario_id=?
             ORDER BY fecha DESC
