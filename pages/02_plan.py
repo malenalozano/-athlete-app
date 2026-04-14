@@ -681,6 +681,8 @@ border:1px solid rgba(74,222,128,0.25);border-radius:16px;padding:1.5rem 2rem;ma
         body_battery_min=datos.get("body_battery_min"),
         training_status=datos.get("training_status"),
     )
+    _color_map = {"verde": "#22c55e", "ambar": "#f59e0b", "rojo": "#ef4444"}
+    _sc = _color_map.get(_sem_dat["color"], "#9ca3af")
     _icono = {"verde":"🟢","ambar":"💡","rojo":"💡"}.get(_sem_dat["color"],"💡")
     _titulo = "Recuperación óptima" if _sem_dat["color"] == "verde" else "Recomendación de recuperación"
     st.info(
