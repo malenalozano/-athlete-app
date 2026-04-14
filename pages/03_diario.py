@@ -111,18 +111,19 @@ if _es_mujer and active_tab == "ciclo":
         _cycle_day = None
         _fase_actual = None
 
-    # Phase banner with 4 phase icons
+    # Compact phase banner
     if _fase_actual and _cycle_day:
         st.markdown(
-            f"<div style='background:linear-gradient(135deg,rgba(244,63,94,0.12),rgba(168,85,247,0.1));border:1px solid rgba(244,63,94,0.25);border-radius:16px;padding:1.5rem;margin-bottom:1.5rem;'>"
-            f"<div style='display:flex;align-items:center;gap:12px;margin-bottom:16px;'>"
-            f"<span style='background:#A855F7;color:#fff;padding:6px 12px;border-radius:8px;font-weight:600;font-size:12px;'>● {_fase_actual.upper()}</span>"
-            f"<span style='color:#8b949e;'>Día {_cycle_day} del ciclo</span></div>"
-            f"<div style='display:flex;justify-content:space-between;gap:12px;'>"
-            f"<div style='text-align:center;'><span style='font-size:1.8rem;'>🌑</span><span style='display:block;color:#e05;font-size:10px;font-weight:600;margin-top:4px;'>MENSTRUAL</span></div>"
-            f"<div style='text-align:center;'><span style='font-size:1.8rem;'>🌒</span><span style='display:block;color:#A855F7;font-size:10px;font-weight:600;margin-top:4px;border-bottom:2px solid #A855F7;padding-bottom:2px;'>FOLICULAR</span></div>"
-            f"<div style='text-align:center;'><span style='font-size:1.8rem;'>🌕</span><span style='display:block;color:#C9FF00;font-size:10px;font-weight:600;margin-top:4px;'>OVULACIÓN</span></div>"
-            f"<div style='text-align:center;'><span style='font-size:1.8rem;'>🌖</span><span style='display:block;color:#FF9500;font-size:10px;font-weight:600;margin-top:4px;'>LÚTEA</span></div>"
+            f"<div style='background:linear-gradient(135deg,rgba(168,85,247,0.14),rgba(244,63,94,0.08));border:1px solid rgba(168,85,247,0.28);border-radius:16px;padding:1rem 1.15rem 1.05rem;margin-bottom:1.25rem;'>"
+            f"<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;'>"
+            f"<span style='font-size:1.2rem;'>🌙</span>"
+            f"<span style='font-size:1rem;font-weight:800;color:#e6edf3;'>{_fase_actual}</span>"
+            f"<span style='color:#8b949e;font-size:0.88rem;'>— Día {_cycle_day} del ciclo</span></div>"
+            f"<div style='display:flex;flex-wrap:wrap;gap:14px 18px;align-items:center;'>"
+            f"<span style='display:flex;align-items:center;gap:6px;color:#f43f5e;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;'><span style='width:8px;height:8px;border-radius:50%;background:#f43f5e;display:inline-block;'></span>Menstrual</span>"
+            f"<span style='display:flex;align-items:center;gap:6px;color:#A855F7;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;'><span style='width:8px;height:8px;border-radius:50%;background:#A855F7;display:inline-block;'></span>Folicular</span>"
+            f"<span style='display:flex;align-items:center;gap:6px;color:#C9FF00;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;'><span style='width:8px;height:8px;border-radius:50%;background:#C9FF00;display:inline-block;'></span>Ovulación</span>"
+            f"<span style='display:flex;align-items:center;gap:6px;color:#FF9500;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;'><span style='width:8px;height:8px;border-radius:50%;background:#FF9500;display:inline-block;'></span>Lútea</span>"
             f"</div></div>",
             unsafe_allow_html=True)
 
@@ -130,83 +131,59 @@ if _es_mujer and active_tab == "ciclo":
     _col_form, _col_cal = st.columns([0.45, 0.55], gap="large")
 
     with _col_form:
-        # Symptom sliders
-        st.markdown(label_upper("Estado de hoy"), unsafe_allow_html=True)
-        _symptoms = {
-            "Energía": ("#C9FF00", "diario_energia"),
-            "Ánimo": ("#A855F7", "diario_animo"),
-            "Dolor": ("#F43F5E", "diario_dolor"),
-            "Sueño": ("#00D4FF", "diario_sueno"),
+        st.markdown(label_upper("Registro diario"), unsafe_allow_html=True)
+        sangre_opts = ["⚪ Sin sangre","🩸 Manchado","🟤 Flujo","🩸 Ligero","🩸🩸 Medio","🩸🩸🩸 Fuerte"]
+        sangre_map  = {
+            "⚪ Sin sangre": "Sin sangre",
+            "🩸 Manchado": "Manchado",
+            "🟤 Flujo": "Flujo",
+            "🩸 Ligero": "Ligero",
+            "🩸🩸 Medio": "Medio",
+            "🩸🩸🩸 Fuerte": "Fuerte",
         }
-        _sym_cols = st.columns(2)
-        for _si, (_sn, (_sc, _sk)) in enumerate(_symptoms.items()):
-            with _sym_cols[_si % 2]:
-                _sv = st.session_state.get(_sk, 0)
-                _nv = st.slider(_sn, 0, 10, _sv)
-                st.session_state[_sk] = _nv
+        sint_opts   = ["🥚 Dolor de ovarios","🍒 Dolor de senos","🍫 Antojos","💢 Dolor de cabeza","🎈 Hinchazón"]
+        sint_map    = {o: o.split(" ",1)[1] for o in sint_opts}
+        animo_opts  = ["😰 Ansiedad/Estrés","😭 Triste","😡 Enfadada","😄 Feliz","🪫 Cansada","⚡ Energética"]
+        animo_map   = {o: o.split(" ",1)[1] for o in animo_opts}
+        fb_opts     = ["🚀 A tope","🗿 Regulero","⛈️ Bajito","⛔ No completo"]
+        fb_map      = {"🚀 A tope":"A tope","🗿 Regulero":"Regulero","⛈️ Bajito":"Bajito","⛔ No completo":"No completo"}
 
-        # Form for logging cycle data
-        st.markdown(label_upper("Registrar síntomas"), unsafe_allow_html=True)
-    sangre_opts = ["⚪ Sin sangre","🩸 Manchado","🟤 Flujo","🩸 Ligero","🩸🩸 Medio","🩸🩸🩸 Fuerte"]
-    sangre_map  = {
-        "⚪ Sin sangre": "Sin sangre",
-        "🩸 Manchado": "Manchado",
-        "🟤 Flujo": "Flujo",
-        "🩸 Ligero": "Ligero",
-        "🩸🩸 Medio": "Medio",
-        "🩸🩸🩸 Fuerte": "Fuerte",
-    }
-    sint_opts   = ["🥚 Dolor de ovarios","🍒 Dolor de senos","🍫 Antojos","💢 Dolor de cabeza","🎈 Hinchazón"]
-    sint_map    = {o: o.split(" ",1)[1] for o in sint_opts}
-    animo_opts  = ["😰 Ansiedad/Estrés","😭 Triste","😡 Enfadada","😄 Feliz","🪫 Cansada","⚡ Energética"]
-    animo_map   = {o: o.split(" ",1)[1] for o in animo_opts}
-    fb_opts     = ["🚀 A tope","🗿 Regulero","⛈️ Bajito","⛔ No completo"]
-    fb_map      = {"🚀 A tope":"A tope","🗿 Regulero":"Regulero","⛈️ Bajito":"Bajito","⛔ No completo":"No completo"}
+        with st.form(f"fisio_ciclo_{user_actual}"):
+            fecha = st.date_input("Fecha del registro", value=datetime.now().date(), format="DD/MM/YYYY")
+            st.markdown(label_upper("Sangre"), unsafe_allow_html=True)
+            sangre = st.pills("_s", sangre_opts, selection_mode="single", default="⚪ Sin sangre", label_visibility="collapsed")
+            st.markdown(label_upper("Síntomas"), unsafe_allow_html=True)
+            sint_sel = st.pills("_si", sint_opts, selection_mode="multi", label_visibility="collapsed")
+            st.markdown(label_upper("Ánimo"), unsafe_allow_html=True)
+            animo_sel = st.pills("_a", animo_opts, selection_mode="multi", label_visibility="collapsed")
+            st.markdown(label_upper("Entreno"), unsafe_allow_html=True)
+            fb_sel = st.pills("_f", fb_opts, selection_mode="single", label_visibility="collapsed")
+            if st.form_submit_button("Guardar", use_container_width=True, type="primary"):
+                sv = sangre_map.get(sangre or "⚪ Sin sangre", "Sin sangre")
+                fase = "Menstruación" if sv in ("Ligero", "Medio", "Fuerte") else "Lútea"
 
-    with st.form(f"fisio_ciclo_{user_actual}"):
-        fecha = st.date_input("Fecha del registro", value=datetime.now().date(), format="DD/MM/YYYY")
-        st.markdown(label_upper("Sangre"), unsafe_allow_html=True)
-        sangre = st.pills("_s", sangre_opts, selection_mode="single", default="⚪ Sin sangre", label_visibility="collapsed")
-        st.markdown(label_upper("Síntomas"), unsafe_allow_html=True)
-        sint_sel = st.pills("_si", sint_opts, selection_mode="multi", label_visibility="collapsed")
-        st.markdown(label_upper("Ánimo"), unsafe_allow_html=True)
-        animo_sel = st.pills("_a", animo_opts, selection_mode="multi", label_visibility="collapsed")
-        st.markdown(label_upper("Entreno"), unsafe_allow_html=True)
-        fb_sel = st.pills("_f", fb_opts, selection_mode="single", label_visibility="collapsed")
-        if st.form_submit_button("Guardar", use_container_width=True, type="primary"):
-            sv = sangre_map.get(sangre or "⚪ Sin sangre", "Sin sangre")
-            fase = "Menstruación" if sv in ("Ligero", "Medio", "Fuerte") else "Lútea"
+                conn = get_db_connection()
+                try:
+                    if sv not in ("Ligero", "Medio", "Fuerte"):
+                        _ld = _inicio_ultima_regla(conn, user_actual, fecha)
+                        if _ld is not None:
+                            _cd = (fecha - _ld).days + 1
+                            _pos = ((_cd - 1) % 28) + 1
+                            fase = "Menstruación" if _pos <= 5 else "Folicular" if _pos <= 11 else "Ovulación" if _pos <= 16 else "Lútea"
 
-            conn = get_db_connection()
-            try:
-                if sv not in ("Ligero", "Medio", "Fuerte"):
-                    _ld = _inicio_ultima_regla(conn, user_actual, fecha)
-                    if _ld is not None:
-                        _cd = (fecha - _ld).days + 1
-                        _pos = ((_cd - 1) % 28) + 1
-                        fase = "Menstruación" if _pos <= 5 else "Folicular" if _pos <= 11 else "Ovulación" if _pos <= 16 else "Lútea"
-
-                sint_str  = ", ".join([sint_map.get(x,x)  for x in (sint_sel  or [])])
-                animo_str = ", ".join([animo_map.get(x,x) for x in (animo_sel or [])]) or "Normal"
-                fb_str    = fb_map.get(fb_sel, "") if fb_sel else ""
-                conn.cursor().execute(
-                    "INSERT INTO diario_fisiologia (usuario_id,fecha,fase_ciclo,fatiga_subjetiva,"
-                    "dolor_notas,sangre,sintomas,estado_animo,feedback_entreno) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (user_actual, str(fecha), fase, None, sint_str,
-                     sv if sv != "Sin sangre" else None, sint_str, animo_str, fb_str))
-                conn.commit()
-            finally:
-                conn.close()
-            st.cache_data.clear()
-            st.success("Registro guardado.")
-
-    # Recommendation inside form column
-    st.markdown(
-        f"<div style='background:#161B22;border:1px solid #C9FF0030;border-radius:12px;padding:1rem;margin-top:0.75rem;'>"
-        f"<p style='color:#C9FF00;font-weight:600;margin:0 0 4px;font-size:0.82rem;'>💡 Recomendación</p>"
-        f"<p style='color:#8b949e;margin:0;font-size:0.78rem;'>Entreno de recuperación recomendado hoy.</p>"
-        f"</div>",
-        unsafe_allow_html=True)
+                    sint_str  = ", ".join([sint_map.get(x,x)  for x in (sint_sel  or [])])
+                    animo_str = ", ".join([animo_map.get(x,x) for x in (animo_sel or [])]) or "Normal"
+                    fb_str    = fb_map.get(fb_sel, "") if fb_sel else ""
+                    conn.cursor().execute(
+                        "INSERT INTO diario_fisiologia (usuario_id,fecha,fase_ciclo,fatiga_subjetiva,"
+                        "dolor_notas,sangre,sintomas,estado_animo,feedback_entreno) VALUES (?,?,?,?,?,?,?,?,?)",
+                        (user_actual, str(fecha), fase, None, sint_str,
+                         sv if sv != "Sin sangre" else None, sint_str, animo_str, fb_str))
+                    conn.commit()
+                finally:
+                    conn.close()
+                st.cache_data.clear()
+                st.success("Registro guardado.")
 
     # ── Calendar in right column ──────────────────────────────────────────────
     with _col_cal:

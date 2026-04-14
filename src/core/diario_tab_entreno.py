@@ -347,10 +347,12 @@ def html_calendario_entreno(dias_mes: dict, anio: int, mes: int) -> str:
 
         celdas.append(
             f"<div style='background:{bg};{border_hoy}border-radius:6px;"
-            f"aspect-ratio:1;display:flex;flex-direction:column;"
-            f"align-items:center;justify-content:center;position:relative;'>"
-            f"<div style='font-size:11px;color:{'#a3e635' if es_hoy else color_txt};font-weight:{font_w};'>{dia}</div>"
-            f"<div style='font-size:10px;line-height:1.1;margin-top:2px;'>{emoji}</div>"
+            f"aspect-ratio:1;display:flex;align-items:center;justify-content:center;"
+            f"position:relative;overflow:hidden;padding:8px;'>"
+            f"<div style='position:absolute;top:5px;right:6px;font-size:10px;"
+            f"color:{'#a3e635' if es_hoy else color_txt};font-weight:{font_w};line-height:1;'>{dia}</div>"
+            f"<div style='font-size:30px;line-height:1;display:flex;align-items:center;justify-content:center;"
+            f"width:100%;height:100%;transform:translateY(2px);'>{emoji}</div>"
             f"</div>"
         )
 
