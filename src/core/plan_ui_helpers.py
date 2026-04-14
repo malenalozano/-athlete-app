@@ -33,13 +33,14 @@ _ZONA_COLOR = {"Z1": "#00C896", "Z2": "#C9FF00", "Z3": "#F5A623", "Z4": "#FF6B6B
 
 def html_semaforo(semaforo: dict, km_totales: float, acwr: float) -> str:
     c = semaforo["color"]
+    titulo = "💡 Recomendación de recuperación" if c in ("rojo", "ambar") else f"Semáforo {c.upper()}"
     return (
         f"<div style='background:{_BG_SEM[c]};border:2px solid {_BORD_SEM[c]};"
         f"border-radius:14px;padding:14px 20px;margin-bottom:12px;"
         f"display:flex;align-items:center;gap:14px;'>"
         f"<span style='font-size:2rem;'>{_ICON_SEM[c]}</span>"
         f"<div><div style='font-size:1.05rem;font-weight:800;color:{_BORD_SEM[c]};'>"
-        f"Semáforo {c.upper()}</div>"
+        f"{titulo}</div>"
         f"<div style='color:#d8e9db;font-size:0.85rem;margin-top:2px;'>{semaforo['mensaje']}</div>"
         f"<div style='color:#8B949E;font-size:0.75rem;margin-top:2px;'>"
         f"ACWR: {acwr} · Objetivo: {km_totales} km</div></div></div>"

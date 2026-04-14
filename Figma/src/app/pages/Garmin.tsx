@@ -113,6 +113,34 @@ const historialActividades = [
   },
 ];
 
+// ── Sleep & Biometrics data (moved from PlanSemanal) ──────────────────────────
+
+const sleepData = [
+  { fecha: "2026-04-13", horas_totales: "8h 50min", score: 92, sleep_profundo_horas: "1h 5min", sleep_rem_horas: "2h 14min", sleep_vigilia_horas: "4min", despertares: "None" },
+  { fecha: "2026-04-12", horas_totales: "8h 15min", score: 85, sleep_profundo_horas: "1h 15min", sleep_rem_horas: "1h 44min", sleep_vigilia_horas: "4min", despertares: "None" },
+  { fecha: "2026-04-11", horas_totales: "7h 37min", score: 71, sleep_profundo_horas: "57min", sleep_rem_horas: "29min", sleep_vigilia_horas: "13min", despertares: "1" },
+  { fecha: "2026-04-10", horas_totales: "8h 42min", score: 85, sleep_profundo_horas: "47min", sleep_rem_horas: "1h 59min", sleep_vigilia_horas: "28min", despertares: "1" },
+  { fecha: "2026-04-09", horas_totales: "9h 11min", score: 87, sleep_profundo_horas: "1h 32min", sleep_rem_horas: "1h 41min", sleep_vigilia_horas: "7min", despertares: "1" },
+  { fecha: "2026-04-08", horas_totales: "9h 5min", score: 83, sleep_profundo_horas: "1h 2min", sleep_rem_horas: "1h 47min", sleep_vigilia_horas: "15min", despertares: "1" },
+  { fecha: "2026-04-07", horas_totales: "9h 32min", score: 82, sleep_profundo_horas: "1h 28min", sleep_rem_horas: "1h 29min", sleep_vigilia_horas: "22min", despertares: "2" },
+  { fecha: "2026-04-06", horas_totales: "9h 17min", score: 84, sleep_profundo_horas: "47min", sleep_rem_horas: "1h 55min", sleep_vigilia_horas: "13min", despertares: "1" },
+  { fecha: "2026-04-05", horas_totales: "8h 35min", score: 95, sleep_profundo_horas: "2h 3min", sleep_rem_horas: "1h 45min", sleep_vigilia_horas: "—", despertares: "None" },
+  { fecha: "2026-04-04", horas_totales: "7h 59min", score: 84, sleep_profundo_horas: "1h 6min", sleep_rem_horas: "1h 36min", sleep_vigilia_horas: "14min", despertares: "1" },
+];
+
+const biometricsData = [
+  { fecha: "2026-04-12", hrv_ms: 39, fc_reposo: 62, sleep_score: 85, estres_medio: 21, ACWR: "None" },
+  { fecha: "2026-04-10", hrv_ms: 71, fc_reposo: 55, sleep_score: 85, estres_medio: 22, ACWR: "None" },
+  { fecha: "2026-04-08", hrv_ms: 46, fc_reposo: "None", sleep_score: 83, estres_medio: 21, ACWR: "1" },
+  { fecha: "2026-04-07", hrv_ms: "None", fc_reposo: "None", sleep_score: "None", estres_medio: "None", ACWR: "1" },
+  { fecha: "2026-04-06", hrv_ms: 94, fc_reposo: "None", sleep_score: 84, estres_medio: 18, ACWR: "1" },
+  { fecha: "2026-04-05", hrv_ms: "None", fc_reposo: "None", sleep_score: "None", estres_medio: "None", ACWR: "1" },
+  { fecha: "2026-04-04", hrv_ms: "None", fc_reposo: "None", sleep_score: "None", estres_medio: "None", ACWR: "1" },
+  { fecha: "2026-04-03", hrv_ms: 78, fc_reposo: "None", sleep_score: 88, estres_medio: 23, ACWR: "None" },
+  { fecha: "2026-04-02", hrv_ms: "None", fc_reposo: "None", sleep_score: "None", estres_medio: "None", ACWR: "None" },
+  { fecha: "2026-04-01", hrv_ms: "None", fc_reposo: "None", sleep_score: "None", estres_medio: "None", ACWR: "None" },
+];
+
 // ── Sincronización tab ─────────────────────────────────────────────────────────
 
 function Sincronizacion() {
@@ -178,14 +206,63 @@ function Sincronizacion() {
                 <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
                 {syncing ? "Sincronizando..." : "Sincronizar ahora"}
               </button>
-              <div className="flex items-center gap-1.5 text-xs text-[#8B949E]">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-green-400">
                 <Wifi className="h-3.5 w-3.5" />
-                Bluetooth activo
+                Conectado
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Última actividad importada */}
+      <Card
+        className="rounded-2xl"
+        style={{
+          background: "linear-gradient(135deg, rgba(0,212,255,0.1), rgba(22,27,34,1))",
+          border: "1px solid rgba(0,212,255,0.25)",
+        }}
+      >
+        <CardHeader>
+          <CardTitle className="text-white text-base flex items-center gap-2">
+            <Activity className="h-4 w-4 text-cyan-400" />
+            Última actividad importada
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <div
+              className="h-16 w-16 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: "rgba(0,212,255,0.15)", border: "1px solid rgba(0,212,255,0.3)" }}
+            >
+              <Activity className="h-8 w-8 text-cyan-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-base font-bold text-white mb-1">Tirada Larga Base</p>
+              <div className="flex items-center gap-3 text-sm text-[#8B949E]">
+                <span>Dom 13 Abr · 18:37:18</span>
+                <Badge className="bg-cyan-400/15 text-cyan-300 border-cyan-500/30 text-xs">
+                  Carrera
+                </Badge>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-xs text-[#8B949E] mb-1">Distancia</p>
+                <p className="text-lg font-bold text-white">15.4 km</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#8B949E] mb-1">Tiempo</p>
+                <p className="text-lg font-bold text-white">1:32:14</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#8B949E] mb-1">Pace</p>
+                <p className="text-lg font-bold text-cyan-400">6:00 /km</p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Metrics grid */}
       <div>
@@ -387,6 +464,84 @@ function Historial() {
           </Card>
         ))}
       </div>
+
+      {/* Tabla de Sueño */}
+      <Card className="rounded-2xl" style={{ background: "#161B22", border: "1px solid rgba(168,85,247,0.2)" }}>
+        <CardHeader>
+          <CardTitle className="text-white text-base flex items-center gap-2">
+            <Moon className="h-4 w-4 text-purple-400" />
+            Sueño (Últimos 30 días)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#30363D]">
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">fecha</th>
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">horas_totales</th>
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">score</th>
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">sleep_profundo</th>
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">sleep_rem</th>
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">vigilia</th>
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">despertares</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sleepData.map((row, i) => (
+                  <tr key={i} className="border-b border-[#30363D]/40 hover:bg-[#30363D]/20 transition-colors">
+                    <td className="text-sm text-white py-3 px-3">{row.fecha}</td>
+                    <td className="text-sm text-cyan-400 py-3 px-3">{row.horas_totales}</td>
+                    <td className="text-sm py-3 px-3" style={{ color: row.score >= 90 ? "#C9FF00" : row.score >= 80 ? "#00D4FF" : "#F97316" }}>{row.score}</td>
+                    <td className="text-sm text-white py-3 px-3">{row.sleep_profundo_horas}</td>
+                    <td className="text-sm text-white py-3 px-3">{row.sleep_rem_horas}</td>
+                    <td className="text-sm text-white py-3 px-3">{row.sleep_vigilia_horas}</td>
+                    <td className="text-sm text-cyan-400 py-3 px-3">{row.despertares}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Tabla de Biométricos */}
+      <Card className="rounded-2xl" style={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.2)" }}>
+        <CardHeader>
+          <CardTitle className="text-white text-base flex items-center gap-2">
+            <Activity className="h-4 w-4 text-cyan-400" />
+            Biométricos
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#30363D]">
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">fecha</th>
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">hrv_ms</th>
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">fc_reposo</th>
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">sleep_score</th>
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">estres_medio</th>
+                  <th className="text-left text-xs font-semibold text-[#8B949E] py-3 px-3">ACWR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {biometricsData.map((row, i) => (
+                  <tr key={i} className="border-b border-[#30363D]/40 hover:bg-[#30363D]/20 transition-colors">
+                    <td className="text-sm text-white py-3 px-3">{row.fecha}</td>
+                    <td className="text-sm text-cyan-400 py-3 px-3">{row.hrv_ms}</td>
+                    <td className="text-sm text-white py-3 px-3">{row.fc_reposo}</td>
+                    <td className="text-sm text-white py-3 px-3">{row.sleep_score}</td>
+                    <td className="text-sm text-white py-3 px-3">{row.estres_medio}</td>
+                    <td className="text-sm text-cyan-400 py-3 px-3">{row.ACWR}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

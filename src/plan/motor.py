@@ -105,7 +105,7 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
         training_status=datos.get("training_status"),
     )
 
-    # Ajuste por ciclo menstrual — solo para mujeres
+    # Ajuste por ciclo menstrual — solo para mujeres (informativo)
     es_hombre = str(genero).lower() in ("hombre", "male", "m")
     ciclo_ajuste = ajustar_por_ciclo(None if es_hombre else datos.get("fase_ciclo"))
 
@@ -136,15 +136,9 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
 
     eficiencia = evaluar_eficiencia_aerobica(datos["actividades_z2"])
 
-    # Aplicar multiplicadores: semáforo × ciclo menstrual
-    km_objetivo = round(km_objetivo * semaforo["multiplicador_volumen"] * ciclo_ajuste["multiplicador_volumen"], 1)
-
-    # Si la fase lútea/premenstrual bloquea calidad, forzarlo en semáforo
-    if not ciclo_ajuste["permitir_calidad"] and semaforo["color"] == "verde":
-        semaforo = dict(semaforo)  # no mutar original
-        semaforo["color"] = "ambar"
-        semaforo["permitir_calidad"] = False
-        semaforo["mensaje"] = ciclo_ajuste["mensaje"]
+    # HRV y ciclo menstrual no modifican automáticamente la generación del plan.
+    # Se mantienen como señales informativas para decisión manual.
+    km_objetivo = round(km_objetivo, 1)
 
     dias = distribuir_semana(fase, km_objetivo, semaforo, restricciones, fecha_inicio_lunes, cadencia_eval,
                             datos.get("sleep_breakdown"), objetivo_tipo=objetivo_tipo)

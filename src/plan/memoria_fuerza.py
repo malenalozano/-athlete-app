@@ -17,14 +17,20 @@ _ESQUEMAS = {
     "Tapering":             {"series": 2, "reps": "10",    "pct_1rm": 0.65, "nota": "Activación mínima"},
 }
 
-# Ejercicios siempre incluidos + grupo muscular
+# Ejercicios organizados por día de fuerza + grupo muscular
 _EJERCICIOS_BASE = [
-    {"ejercicio": "Hip Thrust",           "grupo": "Glúteos",          "peso_referencia": 40},
-    {"ejercicio": "Sentadilla Búlgara",   "grupo": "Glúteos/Cuádriceps","peso_referencia": 14},
-    {"ejercicio": "Dominadas",            "grupo": "Espalda/Bíceps",   "peso_referencia": 0},
-    {"ejercicio": "Peso Muerto Rumano",   "grupo": "Isquios/Glúteos",  "peso_referencia": 30},
-    {"ejercicio": "Press Banca",          "grupo": "Pecho/Tríceps",    "peso_referencia": 20},
-    {"ejercicio": "Prensa 45°",           "grupo": "Cuádriceps",       "peso_referencia": 60},
+    {"dia_fuerza": "Push", "ejercicio": "Press Banca",        "grupo": "Pecho/Tríceps",        "peso_referencia": 20},
+    {"dia_fuerza": "Push", "ejercicio": "Press Militar",      "grupo": "Hombro/Tríceps",      "peso_referencia": 16},
+    {"dia_fuerza": "Push", "ejercicio": "Fondos en Paralelas", "grupo": "Pecho/Tríceps",       "peso_referencia": 0},
+
+    {"dia_fuerza": "Pull", "ejercicio": "Dominadas",          "grupo": "Espalda/Bíceps",       "peso_referencia": 0},
+    {"dia_fuerza": "Pull", "ejercicio": "Remo con Barra",     "grupo": "Espalda/Bíceps",       "peso_referencia": 35},
+    {"dia_fuerza": "Pull", "ejercicio": "Face Pull",          "grupo": "Deltoides post./Trapecio", "peso_referencia": 15},
+
+    {"dia_fuerza": "Tren inferior + glúteo", "ejercicio": "Hip Thrust",         "grupo": "Glúteos",            "peso_referencia": 40},
+    {"dia_fuerza": "Tren inferior + glúteo", "ejercicio": "Sentadilla Búlgara", "grupo": "Glúteos/Cuádriceps", "peso_referencia": 14},
+    {"dia_fuerza": "Tren inferior + glúteo", "ejercicio": "Peso Muerto Rumano", "grupo": "Isquios/Glúteos",    "peso_referencia": 30},
+    {"dia_fuerza": "Tren inferior + glúteo", "ejercicio": "Prensa 45°",         "grupo": "Cuádriceps",         "peso_referencia": 60},
 ]
 
 
@@ -78,9 +84,9 @@ def obtener_progresion_ejercicio(usuario_id: int, ejercicio: str, conn) -> dict:
 def generar_tabla_fuerza_semana(usuario_id: int, fase_macrociclo: dict,
                                  semaforo: dict, acwr: float = None, conn=None) -> list:
     """
-    Genera lista de ejercicios con pesos sugeridos según fase y semáforo.
-    Si semáforo ROJO → reducir series a 2 y peso al 80%.
-    Si semáforo ÁMBAR → mantener peso actual sin subir, reducir series -1.
+    Genera lista de ejercicios con pesos sugeridos según fase y división muscular:
+    Push, Pull y Tren inferior + glúteo.
+    El semáforo de recuperación solo añade recomendaciones visuales.
     Si ACWR > 1.3 → reducir series -1 pero mantener peso (calidad > cantidad).
     Devuelve lista de dicts listos para st.dataframe.
     """
@@ -99,20 +105,19 @@ def generar_tabla_fuerza_semana(usuario_id: int, fase_macrociclo: dict,
         peso = prog["sugerencia_peso"]
         razon = prog["razon"]
 
-        if color == "rojo":
-            series = min(series, 2)
-            peso = round(float(prog["peso_actual"]) * 0.80 / 2.5) * 2.5
-            razon = "Semáforo rojo — -20% peso, -series"
-        elif color == "ambar":
-            series = max(series - 1, 2)
-            peso = prog["peso_actual"]  # no subir
-            razon = f"Semáforo ámbar — {prog['razon']} (sin subir, -1 serie)"
-        elif acwr is not None and acwr > 1.3:
+        if acwr is not None and acwr > 1.3:
             # ACWR alto: reducir series pero mantener peso (calidad biomecánica)
             series = max(series - 1, 2)
             razon = f"{prog['razon']} · ACWR {acwr:.2f} alto — mantener peso, -1 serie"
+
+        # Semáforo solo informativo: no altera series ni peso.
+        if color == "rojo":
+            razon = f"{razon} · Recomendación recuperación baja: ajusta intensidad si hay fatiga"
+        elif color == "ambar":
+            razon = f"{razon} · Recomendación recuperación moderada: valora reducir exigencia"
         
         filas.append({
+            "Día": ej["dia_fuerza"],
             "Ejercicio": ej["ejercicio"],
             "Grupo": ej["grupo"],
             "Series": series,

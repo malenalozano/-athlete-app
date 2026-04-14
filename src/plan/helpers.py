@@ -453,9 +453,9 @@ def cargar_datos_plan(usuario_id: int) -> dict:
 def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
                       restricciones: dict, fecha_inicio, cadencia_eval: dict = None,
                       sleep_breakdown: dict = None, objetivo_tipo: str = "maraton") -> list:
-    """Construye los 7 días aplicando templates, semáforo y restricciones de lesión.
+    """Construye los 7 días aplicando templates y restricciones de lesión.
     Si cadencia < 170 spm: inserta 5min de drills técnica antes de carreras Z2.
-    Si sleep profundo < 45 min: reduce series a Z2.
+    HRV/sueño/ciclo se muestran como recomendaciones, sin cambiar sesiones automáticamente.
     objetivo_tipo: 'maraton' usa _TEMPLATES; 'ultramaraton'/'ultra' usa _TEMPLATES_ULTRA.
     """
     fase_nombre = fase["fase_nombre"]
@@ -467,12 +467,6 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
 
     if cadencia_eval is None:
         cadencia_eval = {"necesita_drills": False}
-
-    # Detectar si sleep profundo es insuficiente (<45 min)
-    sleep_insuficiente = False
-    if sleep_breakdown and sleep_breakdown.get("profundo_h") is not None:
-        if sleep_breakdown["profundo_h"] < 0.75:  # 45 min = 0.75 h
-            sleep_insuficiente = True
 
     km_base_total = sum(t["km_base"] for t in template)
     km_tl = max(round(km_objetivo - km_base_total, 1), 6.0)
@@ -499,21 +493,17 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
             60 if not tpl["carrera"] and tpl["fuerza_p"] else 30)
 
         alerta = ""
-        # Semáforo ROJO — solo advertencia, no modifica el plan
+        # Semáforo ROJO — solo recomendación visual, no modifica el plan
         if semaforo["color"] == "rojo" and tipo not in ("Descanso", "Regenerativo"):
             if tpl["carrera"]:
-                alerta = "⛔ Semáforo rojo — considera bajar intensidad"
+                alerta = "💡 Recomendación recuperación: si te notas fatigada, haz la sesión más exigente en versión regenerativa"
             elif tpl["fuerza_p"]:
-                alerta = "⛔ Semáforo rojo — considera movilidad en vez de fuerza"
+                alerta = "💡 Recomendación recuperación: prioriza técnica/movilidad si hay fatiga alta"
 
-        # Semáforo ÁMBAR: no calidad — FIX: parentizar correctamente el `or`
+        # Semáforo ÁMBAR: solo recomendación visual
         elif semaforo["color"] == "ambar" and (
                 "Calidad" in tipo or tipo in ("Intervalos VO2max", "Tempo (umbral)", "Progresiva")):
-            tipo, alerta = "Carrera Z2", "⚠️ Semáforo ámbar → cambiado a Z2"
-
-        # Sleep profundo insuficiente: reducir series
-        if sleep_insuficiente and tipo in ("Intervalos VO2max", "Tempo (umbral)", nombre_calidad, "Progresiva"):
-            tipo, alerta = "Carrera Z2", "😴 Sleep profundo < 45 min → series reducidas a Z2"
+            alerta = "💡 Recomendación recuperación moderada: reduce intensidad si notas fatiga"
 
 
         # Restricción carrera

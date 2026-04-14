@@ -5,20 +5,16 @@ import { CheckpointCard } from "../components/CheckpointCard";
 import { MacrocicloCard } from "../components/MacrocicloCard";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { useUser } from "../context/UserContext";
 import {
   Activity,
   Heart,
   Moon,
   Dumbbell,
-  AlertCircle,
   TrendingUp,
   Calendar as CalendarIcon,
-  Plus,
-  X,
-  CheckSquare,
   Footprints,
-  Zap,
   Sparkles,
   Target,
 } from "lucide-react";
@@ -33,11 +29,6 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
   AreaChart,
   Area,
 } from "recharts";
@@ -66,24 +57,6 @@ interface RunningProgressEntry {
   objetivo: number;
 }
 
-interface TechniqueDataEntry {
-  metric: string;
-  value: number;
-  fullMark: number;
-}
-
-interface RunningMetric {
-  label: string;
-  value: string;
-  unit: string;
-  status: "good" | "warning";
-}
-
-interface StatusAlert {
-  type: "warning" | "info";
-  message: string;
-}
-
 interface GarminMetric {
   label: string;
   value: string;
@@ -97,16 +70,11 @@ interface SleepEntry {
   score: number | null;
 }
 
-interface WeekHabit {
-  id: string;
-  label: string;
-  completedDays: boolean[];
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function Home() {
   const { userId, userName } = useUser();
+  const [selectedDay, setSelectedDay] = useState<WeekDay | null>(null);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -121,15 +89,6 @@ export function Home() {
     const now = new Date();
     return `${days[now.getDay()]} ${now.getDate()} de ${months[now.getMonth()]} de ${now.getFullYear()}`;
   };
-
-  // ── Habits ──────────────────────────────────────────────────────────────────
-  const [weekHabits, setWeekHabits] = useState<WeekHabit[]>([
-    { id: "habit-1", label: "Hidratación (2L agua)", completedDays: [true, true, false, true, true, true, false] },
-    { id: "habit-2", label: "Estiramientos post-entreno", completedDays: [true, true, true, false, true, true, true] },
-    { id: "habit-3", label: "Movilidad matinal (10 min)", completedDays: [true, false, true, true, true, false, true] },
-  ]);
-  const [newHabitLabel, setNewHabitLabel] = useState("");
-  const [showAddHabitForm, setShowAddHabitForm] = useState(false);
 
   // ── Data ────────────────────────────────────────────────────────────────────
 
@@ -158,25 +117,6 @@ export function Home() {
     { semana: "S6", km: 42, objetivo: 42 },
     { semana: "S7", km: 45, objetivo: 45 },
     { semana: "S8", km: 43, objetivo: 48 },
-  ];
-
-  const runningTechniqueData: TechniqueDataEntry[] = [
-    { metric: "Cadencia", value: 175, fullMark: 180 },
-    { metric: "Oscilación", value: 85, fullMark: 100 },
-    { metric: "Contacto", value: 220, fullMark: 250 },
-    { metric: "Longitud", value: 120, fullMark: 140 },
-    { metric: "Balance", value: 95, fullMark: 100 },
-  ];
-
-  const runningTechnique: RunningMetric[] = [
-    { label: "Cadencia", value: "175", unit: "spm", status: "good" },
-    { label: "Tiempo de Contacto", value: "220", unit: "ms", status: "good" },
-    { label: "Longitud de Zancada", value: "1.20", unit: "m", status: "warning" },
-    { label: "Balance L/R", value: "50.5/49.5", unit: "%", status: "good" },
-  ];
-
-  const technicalAlerts: StatusAlert[] = [
-    { type: "warning", message: "Longitud de zancada por debajo del objetivo. Trabajar fuerza de glúteos." },
   ];
 
   const garminMetrics: GarminMetric[] = [
@@ -213,25 +153,6 @@ export function Home() {
   const completedCheckpoints = checkpoints.filter((c) => c.status === "completed").length;
   const totalCheckpoints = checkpoints.length;
   const progressPercentage = (completedCheckpoints / totalCheckpoints) * 100;
-
-  const WEEK_DAY_LABELS = ["L", "M", "X", "J", "V", "S", "D"];
-
-  // ── Habit handlers ────────────────────────────────────────────────────────────
-  const handleAddHabit = () => {
-    if (!newHabitLabel.trim()) return;
-    setWeekHabits((prev) => [...prev, { id: `habit-${Date.now()}`, label: newHabitLabel.trim(), completedDays: Array(7).fill(false) }]);
-    setNewHabitLabel("");
-    setShowAddHabitForm(false);
-  };
-  const handleRemoveHabit = (id: string) => setWeekHabits((prev) => prev.filter((h) => h.id !== id));
-  const handleToggleHabitDay = (habitId: string, dayIndex: number) => {
-    setWeekHabits((prev) =>
-      prev.map((h) =>
-        h.id === habitId ? { ...h, completedDays: h.completedDays.map((d, i) => (i === dayIndex ? !d : d)) } : h
-      )
-    );
-  };
-  const getHabitWeekScore = (habit: WeekHabit) => `${habit.completedDays.filter(Boolean).length}/7`;
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
   const getActivityTypeStyle = (type: string) => {
@@ -424,6 +345,7 @@ export function Home() {
               return (
                 <div
                   key={index}
+                  onClick={() => setSelectedDay(day)}
                   className={`border-l-4 ${style.border} rounded-xl p-4 transition-all hover:scale-[1.02] cursor-pointer`}
                   style={{
                     background: isToday
@@ -443,122 +365,88 @@ export function Home() {
               );
             })}
           </div>
-        </section>
 
-        {/* ── Hábitos ───────────────────────────────────────────────────────── */}
-        <section>
-          <div
-            className="rounded-2xl overflow-hidden"
-            style={{
-              border: "1px solid rgba(34,197,94,0.25)",
-              background: "#161B22",
-            }}
-          >
-            <div
-              className="p-5 flex items-center justify-between"
-              style={{
-                background: "linear-gradient(135deg, rgba(34,197,94,0.1), rgba(16,185,129,0.05))",
-                borderBottom: "1px solid rgba(34,197,94,0.15)",
-              }}
-            >
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <CheckSquare className="h-5 w-5 text-green-400" />
-                Hábitos — Esta Semana
-              </h3>
-              <button
-                onClick={() => setShowAddHabitForm((v) => !v)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-                style={{
-                  background: "rgba(34,197,94,0.15)",
-                  border: "1px solid rgba(34,197,94,0.3)",
-                  color: "#4ade80",
-                }}
-              >
-                <Plus className="h-3 w-3" />
-                Añadir hábito
-              </button>
-            </div>
-            <div className="p-5">
-              {showAddHabitForm && (
-                <div className="flex gap-2 mb-5">
-                  <input
-                    type="text"
-                    value={newHabitLabel}
-                    onChange={(e) => setNewHabitLabel(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAddHabit()}
-                    placeholder="Nombre del hábito..."
-                    className="flex-1 rounded-xl px-3 py-2 text-sm text-white placeholder:text-[#8B949E] focus:outline-none"
-                    style={{ background: "#0E1117", border: "1px solid rgba(34,197,94,0.3)" }}
-                    autoFocus
-                  />
-                  <button
-                    onClick={handleAddHabit}
-                    className="px-4 py-2 rounded-xl text-sm font-bold text-[#0E1117] transition-all"
-                    style={{ background: "linear-gradient(135deg, #22c55e, #16a34a)" }}
-                  >
-                    Añadir
-                  </button>
-                  <button onClick={() => { setShowAddHabitForm(false); setNewHabitLabel(""); }} className="p-2 text-[#8B949E] hover:text-white transition-colors">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
+          {/* Modal de detalles de sesión */}
+          <Dialog open={!!selectedDay} onOpenChange={() => setSelectedDay(null)}>
+            <DialogContent className="bg-[#161B22] border border-cyan-400/25 max-w-2xl">
+              {selectedDay && (
+                <>
+                  <DialogHeader>
+                    <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+                      {selectedDay.activity}
+                      <Badge className={getActivityTypeStyle(selectedDay.type).badge || "bg-gray-400/15 text-gray-300"}>
+                        {selectedDay.type === "running" ? "Carrera" : selectedDay.type === "strength" ? "Fuerza" : "Descanso"}
+                      </Badge>
+                    </DialogTitle>
+                    <p className="text-sm text-[#8B949E]">{selectedDay.day} {selectedDay.date}</p>
+                  </DialogHeader>
+                  <div className="space-y-4 mt-4">
+                    {/* Resumen */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)" }}>
+                        <p className="text-xs text-[#8B949E] mb-1">Duración</p>
+                        <p className="text-lg font-bold text-white">{selectedDay.duration}</p>
+                      </div>
+                      <div className="rounded-xl p-4" style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)" }}>
+                        <p className="text-xs text-[#8B949E] mb-1">Tipo</p>
+                        <p className="text-lg font-bold text-white capitalize">{selectedDay.type === "running" ? "Carrera" : selectedDay.type === "strength" ? "Fuerza" : "Descanso"}</p>
+                      </div>
+                    </div>
+
+                    {/* Instrucciones */}
+                    <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <p className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-cyan-400" />
+                        Detalles de la sesión
+                      </p>
+                      <p className="text-sm text-[#8B949E]">Esta es una sesión de {selectedDay.activity.toLowerCase()}. Duración estimada: {selectedDay.duration}.</p>
+                    </div>
+
+                    {/* Objetivos específicos */}
+                    {selectedDay.type === "running" && (
+                      <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
+                        <p className="text-sm font-semibold text-white mb-3">Objetivos de la sesión</p>
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2">
+                            <span className="text-cyan-400 mt-0.5">✓</span>
+                            <p className="text-sm text-white">Mantener ritmo constante en Zona 2</p>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-cyan-400 mt-0.5">✓</span>
+                            <p className="text-sm text-white">Cadencia objetivo: 175-180 spm</p>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-cyan-400 mt-0.5">✓</span>
+                            <p className="text-sm text-white">Sensación: Conversacional / Controlado</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedDay.type === "strength" && (
+                      <div className="rounded-xl p-4" style={{ background: "rgba(168,85,247,0.05)", border: "1px solid rgba(168,85,247,0.15)" }}>
+                        <p className="text-sm font-semibold text-white mb-3">Enfoque de la sesión</p>
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2">
+                            <span className="text-purple-400 mt-0.5">•</span>
+                            <p className="text-sm text-white">Fuerza específica para running</p>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-purple-400 mt-0.5">•</span>
+                            <p className="text-sm text-white">Prevención de lesiones</p>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-purple-400 mt-0.5">•</span>
+                            <p className="text-sm text-white">Economía de carrera mejorada</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
-              {weekHabits.length === 0 ? (
-                <div className="text-center py-8">
-                  <CheckSquare className="h-10 w-10 text-[#30363D] mx-auto mb-3" />
-                  <p className="text-[#8B949E] text-sm">No hay hábitos registrados.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr>
-                        <th className="text-left text-xs text-[#8B949E] pb-3 min-w-[140px]">Hábito</th>
-                        {WEEK_DAY_LABELS.map((d) => (
-                          <th key={d} className="text-center text-xs text-[#8B949E] pb-3 w-9">{d}</th>
-                        ))}
-                        <th className="text-center text-xs text-[#8B949E] pb-3 w-12">Total</th>
-                        <th className="w-6" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {weekHabits.map((habit) => (
-                        <tr key={habit.id} className="border-t border-[#30363D]/40">
-                          <td className="py-2.5 pr-3">
-                            <span className="text-sm text-white">{habit.label}</span>
-                          </td>
-                          {habit.completedDays.map((done, dayIndex) => (
-                            <td key={dayIndex} className="py-2.5 text-center">
-                              <button
-                                onClick={() => handleToggleHabitDay(habit.id, dayIndex)}
-                                className="w-7 h-7 rounded-full border transition-all mx-auto flex items-center justify-center"
-                                style={{
-                                  background: done ? "rgba(34,197,94,0.2)" : "transparent",
-                                  borderColor: done ? "#22c55e" : "rgba(48,54,61,0.8)",
-                                  boxShadow: done ? "0 0 8px rgba(34,197,94,0.4)" : "none",
-                                  color: done ? "#22c55e" : "transparent",
-                                }}
-                              >
-                                <span className="text-xs font-bold">✓</span>
-                              </button>
-                            </td>
-                          ))}
-                          <td className="py-2.5 text-center">
-                            <span className="text-xs font-bold text-green-400">{getHabitWeekScore(habit)}</span>
-                          </td>
-                          <td className="py-2.5 text-center">
-                            <button onClick={() => handleRemoveHabit(habit.id)} className="p-1 text-[#30363D] hover:text-red-400 transition-colors">
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         </section>
 
         {/* ── Running Progress ──────────────────────────────────────────────── */}
@@ -586,69 +474,6 @@ export function Home() {
                   <Line type="monotone" dataKey="objetivo" name="Objetivo" stroke="#C9FF00" strokeDasharray="5 5" strokeWidth={2} dot={{ fill: "#C9FF00", r: 3 }} />
                 </AreaChart>
               </ResponsiveContainer>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Técnica Radar ──────────────────────────────────────────────────── */}
-        <section>
-          <SectionTitle icon={<Zap className="h-5 w-5 text-orange-400" />} title="Radar Antilesiones y Técnica" color="#F97316" />
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="rounded-2xl overflow-hidden" style={{ background: "#161B22", border: "1px solid rgba(249,115,22,0.2)" }}>
-              <div className="p-4 border-b" style={{ borderColor: "rgba(249,115,22,0.1)" }}>
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-orange-400" />
-                  Análisis Técnico
-                </h3>
-              </div>
-              <div className="p-4">
-                <ResponsiveContainer width="100%" height={280}>
-                  <RadarChart data={runningTechniqueData}>
-                    <PolarGrid stroke="rgba(255,255,255,0.07)" />
-                    <PolarAngleAxis dataKey="metric" stroke="#8B949E" fontSize={11} />
-                    <PolarRadiusAxis stroke="#8B949E" fontSize={10} />
-                    <Radar name="Técnica" dataKey="value" stroke="#F97316" fill="#F97316" fillOpacity={0.25} strokeWidth={2} />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="rounded-2xl overflow-hidden" style={{ background: "#161B22", border: "1px solid rgba(249,115,22,0.2)" }}>
-              <div className="p-4 border-b" style={{ borderColor: "rgba(249,115,22,0.1)" }}>
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-orange-400" />
-                  Métricas Detalladas
-                </h3>
-              </div>
-              <div className="p-4 space-y-3">
-                {runningTechnique.map((metric, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
-                  >
-                    <div>
-                      <p className="text-xs text-[#8B949E]">{metric.label}</p>
-                      <p className="text-base font-bold text-white">{metric.value} {metric.unit}</p>
-                    </div>
-                    <div
-                      className="px-3 py-1 rounded-full text-xs font-semibold"
-                      style={
-                        metric.status === "good"
-                          ? { background: "rgba(34,197,94,0.15)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }
-                          : { background: "rgba(249,115,22,0.15)", color: "#fb923c", border: "1px solid rgba(249,115,22,0.3)" }
-                      }
-                    >
-                      {metric.status === "good" ? "✓ OK" : "⚠ Revisar"}
-                    </div>
-                  </div>
-                ))}
-                {technicalAlerts.map((alert, index) => (
-                  <div key={index} className="p-3 rounded-xl text-sm" style={{ background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.25)" }}>
-                    ⚠️ <span className="text-orange-200">{alert.message}</span>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </section>

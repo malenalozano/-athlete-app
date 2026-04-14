@@ -245,9 +245,10 @@ def calcular_semaforo(hrv_actual, hrv_media_7d, sleep_score,
 
     # — Decisión final —
     if razones_rojo:
+        hrv_msg = f"HRV -{caida*100:.0f}%" if caida > 0 else "recuperación baja"
         return {
             "color": "rojo",
-            "mensaje": "Adaptación fallida — " + "; ".join(razones_rojo) + ". Considera regenerativo.",
+            "mensaje": f"💡 Recuperación baja ({hrv_msg}) — El plan se genera completo. Recomendación: considera hacer la sesión de mayor intensidad regenerativa si te encuentras muy fatigada. Señales: " + "; ".join(razones_rojo),
             "multiplicador_volumen": 1.0,  # NO modifica automáticamente
             "permitir_calidad": True,  # NO bloquea automáticamente
             "causa": list(set(causa_rojo)),
@@ -256,7 +257,7 @@ def calcular_semaforo(hrv_actual, hrv_media_7d, sleep_score,
     if razones_ambar:
         return {
             "color": "ambar",
-            "mensaje": "Recuperación subóptima — " + "; ".join(razones_ambar) + ". Monitorear.",
+            "mensaje": "💡 Recuperación moderada — Plan completo. Si lo necesitas, reduce la intensidad de la sesión más exigente. Señales: " + "; ".join(razones_ambar),
             "multiplicador_volumen": 1.0,  # NO modifica automáticamente
             "permitir_calidad": True,  # NO bloquea automáticamente
             "causa": list(set(causa_ambar)),

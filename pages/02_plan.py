@@ -217,6 +217,20 @@ if st.session_state.plan_data is None:
 # ---------------------------------------------------------------------------
 active_tab = st.session_state.get("plan_active_tab", "generar")
 
+# Tab buttons
+tab_nav1, tab_nav2 = st.columns(2, gap="small")
+with tab_nav1:
+    if st.button("📋 Generar Plan", use_container_width=True,
+                 type="primary" if active_tab == "generar" else "secondary",
+                 key="tab_generar"):
+        st.session_state.plan_active_tab = "generar"
+        st.rerun()
+with tab_nav2:
+    if st.button("📊 Datos del Entrenador", use_container_width=True,
+                 type="primary" if active_tab == "datos" else "secondary",
+                 key="tab_datos"):
+        st.session_state.plan_active_tab = "datos"
+        st.rerun()
 # ============================================================================
 # TAB 1: GENERAR PLAN
 # ============================================================================
@@ -324,130 +338,120 @@ position:relative;overflow:hidden;margin-bottom:1rem;">
     if "plan_selected_day_idx" not in st.session_state:
         st.session_state["plan_selected_day_idx"] = None
 
-    # CSS to style day card buttons like the Figma
-    st.markdown("""<style>
-div[data-testid="stColumn"] [data-testid="stButton"] button[kind="secondary"] {
-    background: linear-gradient(135deg,#0f1724,#101928) !important;
-    border: 1px solid rgba(255,255,255,0.07) !important;
-    border-radius: 14px !important;
-    padding: 0.9rem 0.5rem !important;
-    min-height: 110px !important;
-    width: 100% !important;
-    display: flex !important; flex-direction: column !important;
-    align-items: center !important; justify-content: center !important;
-    gap: 3px !important; color: #9ca3af !important;
-    font-size: 0.72rem !important; line-height: 1.4 !important;
-    white-space: pre-wrap !important; text-align: center !important;
-}
-div[data-testid="stColumn"] [data-testid="stButton"] button[kind="secondary"]:hover {
-    border-color: rgba(201,255,0,0.35) !important;
-    color: #e6edf3 !important;
-}
-div[data-testid="stColumn"] [data-testid="stButton"] button[kind="primary"] {
-    border-radius: 14px !important;
-    padding: 0.9rem 0.5rem !important;
-    min-height: 110px !important;
-    width: 100% !important;
-    display: flex !important; flex-direction: column !important;
-    align-items: center !important; justify-content: center !important;
-    gap: 3px !important; font-size: 0.72rem !important;
-    line-height: 1.4 !important; white-space: pre-wrap !important;
-    text-align: center !important;
-}
-</style>""", unsafe_allow_html=True)
-
     for i, dia in enumerate(plan.get("dias", [])):
         if i >= 7:
             break
         with week_cols[i]:
             tipo = dia.get("tipo", "—")
             color = _get_activity_color(tipo)
-            emoji = _EMOJIS.get(tipo, "📅")
             fecha_obj = datetime.fromisoformat(dia.get("fecha", "2000-01-01"))
             day_name = fecha_obj.strftime("%a").upper()[:3]
-            day_date = fecha_obj.strftime("%-d")
-            dur = f"{dia.get('km',0):.0f}km" if dia.get('km', 0) else f"{dia.get('duracion_min','—')}'"
-            is_sel = st.session_state.get("plan_selected_day_idx") == i
+            day_date = fecha_obj.strftime("%d")
 
-            label = f"{day_name}\n{day_date}\n{emoji} {tipo[:10]}\n{dur}"
-            if st.button(label, key=f"plan_day_{i}", use_container_width=True,
-                         type="primary" if is_sel else "secondary"):
-                st.session_state["plan_selected_day_idx"] = None if is_sel else i
+            duration_km = f"{dia.get('km', 0):.1f} km" if dia.get('km', 0) else f"{dia.get('duracion_min', '—')}''"
+            zone = dia.get('intensidad', 'Z1-Z2')
+            emoji = _EMOJIS.get(tipo, "📅")
+
+            # Add border glow effect when selected
+            is_selected = st.session_state.get("plan_selected_day_idx") == i
+            border_style = f"2px solid {color};box-shadow:0 0 16px {color}66;" if is_selected else f"4px solid {color};"
+            bg_style = f"linear-gradient(135deg,{color}15,{color}08);" if is_selected else "#161B22;"
+
+            card_html = f"""
+<div style="border-left:{border_style}background:{bg_style}border-radius:14px;padding:1rem 0.75rem;cursor:pointer;transition:all 0.2s;position:relative;">
+  <div style="color:#8B949E;font-size:.7rem;font-weight:700;text-transform:uppercase;margin-bottom:.3rem;">{day_name}</div>
+  <div style="color:white;font-size:.95rem;font-weight:700;margin-bottom:.5rem;">{day_date}</div>
+  <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;">
+    <span style="font-size:.9rem;">{emoji}</span>
+    <span style="color:{color};font-size:.75rem;font-weight:700;">{tipo}</span>
+  </div>
+  <div style="color:#C9E1FF;font-size:.8rem;font-weight:600;margin-bottom:.4rem;">{duration_km}</div>
+  <div style="background:rgba(255,255,255,0.1);border-radius:4px;padding:.3rem .5rem;font-size:.65rem;color:#8B949E;">{zone}</div>
+</div>"""
+            st.markdown(card_html, unsafe_allow_html=True)
+
+            if st.button(f"Ver {day_name}", key=f"plan_day_{i}", use_container_width=True,
+                        type="primary" if is_selected else "secondary"):
+                st.session_state["plan_selected_day_idx"] = i
                 st.rerun()
 
-    # Detail panel for selected day — clean single-column layout
+    # Detailed day view (show when day is selected from grid)
     selected_idx = st.session_state.get("plan_selected_day_idx")
     if selected_idx is not None and selected_idx < len(plan.get("dias", [])):
-        dia = plan["dias"][selected_idx]
-        tipo = dia["tipo"]
-        color = _get_activity_color(tipo)
-        em = _EMOJIS.get(tipo, "📅")
-        dur = f"{dia.get('km',0):.1f} km" if dia.get('km', 0) else f"{dia.get('duracion_min','—')} min"
+        st.divider()
+        st.markdown(f"<div style='font-weight:800;color:#C9E1FF;font-size:1.1rem;margin-bottom:1rem;'>"
+                    f"📋 Detalles de la Sesión</div>", unsafe_allow_html=True)
 
-        st.markdown(f"""
-<div style="margin-top:1rem;background:linear-gradient(135deg,{color}10,rgba(22,27,34,1));
-border:1px solid {color}33;border-radius:16px;padding:1.25rem 1.5rem;">
-  <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
-    <span style="font-size:1.5rem;">{em}</span>
-    <div>
-      <div style="color:white;font-size:1.05rem;font-weight:800;">{dia.get('dia','—')} — {dia.get('fecha','—')[5:]}</div>
-      <div style="color:{color};font-size:0.8rem;font-weight:700;">{tipo}</div>
-    </div>
-    <span style="margin-left:auto;color:#6b7280;font-size:0.78rem;background:#161B22;
-    padding:4px 10px;border-radius:20px;">{dur}</span>
-  </div>
-""", unsafe_allow_html=True)
+        col_lista, col_det = st.columns([0.36, 0.64])
 
-        if tipo in _TIPOS_FUERZA:
-            st.markdown(html_detalle_fuerza(dia), unsafe_allow_html=True)
-            if fase.get("dias_fuerza", 0) > 0:
-                from src.plan.memoria_fuerza import generar_tabla_fuerza_semana
-                _conn = get_db_connection()
-                try:
-                    tabla = generar_tabla_fuerza_semana(user_actual, fase, semaforo, conn=_conn)
-                finally:
-                    _conn.close()
-                st.dataframe(pd.DataFrame(tabla), use_container_width=True, hide_index=True)
-        elif tipo in _TIPOS_CARRERA:
-            from src.garmin.workout_builder import sesion_a_bloques
-            bloques = sesion_a_bloques(dia)
-            st.markdown(html_detalle_carrera(dia, bloques), unsafe_allow_html=True)
-            if st.button("⌚ Enviar workout a Garmin", key=f"garmin_{selected_idx}"):
-                from src.garmin.garmin_sync import cargar_sesion_tokens
-                cred = obtener_credenciales_garmin(user_actual)
-                email = cred[0] if cred else None
-                gc = st.session_state.get("gc") or cargar_sesion_tokens(email, usuario_id=user_actual)
-                if gc is None:
-                    st.warning("Conecta Garmin primero.")
-                else:
-                    with st.spinner("Enviando…"):
-                        try:
-                            from src.garmin.workout_builder import crear_workout_garmin, programar_workout_garmin
-                            wid = crear_workout_garmin(dia, gc)
-                            ok = programar_workout_garmin(gc, wid, dia["fecha"])
-                            st.success(f"✅ Enviado (ID: {wid}){' y programado.' if ok else '.'}")
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-        else:
-            st.markdown(html_detalle_descanso(dia), unsafe_allow_html=True)
+        with col_lista:
+            opciones = []
+            for dia in plan["dias"]:
+                emoji = _EMOJIS.get(dia["tipo"], "📅")
+                sub = f"{dia['km']} km" if dia["km"] else f"{dia['duracion_min']}'"
+                opciones.append(f"{dia['dia']}  {emoji} {dia['tipo']}  ·  {sub}")
 
-        st.markdown("</div>", unsafe_allow_html=True)
+            elegido = st.radio("Días", opciones, label_visibility="collapsed", key="plan_dia_radio")
+            idx = opciones.index(elegido) if elegido in opciones else selected_idx
 
-        if st.session_state.get("plan_ia") and dia.get("descripcion_ia"):
-            st.markdown(
-                f"<div style='background:rgba(163,230,53,0.05);border-left:3px solid #a3e635;"
-                f"border-radius:0 10px 10px 0;padding:10px 14px;margin:.5rem 0;font-size:0.82rem;color:#c9d1d9;'>"
-                f"<span style='font-size:0.65rem;color:#a3e635;text-transform:uppercase;letter-spacing:.07em;"
-                f"font-weight:700;'>🤖 Entrenador IA</span><br><br>{dia['descripcion_ia']}</div>",
-                unsafe_allow_html=True)
+        with col_det:
+            dia = plan["dias"][idx]
+            tipo = dia["tipo"]
+            st.markdown(f"<div style='font-weight:800;color:#C9E1FF;font-size:1rem;margin-bottom:8px;'>"
+                        f"{dia['dia']} — {dia['fecha'][5:]}</div>", unsafe_allow_html=True)
 
-        _idx = selected_idx
-        ajuste = st.text_area("Ajuste manual", placeholder="Ej: reducir 3km, cambiar a Z1…",
-                              height=60, key=f"ajuste_{_idx}", label_visibility="visible")
-        if st.button("Aplicar", key=f"ajuste_btn_{_idx}", type="primary"):
-            plan["dias"][_idx]["alerta"] = f"[Ajuste] {ajuste}"
-            st.session_state.plan_data = plan
-            st.success("Cambio anotado."); st.rerun()
+            if tipo in _TIPOS_FUERZA:
+                st.markdown(html_detalle_fuerza(dia), unsafe_allow_html=True)
+                if fase["dias_fuerza"] > 0:
+                    from src.plan.memoria_fuerza import generar_tabla_fuerza_semana
+                    conn = get_db_connection()
+                    try:
+                        tabla = generar_tabla_fuerza_semana(user_actual, fase, semaforo, conn=conn)
+                    finally:
+                        conn.close()
+                    st.dataframe(pd.DataFrame(tabla), use_container_width=True, hide_index=True)
+
+            elif tipo in _TIPOS_CARRERA:
+                from src.garmin.workout_builder import sesion_a_bloques
+                bloques = sesion_a_bloques(dia)
+                st.markdown(html_detalle_carrera(dia, bloques), unsafe_allow_html=True)
+
+                if st.button("⌚ Enviar workout a Garmin", key=f"garmin_{idx}"):
+                    from src.garmin.garmin_sync import cargar_sesion_tokens
+                    cred = obtener_credenciales_garmin(user_actual)
+                    email = cred[0] if cred else None
+                    gc = st.session_state.get("gc") or cargar_sesion_tokens(email, usuario_id=user_actual)
+                    if gc is None:
+                        st.warning("Conecta tu cuenta Garmin primero en la página Garmin.")
+                    else:
+                        with st.spinner("Enviando workout a Garmin..."):
+                            try:
+                                from src.garmin.workout_builder import crear_workout_garmin, programar_workout_garmin
+                                wid = crear_workout_garmin(dia, gc)
+                                ok = programar_workout_garmin(gc, wid, dia["fecha"])
+                                cal = " y programado en calendario Garmin." if ok else "."
+                                st.success(f"✅ Workout enviado (ID: {wid}){cal} Sincroniza tu reloj.")
+                            except Exception as e:
+                                st.error(f"Error al enviar a Garmin: {e}")
+            else:
+                st.markdown(html_detalle_descanso(dia), unsafe_allow_html=True)
+
+            # Descripción IA
+            if st.session_state.get("plan_ia") and dia.get("descripcion_ia"):
+                st.markdown(
+                    f"<div style='background:#0f1e10;border-left:3px solid #a3e635;border-radius:0 8px 8px 0;"
+                    f"padding:10px 14px;margin:8px 0;font-size:12px;color:#c9d1d9;'>"
+                    f"<span style='font-size:10px;color:#a3e635;text-transform:uppercase;letter-spacing:0.6px;"
+                    f"font-weight:700;'>🤖 Entrenador IA</span><br><br>"
+                    f"{dia['descripcion_ia']}</div>",
+                    unsafe_allow_html=True)
+
+            ajuste = st.text_area("Ajuste", placeholder="Ej: reducir 3km, cambiar a Z1 todo...",
+                                  height=68, key=f"ajuste_{idx}", label_visibility="collapsed")
+            if st.button("Aplicar cambio", key=f"ajuste_btn_{idx}"):
+                plan["dias"][idx]["alerta"] = f"[Ajuste] {ajuste}"
+                st.session_state.plan_data = plan
+                st.success("Cambio anotado."); st.rerun()
 
     # Alertas
     if plan["alertas"]:
@@ -677,18 +681,15 @@ border:1px solid rgba(74,222,128,0.25);border-radius:16px;padding:1.5rem 2rem;ma
         body_battery_min=datos.get("body_battery_min"),
         training_status=datos.get("training_status"),
     )
-    _sc = {"verde":"#22c55e","ambar":"#f59e0b","rojo":"#ef4444"}.get(_sem_dat["color"],"#22c55e")
-    _si = {"verde":"🟢","ambar":"🟡","rojo":"🔴"}.get(_sem_dat["color"],"🟢")
-    st.markdown(f"""
-<div style="background:{_sc}10;border:1px solid {_sc}33;border-radius:12px;padding:1rem 1.25rem;">
-  <div style="font-size:1rem;font-weight:800;color:{_sc};margin-bottom:4px;">{_si} {_sem_dat['color'].upper()}</div>
-  <div style="color:#C9E1FF;font-size:0.85rem;margin-bottom:8px;">{_sem_dat['mensaje']}</div>
-  <div style="color:#8B949E;font-size:0.78rem;">
-    Multiplicador volumen: <b style="color:{_sc};">{_sem_dat['multiplicador_volumen']:.2f}x</b>
-    &nbsp;·&nbsp; Calidad permitida: <b style="color:{_sc};">{'Sí' if _sem_dat['permitir_calidad'] else 'No'}</b>
-  </div>
-  {"<div style='color:#ef4444;font-size:0.75rem;font-weight:700;margin-top:6px;'>⚠️ Recuperación baja — el plan no se modifica automáticamente. Considera reducir intensidad manualmente.</div>" if _sem_dat['color']=='rojo' else ""}
-</div>""", unsafe_allow_html=True)
+        _icono = {"verde":"🟢","ambar":"💡","rojo":"💡"}.get(_sem_dat["color"],"💡")
+        _titulo = "Recuperación óptima" if _sem_dat["color"] == "verde" else "Recomendación de recuperación"
+        st.info(
+                f"{_icono} {_titulo}\n\n"
+                f"{_sem_dat['mensaje']}\n"
+                "El plan se genera con carga completa. Aplica estas recomendaciones si lo consideras necesario.\n"
+                f"Multiplicador volumen: {_sem_dat['multiplicador_volumen']:.2f}x · "
+                f"Calidad permitida: {'Sí' if _sem_dat['permitir_calidad'] else 'No'}"
+        )
 
     # ── 6. Ciclo (mujeres) ──────────────────────────────────────────────────
     ciclo_data = None
@@ -700,6 +701,7 @@ border:1px solid rgba(74,222,128,0.25);border-radius:16px;padding:1.5rem 2rem;ma
             _metric_card(_c1, "Fase", ciclo_data.get("fase") or ciclo_data.get("fase_nombre","—"), color="#ec4899")
             _metric_card(_c2, "Multiplicador Vol.", f"{ciclo_data.get('multiplicador_volumen',1):.2f}x", color="#ec4899")
             _metric_card(_c3, "¿Calidad permitida?", "Sí" if ciclo_data.get("permitir_calidad",True) else "No", color="#ec4899")
+            st.info("💡 El ciclo menstrual se usa como recomendación. El plan semanal se mantiene completo y tú decides si ajustar intensidad.")
             if ciclo_data.get("hidratacion_extra"):
                 st.info("💧 Fase de estrés hormonal — aumentar hidratación y electrolitos.")
         else:
@@ -751,7 +753,15 @@ border:1px solid rgba(74,222,128,0.25);border-radius:16px;padding:1.5rem 2rem;ma
     try:
         _tabla_f = generar_tabla_fuerza_semana(user_actual, _fase_dat, _sem_dat,
                                                acwr=datos.get("acwr"), conn=_conn_dat)
-        st.dataframe(pd.DataFrame(_tabla_f), use_container_width=True, hide_index=True)
+        _df_f = pd.DataFrame(_tabla_f)
+        if "Día" in _df_f.columns:
+            for _dia in ["Push", "Pull", "Tren inferior + glúteo"]:
+                _df_dia = _df_f[_df_f["Día"] == _dia]
+                if not _df_dia.empty:
+                    st.markdown(f"**{_dia}**")
+                    st.dataframe(_df_dia.drop(columns=["Día"]), use_container_width=True, hide_index=True)
+        else:
+            st.dataframe(_df_f, use_container_width=True, hide_index=True)
     except Exception as e:
         st.caption(f"No se pudo generar tabla de fuerza: {e}")
 

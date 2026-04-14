@@ -166,6 +166,9 @@ class TursoHTTPConnection:
     def commit(self):
         pass  # Turso auto-commits each statement
 
+    def rollback(self):
+        pass  # Turso auto-commits each statement
+
     def close(self):
         pass
 

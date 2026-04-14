@@ -18,12 +18,46 @@ interface DayRecord {
 // ── Registered data — TODO: fetch from Supabase cycle tracking ────────────────
 const REGISTERED: Record<number, DayRecord> = {};
 
-// ── Phase styles ───────────────────────────────────────────────────────────────
-const PHASE_STYLES: Record<Phase, { bg: string; border: string; text: string; dot: string }> = {
-  Menstrual: { bg: "bg-red-600/25", border: "border-red-500/70", text: "text-red-400", dot: "bg-red-500" },
-  Folicular: { bg: "bg-blue-500/20", border: "border-blue-400/70", text: "text-blue-400", dot: "bg-blue-400" },
-  Ovulación: { bg: "bg-green-500/20", border: "border-green-400/70", text: "text-green-400", dot: "bg-green-400" },
-  Lútea: { bg: "bg-yellow-500/20", border: "border-yellow-400/70", text: "text-yellow-400", dot: "bg-yellow-400" },
+// ── Phase styles — dark neon themed ───────────────────────────────────────────
+const PHASE_STYLES: Record<Phase, { bg: string; border: string; text: string; dot: string; glow: string }> = {
+  Menstrual: {
+    bg: "rgba(244,63,94,0.15)",
+    border: "rgba(244,63,94,0.5)",
+    text: "#F43F5E",
+    dot: "bg-[#F43F5E]",
+    glow: "0 0 8px rgba(244,63,94,0.3)",
+  },
+  Folicular: {
+    bg: "rgba(0,212,255,0.12)",
+    border: "rgba(0,212,255,0.45)",
+    text: "#00D4FF",
+    dot: "bg-[#00D4FF]",
+    glow: "0 0 8px rgba(0,212,255,0.25)",
+  },
+  Ovulación: {
+    bg: "rgba(201,255,0,0.12)",
+    border: "rgba(201,255,0,0.45)",
+    text: "#C9FF00",
+    dot: "bg-[#C9FF00]",
+    glow: "0 0 8px rgba(201,255,0,0.25)",
+  },
+  Lútea: {
+    bg: "rgba(168,85,247,0.15)",
+    border: "rgba(168,85,247,0.5)",
+    text: "#A855F7",
+    dot: "bg-[#A855F7]",
+    glow: "0 0 8px rgba(168,85,247,0.3)",
+  },
+};
+
+// ── Predicted phase coloring by day (example data) ────────────────────────────
+const DAY_PHASES: Record<number, Phase> = {
+  1: "Menstrual", 2: "Menstrual", 3: "Menstrual", 4: "Menstrual", 5: "Menstrual",
+  6: "Folicular", 7: "Folicular", 8: "Folicular", 9: "Folicular", 10: "Folicular",
+  11: "Folicular", 12: "Folicular", 13: "Ovulación", 14: "Ovulación", 15: "Ovulación",
+  16: "Lútea", 17: "Lútea", 18: "Lútea", 19: "Lútea", 20: "Lútea",
+  21: "Lútea", 22: "Lútea", 23: "Lútea", 24: "Lútea", 25: "Lútea",
+  26: "Lútea", 27: "Lútea", 28: "Lútea",
 };
 
 // ── Symptom emoji map ─────────────────────────────────────────────────────────
@@ -46,19 +80,29 @@ const ENTRENO_EMOJI: Record<string, string> = {
 
 // ── Pill button component ──────────────────────────────────────────────────────
 function PillBtn({
-  label, emoji, active, activeColor, onClick,
+  label, emoji, active, activeStyle, onClick,
 }: {
   label: string; emoji?: string; active: boolean;
-  activeColor: string; onClick: () => void;
+  activeStyle: { bg: string; border: string; text: string }; onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-all ${
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-all whitespace-nowrap"
+      style={
         active
-          ? `${activeColor} text-white`
-          : "bg-[#0E1117] border-[#30363D] text-[#8B949E] hover:border-[#8B949E]"
-      }`}
+          ? {
+              background: activeStyle.bg,
+              borderColor: activeStyle.border,
+              color: activeStyle.text,
+              boxShadow: `0 0 8px ${activeStyle.border}`,
+            }
+          : {
+              background: "rgba(14,17,23,0.6)",
+              borderColor: "rgba(48,54,61,0.8)",
+              color: "#8B949E",
+            }
+      }
     >
       {emoji && <span>{emoji}</span>}
       <span>{label}</span>
@@ -70,16 +114,11 @@ function PillBtn({
 const MARCH_OFFSET = 6; // March 1 2026 is Sunday → 6 empty cells before day 1
 const MARCH_DAYS = 31;
 
-// Predicted phases (no registered data yet — will derive from real data)
-function getPredictedPhase(_day: number): Phase | null {
-  return null; // TODO: implement prediction logic based on registered cycle data
-}
-
 export function CicloMenstrual() {
   const { userId } = useUser();
 
   // Form state
-  const [fecha, setFecha] = useState("");
+  const [fecha, setFecha] = useState("2026-04-14");
   const [sangre, setSangre] = useState("Sin sangre");
   const [sintomas, setSintomas] = useState<string[]>([]);
   const [animo, setAnimo] = useState("");
@@ -115,22 +154,38 @@ export function CicloMenstrual() {
   });
 
   const SANGRE_OPTIONS = [
-    { label: "Sin sangre", emoji: "🔴", activeColor: "border-red-500 bg-red-500/20" },
-    { label: "Manchado", emoji: "🩸", activeColor: "border-red-500 bg-red-500/20" },
-    { label: "Ligero", emoji: "🩸", activeColor: "border-red-400 bg-red-400/20" },
-    { label: "Medio", emoji: "🩸🩸", activeColor: "border-red-500 bg-red-500/20" },
-    { label: "Fuerte", emoji: "🩸🩸🩸", activeColor: "border-red-600 bg-red-600/20" },
-  ];
-  const SINTOMA_OPTIONS = ["Dolor de ovarios", "Dolor de senos", "Antojos", "Dolor de cabeza", "Hinchazón"];
-  const ANIMO_OPTIONS = ["Ansiedad/Estrés", "Triste", "Enfadada", "Feliz", "Cansada", "Energética"];
-  const ENTRENO_OPTIONS = [
-    { label: "A tope", color: "border-[#C9FF00] bg-[#C9FF00]/20" },
-    { label: "Regulero", color: "border-orange-500 bg-orange-500/20" },
-    { label: "Bajito", color: "border-yellow-500 bg-yellow-500/20" },
-    { label: "No completo", color: "border-red-500 bg-red-500/20" },
+    { label: "Sin sangre", emoji: "⚪", activeStyle: { bg: "rgba(201,255,0,0.15)", border: "#C9FF00", text: "#C9FF00" } },
+    { label: "Manchado", emoji: "🩸", activeStyle: { bg: "rgba(244,63,94,0.15)", border: "#F43F5E", text: "#F43F5E" } },
+    { label: "Flujo", emoji: "💧", activeStyle: { bg: "rgba(244,63,94,0.15)", border: "#F43F5E", text: "#F43F5E" } },
+    { label: "Ligero", emoji: "🩸", activeStyle: { bg: "rgba(244,63,94,0.2)", border: "#F43F5E", text: "#F43F5E" } },
+    { label: "Medio", emoji: "🩸🩸", activeStyle: { bg: "rgba(244,63,94,0.25)", border: "#F43F5E", text: "#F43F5E" } },
+    { label: "Fuerte", emoji: "🩸🩸🩸", activeStyle: { bg: "rgba(220,38,38,0.25)", border: "#DC2626", text: "#EF4444" } },
   ];
 
-  // Compute today marker (day 16 = today)
+  const SINTOMA_OPTIONS = [
+    { label: "Dolor de ovarios", emoji: "🔴" },
+    { label: "Dolor de senos", emoji: "🤲" },
+    { label: "Antojos", emoji: "🍩" },
+    { label: "Dolor de cabeza", emoji: "😵" },
+    { label: "Hinchazón", emoji: "🫃" },
+  ];
+
+  const ANIMO_OPTIONS = [
+    { label: "Ansiedad/Estrés", emoji: "😰" },
+    { label: "Triste", emoji: "😢" },
+    { label: "Enfadada", emoji: "😡" },
+    { label: "Feliz", emoji: "😊" },
+    { label: "Cansada", emoji: "😴" },
+    { label: "Energética", emoji: "⚡" },
+  ];
+
+  const ENTRENO_OPTIONS = [
+    { label: "A tope", emoji: "🚀", activeStyle: { bg: "rgba(201,255,0,0.15)", border: "#C9FF00", text: "#C9FF00" } },
+    { label: "Regulero", emoji: "🟠", activeStyle: { bg: "rgba(249,115,22,0.15)", border: "#F97316", text: "#F97316" } },
+    { label: "Bajito", emoji: "📉", activeStyle: { bg: "rgba(234,179,8,0.15)", border: "#EAB308", text: "#EAB308" } },
+    { label: "No completo", emoji: "❌", activeStyle: { bg: "rgba(244,63,94,0.15)", border: "#F43F5E", text: "#F43F5E" } },
+  ];
+
   const TODAY_DAY = 16;
 
   return (
@@ -145,16 +200,15 @@ export function CicloMenstrual() {
 
         {/* Phase legend */}
         <div className="flex flex-wrap gap-3 mb-6">
-          {(Object.entries(PHASE_STYLES) as [Phase, any][]).map(([phase, s]) => (
+          {(Object.entries(PHASE_STYLES) as [Phase, typeof PHASE_STYLES[Phase]][]).map(([phase, s]) => (
             <div key={phase} className="flex items-center gap-1.5">
-              <div className={`w-3 h-3 rounded-full ${s.dot}`} />
-              <span className="text-xs text-[#8B949E]">{phase}</span>
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{ background: s.text, boxShadow: s.glow }}
+              />
+              <span className="text-xs" style={{ color: s.text }}>{phase}</span>
             </div>
           ))}
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full border border-dashed border-[#8B949E]" />
-            <span className="text-xs text-[#8B949E]">Predicción</span>
-          </div>
         </div>
 
         {/* Main layout: Form LEFT | Calendar RIGHT */}
@@ -165,7 +219,7 @@ export function CicloMenstrual() {
             <CardHeader>
               <CardTitle className="text-white text-base">Registro Diario</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-5">
 
               {/* Fecha */}
               <div>
@@ -188,7 +242,7 @@ export function CicloMenstrual() {
                       label={opt.label}
                       emoji={opt.emoji}
                       active={sangre === opt.label}
-                      activeColor={opt.activeColor}
+                      activeStyle={opt.activeStyle}
                       onClick={() => setSangre(opt.label)}
                     />
                   ))}
@@ -198,18 +252,18 @@ export function CicloMenstrual() {
               {/* Síntomas Físicos */}
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[#C9FF00] mb-1">
-                  Síntomas Físicos
+                  Síntomas
                 </p>
                 <p className="text-[10px] text-[#8B949E] mb-3">(puedes elegir varios)</p>
                 <div className="flex flex-wrap gap-2">
                   {SINTOMA_OPTIONS.map((s) => (
                     <PillBtn
-                      key={s}
-                      label={s}
-                      emoji={SINTOMA_EMOJI[s]}
-                      active={sintomas.includes(s)}
-                      activeColor="border-orange-500 bg-orange-500/20"
-                      onClick={() => toggleSintoma(s)}
+                      key={s.label}
+                      label={s.label}
+                      emoji={s.emoji}
+                      active={sintomas.includes(s.label)}
+                      activeStyle={{ bg: "rgba(249,115,22,0.15)", border: "#F97316", text: "#F97316" }}
+                      onClick={() => toggleSintoma(s.label)}
                     />
                   ))}
                 </div>
@@ -218,18 +272,18 @@ export function CicloMenstrual() {
               {/* Estado de Ánimo */}
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[#C9FF00] mb-1">
-                  Estado de Ánimo
+                  Ánimo
                 </p>
                 <p className="text-[10px] text-[#8B949E] mb-3">(vacío = Normal)</p>
                 <div className="flex flex-wrap gap-2">
                   {ANIMO_OPTIONS.map((a) => (
                     <PillBtn
-                      key={a}
-                      label={a}
-                      emoji={ANIMO_EMOJI[a]}
-                      active={animo === a}
-                      activeColor="border-purple-500 bg-purple-500/20"
-                      onClick={() => setAnimo(animo === a ? "" : a)}
+                      key={a.label}
+                      label={a.label}
+                      emoji={a.emoji}
+                      active={animo === a.label}
+                      activeStyle={{ bg: "rgba(168,85,247,0.15)", border: "#A855F7", text: "#A855F7" }}
+                      onClick={() => setAnimo(animo === a.label ? "" : a.label)}
                     />
                   ))}
                 </div>
@@ -238,16 +292,16 @@ export function CicloMenstrual() {
               {/* Feedback de Entreno */}
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[#C9FF00] mb-3">
-                  Feedback de Entreno
+                  Entreno
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {ENTRENO_OPTIONS.map((opt) => (
                     <PillBtn
                       key={opt.label}
                       label={opt.label}
-                      emoji={ENTRENO_EMOJI[opt.label]}
+                      emoji={opt.emoji}
                       active={entreno === opt.label}
-                      activeColor={opt.color}
+                      activeStyle={opt.activeStyle}
                       onClick={() => setEntreno(entreno === opt.label ? "" : opt.label)}
                     />
                   ))}
@@ -255,7 +309,14 @@ export function CicloMenstrual() {
               </div>
 
               {/* Guardar */}
-              <button className="w-full py-3 rounded-xl border border-[#30363D] text-white text-sm font-semibold hover:border-pink-400/60 hover:bg-pink-500/5 transition-all">
+              <button
+                className="w-full py-3 rounded-xl text-sm font-bold transition-all"
+                style={{
+                  background: "linear-gradient(135deg, #C9FF00, #a3e635)",
+                  color: "#0E1117",
+                  boxShadow: "0 0 20px rgba(201,255,0,0.4)",
+                }}
+              >
                 Guardar Registro
               </button>
             </CardContent>
@@ -299,51 +360,51 @@ export function CicloMenstrual() {
                   if (!day) return <div key={`empty-${i}`} />;
 
                   const rec = REGISTERED[day];
-                  const phase = rec?.phase;
-                  const predicted = !rec ? getPredictedPhase(day) : null;
+                  const predictedPhase = DAY_PHASES[day];
+                  const phase = rec?.phase || predictedPhase;
                   const isToday = day === TODAY_DAY;
                   const phaseStyle = phase ? PHASE_STYLES[phase] : null;
-                  const predStyle = predicted ? PHASE_STYLES[predicted] : null;
+                  const isPredicted = !rec?.phase && !!predictedPhase;
 
                   return (
                     <div
                       key={day}
-                      className={`relative min-h-[68px] rounded-lg border p-1.5 transition-all cursor-pointer
-                        ${phaseStyle
-                          ? `${phaseStyle.bg} ${phaseStyle.border}`
-                          : predStyle
-                          ? `${predStyle.bg} border-dashed ${predStyle.border} opacity-50`
-                          : "bg-[#0E1117] border-[#30363D] hover:border-[#8B949E]/50"}
-                        ${isToday ? "ring-2 ring-pink-400 ring-offset-1 ring-offset-[#0E1117]" : ""}
-                      `}
+                      className="relative min-h-[60px] rounded-lg p-1.5 transition-all cursor-pointer"
+                      style={{
+                        background: phaseStyle ? phaseStyle.bg : "rgba(22,27,34,0.8)",
+                        border: phaseStyle
+                          ? `1px solid ${phaseStyle.border}${isPredicted ? "80" : ""}`
+                          : "1px solid rgba(48,54,61,0.6)",
+                        boxShadow: !isPredicted && phaseStyle ? phaseStyle.glow : "none",
+                        opacity: isPredicted ? 0.7 : 1,
+                        outline: isToday ? "2px solid #EC4899" : "none",
+                        outlineOffset: isToday ? "2px" : "0",
+                      }}
                     >
                       {/* Day number */}
                       <div className="flex items-center justify-between mb-0.5">
                         <span
-                          className={`text-[11px] font-bold ${
-                            phaseStyle ? phaseStyle.text : predStyle ? predStyle.text : "text-[#8B949E]"
-                          }`}
+                          className="text-[11px] font-bold"
+                          style={{ color: phaseStyle ? phaseStyle.text : "#8B949E" }}
                         >
                           {day}
                         </span>
                         {isToday && (
-                          <span className="text-[8px] bg-pink-500 text-white px-1 rounded">HOY</span>
+                          <span className="text-[7px] font-black px-1 rounded" style={{ background: "#EC4899", color: "#fff" }}>HOY</span>
                         )}
                       </div>
 
                       {/* Phase label */}
                       {phase && (
-                        <div className={`text-[8px] font-semibold mb-1 ${phaseStyle?.text}`}>
-                          {phase.slice(0, 3).toUpperCase()}
-                        </div>
-                      )}
-                      {predicted && (
-                        <div className={`text-[8px] font-semibold mb-1 ${predStyle?.text} opacity-70`}>
-                          ~{predicted.slice(0, 3).toUpperCase()}
+                        <div
+                          className="text-[8px] font-bold mb-1"
+                          style={{ color: phaseStyle?.text, opacity: isPredicted ? 0.8 : 1 }}
+                        >
+                          {isPredicted ? "~" : ""}{phase.slice(0, 3).toUpperCase()}
                         </div>
                       )}
 
-                      {/* Symptom emojis */}
+                      {/* Symptom emojis for registered days */}
                       {rec && (
                         <div className="flex flex-wrap gap-0.5">
                           {(rec.sintomas || []).slice(0, 2).map((s) => (
@@ -376,11 +437,11 @@ export function CicloMenstrual() {
                 </div>
                 <div>
                   <p className="text-xs text-[#8B949E]">Fase actual</p>
-                  <p className="text-sm font-bold text-[#8B949E]">--</p>
+                  <p className="text-sm font-bold" style={{ color: PHASE_STYLES["Lútea"].text }}>Lútea</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#8B949E]">Próx. regla</p>
-                  <p className="text-sm font-bold text-[#8B949E]">--</p>
+                  <p className="text-sm font-bold text-[#8B949E]">~7 días</p>
                 </div>
               </div>
             </CardContent>

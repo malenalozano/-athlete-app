@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Header } from "../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { useUser } from "../context/UserContext";
 import {
   Sparkles,
@@ -15,6 +17,7 @@ import {
   TrendingUp,
   Target,
   Clock,
+  X,
 } from "lucide-react";
 import {
   BarChart,
@@ -133,6 +136,7 @@ const TYPE_COLORS: Record<string, { border: string; bg: string; text: string; ba
 
 function GenerarPlan() {
   const { userId } = useUser();
+  const [selectedDay, setSelectedDay] = useState<typeof weekPlan[0] | null>(null);
 
   return (
     <div className="space-y-8">
@@ -214,6 +218,7 @@ function GenerarPlan() {
             return (
               <Card
                 key={day.day}
+                onClick={() => setSelectedDay(day)}
                 className={`border-l-4 ${colors.border} bg-gradient-to-br ${colors.bg} rounded-xl transition-all hover:scale-[1.02] cursor-pointer group`}
                 style={{ background: "rgba(22,27,34,0.8)", borderRight: "1px solid rgba(255,255,255,0.05)", borderTop: "1px solid rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}
               >
@@ -228,13 +233,95 @@ function GenerarPlan() {
                     </span>
                   )}
                   <p className="text-[10px] text-[#8B949E] mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {day.notes}
+                    Click para ver detalles
                   </p>
                 </CardContent>
               </Card>
             );
           })}
         </div>
+
+        {/* Modal de detalles de sesión */}
+        <Dialog open={!!selectedDay} onOpenChange={() => setSelectedDay(null)}>
+          <DialogContent className="bg-[#161B22] border border-cyan-400/25 max-w-2xl">
+            {selectedDay && (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+                    {selectedDay.activity}
+                    <Badge className={TYPE_COLORS[selectedDay.type]?.badge || "bg-gray-400/15 text-gray-300"}>
+                      {selectedDay.type === "running" ? "Carrera" : selectedDay.type === "strength" ? "Fuerza" : "Descanso"}
+                    </Badge>
+                  </DialogTitle>
+                  <p className="text-sm text-[#8B949E]">{selectedDay.day} {selectedDay.date}</p>
+                </DialogHeader>
+                <div className="space-y-4 mt-4">
+                  {/* Resumen */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)" }}>
+                      <p className="text-xs text-[#8B949E] mb-1">Duración</p>
+                      <p className="text-lg font-bold text-white">{selectedDay.duration}</p>
+                    </div>
+                    <div className="rounded-xl p-4" style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)" }}>
+                      <p className="text-xs text-[#8B949E] mb-1">Zona</p>
+                      <p className="text-lg font-bold text-white">{selectedDay.zone}</p>
+                    </div>
+                  </div>
+
+                  {/* Instrucciones */}
+                  <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <p className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-cyan-400" />
+                      Instrucciones
+                    </p>
+                    <p className="text-sm text-[#8B949E]">{selectedDay.notes}</p>
+                  </div>
+
+                  {/* Objetivos específicos */}
+                  {selectedDay.type === "running" && (
+                    <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
+                      <p className="text-sm font-semibold text-white mb-3">Objetivos de la sesión</p>
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <span className="text-cyan-400 mt-0.5">✓</span>
+                          <p className="text-sm text-white">Mantener ritmo constante en {selectedDay.zone}</p>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-cyan-400 mt-0.5">✓</span>
+                          <p className="text-sm text-white">Cadencia objetivo: 175-180 spm</p>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-cyan-400 mt-0.5">✓</span>
+                          <p className="text-sm text-white">Sensación: Conversacional / Controlado</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedDay.type === "strength" && (
+                    <div className="rounded-xl p-4" style={{ background: "rgba(168,85,247,0.05)", border: "1px solid rgba(168,85,247,0.15)" }}>
+                      <p className="text-sm font-semibold text-white mb-3">Enfoque de la sesión</p>
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <span className="text-purple-400 mt-0.5">•</span>
+                          <p className="text-sm text-white">Fuerza específica para running</p>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-purple-400 mt-0.5">•</span>
+                          <p className="text-sm text-white">Prevención de lesiones</p>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-purple-400 mt-0.5">•</span>
+                          <p className="text-sm text-white">Economía de carrera mejorada</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* AI Suggestions */}
@@ -277,73 +364,303 @@ function GenerarPlan() {
 
 // ── Datos tab ─────────────────────────────────────────────────────────────────
 
+const lastRunningActivities = [
+  { fecha: "2026-04-11 18:37:18", km: 7.02, cadencia_media: 0, fc_media: 149, ritmo_medio: 7.5 },
+  { fecha: "2026-04-09 15:10:30", km: 0.59, cadencia_media: 133.06, fc_media: 150, ritmo_medio: 36.31 },
+  { fecha: "2026-04-07 17:29:21", km: 3.17, cadencia_media: 136.31, fc_media: 132, ritmo_medio: 9.75 },
+];
+
+const fuerzaProuesta = [
+  { ejercicio: "Hip Thrust", grupo: "Glúteos", series: 2, reps: "12-15", peso: "32.5", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
+  { ejercicio: "Sentadilla Búlgara", grupo: "Glúteos/Cuádriceps", series: 2, reps: "12-15", peso: "10.0", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
+  { ejercicio: "Dominadas", grupo: "Espalda/Bíceps", series: 2, reps: "12-15", peso: "Peso corporal", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
+  { ejercicio: "Peso Muerto Rumano", grupo: "Isquios/Glúteos", series: 2, reps: "12-15", peso: "25.0", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
+  { ejercicio: "Press Banca", grupo: "Pecho/Tríceps", series: 2, reps: "12-15", peso: "15.0", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
+  { ejercicio: "Prensa 45°", grupo: "Cuádriceps", series: 2, reps: "12-15", peso: "47.5", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
+];
+
 function Datos() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
       <div
         className="rounded-2xl p-6"
         style={{
-          background: "linear-gradient(135deg, rgba(201,255,0,0.08), rgba(0,212,255,0.05))",
-          border: "1px solid rgba(201,255,0,0.2)",
+          background: "linear-gradient(135deg, rgba(168,85,247,0.12), rgba(0,212,255,0.08))",
+          border: "1px solid rgba(168,85,247,0.25)",
         }}
       >
         <h2 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-[#C9FF00]" />
-          Progresión de Entrenamiento
+          <BarChart3 className="h-5 w-5 text-purple-400" />
+          Análisis Completo — Datos que Generan tu Plan
         </h2>
-        <p className="text-[#8B949E] text-sm">Últimas 8 semanas de datos reales vs objetivo</p>
+        <p className="text-[#8B949E] text-sm">Todas las variables que el sistema analiza para construir tu semana</p>
       </div>
 
-      {/* Main chart */}
-      <Card
-        className="rounded-2xl"
-        style={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.2)" }}
-      >
-        <CardHeader>
-          <CardTitle className="text-white text-base flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-cyan-400" />
-            Kilómetros semanales
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={weeksData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="semana" stroke="#8B949E" fontSize={12} />
-              <YAxis stroke="#8B949E" fontSize={12} />
-              <Tooltip
-                contentStyle={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 8 }}
-                labelStyle={{ color: "#fff" }}
-              />
-              <Legend />
-              <Bar dataKey="km" name="KM Reales" fill="#00D4FF" radius={[4, 4, 0, 0]} fillOpacity={0.85} />
-              <Bar dataKey="objetivo" name="Objetivo" fill="rgba(201,255,0,0.4)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      {/* Stats grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[
-          { label: "Total KM acumulados", value: "303 km", sub: "+5.3% vs semana anterior", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)", icon: Activity },
-          { label: "Mejor semana", value: "45 km", sub: "Semana 7", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)", icon: Target },
-          { label: "Consistencia", value: "87%", sub: "Sesiones completadas", color: "#A855F7", bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.2)", icon: Clock },
-        ].map((stat) => (
-          <div
-            key={stat.label}
-            className="rounded-xl p-5"
-            style={{ background: stat.bg, border: `1px solid ${stat.border}` }}
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <stat.icon className="h-4 w-4" style={{ color: stat.color }} />
-              <p className="text-xs text-[#8B949E] font-medium">{stat.label}</p>
+      {/* BIOMÉTRICOS ACTUALES */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <span className="text-blue-400">🔵</span> BIOMÉTRICOS ACTUALES
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: "HRV", value: "39 ms", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)" },
+            { label: "SLEEP SCORE", value: "92.0/100", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)" },
+            { label: "ESTRÉS MEDIO", value: "21/100", color: "#F97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.2)" },
+            { label: "BODY BATTERY", value: "—", color: "#8B949E", bg: "rgba(139,148,158,0.05)", border: "rgba(139,148,158,0.15)" },
+            { label: "SUEÑO TOTAL", value: "8.8h", color: "#A855F7", bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.2)" },
+            { label: "PROFUNDO", value: "1.1h", color: "#6366F1", bg: "rgba(99,102,241,0.08)", border: "rgba(99,102,241,0.2)" },
+            { label: "REM", value: "2.2h", color: "#EC4899", bg: "rgba(236,72,153,0.08)", border: "rgba(236,72,153,0.2)" },
+            { label: "VIGILIA", value: "0.1h", color: "#F43F5E", bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.2)" },
+          ].map((m) => (
+            <div key={m.label} className="rounded-xl p-4" style={{ background: m.bg, border: `1px solid ${m.border}` }}>
+              <p className="text-[10px] font-bold text-[#8B949E] mb-2 uppercase tracking-wider">{m.label}</p>
+              <p className="text-xl font-black" style={{ color: m.color }}>{m.value}</p>
             </div>
-            <p className="text-2xl font-bold text-white mb-1">{stat.value}</p>
-            <p className="text-xs" style={{ color: stat.color }}>{stat.sub}</p>
+          ))}
+        </div>
+      </div>
+
+      {/* ANÁLISIS DE CARRERA & RENDIMIENTO */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <span>🏃</span> ANÁLISIS DE CARRERA & RENDIMIENTO
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="rounded-xl p-4" style={{ background: "rgba(201,255,0,0.08)", border: "1px solid rgba(201,255,0,0.2)" }}>
+            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">CADENCIA MEDIA</p>
+            <p className="text-2xl font-black text-[#C9FF00]">68 spm</p>
+            <p className="text-[10px] text-[#8B949E] mt-1">↓ Mejorar técnica</p>
           </div>
-        ))}
+          <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
+            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">VO2MAX</p>
+            <p className="text-xl font-black text-[#8B949E]">—</p>
+            <p className="text-[10px] text-[#8B949E] mt-1">No disponible</p>
+          </div>
+          <div className="rounded-xl p-4" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
+            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">ACWR</p>
+            <p className="text-2xl font-black text-green-400">1.00</p>
+            <div className="flex items-center gap-1 mt-1">
+              <span className="w-2 h-2 rounded-full bg-green-400" />
+              <p className="text-[10px] text-green-400">Normal</p>
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-[#8B949E] mb-2">Últimas actividades de running (7 días)</p>
+        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-[#30363D]" style={{ background: "rgba(255,255,255,0.03)" }}>
+                {["fecha", "km", "cadencia_media", "fc_media", "ritmo_medio"].map(h => (
+                  <th key={h} className="text-left text-[10px] font-bold text-[#8B949E] py-2.5 px-3 uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {lastRunningActivities.map((row, i) => (
+                <tr key={i} className="border-b border-[#30363D]/40 hover:bg-[#30363D]/20 transition-colors">
+                  <td className="text-xs text-white py-2.5 px-3">{row.fecha}</td>
+                  <td className="text-xs text-cyan-400 py-2.5 px-3">{row.km}</td>
+                  <td className="text-xs text-white py-2.5 px-3">{row.cadencia_media}</td>
+                  <td className="text-xs text-white py-2.5 px-3">{row.fc_media}</td>
+                  <td className="text-xs text-[#C9FF00] py-2.5 px-3">{row.ritmo_medio}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* FASE DEL MACROCICLO */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <span className="text-blue-400">🔵</span> FASE DEL MACROCICLO
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+          {[
+            { label: "FASE ACTUAL", value: "Acondicionamiento", color: "#C9FF00" },
+            { label: "KM MÁX/SEMANA", value: "30 km", color: "#00D4FF" },
+            { label: "DÍAS FUERZA", value: "4 días", color: "#A855F7" },
+            { label: "DÍAS HASTA OBJETIVO", value: "312", color: "#F97316" },
+            { label: "SEMANAS HASTA OBJETIVO", value: "44", color: "#F43F5E" },
+          ].map((m) => (
+            <div key={m.label} className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">{m.label}</p>
+              <p className="text-lg font-black" style={{ color: m.color }}>{m.value}</p>
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
+            <p className="text-xs text-[#8B949E] mb-1 font-semibold">Enfoque Running:</p>
+            <p className="text-sm text-white">Base aeróbica Z2. Bici/elíptica en días de tibia.</p>
+          </div>
+          <div className="rounded-xl p-4" style={{ background: "rgba(168,85,247,0.05)", border: "1px solid rgba(168,85,247,0.15)" }}>
+            <p className="text-xs text-[#8B949E] mb-1 font-semibold">Enfoque Fuerza:</p>
+            <p className="text-sm text-white">Hipertrofia base y glúteo (3×12-15, 65-70% 1RM)</p>
+          </div>
+        </div>
+      </div>
+
+      {/* SEMÁFORO DE RECUPERACIÓN */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <span>🚦</span> SEMÁFORO DE RECUPERACIÓN
+        </h3>
+        <div className="rounded-xl p-5" style={{ background: "rgba(244,63,94,0.08)", border: "1px solid rgba(244,63,94,0.3)" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-4 h-4 rounded-full bg-red-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]" />
+            <span className="text-base font-black text-red-400">ROJO</span>
+          </div>
+          <p className="text-sm text-white mb-3">Adaptación fallida — HRV caído 25%. Considera regenerativo.</p>
+          <div className="flex flex-wrap items-center gap-4 text-xs">
+            <span className="text-[#8B949E]">Multiplicador volumen: <span className="text-white font-bold">1.00x</span></span>
+            <span className="text-[#8B949E]">Calidad permitida: <span className="text-green-400 font-bold">Sí</span></span>
+          </div>
+          <p className="text-xs text-orange-400 mt-3 flex items-center gap-1">
+            <span>⚠</span> Recuperación baja — el plan no se modifica automáticamente. Considera reducir intensidad manualmente.
+          </p>
+        </div>
+      </div>
+
+      {/* CICLO MENSTRUAL */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <span>🩸</span> CICLO MENSTRUAL
+        </h3>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "FASE", value: "Lútea", color: "#EC4899" },
+            { label: "MULTIPLICADOR VOL.", value: "1.00x", color: "#C9FF00" },
+            { label: "¿CALIDAD PERMITIDA?", value: "Sí", color: "#22C55E" },
+          ].map((m) => (
+            <div key={m.label} className="rounded-xl p-4" style={{ background: "rgba(236,72,153,0.06)", border: "1px solid rgba(236,72,153,0.2)" }}>
+              <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">{m.label}</p>
+              <p className="text-lg font-black" style={{ color: m.color }}>{m.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* RESTRICCIONES & LESIONES */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <span>⚠️</span> RESTRICCIONES & LESIONES ACTIVAS
+        </h3>
+        <div className="rounded-xl p-4 flex items-center gap-2" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)" }}>
+          <span className="text-green-400">✅</span>
+          <p className="text-sm text-green-400 font-semibold">Sin lesiones activas</p>
+        </div>
+      </div>
+
+      {/* EVALUACIONES ESPECIALIZADAS */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <span>📊</span> EVALUACIONES ESPECIALIZADAS
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="rounded-xl p-4" style={{ background: "rgba(201,255,0,0.08)", border: "1px solid rgba(201,255,0,0.2)" }}>
+            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">CADENCIA</p>
+            <div className="rounded-lg p-3" style={{ background: "rgba(201,255,0,0.08)", border: "1px solid rgba(201,255,0,0.2)" }}>
+              <p className="text-xs text-[#C9FF00]">✏️ Cadencia 68 spm — añadir 5min drills técnica antes de cada rodaje.</p>
+            </div>
+          </div>
+          <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
+            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">EFICIENCIA AERÓBICA</p>
+            <div className="rounded-lg p-3" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
+              <p className="text-xs text-cyan-400">Sin datos suficientes (mín. 4 sesiones Z2 en 28 días).</p>
+            </div>
+          </div>
+          <div className="rounded-xl p-4" style={{ background: "rgba(201,255,0,0.08)", border: "1px solid rgba(201,255,0,0.2)" }}>
+            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">VOLUMEN ESTIMADO SEMANA</p>
+            <p className="text-3xl font-black text-[#C9FF00]">11.2 km</p>
+          </div>
+        </div>
+      </div>
+
+      {/* SESIÓN DE FUERZA PROPUESTA */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <span>💪</span> SESIÓN DE FUERZA PROPUESTA
+        </h3>
+        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(168,85,247,0.2)" }}>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-[#30363D]" style={{ background: "rgba(168,85,247,0.08)" }}>
+                {["Ejercicio", "Grupo", "Series", "Reps", "Peso (kg)", "Nota"].map(h => (
+                  <th key={h} className="text-left text-[10px] font-bold text-[#8B949E] py-3 px-3 uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {fuerzaProuesta.map((row, i) => (
+                <tr key={i} className="border-b border-[#30363D]/40 hover:bg-[#30363D]/20 transition-colors">
+                  <td className="text-sm text-cyan-400 py-3 px-3 font-semibold">{row.ejercicio}</td>
+                  <td className="text-xs text-[#8B949E] py-3 px-3">{row.grupo}</td>
+                  <td className="text-sm text-white py-3 px-3">{row.series}</td>
+                  <td className="text-sm text-white py-3 px-3">{row.reps}</td>
+                  <td className="text-sm text-white py-3 px-3">{row.peso}</td>
+                  <td className="text-xs text-[#8B949E] py-3 px-3">{row.nota}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* RESUMEN EJECUTIVO */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <span>🚀</span> RESUMEN EJECUTIVO
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl p-5" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-xs font-bold text-[#8B949E] uppercase tracking-wider mb-3">ESTADO DE ENTRENAMIENTO</p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#8B949E]">Recuperación:</span>
+                <span className="text-xs font-bold text-red-400">ROJO</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#8B949E]">Volumen objetivo:</span>
+                <span className="text-xs font-bold text-cyan-400">19.0 km</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#8B949E]">Calidad permitida:</span>
+                <span className="text-xs font-bold text-green-400">Sí</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#8B949E]">ACWR:</span>
+                <span className="text-xs font-bold text-white">1.00</span>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl p-5" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-xs font-bold text-[#8B949E] uppercase tracking-wider mb-3">AJUSTES APLICADOS</p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#8B949E]">Ciclo menstrual:</span>
+                <span className="text-xs font-bold text-pink-400">Lútea</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#8B949E]">Drills cadencia:</span>
+                <span className="text-xs font-bold text-[#C9FF00]">Sí — 5min técnica</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#8B949E]">Lesiones:</span>
+                <span className="text-xs font-bold text-green-400">Ninguna</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#8B949E]">Fase:</span>
+                <span className="text-xs font-bold text-[#C9FF00]">Acondicionamiento</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 rounded-xl p-4 flex items-center gap-2" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)" }}>
+          <span className="text-green-400">✅</span>
+          <p className="text-sm text-green-400 font-semibold">Datos listos para generar tu plan semanal personalizado.</p>
+        </div>
       </div>
     </div>
   );
