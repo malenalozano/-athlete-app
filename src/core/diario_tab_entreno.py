@@ -290,39 +290,13 @@ def _cargar_dias_mes(usuario_id: int, anio: int, mes: int) -> dict:
 
 
 def _render_calendario_interactivo(usuario_id: int, dias_mes: dict, anio: int, mes: int, _k_cal: str):
-    """Renderiza calendario visual + selector de día para filtrar sesiones."""
-    # Mostrar el HTML del calendario original
+    """Renderiza solo el calendario visual HTML."""
+    # Mostrar el HTML del calendario original (sin selectbox)
     st.markdown(
         html_calendario_entreno(dias_mes, anio, mes),
         unsafe_allow_html=True
     )
-    
-    if not dias_mes:
-        return None
-    
-    # Añadir selector de día para filtrar
-    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
-    dias_ordenados = sorted(dias_mes.keys())
-    opciones_display = ["— Sin filtro —"] + [f"{d:02d}" for d in dias_ordenados]
-    
-    col_sel, col_clear = st.columns([3, 1])
-    with col_sel:
-        seleccion = st.selectbox(
-            "Filtrar por día:",
-            options=opciones_display,
-            key=f"sel_dia_{usuario_id}_{anio}_{mes}",
-            label_visibility="collapsed"
-        )
-        # Extrae el día seleccionado
-        dia_sel = None if seleccion == "— Sin filtro —" else int(seleccion)
-    
-    with col_clear:
-        if st.button("✕", key=f"clear_sel_{usuario_id}_{anio}_{mes}", help="Limpiar filtro"):
-            # Reset el selectbox usando session state
-            st.session_state[f"sel_dia_{usuario_id}_{anio}_{mes}"] = "— Sin filtro —"
-            st.rerun()
-    
-    return dia_sel
+    return None
 
 
 def _filtrar_sesiones_por_dia(df_hist: pd.DataFrame, fecha_str_formato: str, dia_seleccionado: Optional[int], anio: int, mes: int) -> pd.DataFrame:
@@ -493,113 +467,6 @@ div[data-testid="stTextArea"] textarea:focus {
 
         _card_close()
 
-        # ── Sección 2: Resultado ────────────────────────────────────────
-        if st.session_state[_k_res] and st.session_state[_k_ses]:
-            _card_open()
-            for ses in st.session_state[_k_ses]:
-                res_s     = ses["res"]
-                fecha_obj = ses.get("fecha")
-                fecha_str = fecha_obj.strftime("%d %b %Y") if fecha_obj else "?"
-                tipo_lbl  = ses["meta"].get("tipo", "?")
-                n_ej      = len(res_s.get("datos", []))
-
-                if not res_s.get("exito"):
-                    st.error(f"No se pudo procesar {fecha_str}")
-                    continue
-
-                # Header del resultado
-                garmin_html = ""
-                if ses.get("vinculo_running"):
-                    v  = ses["vinculo_running"]
-                    km = round(float(v.get("distancia_m") or 0) / 1000, 2)
-                    ri = v.get("ritmo_medio")
-                    ri_txt = f" · {ri} min/km" if ri else ""
-                    garmin_html = (
-                        f"<div style='color:{TXT2};font-size:11px;margin-top:4px;'>"
-                        f"⌚ Enlazado con actividad: {km} km{ri_txt}</div>")
-
-                st.markdown(
-                    f"<div style='background:#111f11;border:1px solid {ACCENT}30;"
-                    f"border-radius:10px;padding:12px 14px;margin:8px 0;'>"
-                    f"<div style='display:flex;align-items:center;gap:8px;'>"
-                    f"<span style='color:{ACCENT};font-weight:600;font-size:13px;'>"
-                    f"✅ {fecha_str}</span>"
-                    f"<span style='color:{TXT3};font-size:11px;'>"
-                    f"{tipo_lbl} · {n_ej} ejercicio{'s' if n_ej!=1 else ''}</span>"
-                    f"</div>{garmin_html}</div>",
-                    unsafe_allow_html=True)
-
-                if ses.get("vinculo_running"):
-                    v = ses["vinculo_running"]
-                    km = round(float(v.get("distancia_m") or 0) / 1000, 2)
-                    ritmo_txt = _formatear_ritmo_min_km(v.get("ritmo_medio"))
-                    bpm_txt = _formatear_bpm(v.get("fc_media"))
-                    partes = [f"⌚ Enlazado con Garmin · {km}km"]
-                    if ritmo_txt:
-                        partes.append(ritmo_txt)
-                    if bpm_txt:
-                        partes.append(bpm_txt)
-                    st.markdown(
-                        f"<div style='color:#60a5fa;font-size:11px;margin:4px 0 8px;'>"
-                        f"{' · '.join(partes)}</div>",
-                        unsafe_allow_html=True,
-                    )
-
-                if ses.get("nota_estado"):
-                    st.warning(f"Percepción: {ses['nota_estado']}")
-
-                if res_s["datos"]:
-                    cols_show = ["ejercicio", "series", "repeticiones", "peso", "notas"]
-                    df_r = pd.DataFrame(res_s["datos"])
-                    df_r = df_r[[c for c in cols_show if c in df_r.columns]]
-                    if not df_r.empty:
-                        df_r.columns = [c.capitalize() for c in df_r.columns]
-                        if "Notas" in df_r.columns:
-                            df_r["Notas"] = df_r["Notas"].fillna("").replace("", "—")
-
-                        for _, ej in df_r.iterrows():
-                            nota_txt = str(ej.get("Notas", "") or "")
-                            chip = _color_nota(nota_txt)
-                            chip_html = ""
-                            if chip:
-                                _, bg_chip, fg_chip = chip
-                                chip_html = (
-                                    f"<span style='background:{bg_chip};color:{fg_chip};"
-                                    f"border-radius:999px;padding:2px 8px;font-size:10px;"
-                                    f"font-weight:600;'>"
-                                    f"{nota_txt if nota_txt and nota_txt != '—' else 'Sin nota'}"
-                                    f"</span>"
-                                )
-                            st.markdown(
-                                f"<div style='display:grid;grid-template-columns:1.7fr 0.5fr 0.6fr 0.8fr 1.2fr;gap:8px;"
-                                f"padding:8px 10px;border-bottom:1px solid {BORDER};align-items:center;'>"
-                                f"<div style='color:{TXT1};font-size:12px;font-weight:600;'>{ej.get('Ejercicio','—')}</div>"
-                                f"<div style='color:{TXT2};font-size:12px;'>{ej.get('Series','—')}</div>"
-                                f"<div style='color:{TXT2};font-size:12px;'>{ej.get('Repeticiones','—')}</div>"
-                                f"<div style='color:{TXT2};font-size:12px;'>{ej.get('Peso','—')}</div>"
-                                f"<div>{chip_html}</div>"
-                                f"</div>",
-                                unsafe_allow_html=True,
-                            )
-                elif ses["meta"]["has_fuerza"]:
-                    st.info("No se detectaron ejercicios. Revisa el formato.")
-
-            _card_close()
-
-            n = len(st.session_state[_k_ses])
-            col_g, col_c = st.columns([3, 1])
-            with col_g:
-                if st.button(
-                    f"💾 Guardar {n} sesión{'es' if n>1 else ''}",
-                    use_container_width=True, type="primary"
-                ):
-                    _guardar_sesiones(usuario_id, st.session_state[_k_ses])
-            with col_c:
-                if st.button("✕ Descartar", use_container_width=True):
-                    st.session_state[_k_res] = None
-                    st.session_state[_k_ses] = []
-                    st.rerun()
-
     # ======================================================================
     # COLUMNA DERECHA
     # ======================================================================
@@ -676,6 +543,29 @@ div[data-testid="stTextArea"] textarea:focus {
         # ── Sección 4: Sesiones guardadas ──────────────────────────────
         _card_open()
         
+        # SELECTBOX para filtrar por día - AQUÍ y no en el calendario
+        if dias_mes:
+            st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+            dias_ordenados = sorted(dias_mes.keys())
+            opciones_display = ["— Sin filtro —"] + [f"{d:02d}" for d in dias_ordenados]
+            
+            col_sel, col_clear = st.columns([3, 1])
+            with col_sel:
+                seleccion = st.selectbox(
+                    "Filtrar por día:",
+                    options=opciones_display,
+                    key=f"sel_dia_{usuario_id}_{anio_cal}_{mes_cal}",
+                    label_visibility="collapsed"
+                )
+                dia_sel = None if seleccion == "— Sin filtro —" else int(seleccion)
+            
+            with col_clear:
+                if st.button("✕", key=f"clear_sel_{usuario_id}_{anio_cal}_{mes_cal}", help="Limpiar filtro"):
+                    st.session_state[f"sel_dia_{usuario_id}_{anio_cal}_{mes_cal}"] = "— Sin filtro —"
+                    st.rerun()
+        else:
+            dia_sel = None
+        
         # Mostrar el día seleccionado si existe
         if dia_sel:
             fecha_sel_str = f"{anio_cal:04d}-{mes_cal:02d}-{dia_sel:02d}"
@@ -685,11 +575,6 @@ div[data-testid="stTextArea"] textarea:focus {
                 f"</div>",
                 unsafe_allow_html=True
             )
-            # Botón para limpiar filtro
-            _k_day_selected = f"dia_seleccionado_{usuario_id}_{anio_cal}_{mes_cal}"
-            if st.button("✕ Limpiar filtro", key=f"clear_day_filter_{usuario_id}_{anio_cal}_{mes_cal}"):
-                st.session_state[_k_day_selected] = None
-                st.rerun()
         else:
             st.markdown(label_upper("Sesiones guardadas"), unsafe_allow_html=True)
         
