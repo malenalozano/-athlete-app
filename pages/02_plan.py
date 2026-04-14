@@ -279,16 +279,24 @@ position:relative;overflow:hidden;margin-bottom:1rem;">
     col_gen1, col_gen2 = st.columns([0.7, 0.3])
     with col_gen1:
         if st.button("⚡ Regenerar plan (con IA)", type="primary", use_container_width=True, key="plan_generate"):
-            with st.spinner():
+            with st.spinner("Generando plan..."):
                 try:
                     from src.plan.entrenador import generar_entrenamiento_semana
                     plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
+                    
+                    # DEBUG: mostrar tipos generados
+                    tipos_gen = [d.get("tipo", "?") for d in plan_nuevo.get("dias", [])]
+                    if not any(t not in ("Regenerativo", "Descanso", "Movilidad") for t in tipos_gen):
+                        st.warning(f"⚠️ Aviso: Plan generado solo con tipos: {tipos_gen}. Revisando...")
+                    
                     plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, user_actual, lunes, datetime.now())
                     st.session_state.plan_data = plan_nuevo
                     st.session_state.plan_ia = True
                     _auto_guardar(user_actual, lunes, plan_nuevo)
                 except Exception as e:
                     st.error(f"❌ Error generando plan:\n\n{str(e)}")
+                    import traceback
+                    st.error(f"**Traceback completo:**\n\n```\n{traceback.format_exc()}\n```")
                     st.stop()
             st.rerun()
     with col_gen2:
