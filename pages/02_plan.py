@@ -49,6 +49,52 @@ div[data-testid="stRadio"] label {
 div[data-testid="stRadio"] label:has(input[type="radio"]:checked) {
   border-color:#C9FF00 !important; background:#111f11 !important; color:#C9FF00 !important; }
 div[data-testid="stRadio"] input[type="radio"] { display:none; }
+
+div[data-testid="stButton"] > button[kind="primary"] {
+    border-radius: 16px !important;
+    min-height: 3rem !important;
+    font-weight: 800 !important;
+    box-shadow: 0 12px 28px rgba(0, 212, 255, 0.14) !important;
+}
+div[data-testid="stButton"] > button[kind="primary"]:hover {
+    transform: translateY(-1px);
+}
+
+.plan-hero-card {
+    background: linear-gradient(135deg, rgba(0,212,255,0.12) 0%, rgba(34,197,94,0.06) 52%, rgba(168,85,247,0.08) 100%);
+    border: 1px solid rgba(0,212,255,0.22);
+    border-radius: 16px;
+    padding: 1.35rem 1.4rem;
+    min-height: 100%;
+}
+.plan-cta-card {
+    background: linear-gradient(180deg, rgba(17,29,42,0.98), rgba(14,20,31,0.98));
+    border: 1px solid rgba(0,212,255,0.18);
+    border-radius: 16px;
+    padding: 1.1rem 1rem 1rem;
+    min-height: 100%;
+}
+.plan-cta-label {
+    color:#8B949E;
+    font-size:0.7rem;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    margin:0 0 .65rem;
+}
+.plan-cta-hint {
+    color:#8B949E;
+    font-size:0.76rem;
+    line-height:1.35;
+    margin-top:.65rem;
+}
+.plan-kpi-card {
+    min-height: 92px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    border-radius: 14px;
+}
 </style>""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
@@ -158,8 +204,7 @@ def _section(icon, title, color="#C9FF00"):
 def _metric_card(col, label, value, sub="", color="#C9FF00"):
     sub_html = f"<div style='color:#6b7280;font-size:0.7rem;margin-top:2px;'>{sub}</div>" if sub else ""
     col.markdown(
-        f"<div style='background:linear-gradient(135deg,#0f1724,#101928);border:1px solid {color}33;"
-        f"border-radius:12px;padding:0.9rem 1rem;'>"
+        f"<div class='plan-kpi-card' style='background:linear-gradient(135deg,#0f1724,#101928);border:1px solid {color}33;padding:0.95rem 1rem;'>"
         f"<div style='color:#8B949E;font-size:0.65rem;font-weight:700;text-transform:uppercase;"
         f"letter-spacing:.07em;margin-bottom:4px;'>{label}</div>"
         f"<div style='color:{color};font-size:1.25rem;font-weight:800;'>{value}</div>"
