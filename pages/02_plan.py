@@ -227,7 +227,7 @@ active_tab = st.session_state.get("plan_active_tab", "generar")
 tab_options = ["📋 Generar Plan", "📊 Datos del Entrenador"]
 current_index = 0 if active_tab == "generar" else 1
 selected_tab_display = st.radio(
-    "Navegación", 
+    "", 
     tab_options, 
     index=current_index,
     label_visibility="collapsed", 
