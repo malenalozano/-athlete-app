@@ -681,15 +681,15 @@ border:1px solid rgba(74,222,128,0.25);border-radius:16px;padding:1.5rem 2rem;ma
         body_battery_min=datos.get("body_battery_min"),
         training_status=datos.get("training_status"),
     )
-        _icono = {"verde":"🟢","ambar":"💡","rojo":"💡"}.get(_sem_dat["color"],"💡")
-        _titulo = "Recuperación óptima" if _sem_dat["color"] == "verde" else "Recomendación de recuperación"
-        st.info(
-                f"{_icono} {_titulo}\n\n"
-                f"{_sem_dat['mensaje']}\n"
-                "El plan se genera con carga completa. Aplica estas recomendaciones si lo consideras necesario.\n"
-                f"Multiplicador volumen: {_sem_dat['multiplicador_volumen']:.2f}x · "
-                f"Calidad permitida: {'Sí' if _sem_dat['permitir_calidad'] else 'No'}"
-        )
+    _icono = {"verde":"🟢","ambar":"💡","rojo":"💡"}.get(_sem_dat["color"],"💡")
+    _titulo = "Recuperación óptima" if _sem_dat["color"] == "verde" else "Recomendación de recuperación"
+    st.info(
+        f"{_icono} {_titulo}\n\n"
+        f"{_sem_dat['mensaje']}\n"
+        "El plan se genera con carga completa. Aplica estas recomendaciones si lo consideras necesario.\n"
+        f"Multiplicador volumen: {_sem_dat['multiplicador_volumen']:.2f}x · "
+        f"Calidad permitida: {'Sí' if _sem_dat['permitir_calidad'] else 'No'}"
+    )
 
     # ── 6. Ciclo (mujeres) ──────────────────────────────────────────────────
     ciclo_data = None
