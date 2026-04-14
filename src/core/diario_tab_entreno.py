@@ -291,42 +291,38 @@ def _cargar_dias_mes(usuario_id: int, anio: int, mes: int) -> dict:
 
 def _render_calendario_interactivo(usuario_id: int, dias_mes: dict, anio: int, mes: int, _k_cal: str):
     """Renderiza calendario visual + selector de día para filtrar sesiones."""
-    hoy = date.today()
-    primer_dia, total_dias = calendar.monthrange(anio, mes)
-    
-    # Key para almacenar el día seleccionado
-    _k_day_selected = f"dia_seleccionado_{usuario_id}_{anio}_{mes}"
-    if _k_day_selected not in st.session_state:
-        st.session_state[_k_day_selected] = None
-    
     # Mostrar el HTML del calendario original
     st.markdown(
         html_calendario_entreno(dias_mes, anio, mes),
         unsafe_allow_html=True
     )
     
+    if not dias_mes:
+        return None
+    
     # Añadir selector de día para filtrar
     st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
-    dias_disponibles = ["— Sin filtro —"] + [str(d) for d in sorted(dias_mes.keys())]
+    dias_ordenados = sorted(dias_mes.keys())
+    opciones_display = ["— Sin filtro —"] + [f"{d:02d}" for d in dias_ordenados]
     
     col_sel, col_clear = st.columns([3, 1])
     with col_sel:
-        dia_index = st.selectbox(
+        seleccion = st.selectbox(
             "Filtrar por día:",
-            options=range(len(dias_disponibles)),
-            format_func=lambda i: dias_disponibles[i],
+            options=opciones_display,
             key=f"sel_dia_{usuario_id}_{anio}_{mes}",
             label_visibility="collapsed"
         )
-        dia_sel = None if dia_index == 0 else int(dias_disponibles[dia_index])
-        st.session_state[_k_day_selected] = dia_sel
+        # Extrae el día seleccionado
+        dia_sel = None if seleccion == "— Sin filtro —" else int(seleccion)
     
     with col_clear:
         if st.button("✕", key=f"clear_sel_{usuario_id}_{anio}_{mes}", help="Limpiar filtro"):
-            st.session_state[_k_day_selected] = None
+            # Reset el selectbox usando session state
+            st.session_state[f"sel_dia_{usuario_id}_{anio}_{mes}"] = "— Sin filtro —"
             st.rerun()
     
-    return st.session_state[_k_day_selected]
+    return dia_sel
 
 
 def _filtrar_sesiones_por_dia(df_hist: pd.DataFrame, fecha_str_formato: str, dia_seleccionado: Optional[int], anio: int, mes: int) -> pd.DataFrame:
@@ -401,97 +397,7 @@ def html_calendario_entreno(dias_mes: dict, anio: int, mes: int) -> str:
 </div>"""
 
 
-# ---------------------------------------------------------------------------
-# Lesiones inline
-# ---------------------------------------------------------------------------
 
-_TIPOS_LESION = [
-    "Periostitis", "Tendón de Aquiles", "Fascitis Plantar",
-    "Rodilla inflamada", "Dolor de espalda", "Poleas (Dedos)",
-    "Hombro inflamado", "Dolor de Cadera",
-]
-_GRADO_COLOR = {1: ("#22c55e", "Leve"), 2: ("#f59e0b", "Moderada"), 3: ("#ef4444", "Grave")}
-
-
-def _render_lesiones_inline(usuario_id: int):
-    st.markdown(
-        f"<p style='color:{TXT3};font-size:10px;font-weight:700;text-transform:uppercase;"
-        f"letter-spacing:0.8px;margin:16px 0 6px;'>🦵 Lesiones activas</p>",
-        unsafe_allow_html=True)
-
-    conn = get_db_connection()
-    try:
-        df = pd.read_sql_query(
-            "SELECT id, tipo, grado, fecha_inicio, notas FROM lesiones "
-            "WHERE usuario_id=? AND activa=1 ORDER BY grado DESC, fecha_inicio",
-            conn, params=(usuario_id,))
-    except Exception:
-        df = pd.DataFrame()
-    finally:
-        conn.close()
-
-    if df.empty:
-        st.success("✓ Sin lesiones activas. ¡Sigue así!")
-    else:
-        for _, row in df.iterrows():
-            g = max(1, min(3, int(row["grado"] or 1)))
-            col_c, lbl = _GRADO_COLOR.get(g, ("#8b949e", "?"))
-            try:
-                dias = (date.today() - pd.to_datetime(row["fecha_inicio"]).date()).days
-            except Exception:
-                dias = "?"
-            ci, cb = st.columns([5, 1])
-            with ci:
-                st.markdown(
-                    f"<div style='background:{col_c}10;border-left:3px solid {col_c};"
-                    f"border-radius:0 8px 8px 0;padding:8px 12px;margin-bottom:4px;'>"
-                    f"<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>"
-                    f"<span style='font-weight:600;color:{TXT1};font-size:12px;'>{row['tipo']}</span>"
-                    f"<span style='background:{col_c}22;color:{col_c};border-radius:999px;"
-                    f"padding:1px 7px;font-size:10px;'>Grado {g} — {lbl}</span>"
-                    f"<span style='color:{TXT3};font-size:10px;'>Día {dias}</span>"
-                    f"</div></div>",
-                    unsafe_allow_html=True)
-            with cb:
-                if st.button("✓ Ok", key=f"les_ok_{row['id']}", use_container_width=True):
-                    c2 = get_db_connection()
-                    try:
-                        c2.execute("UPDATE lesiones SET activa=0, fecha_fin=? WHERE id=?",
-                                   (date.today().strftime("%Y-%m-%d"), row["id"]))
-                        c2.commit()
-                        st.success(f"✅ Lesión **{row['tipo']}** resuelta.")
-                    except Exception as e:
-                        st.error(f"Error resolviendo lesión: {e}")
-                    finally:
-                        c2.close()
-                    st.rerun()
-
-    with st.expander("+ Registrar lesión"):
-        with st.form("form_lesion_inline", clear_on_submit=True):
-            tipo_s = st.selectbox("Zona / Tipo", _TIPOS_LESION)
-            grado_s = st.select_slider(
-                "Grado",
-                options=[1, 2, 3], value=1,
-                format_func=lambda x: {1: "1 — Leve", 2: "2 — Moderada", 3: "3 — Grave"}[x])
-            c1, c2 = st.columns(2)
-            with c1:
-                f_ini = st.date_input("Fecha inicio", value=date.today())
-            with c2:
-                notas_s = st.text_input("Notas", placeholder="Aparece al bajar escaleras…")
-            if st.form_submit_button("Registrar", type="primary", use_container_width=True):
-                try:
-                    conn = get_db_connection()
-                    conn.execute(
-                        "INSERT INTO lesiones (usuario_id,tipo,grado,fecha_inicio,activa,notas) "
-                        "VALUES (?,?,?,?,1,?)",
-                        (usuario_id, tipo_s, grado_s, str(f_ini), notas_s.strip() or None))
-                    conn.commit()
-                    conn.close()
-                    st.success(f"✅ Lesión **{tipo_s}** (Grado {grado_s}) registrada.")
-                except Exception as e:
-                    st.error(f"Error registrando lesión: {e}")
-                    return
-                st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -693,11 +599,6 @@ div[data-testid="stTextArea"] textarea:focus {
                     st.session_state[_k_res] = None
                     st.session_state[_k_ses] = []
                     st.rerun()
-
-        # ── Sección 3: Lesiones activas inline ──────────────────────────
-        _card_open()
-        _render_lesiones_inline(usuario_id)
-        _card_close()
 
     # ======================================================================
     # COLUMNA DERECHA
