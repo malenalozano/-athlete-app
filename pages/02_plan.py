@@ -221,14 +221,12 @@ if st.session_state.plan_data is None:
 # ---------------------------------------------------------------------------
 # TAB STATE & NAVIGATION
 # ---------------------------------------------------------------------------
-
-# Use st.tabs for navigation (no separate bar needed)
-tab1, tab2 = st.tabs(["📋 Generar Plan", "📊 Datos del Entrenador"])
+active_tab = st.session_state.get("plan_active_tab", "generar")
 
 # ============================================================================
 # TAB 1: GENERAR PLAN
 # ============================================================================
-with tab1:
+if active_tab == "generar":
 
     # Hero banner with week navigation
     st.markdown(f"""
@@ -500,7 +498,7 @@ border:1px solid rgba(168,85,247,0.25);border-radius:16px;padding:1.5rem;margin:
 # ============================================================================
 # TAB 2: DATOS DEL ENTRENADOR
 # ============================================================================
-with tab2:
+elif active_tab == "datos":
 
     # Header with gradient
     st.markdown("""
