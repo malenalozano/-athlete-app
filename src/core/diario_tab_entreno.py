@@ -413,24 +413,21 @@ div[data-testid="stTextArea"] textarea:focus {
     seleccion_actual = st.session_state.get(sel_key, "— Sin filtro —")
     hay_filtro_activo = seleccion_actual != "— Sin filtro —"
     
-    # Si hay filtro activo, la columna izquierda se oculta
-    if hay_filtro_activo:
-        col_der = st.columns(1)[0]
-    else:
-        col_izq, col_der = st.columns([1, 1.8], gap="large")
-        
-        # ======================================================================
-        # COLUMNA IZQUIERDA (solo si NO hay filtro activo)
-        # ======================================================================
-        with col_izq:
+    # Crear las dos columnas principales
+    col_izq, col_der = st.columns([1, 1.8], gap="large")
+    
+    # ======================================================================
+    # COLUMNA IZQUIERDA
+    # ======================================================================
+    with col_izq:
 
-            # ── Sección 1: Textarea ─────────────────────────────────────────
-            _card_open()
-            st.markdown(label_upper("Entreno libre"), unsafe_allow_html=True)
-            nota = st.text_area(
-                "nota",
-                height=150,
-                key=f"nota_fuerza_{usuario_id}",
+        # ── Sección 1: Textarea ─────────────────────────────────────────
+        _card_open()
+        st.markdown(label_upper("Entreno libre"), unsafe_allow_html=True)
+        nota = st.text_area(
+            "nota",
+            height=150,
+            key=f"nota_fuerza_{usuario_id}",
                 placeholder=(
                     "Lunes\n"
                     "Hip Thrust 3x8 30kg - no he terminado la serie\n"
