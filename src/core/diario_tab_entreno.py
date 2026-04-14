@@ -428,12 +428,12 @@ div[data-testid="stTextArea"] textarea:focus {
             "nota",
             height=150,
             key=f"nota_fuerza_{usuario_id}",
-                placeholder=(
-                    "Lunes\n"
-                    "Hip Thrust 3x8 30kg - no he terminado la serie\n"
-                    "Búlgaras 14kg  3x8 - me he sentido débil\n"
-                ),
-                label_visibility="hidden",
+            placeholder=(
+                "Lunes\n"
+                "Hip Thrust 3x8 30kg - no he terminado la serie\n"
+                "Búlgaras 14kg  3x8 - me he sentido débil\n"
+            ),
+            label_visibility="hidden",
         )
 
         if nota.strip():
