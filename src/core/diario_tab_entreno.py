@@ -8,6 +8,7 @@ import unicodedata
 import pandas as pd
 import streamlit as st
 from datetime import datetime, date, timedelta
+from typing import Optional
 
 from src.db.db_manager import get_db_connection
 from src.core.styles import ACCENT, CARD, BORDER, TXT1, TXT2, TXT3, label_upper, tipo_color
@@ -22,6 +23,8 @@ from src.core.ai_coach import procesar_nota_fuerza
 # Tipos de running para el calendario
 _RUNNING_KW = {"running", "trail", "treadmill", "indoor_running", "street_running", "caminata"}
 _DEFAULT_SPORT_EMOJI = "🏅"
+MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+            "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
 
 def _normalizar_txt(txt: str) -> str:
@@ -284,6 +287,104 @@ def _cargar_dias_mes(usuario_id: int, anio: int, mes: int) -> dict:
             actual["emoji"] = emoji_dep
 
     return dias
+
+
+def _render_calendario_interactivo(usuario_id: int, dias_mes: dict, anio: int, mes: int, _k_cal: str):
+    """Renderiza un calendario interactivo con filtro de sesiones por día."""
+    colores = {
+        "run":  {"bg": "#1a3a1a", "border": "#a3e635", "dot": "#a3e635", "emoji": "🏃"},
+        "gym":  {"bg": "#1e1b3a", "border": "#818cf8", "dot": "#a78bfa", "emoji": "🏋️"},
+        "both": {"bg": "#1a2a1a", "border": "#a3e635", "dot": "#a3e635", "emoji": "💪🏃"},
+        "sport": {"bg": "#162338", "border": "#60a5fa", "dot": "#93c5fd", "emoji": _DEFAULT_SPORT_EMOJI},
+    }
+    hoy = date.today()
+    primer_dia, total_dias = calendar.monthrange(anio, mes)
+    
+    # Key para almacenar el día seleccionado
+    _k_day_selected = f"dia_seleccionado_{usuario_id}_{anio}_{mes}"
+    if _k_day_selected not in st.session_state:
+        st.session_state[_k_day_selected] = None
+    
+    cabecera_dias = ["L", "M", "X", "J", "V", "S", "D"]
+    
+    # Renderizar encabezado días de la semana
+    cols_cab = st.columns(7)
+    for idx, dia_nom in enumerate(cabecera_dias):
+        with cols_cab[idx]:
+            st.markdown(
+                f"<div style='text-align:center;font-size:10px;color:#484f58;"
+                f"font-weight:600;padding:4px 0;'>{dia_nom}</div>",
+                unsafe_allow_html=True
+            )
+    
+    # Renderizar días del mes con buttons interactivos
+    col_idx = 0
+    cols_dia = st.columns(7)
+    
+    # Espacios vacíos iniciales
+    for _ in range(primer_dia):
+        col_idx += 1
+    
+    for dia in range(1, total_dias + 1):
+        # Avanzar a la siguiente fila si es necesario
+        if col_idx >= 7:
+            cols_dia = st.columns(7)
+            col_idx = 0
+        
+        with cols_dia[col_idx]:
+            info = dias_mes.get(dia, {})
+            tipo = info.get("tipo", "") if isinstance(info, dict) else str(info)
+            cfg = colores.get(tipo, {})
+            bg = cfg.get("bg", "#161b22")
+            border = cfg.get("border", "#21262d")
+            emoji = info.get("emoji", cfg.get("emoji", "")) if isinstance(info, dict) else cfg.get("emoji", "")
+            es_hoy = (anio == hoy.year and mes == hoy.month and dia == hoy.day)
+            es_seleccionado = st.session_state[_k_day_selected] == dia
+            
+            # Estilos dinámicos según selección
+            border_style = f"border:2px solid #a3e635; box-shadow:0 0 0 2px #a3e63522;" if es_hoy else f"border:2px solid {border};"
+            if es_seleccionado:
+                border_style = "border:3px solid #60a5fa; box-shadow:0 0 8px #60a5fa60;"
+                bg = "#162d4d"
+            
+            color_txt = cfg.get("dot", "#484f58") if tipo else "#484f58"
+            font_w = "700" if tipo or es_hoy else "400"
+            
+            if st.button(
+                f"{dia}\n{emoji}" if emoji else str(dia),
+                key=f"dia_{usuario_id}_{anio}_{mes}_{dia}",
+                use_container_width=True,
+                help=f"Ver sesiones del {dia} de {MESES_ES[mes-1]}" if hasattr(st, 'MESES_ES') or True else ""
+            ):
+                st.session_state[_k_day_selected] = dia if st.session_state[_k_day_selected] != dia else None
+                st.rerun()
+        
+        col_idx += 1
+    
+    # Leyenda
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='color:{TXT3};font-size:9px;display:flex;gap:12px;flex-wrap:wrap;'>"
+        f"<div><span style='width:7px;height:7px;border-radius:50%;background:#a3e635;display:inline-block;margin-right:4px;'></span>Carrera</div>"
+        f"<div><span style='width:7px;height:7px;border-radius:50%;background:#a78bfa;display:inline-block;margin-right:4px;'></span>Fuerza</div>"
+        f"<div><span style='width:7px;height:7px;border-radius:50%;background:#60a5fa;display:inline-block;margin-right:4px;'></span>Ambos</div>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+    
+    return st.session_state[_k_day_selected]
+
+
+def _filtrar_sesiones_por_dia(df_hist: pd.DataFrame, fecha_str_formato: str, dia_seleccionado: Optional[int], anio: int, mes: int) -> pd.DataFrame:
+    """Filtra sesiones por día seleccionado."""
+    if dia_seleccionado is None:
+        return df_hist
+    
+    # Construir la fecha en formato YYYY-MM-DD para el día seleccionado
+    fecha_target = f"{anio:04d}-{mes:02d}-{dia_seleccionado:02d}"
+    
+    # Filtrar por fecha exacta
+    return df_hist[df_hist["fecha"] == fecha_target]
 
 
 def html_calendario_entreno(dias_mes: dict, anio: int, mes: int) -> str:
@@ -652,8 +753,6 @@ div[data-testid="stTextArea"] textarea:focus {
         _sub_stats, _sub_cal = st.columns([1, 2], gap="medium")
 
         anio_cal, mes_cal = st.session_state[_k_cal]
-        MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
-                    "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
         dias_mes = _cargar_dias_mes(usuario_id, anio_cal, mes_cal)
 
         # Stats on the LEFT of the calendar (below the entry)
@@ -715,14 +814,31 @@ div[data-testid="stTextArea"] textarea:focus {
                     st.session_state[_k_cal] = (y, m)
                     st.rerun()
 
-            st.markdown(
-                html_calendario_entreno(dias_mes, anio_cal, mes_cal),
-                unsafe_allow_html=True)
+            # Renderizar calendario interactivo
+            dia_sel = _render_calendario_interactivo(usuario_id, dias_mes, anio_cal, mes_cal, _k_cal)
             _card_close()
 
         # ── Sección 4: Sesiones guardadas ──────────────────────────────
         _card_open()
-        st.markdown(label_upper("Sesiones guardadas"), unsafe_allow_html=True)
+        
+        # Mostrar el día seleccionado si existe
+        _k_day_selected = f"dia_seleccionado_{usuario_id}_{anio_cal}_{mes_cal}"
+        dia_sel = st.session_state.get(_k_day_selected, None)
+        if dia_sel:
+            fecha_sel_str = f"{anio_cal:04d}-{mes_cal:02d}-{dia_sel:02d}"
+            st.markdown(
+                f"<div style='background:#1a2a1a;border:1px solid #30363d;border-radius:8px;padding:8px 12px;margin-bottom:12px;'>"
+                f"<div style='color:{TXT2};font-size:12px;'>📅 Mostrando sesiones del <b>{dia_sel} de {MESES_ES[mes_cal-1]}</b></div>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+            # Botón para limpiar filtro
+            if st.button("✕ Limpiar filtro", key=f"clear_day_filter_{usuario_id}_{anio_cal}_{mes_cal}"):
+                st.session_state[_k_day_selected] = None
+                st.rerun()
+        else:
+            st.markdown(label_upper("Sesiones guardadas"), unsafe_allow_html=True)
+        
         key_del_ok = f"del_ok_{usuario_id}"
         if key_del_ok in st.session_state:
             st.success(st.session_state.pop(key_del_ok))
@@ -740,6 +856,12 @@ div[data-testid="stTextArea"] textarea:focus {
             df_hist = pd.DataFrame()
             df_garmin = pd.DataFrame()
 
+        # Aplicar filtro de día si está seleccionado
+        if dia_sel:
+            fecha_sel_str = f"{anio_cal:04d}-{mes_cal:02d}-{dia_sel:02d}"
+            df_hist = df_hist[df_hist["fecha"] == fecha_sel_str]
+            df_garmin = df_garmin[df_garmin["fecha"] == fecha_sel_str]
+
         actividad_ids_vinculadas = set()
         if not df_hist.empty and "actividad_garmin_id" in df_hist.columns:
             actividad_ids_vinculadas = set(
@@ -751,15 +873,26 @@ div[data-testid="stTextArea"] textarea:focus {
             df_garmin_libre = df_garmin_libre[~df_garmin_libre["id_actividad"].isin(actividad_ids_vinculadas)]
 
         if df_hist.empty and df_garmin_libre.empty:
-            st.markdown(
-                f"<div style='text-align:center;padding:32px 16px;'>"
-                f"<div style='font-size:28px;margin-bottom:8px;'>📋</div>"
-                f"<div style='color:{TXT2};font-size:13px;font-weight:500;'>"
-                f"Sin sesiones guardadas</div>"
-                f"<div style='color:{TXT3};font-size:11px;margin-top:4px;'>"
-                f"Escribe tu entrenamiento y pulsa ⚡ Procesar</div>"
-                f"</div>",
-                unsafe_allow_html=True)
+            if dia_sel:
+                st.markdown(
+                    f"<div style='text-align:center;padding:32px 16px;'>"
+                    f"<div style='font-size:28px;margin-bottom:8px;'>📅</div>"
+                    f"<div style='color:{TXT2};font-size:13px;font-weight:500;'>"
+                    f"Sin sesiones el {dia_sel} de {MESES_ES[mes_cal-1]}</div>"
+                    f"<div style='color:{TXT3};font-size:11px;margin-top:4px;'>"
+                    f"Selecciona otro día o añade un entrenamiento</div>"
+                    f"</div>",
+                    unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f"<div style='text-align:center;padding:32px 16px;'>"
+                    f"<div style='font-size:28px;margin-bottom:8px;'>📋</div>"
+                    f"<div style='color:{TXT2};font-size:13px;font-weight:500;'>"
+                    f"Sin sesiones guardadas</div>"
+                    f"<div style='color:{TXT3};font-size:11px;margin-top:4px;'>"
+                    f"Escribe tu entrenamiento y pulsa ⚡ Procesar</div>"
+                    f"</div>",
+                    unsafe_allow_html=True)
         else:
             for idx, row in df_hist.iterrows():
                 tc       = tipo_color(row.get("tipo_registro", ""))

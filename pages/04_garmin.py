@@ -670,60 +670,51 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
 </div>""", unsafe_allow_html=True)
 
     # ── GitHub Actions sync (fallback cuando Garmin bloquea la IP del cloud) ──
-        _gh_pat = st.secrets.get("GITHUB_PAT", "") if hasattr(st, "secrets") else ""
-        if _gh_pat:
+    _gh_pat = st.secrets.get("GITHUB_PAT", "") if hasattr(st, "secrets") else ""
+    if _gh_pat:
             st.markdown("<hr style='border:none;border-top:1px solid #1e2a3b;margin:14px 0 10px;'>", unsafe_allow_html=True)
             st.markdown(
                 f"<div style='font-size:11px;color:{TXT3};margin-bottom:8px;'>"
                 f"🤖 Alternativa si Garmin bloquea esta IP:</div>",
                 unsafe_allow_html=True)
 
-            if st.button("🚀 Sync vía GitHub Actions", use_container_width=True, key="gh_sync_btn",
-                         help="Lanza la sincronización desde GitHub (diferente IP, evita el bloqueo 429)"):
-                _owner = "malenalozano"
-                _repo = "athlete-performance-tracker"
-                _workflow = "garmin-worker.yml"
-                _url = f"https://api.github.com/repos/{_owner}/{_repo}/actions/workflows/{_workflow}/dispatches"
-                _headers = {
-                    "Authorization": f"Bearer {_gh_pat}",
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                }
-                _payload = {
-                    "ref": "main",
-                    "inputs": {
-                        "dias": "7",
-                        "usuario": str(user_actual),
-                    },
-                }
-                try:
-                    _resp = _requests.post(_url, json=_payload, headers=_headers, timeout=15)
-                    if _resp.status_code == 204:
-                        st.success(
-                            "✅ Sincronización iniciada en GitHub Actions. "
-                            "Tardará ~2-3 minutos. Recarga la página para ver los datos nuevos.",
-                        )
-                        st.session_state["gh_sync_triggered"] = datetime.now().strftime("%d/%m %H:%M")
-                    elif _resp.status_code == 401:
-                        st.error("❌ GitHub PAT inválido. Actualiza el secreto GITHUB_PAT en Streamlit Cloud.")
-                    elif _resp.status_code == 404:
-                        st.error("❌ Workflow no encontrado. Verifica que garmin-worker.yml esté en el repositorio.")
-                    else:
-                        st.error(f"❌ Error GitHub API: {_resp.status_code} — {_resp.text[:200]}")
-                except Exception as _e:
-                    st.error(f"❌ No se pudo contactar con GitHub: {_e}")
+        if st.button("🚀 Sync vía GitHub Actions", use_container_width=True, key="gh_sync_btn",
+                     help="Lanza la sincronización desde GitHub (diferente IP, evita el bloqueo 429)"):
+            _owner = "malenalozano"
+            _repo = "athlete-performance-tracker"
+            _workflow = "garmin-worker.yml"
+            _url = f"https://api.github.com/repos/{_owner}/{_repo}/actions/workflows/{_workflow}/dispatches"
+            _headers = {
+                "Authorization": f"Bearer {_gh_pat}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            }
+            _payload = {
+                "ref": "main",
+                "inputs": {
+                    "dias": "7",
+                    "usuario": str(user_actual),
+                },
+            }
+            try:
+                _resp = _requests.post(_url, json=_payload, headers=_headers, timeout=15)
+                if _resp.status_code == 204:
+                    st.success(
+                        "✅ Sincronización iniciada en GitHub Actions. "
+                        "Tardará ~2-3 minutos. Recarga la página para ver los datos nuevos.",
+                    )
+                    st.session_state["gh_sync_triggered"] = datetime.now().strftime("%d/%m %H:%M")
+                elif _resp.status_code == 401:
+                    st.error("❌ GitHub PAT inválido. Actualiza el secreto GITHUB_PAT en Streamlit Cloud.")
+                elif _resp.status_code == 404:
+                    st.error("❌ Workflow no encontrado. Verifica que garmin-worker.yml esté en el repositorio.")
+                else:
+                    st.error(f"❌ Error GitHub API: {_resp.status_code} — {_resp.text[:200]}")
+            except Exception as _e:
+                st.error(f"❌ No se pudo contactar con GitHub: {_e}")
 
-            if st.session_state.get("gh_sync_triggered"):
-                st.caption(f"⏳ Última ejecución lanzada: {st.session_state['gh_sync_triggered']} · [Ver en GitHub Actions](https://github.com/malenalozano/athlete-performance-tracker/actions)")
-
-    # ── HRV 7-day chart ──────────────────────────────────────────────
-    st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
-    st.markdown(label_upper("HRV últimos 7 días"), unsafe_allow_html=True)
-
-    conn = get_db_connection()
-    try:
-        df_hrv = pd.read_sql_query("""
-            SELECT fecha, hrv_ms
+        if st.session_state.get("gh_sync_triggered"):
+            st.caption(f"⏳ Última ejecución lanzada: {st.session_state['gh_sync_triggered']} · [Ver en GitHub Actions](https://github.com/malenalozano/athlete-performance-tracker/actions)")
             FROM datos_biometricos_premium
             WHERE usuario_id=?
             ORDER BY fecha DESC

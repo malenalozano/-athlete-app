@@ -106,12 +106,18 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
             for i in range(dias_pasados):
                 fd = lunes + timedelta(days=i)
                 a = next((x for x in actvs if x[0][:10] == fd.strftime("%Y-%m-%d")), None)
-                if a:
-                    dias_adaptados.append({"fecha": a[0][:10], "dia": fd.strftime("%a").upper()[:3],
-                                           "tipo": "Realizado: " + (a[1] or "Actividad"),
-                                           "km": a[3] or 0, "duracion_min": a[2] or 0,
-                                           "intensidad": "Histórico", "descripcion_ia": "[Historial Garmin]",
-                                           "alerta": "✓ Completado"})
+                if i < len(plan.get("dias", [])):
+                    dia_plan = plan["dias"][i]
+                    if a:
+                        # Día pasado con actividad realizada
+                        dias_adaptados.append({"fecha": a[0][:10], "dia": fd.strftime("%a").upper()[:3],
+                                               "tipo": "Realizado: " + (a[1] or "Actividad"),
+                                               "km": a[3] or 0, "duracion_min": a[2] or 0,
+                                               "intensidad": "Histórico", "descripcion_ia": "[Historial Garmin]",
+                                               "alerta": "✓ Completado"})
+                    else:
+                        # Día pasado SIN actividad — mostrar lo que se planificó
+                        dias_adaptados.append(dia_plan)
         finally:
             conn.close()
     for dia in plan.get("dias", []):

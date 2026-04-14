@@ -324,18 +324,6 @@ _ALL_SCHEMA_SQL = [
         tipo TEXT, grado INTEGER, fecha_inicio TEXT, fecha_fin TEXT,
         activa INTEGER DEFAULT 1, notas TEXT
     )""",
-    """CREATE TABLE IF NOT EXISTS garmin_sleep (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT,
-        duration_seconds REAL, score INTEGER,
-        deep_sleep_seconds REAL, rem_sleep_seconds REAL, awake_seconds REAL,
-        UNIQUE(usuario_id, fecha)
-    )""",
-    """CREATE TABLE IF NOT EXISTS garmin_metricas_diarias (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT,
-        hrv_ms REAL, rhr INTEGER, sleep_score INTEGER,
-        stress_level_avg REAL, body_battery_min INTEGER,
-        UNIQUE(usuario_id, fecha)
-    )""",
 
     # ── Migrations (ALTER TABLE ADD COLUMN — ignored if column already exists) ──
     "ALTER TABLE usuarios ADD COLUMN edad INTEGER",
