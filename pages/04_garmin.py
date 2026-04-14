@@ -288,52 +288,87 @@ st.markdown(f"<h2 style='color:#e6edf3;font-weight:700;margin:4px 0 4px;'>Garmin
             unsafe_allow_html=True)
 st.markdown("<div class='garmin-sub'>Sincroniza tu reloj y revisa exactamente qué datos han entrado.</div>", unsafe_allow_html=True)
 
-tab_sync, tab_hist = st.tabs(["🔄 Sincronización", "📊 Historial"])
+# Tab navigation via session_state
+if "garmin_active_tab" not in st.session_state:
+    st.session_state["garmin_active_tab"] = "sync"
+
+tab_cols = st.columns(2, gap="small")
+with tab_cols[0]:
+    if st.button("🔄 Sincronización", use_container_width=True,
+                 type="primary" if st.session_state["garmin_active_tab"] == "sync" else "secondary"):
+        st.session_state["garmin_active_tab"] = "sync"
+        st.rerun()
+with tab_cols[1]:
+    if st.button("📊 Historial", use_container_width=True,
+                 type="primary" if st.session_state["garmin_active_tab"] == "hist" else "secondary"):
+        st.session_state["garmin_active_tab"] = "hist"
+        st.rerun()
+
+st.markdown("<div style='margin-top:16px;'></div>", unsafe_allow_html=True)
+
+active_tab = st.session_state.get("garmin_active_tab", "sync")
 
 # ===========================================================================
 # TAB 1 — SINCRONIZACIÓN
 # ===========================================================================
-with tab_sync:
+if active_tab == "sync":
+    # Device connection card (blue gradient Figma design)
+    gc_email = cred[0] if (cred and cred[0]) else "cuenta guardada"
+    is_connected = bool(st.session_state.get("gc"))
+
+    if is_connected:
+        badge_color = "#22c55e"
+        badge_text = "● Conectado"
+    elif st.session_state.get("gc_failed"):
+        badge_color = "#ef4444"
+        badge_text = "● Error de conexión"
+    else:
+        badge_color = "#f59e0b"
+        badge_text = "● Desconectado"
+
+    st.markdown(f"""
+<div style="background:linear-gradient(135deg,rgba(96,165,250,0.12),rgba(99,102,241,0.08));
+border:1px solid rgba(96,165,250,0.25);border-radius:16px;padding:2rem;position:relative;overflow:hidden;">
+  <div style="position:absolute;top:-20px;right:-20px;width:150px;height:150px;
+  background:#3B82F6;border-radius:50%;opacity:0.1;filter:blur(30px);pointer-events:none;"></div>
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:2rem;position:relative;">
+    <div style="width:100px;height:100px;border-radius:16px;display:flex;align-items:center;
+    justify-content:center;font-size:3rem;background:linear-gradient(135deg,#1e3a5f,#0f172a);
+    border:2px solid rgba(96,165,250,0.4);box-shadow:0 0 30px rgba(96,165,250,0.2);flex-shrink:0;">⌚</div>
+    <div style="flex:1;">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+        <span style="color:{badge_color};font-weight:700;font-size:0.9rem;">{badge_text}</span>
+      </div>
+      <div style="color:#e6edf3;font-size:1.1rem;font-weight:700;margin-bottom:0.3rem;">Garmin Connect</div>
+      <div style="color:#8B949E;font-size:0.85rem;">{gc_email}</div>
+    </div>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
+
+    # Connection management section (left) + sync section (right)
     col_est, col_act = st.columns(2, gap="large")
 
     # ── Estado de conexión ───────────────────────────────────────────
     with col_est:
-        st.markdown(label_upper("Estado de conexión"), unsafe_allow_html=True)
+        st.markdown(label_upper("Gestión de cuenta"), unsafe_allow_html=True)
         if st.session_state.get("gc"):
-            gc_email = cred[0] if (cred and cred[0]) else "cuenta guardada"
-            dot_color = "#22c55e"
-            st.markdown(
-                f"<div style='background:{CARD};border:1px solid {BORDER};border-radius:10px;"
-                f"padding:14px 16px;'>"
-                f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>"
-                f"<span style='width:8px;height:8px;border-radius:50%;background:{dot_color};"
-                f"display:inline-block;'></span>"
-                f"<span style='color:{dot_color};font-weight:600;font-size:13px;'>Conectado</span></div>"
-                f"<div style='color:{TXT2};font-size:12px;'>{gc_email}</div></div>",
-                unsafe_allow_html=True)
+            st.success(f"✅ Conectado como {gc_email}")
 
         elif st.session_state.get("gc_failed"):
-            dot_color = "#ef4444"
-            st.markdown(
-                f"<div style='background:{CARD};border:1px solid {BORDER};border-radius:10px;"
-                f"padding:14px 16px;'>"
-                f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>"
-                f"<span style='width:8px;height:8px;border-radius:50%;background:{dot_color};"
-                f"display:inline-block;'></span>"
-                f"<span style='color:{dot_color};font-weight:600;font-size:13px;'>Error de conexión</span></div>"
-                f"<div style='color:{TXT2};font-size:12px;'>No se pudo conectar con Garmin.</div></div>",
-                unsafe_allow_html=True)
-
+            st.error("❌ Error de conexión con Garmin")
             gc_err = str(st.session_state.get("gc_error", ""))
             if "429" in gc_err or "rate" in gc_err.lower() or "bloqueado" in gc_err.lower():
-                st.error(
+                st.warning(
                     "**Garmin bloqueado temporalmente (error 429)**\n\n"
                     "Garmin ha detectado demasiados intentos de login recientes.\n\n"
                     "**No intentes reconectar ahora** — solo alargarías el bloqueo.\n"
                     "Espera 24-48 horas y luego vuelve a introducir tus credenciales aquí una sola vez."
                 )
             else:
-                st.error(f"Error: {gc_err}" if gc_err else "")
+                if gc_err:
+                    st.error(f"Error: {gc_err}")
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("🔄 Reintentar", use_container_width=True):
@@ -355,20 +390,12 @@ with tab_sync:
 
 **Tiempo de espera:**
 - 1er intento fallido: 15-30 min
-- 2do intento: 1-2 horas  
+- 2do intento: 1-2 horas
 - 3er intento: 24-48 horas
 
 Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
         else:
-            dot_color = "#f59e0b"
-            st.markdown(
-                f"<div style='background:{CARD};border:1px solid {BORDER};border-radius:10px;"
-                f"padding:14px 16px;'>"
-                f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:10px;'>"
-                f"<span style='width:8px;height:8px;border-radius:50%;background:{dot_color};"
-                f"display:inline-block;'></span>"
-                f"<span style='color:{dot_color};font-weight:600;font-size:13px;'>Sin conectar</span></div>",
-                unsafe_allow_html=True)
+            st.markdown("**Desconectado** — Conecta tu cuenta para sincronizar datos.")
             with st.form("garmin_cred_form"):
                 email_def = cred[0] if cred and cred[0] else ""
                 email_g = st.text_input("Email Garmin", value=email_def).strip()
@@ -441,7 +468,6 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                                     )
                                 else:
                                     st.error(f"Error al conectar: {e}")
-            st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Última actividad + botones sync ─────────────────────────────
     with col_act:
@@ -586,7 +612,79 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                 f"{r.get('dias_bio','?')} días biométricos · {r.get('dias_sueno','?')} días sueño"
             )
 
-        # ── GitHub Actions sync (fallback cuando Garmin bloquea la IP del cloud) ──
+    # ── 6 Metric cards from Figma design ──────────────────────────────
+    st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
+    st.markdown(label_upper("Métricas últimas 24h"), unsafe_allow_html=True)
+
+    conn = get_db_connection()
+    try:
+        # Get latest biometrics data
+        df_latest_bio = pd.read_sql_query("""
+            SELECT hrv_ms, fc_reposo, sleep_score, estres_medio, carga_aguda
+            FROM datos_biometricos_premium
+            WHERE usuario_id=?
+            ORDER BY fecha DESC LIMIT 1
+        """, conn, params=(user_actual,))
+
+        # Get latest sleep data
+        df_latest_sleep = pd.read_sql_query("""
+            SELECT horas_totales
+            FROM datos_sueno
+            WHERE usuario_id=?
+            ORDER BY fecha DESC LIMIT 1
+        """, conn, params=(user_actual,))
+
+        # Get Body Battery from biometricos_garmin (if available)
+        df_body_battery = pd.read_sql_query("""
+            SELECT valor
+            FROM biometricos_garmin
+            WHERE usuario_id=? AND tipo='body_battery'
+            ORDER BY fecha DESC LIMIT 1
+        """, conn, params=(user_actual,))
+
+    except Exception:
+        df_latest_bio = df_latest_sleep = df_body_battery = pd.DataFrame()
+    finally:
+        conn.close()
+
+    # Extract values
+    hrv_val = df_latest_bio["hrv_ms"].iloc[0] if not df_latest_bio.empty and df_latest_bio["hrv_ms"].notna().any() else "—"
+    fc_reposo_val = df_latest_bio["fc_reposo"].iloc[0] if not df_latest_bio.empty and df_latest_bio["fc_reposo"].notna().any() else "—"
+    sleep_score_val = df_latest_bio["sleep_score"].iloc[0] if not df_latest_bio.empty and df_latest_bio["sleep_score"].notna().any() else "—"
+    estres_val = df_latest_bio["estres_medio"].iloc[0] if not df_latest_bio.empty and df_latest_bio["estres_medio"].notna().any() else "—"
+    sleep_hours_val = df_latest_sleep["horas_totales"].iloc[0] if not df_latest_sleep.empty else "—"
+    body_battery_val = df_body_battery["valor"].iloc[0] if not df_body_battery.empty else "—"
+
+    # Format values
+    hrv_text = f"{int(hrv_val)} ms" if isinstance(hrv_val, (int, float)) else hrv_val
+    fc_text = f"{int(fc_reposo_val)} bpm" if isinstance(fc_reposo_val, (int, float)) else fc_reposo_val
+    sleep_score_text = f"{int(sleep_score_val)}" if isinstance(sleep_score_val, (int, float)) else sleep_score_val
+    estres_text = f"{int(estres_val)}" if isinstance(estres_val, (int, float)) else estres_val
+    sleep_hours_text = format_hours(sleep_hours_val) if isinstance(sleep_hours_val, (int, float)) else sleep_hours_val
+    body_battery_text = f"{int(body_battery_val)}" if isinstance(body_battery_val, (int, float)) else body_battery_val
+
+    # Metric cards
+    metric_cards = [
+        {"emoji": "💚", "label": "HRV", "value": hrv_text, "unit": "", "color": "#C9FF00", "bg": "linear-gradient(135deg,rgba(201,255,0,0.05),rgba(201,255,0,0.02))"},
+        {"emoji": "😴", "label": "Sueño", "value": sleep_hours_text, "unit": "", "color": "#A855F7", "bg": "linear-gradient(135deg,rgba(168,85,247,0.05),rgba(168,85,247,0.02))"},
+        {"emoji": "❤️", "label": "FC Reposo", "value": fc_text, "unit": "", "color": "#EC4899", "bg": "linear-gradient(135deg,rgba(236,72,153,0.05),rgba(236,72,153,0.02))"},
+        {"emoji": "⚡", "label": "Body Battery", "value": body_battery_text, "unit": "%", "color": "#06B6D4", "bg": "linear-gradient(135deg,rgba(6,182,212,0.05),rgba(6,182,212,0.02))"},
+        {"emoji": "🔥", "label": "Estrés", "value": estres_text, "unit": "", "color": "#F97316", "bg": "linear-gradient(135deg,rgba(249,115,22,0.05),rgba(249,115,22,0.02))"},
+        {"emoji": "⭐", "label": "Score Sueño", "value": sleep_score_text, "unit": "", "color": "#6366F1", "bg": "linear-gradient(135deg,rgba(99,102,241,0.05),rgba(99,102,241,0.02))"},
+    ]
+
+    cols = st.columns(6, gap="small")
+    for idx, card in enumerate(metric_cards):
+        with cols[idx]:
+            st.markdown(f"""
+<div style="background:{card['bg']};border:1px solid rgba(96,165,250,0.15);border-radius:12px;padding:1rem;text-align:center;transition:transform 0.2s;">
+  <div style="font-size:1.5rem;margin-bottom:.4rem;">{card['emoji']}</div>
+  <p style="color:#8B949E;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem;">{card['label']}</p>
+  <p style="color:white;font-size:1.2rem;font-weight:800;margin:0;">{card['value']}</p>
+  <p style="font-size:.65rem;margin:0;color:{card['color']};">{card['unit']}</p>
+</div>""", unsafe_allow_html=True)
+
+    # ── GitHub Actions sync (fallback cuando Garmin bloquea la IP del cloud) ──
         _gh_pat = st.secrets.get("GITHUB_PAT", "") if hasattr(st, "secrets") else ""
         if _gh_pat:
             st.markdown("<hr style='border:none;border-top:1px solid #1e2a3b;margin:14px 0 10px;'>", unsafe_allow_html=True)
@@ -633,130 +731,100 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
             if st.session_state.get("gh_sync_triggered"):
                 st.caption(f"⏳ Última ejecución lanzada: {st.session_state['gh_sync_triggered']} · [Ver en GitHub Actions](https://github.com/malenalozano/athlete-performance-tracker/actions)")
 
-    # ── Panel de verificación ────────────────────────────────────────
-    st.markdown("<hr style='border:none;border-top:1px solid #21262d;margin:20px 0 12px;'>", unsafe_allow_html=True)
-    st.markdown(label_upper("Verificación de campos importados"), unsafe_allow_html=True)
-    CAMPOS = ["fecha","tipo_deporte","distancia_m","tiempo_seg","ritmo_medio",
-              "fc_media","fc_max","cadencia_media","longitud_zancada_m","potencia_media_w"]
+    # ── HRV 7-day chart ──────────────────────────────────────────────
+    st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
+    st.markdown(label_upper("HRV últimos 7 días"), unsafe_allow_html=True)
+
     conn = get_db_connection()
     try:
-        df_v = pd.read_sql_query(
-            f"SELECT {','.join(CAMPOS)} FROM actividades_garmin WHERE usuario_id=? "
-            f"ORDER BY fecha DESC LIMIT 5", conn, params=(user_actual,))
-    except Exception:
-        df_v = pd.DataFrame()
-    finally:
-        conn.close()
-
-    if df_v.empty:
-        st.info("Sin actividades importadas aún.")
-    else:
-        # Grid de campos: verde si tiene dato, gris si None
-        cols_grid = st.columns(4, gap="medium")
-        last_row = df_v.iloc[0]
-        for idx, campo in enumerate(CAMPOS):
-            val = last_row.get(campo)
-            has_val = val is not None and str(val) not in ("None","nan","")
-            col_v = ACCENT if has_val else TXT3
-            val_txt = str(round(float(val),2)) if has_val and isinstance(val,(int,float)) else (str(val) if has_val else "—")
-            with cols_grid[idx % 4]:
-                st.markdown(
-                    f"<div class='garmin-field-card'>"
-                    f"<div class='garmin-field-label'>{campo}</div>"
-                    f"<div class='garmin-field-value' style='color:{col_v};'>{val_txt}</div>"
-                    f"</div>",
-                    unsafe_allow_html=True)
-
-    st.markdown("<div style='margin:16px 0 4px;'></div>", unsafe_allow_html=True)
-    _render_last_sync_details()
-
-    # === DEBUG: Mostrar estado de la BD después de sincronizar ===
-    st.markdown(label_upper("🔍 Estado de datos importados"), unsafe_allow_html=True)
-    conn = get_db_connection()
-    try:
-        # Biometrics
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT COUNT(*) as total,
-                   COUNT(fc_reposo) as fc_reposo_vals,
-                   COUNT(sleep_score) as sleep_score_vals,
-                   COUNT(carga_aguda) as carga_aguda_vals,
-                   COUNT(carga_cronica) as carga_cronica_vals
+        df_hrv = pd.read_sql_query("""
+            SELECT fecha, hrv_ms
             FROM datos_biometricos_premium
             WHERE usuario_id=?
-        """, (user_actual,))
-        row = cursor.fetchone()
-
-        col1, col2, col3, col4 = st.columns(4, gap="large")
-        with col1:
-            st.metric("Total Biometrics", row[0] or 0)
-        with col2:
-            st.metric("fc_reposo (n)", row[1] or 0, delta="✅ OK" if row[1] else "❌ sin datos")
-        with col3:
-            st.metric("sleep_score_bio (n)", row[2] or 0, delta="valores en BD" if row[2] else "—")
-        with col4:
-            st.metric("ACWR (n)", row[4] or 0, delta="cr+ag" if row[4] else "—")
-
-        # Sleep scores en datos_sueno - ALL fields
-        cursor.execute("""
-            SELECT COUNT(*) as total,
-                   COUNT(horas_totales) as horas_totales_vals,
-                   COUNT(score) as score_vals,
-                   COUNT(sleep_profundo_horas) as profundo_vals,
-                   COUNT(sleep_rem_horas) as rem_vals,
-                   COUNT(sleep_vigilia_horas) as vigilia_vals,
-                   COUNT(despertares) as despertares_vals,
-                   MAX(score) as max_score,
-                   MIN(score) as min_score,
-                   AVG(score) as avg_score
-            FROM datos_sueno WHERE usuario_id=?
-        """, (user_actual,))
-        row_sueno = cursor.fetchone()
-
-        col_s1, col_s2, col_s3 = st.columns(3, gap="large")
-        with col_s1:
-            st.metric("datos_sueno (días)", row_sueno[0] or 0)
-        with col_s2:
-            score_count = row_sueno[2] or 0
-            st.metric("Score importado (n)", score_count, delta="✅ OK" if score_count > 0 else "❌ sin datos")
-        with col_s3:
-            if row_sueno[2] and row_sueno[2] > 0:
-                st.metric("Score range", f"{int(row_sueno[8])}-{int(row_sueno[7])}", delta=f"avg={int(row_sueno[9])}")
-            else:
-                st.metric("Score range", "—")
-
-        # Desglose de todos los campos de sueño
-        st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
-        sleep_cols = [
-            ("Horas totales", row_sueno[1] or 0),
-            ("Score", row_sueno[2] or 0),
-            ("Profundo (h)", row_sueno[3] or 0),
-            ("REM (h)", row_sueno[4] or 0),
-            ("Vigilia (h)", row_sueno[5] or 0),
-            ("Despertares", row_sueno[6] or 0),
-        ]
-        cols_sleep = st.columns(6, gap="medium")
-        for idx, (label, count) in enumerate(sleep_cols):
-            with cols_sleep[idx]:
-                status = "✅" if count > 0 else "—"
-                st.markdown(
-                    f"<div style='background:{CARD};border:1px solid {BORDER};border-radius:8px;"
-                    f"padding:8px 10px;text-align:center;'>"
-                    f"<div style='color:{TXT3};font-size:10px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;'>{label}</div>"
-                    f"<div style='color:{ACCENT if count > 0 else TXT3};font-size:14px;font-weight:700;margin-top:4px;'>{int(count) if count > 0 else '—'}</div>"
-                    f"<div style='color:{ACCENT if count > 0 else TXT3};font-size:11px;margin-top:2px;'>{status}</div>"
-                    f"</div>",
-                    unsafe_allow_html=True)
-
-    except Exception as e:
-        st.error(f"Error al revisar BD: {e}")
+            ORDER BY fecha DESC
+            LIMIT 7
+        """, conn, params=(user_actual,))
+    except Exception:
+        df_hrv = pd.DataFrame()
     finally:
         conn.close()
+
+    if not df_hrv.empty:
+        df_hrv = df_hrv.sort_values("fecha")
+        try:
+            import plotly.graph_objects as go
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df_hrv["fecha"],
+                y=df_hrv["hrv_ms"],
+                fill="tozeroy",
+                line=dict(color="#C9FF00", width=2),
+                fillcolor="rgba(201,255,0,0.15)",
+                name="HRV",
+                hovertemplate="<b>%{x}</b><br>HRV: %{y:.0f} ms<extra></extra>"
+            ))
+            fig.update_layout(
+                template="plotly_dark",
+                hovermode="x unified",
+                margin=dict(l=0, r=0, t=0, b=0),
+                height=250,
+                plot_bgcolor="#161B22",
+                paper_bgcolor="#0D1117",
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridwidth=1, gridcolor="rgba(201,255,0,0.1)"),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        except ImportError:
+            st.info("Plotly no disponible. Instala: pip install plotly")
+    else:
+        st.info("Sin datos de HRV en los últimos 7 días.")
+
+    # ── 3 status summary cards ─────────────────────────────────────────
+    st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
+    st.markdown(label_upper("Resumen"), unsafe_allow_html=True)
+
+    conn = get_db_connection()
+    try:
+        # Count activities
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM actividades_garmin WHERE usuario_id=?", (user_actual,))
+        total_acts = cursor.fetchone()[0] or 0
+
+        # Last activity
+        cursor.execute("""
+            SELECT fecha, tipo_deporte, ROUND(distancia_m/1000,2)
+            FROM actividades_garmin
+            WHERE usuario_id=?
+            ORDER BY fecha DESC
+            LIMIT 1
+        """, (user_actual,))
+        last_act = cursor.fetchone()
+
+        # Sleep days count
+        cursor.execute("SELECT COUNT(*) FROM datos_sueno WHERE usuario_id=?", (user_actual,))
+        sleep_days = cursor.fetchone()[0] or 0
+    except Exception:
+        total_acts = 0
+        last_act = None
+        sleep_days = 0
+    finally:
+        conn.close()
+
+    col_s1, col_s2, col_s3 = st.columns(3, gap="large")
+    with col_s1:
+        st.metric("Actividades sincronizadas", total_acts)
+    with col_s2:
+        if last_act:
+            st.metric("Última actividad", last_act[1], delta=last_act[0])
+        else:
+            st.metric("Última actividad", "—")
+    with col_s3:
+        st.metric("Días con sueño", sleep_days)
 
 # ===========================================================================
 # TAB 2 — HISTORIAL
 # ===========================================================================
-with tab_hist:
+elif active_tab == "hist":
     conn = get_db_connection()
     try:
         df_all = pd.read_sql_query(

@@ -1,5 +1,5 @@
 """
-src/core/navbar.py — Navbar inspirada en el diseño Figma (glassmorphism, íconos, glow).
+src/core/navbar.py — Navbar inspirada en el diseño Figma (glassmorphism, íconos, glow, sub-tabs).
 """
 
 import streamlit as st
@@ -8,13 +8,37 @@ from src.core.styles import BORDER
 from src.db.db_manager import obtener_credenciales_garmin
 
 # ── Configuración de páginas ──────────────────────────────────────────────────
-# (path, label, key, icono, color, bg_active, border_active, glow)
 PAGES = [
-    ("pages/01_dashboard.py",  "Inicio",     "dashboard",  "🏠", "#C9FF00", "rgba(201,255,0,0.15)",  "rgba(201,255,0,0.7)",  "0 0 16px rgba(201,255,0,0.35)"),
-    ("pages/02_plan.py",       "Plan",       "plan",       "📋", "#00D4FF", "rgba(0,212,255,0.15)",  "rgba(0,212,255,0.7)",  "0 0 16px rgba(0,212,255,0.35)"),
-    ("pages/03_diario.py",     "Diario",     "diario",     "✏️", "#A855F7", "rgba(168,85,247,0.15)", "rgba(168,85,247,0.7)", "0 0 16px rgba(168,85,247,0.35)"),
-    ("pages/04_garmin.py",     "Garmin",     "garmin",     "⌚", "#3B82F6", "rgba(59,130,246,0.15)", "rgba(59,130,246,0.7)", "0 0 16px rgba(59,130,246,0.35)"),
+    ("pages/01_dashboard.py",  "Inicio",      "dashboard", "🏠", "#C9FF00", "rgba(201,255,0,0.15)",  "rgba(201,255,0,0.7)",  "0 0 16px rgba(201,255,0,0.35)"),
+    ("pages/02_plan.py",       "Plan Semanal","plan",      "📋", "#00D4FF", "rgba(0,212,255,0.15)",  "rgba(0,212,255,0.7)",  "0 0 16px rgba(0,212,255,0.35)"),
+    ("pages/03_diario.py",     "Diario",      "diario",    "📖", "#A855F7", "rgba(168,85,247,0.15)", "rgba(168,85,247,0.7)", "0 0 16px rgba(168,85,247,0.35)"),
+    ("pages/04_garmin.py",     "Garmin",      "garmin",    "⌚", "#3B82F6", "rgba(59,130,246,0.15)", "rgba(59,130,246,0.7)", "0 0 16px rgba(59,130,246,0.35)"),
 ]
+
+# ── Sub-tabs por página ───────────────────────────────────────────────────────
+_SUBTABS = {
+    "plan": [
+        ("generar", "📋 Generar Plan"),
+        ("datos",   "📊 Datos"),
+    ],
+    "diario": [
+        ("libre",      "📝 Entreno Libre"),
+        ("ciclo",      "🌸 Ciclo Menstrual"),   # solo Malena
+        ("ejercicios", "💪 Ejercicios"),
+        ("lesiones",   "🩹 Lesiones"),
+    ],
+    "garmin": [
+        ("sync", "⌚ Sincronización"),
+        ("hist", "📊 Historial"),
+    ],
+}
+
+# (color, bg_active, border_active)
+_SUBTAB_COLORS = {
+    "plan":   ("#00D4FF", "rgba(0,212,255,0.15)",  "rgba(0,212,255,0.5)"),
+    "diario": ("#A855F7", "rgba(168,85,247,0.15)", "rgba(168,85,247,0.5)"),
+    "garmin": ("#3B82F6", "rgba(59,130,246,0.15)", "rgba(59,130,246,0.5)"),
+}
 
 _NAV = (
     ".main .block-container > div > "
@@ -23,7 +47,7 @@ _NAV = (
 )
 
 _CSS = f"""<style>
-/* ── Quitar header nativo y ajustar padding ── */
+/* ── Quitar header nativo ── */
 [data-testid="stToolbar"] {{ display: none !important; }}
 header {{ display: none !important; }}
 .main .block-container {{ padding-top: 0 !important; }}
@@ -36,7 +60,7 @@ header {{ display: none !important; }}
     background: linear-gradient(180deg, rgba(14,17,23,0.98) 0%, rgba(22,27,34,0.95) 100%) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
-    border-bottom: none !important;
+    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
     padding: 0 24px !important;
     margin: 0 -4rem 0 -4rem !important;
     align-items: center !important;
@@ -44,7 +68,7 @@ header {{ display: none !important; }}
     gap: 4px !important;
 }}
 
-/* ── Page-link reset ── */
+/* ── Page links ── */
 {_NAV} [data-testid="stPageLink"] {{
     display: flex !important;
     align-items: center !important;
@@ -54,7 +78,7 @@ header {{ display: none !important; }}
     font-size: 12px !important;
     font-weight: 600 !important;
     color: #8B949E !important;
-    padding: 7px 10px !important;
+    padding: 6px 10px !important;
     margin: 0 !important;
     border-radius: 10px !important;
     border: 1px solid transparent !important;
@@ -69,12 +93,10 @@ header {{ display: none !important; }}
     background: rgba(255,255,255,0.05) !important;
 }}
 
-/* ── Sync + avatar buttons ── */
+/* ── Sync button ── */
 {_NAV} button[kind="secondary"] {{
-    width: 32px !important;
-    height: 32px !important;
-    padding: 0 !important;
-    border-radius: 50% !important;
+    width: 32px !important; height: 32px !important;
+    padding: 0 !important; border-radius: 50% !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
     background: transparent !important;
     color: #8b949e !important;
@@ -87,14 +109,47 @@ header {{ display: none !important; }}
     background: rgba(255,255,255,0.06) !important;
     color: white !important;
 }}
+
+/* ── Selectbox user ── */
+{_NAV} [data-testid="stSelectbox"] {{ margin-top: 14px !important; }}
+{_NAV} [data-testid="stSelectbox"] > div > div {{
+    background: rgba(48,54,61,0.6) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 8px !important;
+    color: white !important;
+    font-size: 12px !important;
+    padding: 0 8px !important;
+    min-height: 32px !important;
+    height: 32px !important;
+}}
+</style>"""
+
+_SUBTAB_CSS = """<style>
+/* Sub-tabs row buttons */
+div[data-testid="stHorizontalBlock"].subtab-row button {
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    color: #8B949E !important;
+    border-radius: 8px !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    padding: 0 10px !important;
+    height: 28px !important;
+    min-height: 0 !important;
+    line-height: 28px !important;
+}
+div[data-testid="stHorizontalBlock"].subtab-row button:hover {
+    background: rgba(255,255,255,0.05) !important;
+    color: white !important;
+}
 </style>"""
 
 
 def _logo_html(auth_user: str) -> str:
-    sub = f"{auth_user} &nbsp;·&nbsp; Maratón 2027" if auth_user else "Maratón 2027"
+    sub = f"{auth_user} &nbsp;·&nbsp; Maratón 2026" if auth_user else "Maratón 2026"
     return (
         "<div style='display:flex;align-items:center;gap:10px;height:64px;"
-        "padding-right:20px;border-right:1px solid rgba(255,255,255,0.06);'>"
+        "padding-right:16px;border-right:1px solid rgba(255,255,255,0.06);'>"
         "<div style='width:36px;height:36px;border-radius:10px;flex-shrink:0;"
         "display:flex;align-items:center;justify-content:center;font-size:18px;"
         "background:linear-gradient(135deg,#C9FF00 0%,#00D4FF 50%,#A855F7 100%);"
@@ -113,7 +168,7 @@ def _active_item_html(label: str, icon: str, color: str, bg: str, border: str, g
     return (
         "<div style='display:flex;align-items:center;height:64px;'>"
         f"<div style='position:relative;display:flex;align-items:center;gap:5px;"
-        f"padding:7px 10px;border-radius:10px;background:{bg};border:1px solid {border};"
+        f"padding:6px 10px;border-radius:10px;background:{bg};border:1px solid {border};"
         f"color:{color};font-size:12px;font-weight:600;white-space:nowrap;"
         f"box-shadow:{glow};'>"
         f"<span style='position:absolute;top:-3px;right:-3px;width:8px;height:8px;"
@@ -131,20 +186,102 @@ def _gradient_line_html() -> str:
     )
 
 
+def _render_subtabs(pagina_activa: str):
+    """Renderiza la fila de sub-tabs debajo de la barra de navegación."""
+    tabs = _SUBTABS.get(pagina_activa, [])
+    if not tabs:
+        return
+
+    # Filtrar ciclo para Dani
+    uid = st.session_state.get("usuario_id", 1)
+    if pagina_activa == "diario" and uid != 1:
+        tabs = [(k, l) for k, l in tabs if k != "ciclo"]
+
+    color, bg_act, border_act = _SUBTAB_COLORS[pagina_activa]
+    _key = f"{pagina_activa}_active_tab"
+    active = st.session_state.get(_key, tabs[0][0])
+
+    # CSS para la barra de sub-tabs
+    st.markdown(f"""<style>
+/* Sub-tabs container */
+div.subtab-container {{
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 0 8px;
+    margin: 0 -4rem;
+    padding-left: 24px;
+    padding-right: 24px;
+    background: linear-gradient(180deg, rgba(14,17,23,0.95) 0%, rgba(22,27,34,0.9) 100%);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}}
+div.subtab-btn {{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 14px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    color: #8B949E;
+    transition: all 0.2s;
+    white-space: nowrap;
+    height: 28px;
+}}
+div.subtab-btn:hover {{
+    background: rgba(255,255,255,0.05);
+    color: white;
+}}
+div.subtab-btn-active {{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 14px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: default;
+    border: 1px solid {border_act};
+    background: {bg_act};
+    color: {color};
+    box-shadow: 0 0 12px {bg_act};
+    white-space: nowrap;
+    height: 28px;
+}}
+</style>""", unsafe_allow_html=True)
+
+    # Renderizar tabs: activo = HTML, inactivo = botón real
+    n = len(tabs)
+    weights = [1.5] * n + [max(0.1, 12 - n * 1.5)]
+    cols = st.columns(weights)
+
+    for i, (tab_key, tab_label) in enumerate(tabs):
+        is_active = (active == tab_key)
+        with cols[i]:
+            if is_active:
+                st.markdown(
+                    f"<div class='subtab-btn-active'>{tab_label}</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                if st.button(tab_label, key=f"subtab_{pagina_activa}_{tab_key}"):
+                    st.session_state[_key] = tab_key
+                    st.rerun()
+
+
 def render_navbar(pagina_activa: str):
     st.markdown(_CSS, unsafe_allow_html=True)
 
     auth_user = str(st.session_state.get("auth_user", "")).strip()
-    avatar_letter = (auth_user[:1] or "?").upper()
 
-    # columns: logo | 4 páginas | spacer | sync | avatar
-    cols = st.columns([2.4, 1.0, 0.9, 1.0, 0.95, 4.5, 1.4])
+    # ── Main nav row: logo | 4 pages | spacer | sync | user ─────────────────
+    cols = st.columns([2.4, 1.1, 1.3, 1.0, 0.95, 4.5, 1.4])
 
-    # Logo
     with cols[0]:
         st.markdown(_logo_html(auth_user), unsafe_allow_html=True)
 
-    # Nav items
     for i, (path, label, key, icon, color, bg, border, glow) in enumerate(PAGES):
         with cols[i + 1]:
             if key == pagina_activa:
@@ -182,7 +319,7 @@ def render_navbar(pagina_activa: str):
                         err_str = str(e)
                         err_low = err_str.lower()
                         if any(k in err_low for k in ["401", "authentication", "token", "unauthorized", "expired"]):
-                            st.error("🔑 Sesión Garmin expirada. Ve a la página Garmin y reconecta.")
+                            st.error("🔑 Sesión Garmin expirada. Ve a Garmin y reconecta.")
                             from src.db.db_manager import get_db_connection as _gdc
                             try:
                                 _c = _gdc()
@@ -192,34 +329,13 @@ def render_navbar(pagina_activa: str):
                                 pass
                             st.session_state.pop("gc", None)
                         elif "429" in err_str or "rate" in err_low:
-                            st.error("⏳ Garmin bloqueado temporalmente (429). Espera unas horas.")
+                            st.error("⏳ Garmin bloqueado temporalmente. Espera unas horas.")
                         elif any(k in err_low for k in ["timeout", "connection", "network", "ssl"]):
-                            st.error("🌐 Error de red al contactar Garmin. Reintenta en unos minutos.")
+                            st.error("🌐 Error de red al contactar Garmin.")
                         else:
-                            st.error(f"❌ Error sync: {err_str[:200]}")
+                            st.error(f"❌ Error: {err_str[:200]}")
 
-    # ── Selector de usuario (dropdown simple) ────────────────────────────────
-    # CSS para estilizar el selectbox dentro de la navbar
-    st.markdown(f"""<style>
-    {_NAV} [data-testid="stSelectbox"] {{
-        margin-top: 14px !important;
-    }}
-    {_NAV} [data-testid="stSelectbox"] > div > div {{
-        background: linear-gradient(135deg, rgba(201,255,0,0.12), rgba(201,255,0,0.06)) !important;
-        border: 1px solid rgba(201,255,0,0.3) !important;
-        border-radius: 20px !important;
-        color: #C9FF00 !important;
-        font-size: 12px !important;
-        font-weight: 700 !important;
-        padding: 0 8px !important;
-        min-height: 32px !important;
-        height: 32px !important;
-    }}
-    {_NAV} [data-testid="stSelectbox"] svg {{
-        fill: #C9FF00 !important;
-    }}
-    </style>""", unsafe_allow_html=True)
-
+    # User selector
     _perfiles_dict = {"👩 Malena": 1, "👨 Dani": 2}
     _current_uid   = st.session_state.get("usuario_id", 1)
     _opciones      = list(_perfiles_dict.keys())
@@ -243,5 +359,9 @@ def render_navbar(pagina_activa: str):
             st.cache_data.clear()
             st.rerun()
 
-    # Gradient line below navbar
+    # ── Sub-tabs row (if page has sub-tabs) ─────────────────────────────────
+    if pagina_activa in _SUBTABS:
+        _render_subtabs(pagina_activa)
+
+    # ── Gradient line ────────────────────────────────────────────────────────
     st.markdown(_gradient_line_html(), unsafe_allow_html=True)

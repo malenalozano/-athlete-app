@@ -86,212 +86,274 @@ _perfil_actual = _obtener_perfil(user_actual) or {}
 _genero_actual = str(_perfil_actual.get("genero", "")).strip().lower()
 _es_mujer = _genero_actual in ("mujer", "female", "f", "w", "femenino")
 
-_tab_labels = ["📓 Entreno libre", "🏋️ Ejercicios", "🩹 Lesiones"]
-if _es_mujer:
-    _tab_labels.insert(1, "🩸 Ciclo")
+# Initialize tab state
+uid = st.session_state.get("usuario_id", 1)
+active_tab = st.session_state.get("diario_active_tab", "libre")
+if active_tab == "ciclo" and uid != 1:
+    active_tab = "libre"
 
+# Tab navigation buttons
+_tab_options = ["libre", "ejercicios", "lesiones"]
 if _es_mujer:
-    tab2, tab1, tab3, tab4 = st.tabs(_tab_labels)
-else:
-    tab2, tab3, tab4 = st.tabs(_tab_labels)
-    tab1 = None  # no existe para hombres
+    _tab_options.insert(1, "ciclo")
+
+tab_col1, tab_col2, tab_col3, tab_col4 = st.columns([1, 1, 1, 1])
+with tab_col1:
+    if st.button("📓 Entreno libre", use_container_width=True,
+                 key="tab_libre",
+                 type="primary" if active_tab == "libre" else "secondary"):
+        st.session_state.diario_active_tab = "libre"
+        st.rerun()
+
+with tab_col2:
+    if _es_mujer:
+        if st.button("🩸 Ciclo", use_container_width=True,
+                     key="tab_ciclo",
+                     type="primary" if active_tab == "ciclo" else "secondary"):
+            st.session_state.diario_active_tab = "ciclo"
+            st.rerun()
+    else:
+        if st.button("🏋️ Ejercicios", use_container_width=True,
+                     key="tab_ejercicios",
+                     type="primary" if active_tab == "ejercicios" else "secondary"):
+            st.session_state.diario_active_tab = "ejercicios"
+            st.rerun()
+
+with tab_col3:
+    if _es_mujer:
+        if st.button("🏋️ Ejercicios", use_container_width=True,
+                     key="tab_ejercicios_ciclo",
+                     type="primary" if active_tab == "ejercicios" else "secondary"):
+            st.session_state.diario_active_tab = "ejercicios"
+            st.rerun()
+    else:
+        if st.button("🩹 Lesiones", use_container_width=True,
+                     key="tab_lesiones",
+                     type="primary" if active_tab == "lesiones" else "secondary"):
+            st.session_state.diario_active_tab = "lesiones"
+            st.rerun()
+
+with tab_col4:
+    if _es_mujer:
+        if st.button("🩹 Lesiones", use_container_width=True,
+                     key="tab_lesiones_ciclo",
+                     type="primary" if active_tab == "lesiones" else "secondary"):
+            st.session_state.diario_active_tab = "lesiones"
+            st.rerun()
+
+st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
 # ===========================================================================
 # TAB 1 — CICLO MENSTRUAL (solo mujeres)
 # ===========================================================================
-if tab1 is not None:
-    with tab1:
-        # ─ Personalización del ciclo ─────────────────────────────────────────
-        with st.expander("⚙️ Personalizar ciclo"):
-            col_info, col_input = st.columns([2, 1])
-            with col_info:
-                st.markdown(
-                    "<p style='color:#a3e635;font-size:11px;margin:0;'>Ingresa la duración de tu ciclo menstrual en días. "
-                    "Si lo dejas vacío, se calculará automáticamente.</p>",
-                    unsafe_allow_html=True)
-            with col_input:
-                conn_cycle = get_db_connection()
-                try:
-                    ciclo_actual = conn_cycle.execute(
-                        "SELECT ciclo_dias_personalizado FROM usuarios WHERE id=?",
-                        (user_actual,)).fetchone()
-                    ciclo_val = ciclo_actual[0] if ciclo_actual and ciclo_actual[0] else None
-                except Exception:
-                    ciclo_val = None
-                finally:
-                    conn_cycle.close()
-                
-                new_ciclo = st.number_input(
-                    "Días de ciclo",
-                    min_value=21,
-                    max_value=40,
-                    value=ciclo_val if ciclo_val else 28,
-                    step=1,
-                    label_visibility="collapsed")
-                
-                if st.button("Guardar ciclo", use_container_width=True):
-                    conn_upd = get_db_connection()
-                    try:
-                        conn_upd.execute(
-                            "UPDATE usuarios SET ciclo_dias_personalizado=? WHERE id=?",
-                            (int(new_ciclo), user_actual))
-                        conn_upd.commit()
-                        st.success(f"✅ Ciclo guardado: {int(new_ciclo)} días")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-                    finally:
-                        conn_upd.close()
-                    st.rerun()
-        
-        _conn = get_db_connection()
-        _last_bleed_start = _inicio_ultima_regla(_conn, user_actual, datetime.now().date())
-        _conn.close()
+if _es_mujer and active_tab == "ciclo":
+    # Get current cycle phase
+    _conn = get_db_connection()
+    _last_bleed_start = _inicio_ultima_regla(_conn, user_actual, datetime.now().date())
+    _conn.close()
 
-        if _last_bleed_start is not None:
-            _cycle_day = (datetime.now().date() - _last_bleed_start).days + 1
-            _fase_actual = ("Menstruación" if _cycle_day <= 5 else "Folicular" if _cycle_day <= 11
-                            else "Ovulación" if _cycle_day <= 16 else "Lútea")
-        else:
-            _cycle_day = None; _fase_actual = None
+    if _last_bleed_start is not None:
+        _cycle_day = (datetime.now().date() - _last_bleed_start).days + 1
+        _fase_actual = ("Menstruación" if _cycle_day <= 5 else "Folicular" if _cycle_day <= 11
+                        else "Ovulación" if _cycle_day <= 16 else "Lútea")
+    else:
+        _cycle_day = None
+        _fase_actual = None
 
-        if _fase_actual and _cycle_day:
-            _c = FASE_COLORS.get(_fase_actual, ACCENT)
+    # Phase banner with 4 phase icons
+    if _fase_actual and _cycle_day:
+        st.markdown(
+            f"<div style='background:linear-gradient(135deg,rgba(244,63,94,0.12),rgba(168,85,247,0.1));border:1px solid rgba(244,63,94,0.25);border-radius:16px;padding:1.5rem;margin-bottom:1.5rem;'>"
+            f"<div style='display:flex;align-items:center;gap:12px;margin-bottom:16px;'>"
+            f"<span style='background:#A855F7;color:#fff;padding:6px 12px;border-radius:8px;font-weight:600;font-size:12px;'>● {_fase_actual.upper()}</span>"
+            f"<span style='color:#8b949e;'>Día {_cycle_day} del ciclo</span></div>"
+            f"<div style='display:flex;justify-content:space-between;gap:12px;'>"
+            f"<div style='text-align:center;'><span style='font-size:1.8rem;'>🌑</span><span style='display:block;color:#e05;font-size:10px;font-weight:600;margin-top:4px;'>MENSTRUAL</span></div>"
+            f"<div style='text-align:center;'><span style='font-size:1.8rem;'>🌒</span><span style='display:block;color:#A855F7;font-size:10px;font-weight:600;margin-top:4px;border-bottom:2px solid #A855F7;padding-bottom:2px;'>FOLICULAR</span></div>"
+            f"<div style='text-align:center;'><span style='font-size:1.8rem;'>🌕</span><span style='display:block;color:#C9FF00;font-size:10px;font-weight:600;margin-top:4px;'>OVULACIÓN</span></div>"
+            f"<div style='text-align:center;'><span style='font-size:1.8rem;'>🌖</span><span style='display:block;color:#FF9500;font-size:10px;font-weight:600;margin-top:4px;'>LÚTEA</span></div>"
+            f"</div></div>",
+            unsafe_allow_html=True)
+
+    # Today's log card with symptom progress bars
+    st.markdown(label_upper("Registro de hoy"), unsafe_allow_html=True)
+
+    cols_sym = st.columns(4)
+
+    # Symptom progress bars - Energía, Ánimo, Dolor, Sueño
+    symptoms = {
+        "Energía": ("#C9FF00", "diario_energia"),
+        "Ánimo": ("#A855F7", "diario_animo"),
+        "Dolor": ("#F43F5E", "diario_dolor"),
+        "Sueño": ("#00D4FF", "diario_sueno"),
+    }
+
+    for idx, (sym_name, (sym_color, sym_key)) in enumerate(symptoms.items()):
+        with cols_sym[idx]:
+            sym_val = st.session_state.get(sym_key, 0)
+            new_val = st.slider(sym_name, 0, 10, sym_val, label_visibility="collapsed")
+            st.session_state[sym_key] = new_val
+
+            # Render 10-segment progress bar
+            segments_html = ""
+            for i in range(10):
+                segment_color = sym_color if new_val >= (i + 1) else "#30363d"
+                segments_html += f"<div style='width:8px;height:8px;background:{segment_color};border-radius:2px;'></div>"
+
             st.markdown(
-                f"<div style='background:{_c}12;border-left:3px solid {_c};border-radius:8px;"
-                f"padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;'>"
-                f"<span style='font-size:1.3rem;'>🌙</span>"
-                f"<span style='color:{_c};font-weight:700;'>{_fase_actual}</span>"
-                f"<span style='color:{TXT3};font-size:0.82rem;'>· Día {_cycle_day} del ciclo</span></div>",
+                f"<div style='font-size:10px;color:#8b949e;margin-bottom:8px;'>{sym_name}</div>"
+                f"<div style='display:flex;gap:2px;margin-bottom:6px;'>{segments_html}</div>"
+                f"<div style='font-size:11px;color:{sym_color};font-weight:600;text-align:right;'>{new_val}/10</div>",
                 unsafe_allow_html=True)
 
-        col1, col2 = st.columns([0.38, 0.62])
-        with col1:
-            sangre_opts = ["⚪ Sin sangre","🩸 Manchado","🟤 Flujo","🩸 Ligero","🩸🩸 Medio","🩸🩸🩸 Fuerte"]
-            sangre_map  = {
-                "⚪ Sin sangre": "Sin sangre",
-                "🩸 Manchado": "Manchado",
-                "🟤 Flujo": "Flujo",
-                "🩸 Ligero": "Ligero",
-                "🩸🩸 Medio": "Medio",
-                "🩸🩸🩸 Fuerte": "Fuerte",
-            }
-            sint_opts   = ["🥚 Dolor de ovarios","🍒 Dolor de senos","🍫 Antojos","💢 Dolor de cabeza","🎈 Hinchazón"]
-            sint_map    = {o: o.split(" ",1)[1] for o in sint_opts}
-            animo_opts  = ["😰 Ansiedad/Estrés","😭 Triste","😡 Enfadada","😄 Feliz","🪫 Cansada","⚡ Energética"]
-            animo_map   = {o: o.split(" ",1)[1] for o in animo_opts}
-            fb_opts     = ["🚀 A tope","🗿 Regulero","⛈️ Bajito","⛔ No completo"]
-            fb_map      = {"🚀 A tope":"A tope","🗿 Regulero":"Regulero","⛈️ Bajito":"Bajito","⛔ No completo":"No completo"}
+    # Form for logging cycle data
+    st.markdown(label_upper("Registrar síntomas"), unsafe_allow_html=True)
+    sangre_opts = ["⚪ Sin sangre","🩸 Manchado","🟤 Flujo","🩸 Ligero","🩸🩸 Medio","🩸🩸🩸 Fuerte"]
+    sangre_map  = {
+        "⚪ Sin sangre": "Sin sangre",
+        "🩸 Manchado": "Manchado",
+        "🟤 Flujo": "Flujo",
+        "🩸 Ligero": "Ligero",
+        "🩸🩸 Medio": "Medio",
+        "🩸🩸🩸 Fuerte": "Fuerte",
+    }
+    sint_opts   = ["🥚 Dolor de ovarios","🍒 Dolor de senos","🍫 Antojos","💢 Dolor de cabeza","🎈 Hinchazón"]
+    sint_map    = {o: o.split(" ",1)[1] for o in sint_opts}
+    animo_opts  = ["😰 Ansiedad/Estrés","😭 Triste","😡 Enfadada","😄 Feliz","🪫 Cansada","⚡ Energética"]
+    animo_map   = {o: o.split(" ",1)[1] for o in animo_opts}
+    fb_opts     = ["🚀 A tope","🗿 Regulero","⛈️ Bajito","⛔ No completo"]
+    fb_map      = {"🚀 A tope":"A tope","🗿 Regulero":"Regulero","⛈️ Bajito":"Bajito","⛔ No completo":"No completo"}
 
-            st.markdown(label_upper("Registro diario"), unsafe_allow_html=True)
-            with st.form(f"fisio_ciclo_{user_actual}"):
-                fecha = st.date_input("Fecha del registro", value=datetime.now().date(), format="DD/MM/YYYY")
-                st.markdown(label_upper("Sangre"), unsafe_allow_html=True)
-                sangre = st.pills("_s", sangre_opts, selection_mode="single", default="⚪ Sin sangre", label_visibility="collapsed")
-                st.markdown(label_upper("Síntomas"), unsafe_allow_html=True)
-                sint_sel = st.pills("_si", sint_opts, selection_mode="multi", label_visibility="collapsed")
-                st.markdown(label_upper("Ánimo"), unsafe_allow_html=True)
-                animo_sel = st.pills("_a", animo_opts, selection_mode="multi", label_visibility="collapsed")
-                st.markdown(label_upper("Entreno"), unsafe_allow_html=True)
-                fb_sel = st.pills("_f", fb_opts, selection_mode="single", label_visibility="collapsed")
-                if st.form_submit_button("Guardar", use_container_width=True, type="primary"):
-                    sv = sangre_map.get(sangre or "⚪ Sin sangre", "Sin sangre")
-                    # Solo Ligero/Medio/Fuerte cuentan como días de regla.
-                    fase = "Menstruación" if sv in ("Ligero", "Medio", "Fuerte") else "Lútea"
+    with st.form(f"fisio_ciclo_{user_actual}"):
+        fecha = st.date_input("Fecha del registro", value=datetime.now().date(), format="DD/MM/YYYY")
+        st.markdown(label_upper("Sangre"), unsafe_allow_html=True)
+        sangre = st.pills("_s", sangre_opts, selection_mode="single", default="⚪ Sin sangre", label_visibility="collapsed")
+        st.markdown(label_upper("Síntomas"), unsafe_allow_html=True)
+        sint_sel = st.pills("_si", sint_opts, selection_mode="multi", label_visibility="collapsed")
+        st.markdown(label_upper("Ánimo"), unsafe_allow_html=True)
+        animo_sel = st.pills("_a", animo_opts, selection_mode="multi", label_visibility="collapsed")
+        st.markdown(label_upper("Entreno"), unsafe_allow_html=True)
+        fb_sel = st.pills("_f", fb_opts, selection_mode="single", label_visibility="collapsed")
+        if st.form_submit_button("Guardar", use_container_width=True, type="primary"):
+            sv = sangre_map.get(sangre or "⚪ Sin sangre", "Sin sangre")
+            fase = "Menstruación" if sv in ("Ligero", "Medio", "Fuerte") else "Lútea"
 
-                    conn = get_db_connection()
-                    try:
-                        if sv not in ("Ligero", "Medio", "Fuerte"):
-                            _ld = _inicio_ultima_regla(conn, user_actual, fecha)
-                            if _ld is not None:
-                                _cd = (fecha - _ld).days + 1
-                                _pos = ((_cd - 1) % 28) + 1
-                                fase = "Menstruación" if _pos <= 5 else "Folicular" if _pos <= 11 else "Ovulación" if _pos <= 16 else "Lútea"
-
-                        sint_str  = ", ".join([sint_map.get(x,x)  for x in (sint_sel  or [])])
-                        animo_str = ", ".join([animo_map.get(x,x) for x in (animo_sel or [])]) or "Normal"
-                        fb_str    = fb_map.get(fb_sel, "") if fb_sel else ""
-                        conn.cursor().execute(
-                            "INSERT INTO diario_fisiologia (usuario_id,fecha,fase_ciclo,fatiga_subjetiva,"
-                            "dolor_notas,sangre,sintomas,estado_animo,feedback_entreno) VALUES (?,?,?,?,?,?,?,?,?)",
-                            (user_actual, str(fecha), fase, None, sint_str,
-                             sv if sv != "Sin sangre" else None, sint_str, animo_str, fb_str))
-                        conn.commit()
-                    finally:
-                        conn.close()
-                    st.cache_data.clear(); st.success("Registro guardado.")
-
-        with col2:
             conn = get_db_connection()
             try:
-                df_fisio = pd.read_sql_query(
-                    "SELECT fecha,fase_ciclo,sangre,sintomas,estado_animo,feedback_entreno "
-                    "FROM diario_fisiologia WHERE usuario_id=? ORDER BY fecha DESC",
-                    conn, params=(user_actual,))
-            except Exception:
-                df_fisio = pd.read_sql_query(
-                    "SELECT fecha,fase_ciclo,fatiga_subjetiva,dolor_notas FROM diario_fisiologia "
-                    "WHERE usuario_id=? ORDER BY fecha DESC", conn, params=(user_actual,))
-                df_fisio[["sangre","sintomas","estado_animo","feedback_entreno"]] = None
+                if sv not in ("Ligero", "Medio", "Fuerte"):
+                    _ld = _inicio_ultima_regla(conn, user_actual, fecha)
+                    if _ld is not None:
+                        _cd = (fecha - _ld).days + 1
+                        _pos = ((_cd - 1) % 28) + 1
+                        fase = "Menstruación" if _pos <= 5 else "Folicular" if _pos <= 11 else "Ovulación" if _pos <= 16 else "Lútea"
+
+                sint_str  = ", ".join([sint_map.get(x,x)  for x in (sint_sel  or [])])
+                animo_str = ", ".join([animo_map.get(x,x) for x in (animo_sel or [])]) or "Normal"
+                fb_str    = fb_map.get(fb_sel, "") if fb_sel else ""
+                conn.cursor().execute(
+                    "INSERT INTO diario_fisiologia (usuario_id,fecha,fase_ciclo,fatiga_subjetiva,"
+                    "dolor_notas,sangre,sintomas,estado_animo,feedback_entreno) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (user_actual, str(fecha), fase, None, sint_str,
+                     sv if sv != "Sin sangre" else None, sint_str, animo_str, fb_str))
+                conn.commit()
             finally:
                 conn.close()
+            st.cache_data.clear()
+            st.success("Registro guardado.")
 
-            if df_fisio.empty:
-                st.info("Aún no hay datos. ¡Empieza registrando hoy!")
-            else:
-                # Obtener ciclo personalizado si existe
-                conn_ciclo = get_db_connection()
-                try:
-                    ciclo_personalizado = conn_ciclo.execute(
-                        "SELECT ciclo_dias_personalizado FROM usuarios WHERE id=?",
-                        (user_actual,)).fetchone()
-                    ciclo_dias_override = ciclo_personalizado[0] if ciclo_personalizado and ciclo_personalizado[0] else None
-                except Exception:
-                    ciclo_dias_override = None
-                finally:
-                    conn_ciclo.close()
-                
-                ciclo_df, _ = predecir_fases_ciclo(df_fisio[["fecha", "fase_ciclo", "sangre"]].copy(), 
-                                                  horizonte_dias=120,
-                                                  ciclo_dias_personalizado=ciclo_dias_override)
-                if not ciclo_df.empty:
-                    hoy = datetime.now().date()
-                    if "mes_ciclo_cursor" not in st.session_state:
-                        st.session_state.mes_ciclo_cursor = hoy.replace(day=1)
-                    nav_l, nav_c, nav_r = st.columns([0.15, 0.70, 0.15])
-                    with nav_l:
-                        if st.button("◀", key="mes_prev"):
-                            m = st.session_state.mes_ciclo_cursor.month - 1
-                            y = st.session_state.mes_ciclo_cursor.year
-                            if m < 1: m, y = 12, y-1
-                            st.session_state.mes_ciclo_cursor = st.session_state.mes_ciclo_cursor.replace(year=y,month=m,day=1)
-                    with nav_c:
-                        mn = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][st.session_state.mes_ciclo_cursor.month-1]
-                        st.markdown(f"<div style='text-align:center;font-weight:700;color:#c9d1d9;padding:4px 0;'>{mn} {st.session_state.mes_ciclo_cursor.year}</div>", unsafe_allow_html=True)
-                    with nav_r:
-                        if st.button("▶", key="mes_next"):
-                            m = st.session_state.mes_ciclo_cursor.month + 1
-                            y = st.session_state.mes_ciclo_cursor.year
-                            if m > 12: m, y = 1, y+1
-                            st.session_state.mes_ciclo_cursor = st.session_state.mes_ciclo_cursor.replace(year=y,month=m,day=1)
-                    render_calendario_ciclo(ciclo_df, st.session_state.mes_ciclo_cursor.year, st.session_state.mes_ciclo_cursor.month, df_registros=df_fisio)
-                else:
-                    st.info("Registra al menos una menstruación para ver el calendario.")
+    # Training recommendation card
+    st.markdown(
+        f"<div style='background:#161B22;border:1px solid #C9FF0040;border-radius:16px;padding:1.25rem;margin-top:1.5rem;'>"
+        f"<div style='display:flex;align-items:flex-start;gap:12px;'>"
+        f"<span style='font-size:1.5rem;'>💡</span>"
+        f"<div><p style='color:#C9FF00;font-weight:600;margin:0 0 4px;'>Recomendación del día</p>"
+        f"<p style='color:#8b949e;margin:0;font-size:13px;'>Entreno de recuperación recomendado hoy.</p></div>"
+        f"</div></div>",
+        unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
+
+    # Menstrual calendar
+    conn = get_db_connection()
+    try:
+        df_fisio = pd.read_sql_query(
+            "SELECT fecha,fase_ciclo,sangre,sintomas,estado_animo,feedback_entreno "
+            "FROM diario_fisiologia WHERE usuario_id=? ORDER BY fecha DESC",
+            conn, params=(user_actual,))
+    except Exception:
+        df_fisio = pd.read_sql_query(
+            "SELECT fecha,fase_ciclo,fatiga_subjetiva,dolor_notas FROM diario_fisiologia "
+            "WHERE usuario_id=? ORDER BY fecha DESC", conn, params=(user_actual,))
+        df_fisio[["sangre","sintomas","estado_animo","feedback_entreno"]] = None
+    finally:
+        conn.close()
+
+    if not df_fisio.empty:
+        conn_ciclo = get_db_connection()
+        try:
+            ciclo_personalizado = conn_ciclo.execute(
+                "SELECT ciclo_dias_personalizado FROM usuarios WHERE id=?",
+                (user_actual,)).fetchone()
+            ciclo_dias_override = ciclo_personalizado[0] if ciclo_personalizado and ciclo_personalizado[0] else None
+        except Exception:
+            ciclo_dias_override = None
+        finally:
+            conn_ciclo.close()
+
+        ciclo_df, _ = predecir_fases_ciclo(df_fisio[["fecha", "fase_ciclo", "sangre"]].copy(),
+                                          horizonte_dias=120,
+                                          ciclo_dias_personalizado=ciclo_dias_override)
+        if not ciclo_df.empty:
+            hoy = datetime.now().date()
+            if "mes_ciclo_cursor" not in st.session_state:
+                st.session_state.mes_ciclo_cursor = hoy.replace(day=1)
+            nav_l, nav_c, nav_r = st.columns([0.15, 0.70, 0.15])
+            with nav_l:
+                if st.button("◀", key="mes_prev"):
+                    m = st.session_state.mes_ciclo_cursor.month - 1
+                    y = st.session_state.mes_ciclo_cursor.year
+                    if m < 1: m, y = 12, y-1
+                    st.session_state.mes_ciclo_cursor = st.session_state.mes_ciclo_cursor.replace(year=y,month=m,day=1)
+            with nav_c:
+                mn = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][st.session_state.mes_ciclo_cursor.month-1]
+                st.markdown(f"<div style='text-align:center;font-weight:700;color:#c9d1d9;padding:4px 0;'>{mn} {st.session_state.mes_ciclo_cursor.year}</div>", unsafe_allow_html=True)
+            with nav_r:
+                if st.button("▶", key="mes_next"):
+                    m = st.session_state.mes_ciclo_cursor.month + 1
+                    y = st.session_state.mes_ciclo_cursor.year
+                    if m > 12: m, y = 1, y+1
+                    st.session_state.mes_ciclo_cursor = st.session_state.mes_ciclo_cursor.replace(year=y,month=m,day=1)
+            render_calendario_ciclo(ciclo_df, st.session_state.mes_ciclo_cursor.year, st.session_state.mes_ciclo_cursor.month, df_registros=df_fisio)
+        else:
+            st.info("Registra al menos una menstruación para ver el calendario.")
+    else:
+        st.info("Aún no hay datos. ¡Empieza registrando hoy!")
 
 # ===========================================================================
-# TAB 2 — DIARIO DE ENTRENAMIENTO
+# TAB "libre" — DIARIO DE ENTRENAMIENTO (ENTRENO LIBRE)
 # ===========================================================================
-with tab2:
+if active_tab == "libre":
     render_tab_entreno(user_actual)
 
 # ===========================================================================
-# TAB 3 — EJERCICIOS
+# TAB "ejercicios" — EJERCICIOS
 # ===========================================================================
-with tab3:
+if active_tab == "ejercicios":
+    st.markdown(
+        "<div style='background:linear-gradient(135deg,rgba(168,85,247,0.12),rgba(0,212,255,0.05));border:1px solid rgba(168,85,247,0.25);border-radius:16px;padding:1.5rem;margin-bottom:1.5rem;'>"
+        "<h3 style='margin:0;color:#e6edf3;'>🏋️ Ejercicios</h3>"
+        "</div>",
+        unsafe_allow_html=True)
     render_tab_ejercicios(user_actual)
 
 # ===========================================================================
-# TAB 4 — LESIONES
+# TAB "lesiones" — LESIONES
 # ===========================================================================
-with tab4:
+if active_tab == "lesiones":
+    st.markdown(
+        "<div style='background:linear-gradient(135deg,rgba(244,63,94,0.12),rgba(255,149,0,0.05));border:1px solid rgba(244,63,94,0.25);border-radius:16px;padding:1.5rem;margin-bottom:1.5rem;'>"
+        "<h3 style='margin:0;color:#e6edf3;'>🩹 Lesiones</h3>"
+        "</div>",
+        unsafe_allow_html=True)
     render_tab_lesiones(user_actual)
 
