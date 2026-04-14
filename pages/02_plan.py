@@ -226,14 +226,7 @@ active_tab = st.session_state.get("plan_active_tab", "generar")
 # Tab navigation using radio (styled with CSS)
 tab_options = ["📋 Generar Plan", "📊 Datos del Entrenador"]
 current_index = 0 if active_tab == "generar" else 1
-selected_tab_display = st.radio(
-    "", 
-    tab_options, 
-    index=current_index,
-    label_visibility="collapsed", 
-    key="plan_tab_radio",
-    horizontal=False
-)
+
 
 # Update active_tab based on selection
 if selected_tab_display == tab_options[0] and active_tab != "generar":
