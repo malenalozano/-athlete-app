@@ -41,11 +41,11 @@ _TYPE_COLORS = {"running":"#22d3ee", "strength":"#c084fc", "rest":"#4ade80", "de
 # CSS global: radio como tarjeta clickable vertical
 # ---------------------------------------------------------------------------
 st.markdown("""<style>
-div[data-testid="stRadio"] > div[role="radiogroup"] { gap: 0 !important; }
+div[data-testid="stRadio"] > div[role="radiogroup"] { gap: 0 !important; display: flex; flex-wrap: wrap; }
 div[data-testid="stRadio"] label {
   background:#131D2B; border:1px solid rgba(201,255,0,0.15); border-radius:10px;
-  padding:10px 12px; margin-bottom:6px; cursor:pointer; width:100%;
-  color:#C9E1FF !important; font-size:0.84rem; display:block; }
+  padding:10px 12px; margin-bottom:6px; margin-right:6px; cursor:pointer; flex: 1; min-width:150px;
+  color:#C9E1FF !important; font-size:0.84rem; display:flex; align-items:center; justify-content:center; }
 div[data-testid="stRadio"] label:has(input[type="radio"]:checked) {
   border-color:#C9FF00 !important; background:#111f11 !important; color:#C9FF00 !important; }
 div[data-testid="stRadio"] input[type="radio"] { display:none; }
@@ -223,20 +223,25 @@ if st.session_state.plan_data is None:
 # ---------------------------------------------------------------------------
 active_tab = st.session_state.get("plan_active_tab", "generar")
 
-# Tab buttons
-tab_nav1, tab_nav2 = st.columns(2, gap="small")
-with tab_nav1:
-    if st.button("📋 Generar Plan", use_container_width=True,
-                 type="primary" if active_tab == "generar" else "secondary",
-                 key="tab_generar"):
-        st.session_state.plan_active_tab = "generar"
-        st.rerun()
-with tab_nav2:
-    if st.button("📊 Datos del Entrenador", use_container_width=True,
-                 type="primary" if active_tab == "datos" else "secondary",
-                 key="tab_datos"):
-        st.session_state.plan_active_tab = "datos"
-        st.rerun()
+# Tab navigation using radio (styled with CSS)
+tab_options = ["📋 Generar Plan", "📊 Datos del Entrenador"]
+current_index = 0 if active_tab == "generar" else 1
+selected_tab_display = st.radio(
+    "Navegación", 
+    tab_options, 
+    index=current_index,
+    label_visibility="collapsed", 
+    key="plan_tab_radio",
+    horizontal=False
+)
+
+# Update active_tab based on selection
+if selected_tab_display == tab_options[0] and active_tab != "generar":
+    st.session_state.plan_active_tab = "generar"
+    st.rerun()
+elif selected_tab_display == tab_options[1] and active_tab != "datos":
+    st.session_state.plan_active_tab = "datos"
+    st.rerun()
 # ============================================================================
 # TAB 1: GENERAR PLAN
 # ============================================================================
