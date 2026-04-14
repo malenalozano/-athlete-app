@@ -11,8 +11,6 @@ _app_dir = os.path.dirname(os.path.abspath(__file__))
 if _app_dir not in sys.path:
     sys.path.insert(0, _app_dir)
 
-from src.core.access_control import require_auth
-
 st.set_page_config(
     page_title="Athlete",
     page_icon="🏃",

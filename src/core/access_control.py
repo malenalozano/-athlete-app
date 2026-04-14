@@ -35,7 +35,12 @@ def verify_password(password: str, encoded_hash: str) -> bool:
 
 def _get_app_password() -> str:
     """Obtiene la contraseña maestra de la app desde secrets."""
-    return str(st.secrets.get("APP_PASSWORD", "")).strip()
+    try:
+        if "APP_PASSWORD" in st.secrets:
+            return str(st.secrets.get("APP_PASSWORD", "")).strip()
+    except Exception:
+        pass
+    return str(os.getenv("APP_PASSWORD", "")).strip()
 
 
 def require_simple_password_auth(cm=None) -> None:

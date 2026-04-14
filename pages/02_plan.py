@@ -101,6 +101,10 @@ div[data-testid="stRadio"] input[type="radio"] { display:none; }
 # ---------------------------------------------------------------------------
 def _lunes_de(dt): return dt - timedelta(days=dt.weekday())
 
+def _dia_corto_es(fecha_dt: datetime) -> str:
+    dias = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"]
+    return dias[fecha_dt.weekday()]
+
 def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
     conn = get_db_connection()
     try:
@@ -112,7 +116,7 @@ def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
         if not rows:
             return None
         dias = [{
-            "fecha": r[0], "dia": datetime.fromisoformat(r[0]).strftime("%a").upper()[:3],
+            "fecha": r[0], "dia": _dia_corto_es(datetime.fromisoformat(r[0])),
             "tipo": r[1], "descripcion_ia": r[2] or "", "duracion_min": r[3] or 0,
             "intensidad": r[4] or "Z1-Z2", "km": 0, "alerta": "",
         } for r in rows]
@@ -155,7 +159,7 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
                     dia_plan = plan["dias"][i]
                     if a:
                         # Día pasado con actividad realizada
-                        dias_adaptados.append({"fecha": a[0][:10], "dia": fd.strftime("%a").upper()[:3],
+                        dias_adaptados.append({"fecha": a[0][:10], "dia": _dia_corto_es(fd),
                                                "tipo": "Realizado: " + (a[1] or "Actividad"),
                                                "km": a[3] or 0, "duracion_min": a[2] or 0,
                                                "intensidad": "Histórico", "descripcion_ia": "[Historial Garmin]",
@@ -346,6 +350,13 @@ if active_tab == "generar":
         st.error("Error: El plan no contiene datos válidos. Intenta regenerarlo.")
         st.stop()
 
+    # Normalizar abreviatura de día para evitar errores por locale
+    for _d in plan.get("dias", []):
+        try:
+            _d["dia"] = _dia_corto_es(datetime.fromisoformat(_d.get("fecha", "")))
+        except Exception:
+            pass
+
     fase = plan["fase"]
     semaforo = plan["semaforo"]
 
@@ -363,10 +374,12 @@ if active_tab == "generar":
     _kpi_card(kpi_c4, "📍", "Fase", fase_nombre, "#f97316", "rgba(249,115,22,0.1)", "rgba(249,115,22,0.25)")
 
     # Semáforo and fase bar
+    st.markdown("<div style='height:0.7rem;'></div>", unsafe_allow_html=True)
     st.markdown(html_semaforo(semaforo, plan["km_totales"], plan["acwr"]), unsafe_allow_html=True)
+    st.markdown("<div style='height:0.55rem;'></div>", unsafe_allow_html=True)
     st.markdown(html_barra_fase(fase), unsafe_allow_html=True)
 
-    st.markdown("<div style='height:0.35rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:0.8rem;'></div>", unsafe_allow_html=True)
 
     # "Distribución Semanal" heading
     st.markdown("""
@@ -376,10 +389,7 @@ if active_tab == "generar":
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.3),transparent);margin-left:.5rem;"></div>
 </div>""", unsafe_allow_html=True)
 
-    # Week day cards (7 columns) with click interactivity
-    week_cols = st.columns(7, gap="small")
-
-    # Initialize selected day to today (if present in this week), else first day
+    # Week day cards in two rows so they do not feel cramped or stacked
     dias_plan = plan.get("dias", [])
     hoy_str = datetime.now().strftime("%Y-%m-%d")
     idx_hoy = next((idx for idx, d in enumerate(dias_plan) if d.get("fecha") == hoy_str), 0)
@@ -390,42 +400,50 @@ if active_tab == "generar":
     elif st.session_state["plan_selected_day_idx"] >= len(dias_plan):
         st.session_state["plan_selected_day_idx"] = idx_hoy
 
-    for i, dia in enumerate(plan.get("dias", [])):
-        if i >= 7:
+    row_sizes = (4, 3)
+    start_idx = 0
+    for row_size in row_sizes:
+        row_days = dias_plan[start_idx:start_idx + row_size]
+        if not row_days:
             break
-        with week_cols[i]:
-            tipo = dia.get("tipo", "—")
-            color = _get_activity_color(tipo)
-            fecha_obj = datetime.fromisoformat(dia.get("fecha", "2000-01-01"))
-            day_name = fecha_obj.strftime("%a").upper()[:3]
-            day_date = fecha_obj.strftime("%d")
+        row_cols = st.columns(row_size, gap="medium")
+        for col_idx, dia in enumerate(row_days):
+            i = start_idx + col_idx
+            with row_cols[col_idx]:
+                tipo = dia.get("tipo", "—")
+                color = _get_activity_color(tipo)
+                fecha_obj = datetime.fromisoformat(dia.get("fecha", "2000-01-01"))
+                day_name = _dia_corto_es(fecha_obj)
+                day_date = fecha_obj.strftime("%d")
 
-            duration_km = f"{dia.get('km', 0):.1f} km" if dia.get('km', 0) else f"{dia.get('duracion_min', '—')}''"
-            zone = dia.get('intensidad', 'Z1-Z2')
-            emoji = _EMOJIS.get(tipo, "📅")
+                duration_km = f"{dia.get('km', 0):.1f} km" if dia.get('km', 0) else f"{dia.get('duracion_min', '—')}''"
+                zone = dia.get('intensidad', 'Z1-Z2')
+                emoji = _EMOJIS.get(tipo, "📅")
 
-            # Add border glow effect when selected
-            is_selected = st.session_state.get("plan_selected_day_idx") == i
-            border_style = f"2px solid {color};box-shadow:0 0 16px {color}66;" if is_selected else f"4px solid {color};"
-            bg_style = f"linear-gradient(135deg,{color}15,{color}08);" if is_selected else "#161B22;"
+                is_selected = st.session_state.get("plan_selected_day_idx") == i
+                border_style = f"2px solid {color};box-shadow:0 0 16px {color}66;" if is_selected else f"1px solid {color}55;"
+                bg_style = f"linear-gradient(135deg,{color}12,{color}07);" if is_selected else "#161B22;"
+                footer_bg = "rgba(255,255,255,0.06)" if is_selected else "rgba(255,255,255,0.035)"
 
-            card_html = f"""
-<div style="border-left:{border_style}background:{bg_style}border-radius:14px;padding:1rem 0.75rem;cursor:pointer;transition:all 0.2s;position:relative;">
-  <div style="color:#8B949E;font-size:.7rem;font-weight:700;text-transform:uppercase;margin-bottom:.3rem;">{day_name}</div>
-  <div style="color:white;font-size:.95rem;font-weight:700;margin-bottom:.5rem;">{day_date}</div>
-  <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;">
-    <span style="font-size:.9rem;">{emoji}</span>
-    <span style="color:{color};font-size:.75rem;font-weight:700;">{tipo}</span>
+                card_html = f"""
+<div style="border:{border_style}background:{bg_style}border-radius:16px;padding:1rem 0.9rem 0.85rem;min-height:168px;display:flex;flex-direction:column;gap:.55rem;position:relative;">
+  <div style="color:#8B949E;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;">{day_name}</div>
+  <div style="color:white;font-size:1rem;font-weight:800;line-height:1;">{day_date}</div>
+  <div style="display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;">
+    <span style="font-size:.95rem;">{emoji}</span>
+    <span style="color:{color};font-size:.76rem;font-weight:800;line-height:1.2;">{tipo}</span>
   </div>
-  <div style="color:#C9E1FF;font-size:.8rem;font-weight:600;margin-bottom:.4rem;">{duration_km}</div>
-  <div style="background:rgba(255,255,255,0.1);border-radius:4px;padding:.3rem .5rem;font-size:.65rem;color:#8B949E;">{zone}</div>
+  <div style="color:#C9E1FF;font-size:.82rem;font-weight:700;">{duration_km}</div>
+  <div style="background:{footer_bg};border-radius:8px;padding:.35rem .55rem;font-size:.68rem;color:#8B949E;">{zone}</div>
 </div>"""
-            st.markdown(card_html, unsafe_allow_html=True)
+                st.markdown(card_html, unsafe_allow_html=True)
 
-            if st.button(f"Ver {day_name}", key=f"plan_day_{i}", use_container_width=True,
-                        type="primary" if is_selected else "secondary"):
-                st.session_state["plan_selected_day_idx"] = i
-                st.rerun()
+                if st.button(f"Ver {day_name}", key=f"plan_day_{i}", use_container_width=True,
+                            type="primary" if is_selected else "secondary"):
+                    st.session_state["plan_selected_day_idx"] = i
+                    st.rerun()
+        st.markdown("<div style='height:0.35rem;'></div>", unsafe_allow_html=True)
+        start_idx += row_size
 
     # Detailed day view: ONLY details for selected day (no side day list)
     selected_idx = st.session_state.get("plan_selected_day_idx")

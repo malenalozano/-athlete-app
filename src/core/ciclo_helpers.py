@@ -198,8 +198,13 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
     animo_emoji = {"Ansiedad/Estrés": "😰", "Triste": "😭", "Enfadada": "😡", "Feliz": "😄", "Cansada": "🪫", "Energética": "⚡"}
     feedback_emoji = {"A tope": "🚀", "Regulero": "🗿", "Bajito": "⛈️", "No completo": "⛔"}
     colores = {
-        "Menstruación": "#fad2e1", "Folicular": "#cddafd", "Ovulación": "#fff1e6", "Lútea": "#bee1e6",
-        "Fase Folicular": "#cddafd", "Fase Ovulatoria": "#fff1e6", "Fase Lútea": "#bee1e6",
+        "Menstruación": {"bg": "rgba(244, 63, 94, 0.16)", "border": "rgba(244, 63, 94, 0.55)", "txt": "#ffe4ea"},
+        "Folicular": {"bg": "rgba(34, 211, 238, 0.14)", "border": "rgba(34, 211, 238, 0.55)", "txt": "#dbfdff"},
+        "Ovulación": {"bg": "rgba(201, 255, 0, 0.14)", "border": "rgba(201, 255, 0, 0.65)", "txt": "#f5ffd1"},
+        "Lútea": {"bg": "rgba(168, 85, 247, 0.16)", "border": "rgba(168, 85, 247, 0.55)", "txt": "#f2e8ff"},
+        "Fase Folicular": {"bg": "rgba(34, 211, 238, 0.14)", "border": "rgba(34, 211, 238, 0.55)", "txt": "#dbfdff"},
+        "Fase Ovulatoria": {"bg": "rgba(201, 255, 0, 0.14)", "border": "rgba(201, 255, 0, 0.65)", "txt": "#f5ffd1"},
+        "Fase Lútea": {"bg": "rgba(168, 85, 247, 0.16)", "border": "rgba(168, 85, 247, 0.55)", "txt": "#f2e8ff"},
     }
 
     dias_header = ["L", "M", "X", "J", "V", "S", "D"]
@@ -212,13 +217,14 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
             with cols[i]:
                 tipo = mes_info[w][i]
                 if tipo in ("prev", "next"):
-                    bg, txt_color, borde = "#232a36", "#3a4150", "1px dashed #334155"
+                    bg, txt_color, borde = "rgba(20, 25, 36, 0.92)", "#566173", "1px dashed rgba(139, 149, 158, 0.18)"
                 else:
                     fase = fases.get(day)
                     org = origen_map.get(day, "")
-                    bg = colores.get(fase, "#1E2430")
-                    txt_color = "#0E1117" if fase in ("Ovulación", "Fase Ovulatoria") else "#0f172a"
-                    borde = "2px solid #0f172a" if org == "Registrado" else "1px dashed #334155"
+                    estilo_fase = colores.get(fase, {"bg": "rgba(22, 27, 34, 0.96)", "border": "rgba(139, 149, 158, 0.22)", "txt": "#e6edf3"})
+                    bg = estilo_fase["bg"]
+                    txt_color = estilo_fase["txt"]
+                    borde = f"2px solid {estilo_fase['border']}" if org == "Registrado" else f"1px solid {estilo_fase['border']}"
 
                 em_sangre = em_sintomas = em_animo = em_feedback = ""
                 if tipo == "curr" and day in reg_por_dia:
@@ -233,9 +239,10 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
                     em_feedback = feedback_emoji.get(feedback, "")
 
                 st.markdown(
-                    f"<div style='background:{bg};border:{borde};border-radius:8px;padding:8px;height:130px;"
-                    f"overflow:hidden;display:flex;flex-direction:column;justify-content:flex-start;'>"
-                    f"<div style='font-weight:700;color:{txt_color};line-height:1.1;'>{day}</div>"
+                    f"<div style='background:{bg};border:{borde};border-radius:14px;padding:10px 9px 8px;height:130px;"
+                    f"overflow:hidden;display:flex;flex-direction:column;justify-content:flex-start;backdrop-filter:blur(8px);"
+                    f"box-shadow:inset 0 1px 0 rgba(255,255,255,0.04);'>"
+                    f"<div style='font-weight:800;color:{txt_color};line-height:1.1;font-size:0.98rem;'>{day}</div>"
                     f"<div style='font-size:1rem;line-height:1.1;margin-top:6px;'>{em_sangre}</div>"
                     f"<div style='font-size:1rem;line-height:1.1;margin-top:2px;'>{em_sintomas}</div>"
                     f"<div style='font-size:1rem;line-height:1.1;margin-top:2px;'>{em_animo}</div>"

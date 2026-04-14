@@ -36,7 +36,7 @@ def html_semaforo(semaforo: dict, km_totales: float, acwr: float) -> str:
     titulo = "💡 Recomendación de recuperación" if c in ("rojo", "ambar") else f"Semáforo {c.upper()}"
     return (
         f"<div style='background:{_BG_SEM[c]};border:2px solid {_BORD_SEM[c]};"
-        f"border-radius:14px;padding:14px 20px;margin-bottom:12px;"
+        f"border-radius:14px;padding:14px 20px;margin-bottom:16px;"
         f"display:flex;align-items:center;gap:14px;'>"
         f"<span style='font-size:2rem;'>{_ICON_SEM[c]}</span>"
         f"<div><div style='font-size:1.05rem;font-weight:800;color:{_BORD_SEM[c]};'>"
@@ -52,7 +52,7 @@ def html_barra_fase(fase: dict) -> str:
     pct = min(100, max(0, int(100 * (datetime.now() - _INICIO_MACRO).days / dias)))
     return (
         f"<div style='background:#131D2B;border:1px solid rgba(201,255,0,0.3);"
-        f"border-radius:12px;padding:10px 16px;margin-bottom:12px;'>"
+        f"border-radius:12px;padding:10px 16px;margin-bottom:16px;'>"
         f"<div style='display:flex;justify-content:space-between;'>"
         f"<span style='font-weight:800;color:#C9FF00;'>{fase['fase_nombre']}</span>"
         f"<span style='color:#8B949E;font-size:0.78rem;'>{pct}% completado</span></div>"

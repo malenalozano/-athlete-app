@@ -346,14 +346,14 @@ def html_calendario_entreno(dias_mes: dict, anio: int, mes: int) -> str:
         font_w = "700" if tipo or es_hoy else "400"
 
         celdas.append(
-            f"<div style='background:{bg};{border_hoy}border-radius:6px;"
-            f"aspect-ratio:1;display:flex;align-items:center;justify-content:center;"
-            f"position:relative;overflow:hidden;padding:8px;'>"
-            f"<div style='position:absolute;top:5px;right:6px;font-size:10px;"
-            f"color:{'#a3e635' if es_hoy else color_txt};font-weight:{font_w};line-height:1;'>{dia}</div>"
-            f"<div style='font-size:30px;line-height:1;display:flex;align-items:center;justify-content:center;"
-            f"width:100%;height:100%;transform:translateY(2px);'>{emoji}</div>"
-            f"</div>"
+                                                f"<div style='background:{bg};{border_hoy}border-radius:6px;"
+                                                f"aspect-ratio:1;display:flex;align-items:center;justify-content:center;"
+                                                f"position:relative;overflow:hidden;padding:4px;'>"
+                                                f"<div style='position:absolute;top:3px;right:4px;font-size:8px;"
+                                                f"color:{'#a3e635' if es_hoy else color_txt};font-weight:{font_w};line-height:1;'>{dia}</div>"
+                                                f"<div style='font-size:21px;line-height:1;display:flex;align-items:center;justify-content:center;"
+                                                f"width:100%;height:100%;transform:translateY(0px);'>{emoji}</div>"
+                                                f"</div>"
         )
 
     grid = "".join(celdas)

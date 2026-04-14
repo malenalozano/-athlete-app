@@ -1,8 +1,12 @@
 import os
 import re
 from dotenv import load_dotenv
-import google.genai as genai
 from src.db.db_manager import get_db_connection
+
+try:
+    import google.genai as genai
+except Exception:
+    genai = None
 
 load_dotenv()
 
@@ -243,6 +247,10 @@ def _inicializar_modelo():
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
         _gemini_error = "Gemini no configurado: define GEMINI_API_KEY o GOOGLE_API_KEY"
+        return None
+
+    if genai is None:
+        _gemini_error = "Gemini no disponible: falta el paquete google.genai"
         return None
 
     try:

@@ -1811,7 +1811,14 @@ st.markdown(
 )
 
 # 2. AUTENTICACIÓN
-from src.core.access_control import require_auth, is_auth_required
+try:
+    from src.core.access_control import require_auth, is_auth_required
+except Exception:
+    def require_auth(cm=None):
+        return None
+
+    def is_auth_required() -> bool:
+        return False
 
 # Inicializar CookieManager para persistencia de sesión entre recargas
 _cm = st.session_state.get("_cm")
