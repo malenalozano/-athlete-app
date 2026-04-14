@@ -559,12 +559,12 @@ border:1px solid rgba(74,222,128,0.25);border-radius:16px;padding:1.5rem 2rem;ma
     try:
         _df_sueno = pd.read_sql_query(
             """SELECT fecha,
-                      ROUND(CAST(duration_seconds AS REAL) / 3600, 1) as horas_totales,
+                      ROUND(horas_totales, 1) as horas_totales,
                       score,
-                      ROUND(CAST(deep_sleep_seconds AS REAL) / 3600, 1) as deep_sleep_h,
-                      ROUND(CAST(rem_sleep_seconds AS REAL) / 3600, 1) as rem_sleep_h,
-                      ROUND(CAST(awake_seconds AS REAL) / 3600, 1) as awake_h
-               FROM garmin_sleep
+                      ROUND(sleep_profundo_horas, 1) as deep_sleep_h,
+                      ROUND(sleep_rem_horas, 1) as rem_sleep_h,
+                      ROUND(sleep_vigilia_horas, 1) as awake_h
+               FROM datos_sueno
                WHERE usuario_id=? AND fecha >= date('now','-30 days')
                ORDER BY fecha DESC""",
             _conn_dat, params=(user_actual,))
@@ -588,11 +588,11 @@ border:1px solid rgba(74,222,128,0.25);border-radius:16px;padding:1.5rem 2rem;ma
         _df_biom = pd.read_sql_query(
             """SELECT fecha,
                       ROUND(hrv_ms) as hrv_ms,
-                      rhr as rhr,
+                      fc_reposo as rhr,
                       sleep_score,
-                      ROUND(stress_level_avg) as stress_level_avg,
-                      ROUND(body_battery_min) as body_battery_min
-               FROM garmin_metricas_diarias
+                      ROUND(estres_medio) as stress_level_avg,
+                      body_battery_min
+               FROM datos_biometricos_premium
                WHERE usuario_id=? AND fecha >= date('now','-30 days')
                ORDER BY fecha DESC""",
             _conn_dat, params=(user_actual,))
