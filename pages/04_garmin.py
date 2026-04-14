@@ -834,18 +834,22 @@ elif active_tab == "hist":
     if df_all.empty:
         st.info("Sin actividades sincronizadas.")
     else:
-        # Filter pills por tipo
         tipos = ["Todos"] + sorted(df_all["tipo_deporte"].dropna().unique().tolist())
-        filtro = st.pills("filtro_tipo", tipos, selection_mode="single", default="Todos",
-                          label_visibility="collapsed")
+        filtro = st.selectbox("Tipo de actividad", tipos, key="garmin_tipo_filtro", label_visibility="collapsed")
         df_show = df_all if filtro == "Todos" else df_all[df_all["tipo_deporte"] == filtro]
         st.dataframe(df_show, use_container_width=True, hide_index=True)
 
         mes = datetime.now().strftime("%Y-%m")
         c1, c2, c3 = st.columns(3)
         c1.metric("Total actividades", len(df_all))
-        c2.metric("Km totales", f"{df_all['km'].sum():.1f}")
-        c3.metric("Este mes", len(df_all[df_all["fecha"].str.startswith(mes)]))
+        try:
+            c2.metric("Km totales", f"{float(df_all['km'].dropna().sum()):.1f}")
+        except Exception:
+            c2.metric("Km totales", "—")
+        try:
+            c3.metric("Este mes", len(df_all[df_all["fecha"].astype(str).str.startswith(mes)]))
+        except Exception:
+            c3.metric("Este mes", "—")
 
     st.divider()
     h_sue, h_bio = st.columns(2)
@@ -856,9 +860,13 @@ elif active_tab == "hist":
             # Formatear columnas de horas a "Xh Ymin"
             for c in ["horas_totales", "sleep_profundo_horas", "sleep_rem_horas", "sleep_vigilia_horas"]:
                 if c in df_sueno_fmt.columns:
-                    df_sueno_fmt[c] = df_sueno_fmt[c].apply(lambda v:
-                        format_hours(v) if (pd.notna(v) and str(v) not in ("", "None"))
-                        else "Pendiente Garmin" if (pd.notna(v) and float(v) == 0.0) else "—")
+                    def _fmt_h(v):
+                        try:
+                            if pd.isna(v) or str(v) in ("", "None", "nan"): return "—"
+                            return format_hours(v)
+                        except Exception:
+                            return str(v)
+                    df_sueno_fmt[c] = df_sueno_fmt[c].apply(_fmt_h)
             st.dataframe(df_sueno_fmt, use_container_width=True, hide_index=True)
         else:
             st.info("Sin datos de sueño.")

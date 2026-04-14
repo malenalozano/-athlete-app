@@ -282,20 +282,39 @@ else:
     if _bar_colors:
         _bar_colors[-1] = "#C9FF00"
 
+    # Color markers: last week = lime, rest = cyan
+    _marker_colors = ["#22d3ee"] * len(_km_vals)
+    if _marker_colors:
+        _marker_colors[-1] = "#C9FF00"
+
     fig_run = go.Figure()
-    fig_run.add_trace(go.Bar(
+    # Objetivo reference line (dashed)
+    fig_run.add_trace(go.Scatter(
+        x=_labels,
+        y=[40] * len(_labels),
+        mode="lines",
+        line=dict(color="rgba(255,255,255,0.12)", width=1.5, dash="dot"),
+        hoverinfo="skip",
+        showlegend=False,
+    ))
+    # Main km line
+    fig_run.add_trace(go.Scatter(
         x=_labels,
         y=_km_vals,
+        mode="lines+markers",
+        line=dict(color="#C9FF00", width=2.5),
         marker=dict(
-            color=_bar_colors,
-            cornerradius=6,
-            line=dict(width=0),
+            color=_marker_colors,
+            size=8,
+            line=dict(color="#0E1117", width=1.5),
         ),
         text=[f"{v} km" for v in _km_vals],
-        textposition="outside",
+        textposition="top center",
         textfont=dict(color="#8B949E", size=10),
-        hovertemplate="<b>Semana %{x}</b><br>%{y:.1f} km<extra></extra>",
+        hovertemplate="<b>%{x}</b><br>%{y:.1f} km<extra></extra>",
         showlegend=False,
+        fill="tozeroy",
+        fillcolor="rgba(201,255,0,0.06)",
     ))
     fig_run.update_layout(
         height=220,
@@ -315,7 +334,6 @@ else:
             showline=False,
             ticksuffix=" km",
         ),
-        bargap=0.35,
         font=dict(family="Inter, sans-serif"),
     )
     st.plotly_chart(fig_run, use_container_width=True, config={"displayModeBar": False})
@@ -391,61 +409,66 @@ _BADGE  = {"Fuerza":"#a855f7","Tirada Larga":"#C9FF00","Progresiva":"#C9FF00","C
            "Tempo (umbral)":"#f97316","Regenerativo":"#00D4FF","Intervalos VO2max":"#ef4444",
            "Descanso":"#3a4150","Movilidad":"#3a4150"}
 
-col_plan, col_pesos = st.columns(2, gap="large")
-
-with col_plan:
-    st.markdown("""
+# ── Plan Esta Semana (full width, 7-column day grid) ──────────────────────────
+st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:0 0 1rem;">
   <span style="color:#C9FF00;font-size:1rem;">📋</span>
   <span style="font-size:0.82rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Plan Esta Semana</span>
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.3),transparent);margin-left:0.4rem;"></div>
 </div>""", unsafe_allow_html=True)
-    lunes_str = inicio_semana(datetime.now()).strftime("%Y-%m-%d")
-    try:
-        plan_dash = cargar_plan_semana_cache(user_actual, lunes_str)
-    except Exception as e:
-        import logging
-        logging.error(f"Error cargando plan: {e}")
-        plan_dash = None
-    if plan_dash:
-        for dia in plan_dash["dias"]:
-            bc  = _BADGE.get(dia["tipo"], "#8B949E")
-            sub = f"{dia['km']} km" if dia["km"] else f"{dia['duracion_min']}'"
+lunes_str = inicio_semana(datetime.now()).strftime("%Y-%m-%d")
+try:
+    plan_dash = cargar_plan_semana_cache(user_actual, lunes_str)
+except Exception:
+    plan_dash = None
+if plan_dash and plan_dash.get("dias"):
+    _day_cols = st.columns(7, gap="small")
+    for _i, _dia in enumerate(plan_dash["dias"][:7]):
+        _bc  = _BADGE.get(_dia["tipo"], "#8B949E")
+        _sub = f"{_dia['km']} km" if _dia.get("km") else f"{_dia.get('duracion_min', '—')}'"
+        _em  = _EMOJIS.get(_dia["tipo"], "📅")
+        with _day_cols[_i]:
             st.markdown(
-                f"<div style='display:flex;align-items:center;gap:8px;"
-                f"background:linear-gradient(135deg,#0f1724,#101928);border:1px solid rgba(255,255,255,0.05);"
-                f"border-left:3px solid {bc}44;border-radius:10px;padding:7px 12px;margin-bottom:6px;'>"
-                f"<span style='color:#8B949E;font-size:0.78rem;font-weight:700;min-width:68px;'>{dia['dia']}</span>"
-                f"<span style='color:{bc};font-size:0.82rem;flex:1;font-weight:600;'>"
-                f"{_EMOJIS.get(dia['tipo'],'📅')} {dia['tipo']}</span>"
-                f"<span style='color:#6b7280;font-size:0.72rem;'>{sub}</span></div>",
+                f"<div style='background:linear-gradient(135deg,#0f1724,#101928);"
+                f"border:1px solid rgba(255,255,255,0.06);border-top:3px solid {_bc};"
+                f"border-radius:12px;padding:0.8rem 0.6rem;text-align:center;min-height:110px;'>"
+                f"<div style='color:#8B949E;font-size:0.68rem;font-weight:700;text-transform:uppercase;margin-bottom:4px;'>{_dia['dia']}</div>"
+                f"<div style='font-size:1.1rem;margin:4px 0;'>{_em}</div>"
+                f"<div style='color:{_bc};font-size:0.72rem;font-weight:700;margin-bottom:4px;line-height:1.3;'>{_dia['tipo']}</div>"
+                f"<div style='color:#6b7280;font-size:0.68rem;'>{_sub}</div>"
+                f"</div>",
                 unsafe_allow_html=True)
-    else:
-        st.info("Aún no hay plan para esta semana.")
-        st.page_link("pages/02_plan.py", label="→ Ir a Plan Semanal y generar uno")
+else:
+    st.info("Aún no hay plan para esta semana.")
+    st.page_link("pages/02_plan.py", label="→ Ir a Plan Semanal y generar uno")
 
-with col_pesos:
-    st.markdown("""
+st.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
+
+# ── Progresión de Pesos (full width row) ─────────────────────────────────────
+st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:0 0 1rem;">
   <span style="color:#a855f7;font-size:1rem;">💪</span>
   <span style="font-size:0.82rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Progresión de Pesos</span>
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(168,85,247,0.3),transparent);margin-left:0.4rem;"></div>
 </div>""", unsafe_allow_html=True)
-    df_pesos = progresion_pesos_ejercicios(user_actual)
-    if df_pesos.empty:
-        st.info("Registra sesiones de fuerza en el **Diario** para ver la progresión.")
-    else:
-        for _, row in df_pesos.iterrows():
-            trend_color = "#00db81" if row["_trend"] == "up" else ("#ef4444" if row["_trend"] == "dn" else "#8B949E")
-            trend_icon  = "↑" if row["_trend"] == "up" else ("↓" if row["_trend"] == "dn" else "—")
+df_pesos = progresion_pesos_ejercicios(user_actual)
+if df_pesos.empty:
+    st.info("Registra sesiones de fuerza en el **Diario** para ver la progresión.")
+else:
+    _pw_cols = st.columns(min(len(df_pesos), 4), gap="small")
+    for _pi, (_, _row) in enumerate(df_pesos.head(4).iterrows()):
+        _tc = "#00db81" if _row["_trend"] == "up" else ("#ef4444" if _row["_trend"] == "dn" else "#8B949E")
+        _ti = "↑" if _row["_trend"] == "up" else ("↓" if _row["_trend"] == "dn" else "—")
+        with _pw_cols[_pi]:
             st.markdown(
-                f"<div style='display:flex;align-items:center;gap:8px;"
-                f"background:linear-gradient(135deg,#0f1724,#101928);border:1px solid rgba(168,85,247,0.1);"
-                f"border-left:3px solid rgba(168,85,247,0.4);border-radius:10px;padding:7px 12px;margin-bottom:6px;'>"
-                f"<span style='color:#C9E1FF;font-size:0.8rem;flex:1;font-weight:600;'>{row['Ejercicio']}</span>"
-                f"<span style='color:#9ca3af;font-size:0.78rem;margin:0 6px;'>{row['Peso']} kg&nbsp;{row['S×R']}</span>"
-                f"<span style='color:{trend_color};font-weight:800;font-size:0.82rem;min-width:20px;text-align:right;'>"
-                f"{trend_icon} {row['Δ']}</span></div>",
+                f"<div style='background:linear-gradient(135deg,#0f1724,#101928);border:1px solid rgba(168,85,247,0.15);"
+                f"border-left:3px solid rgba(168,85,247,0.5);border-radius:10px;padding:0.75rem 0.9rem;'>"
+                f"<div style='color:#C9E1FF;font-size:0.8rem;font-weight:600;margin-bottom:4px;'>{_row['Ejercicio']}</div>"
+                f"<div style='display:flex;align-items:baseline;gap:6px;'>"
+                f"<span style='color:white;font-size:1.1rem;font-weight:800;'>{_row['Peso']} kg</span>"
+                f"<span style='color:#9ca3af;font-size:0.72rem;'>{_row['S×R']}</span>"
+                f"<span style='color:{_tc};font-weight:800;font-size:0.85rem;margin-left:auto;'>{_ti} {_row['Δ']}</span>"
+                f"</div></div>",
                 unsafe_allow_html=True)
 
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)

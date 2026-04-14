@@ -201,58 +201,33 @@ def _render_subtabs(pagina_activa: str):
     _key = f"{pagina_activa}_active_tab"
     active = st.session_state.get(_key, tabs[0][0])
 
-    # CSS para la barra de sub-tabs
+    # CSS: active subtab (primary button) styled with section color
     st.markdown(f"""<style>
-/* Sub-tabs container */
-div.subtab-container {{
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 0 8px;
-    margin: 0 -4rem;
-    padding-left: 24px;
-    padding-right: 24px;
-    background: linear-gradient(180deg, rgba(14,17,23,0.95) 0%, rgba(22,27,34,0.9) 100%);
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+/* Subtab row: force uniform button sizing */
+[data-testid="stButton"] button[kind="primary"] {{
+    background: {bg_act} !important;
+    border: 1px solid {border_act} !important;
+    color: {color} !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 0 10px {bg_act} !important;
+    min-height: 34px !important;
 }}
-div.subtab-btn {{
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 5px 14px;
-    border-radius: 8px;
-    font-size: 11px;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid transparent;
-    color: #8B949E;
-    transition: all 0.2s;
-    white-space: nowrap;
-    height: 28px;
+[data-testid="stButton"] button[kind="secondary"] {{
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    color: #8B949E !important;
+    border-color: transparent !important;
+    background: transparent !important;
+    min-height: 34px !important;
 }}
-div.subtab-btn:hover {{
-    background: rgba(255,255,255,0.05);
-    color: white;
-}}
-div.subtab-btn-active {{
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 5px 14px;
-    border-radius: 8px;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: default;
-    border: 1px solid {border_act};
-    background: {bg_act};
-    color: {color};
-    box-shadow: 0 0 12px {bg_act};
-    white-space: nowrap;
-    height: 28px;
+[data-testid="stButton"] button[kind="secondary"]:hover {{
+    background: rgba(255,255,255,0.05) !important;
+    color: white !important;
 }}
 </style>""", unsafe_allow_html=True)
 
-    # Renderizar tabs: activo = HTML, inactivo = botón real
+    # All tabs as st.button() — consistent sizing, no layout shift
     n = len(tabs)
     weights = [1.5] * n + [max(0.1, 12 - n * 1.5)]
     cols = st.columns(weights)
@@ -260,15 +235,15 @@ div.subtab-btn-active {{
     for i, (tab_key, tab_label) in enumerate(tabs):
         is_active = (active == tab_key)
         with cols[i]:
-            if is_active:
-                st.markdown(
-                    f"<div class='subtab-btn-active'>{tab_label}</div>",
-                    unsafe_allow_html=True
-                )
-            else:
-                if st.button(tab_label, key=f"subtab_{pagina_activa}_{tab_key}"):
-                    st.session_state[_key] = tab_key
-                    st.rerun()
+            clicked = st.button(
+                tab_label,
+                key=f"subtab_{pagina_activa}_{tab_key}",
+                type="primary" if is_active else "secondary",
+                use_container_width=True,
+            )
+            if clicked and not is_active:
+                st.session_state[_key] = tab_key
+                st.rerun()
 
 
 def render_navbar(pagina_activa: str):
