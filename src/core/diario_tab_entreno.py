@@ -404,26 +404,39 @@ div[data-testid="stTextArea"] textarea:focus {
         hoy = date.today()
         st.session_state[_k_cal] = (hoy.year, hoy.month)
 
-    col_izq, col_der = st.columns([1, 1.8], gap="large")
+    # Calculamos el mes/año y días disponibles ANTES de crear columnas
+    anio_cal, mes_cal = st.session_state[_k_cal]
+    dias_mes = _cargar_dias_mes(usuario_id, anio_cal, mes_cal)
+    
+    # Chequeamos si hay un día seleccionado en el selectbox
+    sel_key = f"sel_dia_{usuario_id}_{anio_cal}_{mes_cal}"
+    seleccion_actual = st.session_state.get(sel_key, "— Sin filtro —")
+    hay_filtro_activo = seleccion_actual != "— Sin filtro —"
+    
+    # Si hay filtro activo, la columna izquierda se oculta
+    if hay_filtro_activo:
+        col_der = st.columns(1)[0]
+    else:
+        col_izq, col_der = st.columns([1, 1.8], gap="large")
+        
+        # ======================================================================
+        # COLUMNA IZQUIERDA (solo si NO hay filtro activo)
+        # ======================================================================
+        with col_izq:
 
-    # ======================================================================
-    # COLUMNA IZQUIERDA
-    # ======================================================================
-    with col_izq:
-
-        # ── Sección 1: Textarea ─────────────────────────────────────────
-        _card_open()
-        st.markdown(label_upper("Entreno libre"), unsafe_allow_html=True)
-        nota = st.text_area(
-            "nota",
-            height=150,
-            key=f"nota_fuerza_{usuario_id}",
-            placeholder=(
-                "Lunes\n"
-                "Hip Thrust 3x8 30kg - no he terminado la serie\n"
-                "Búlgaras 14kg  3x8 - me he sentido débil\n"
-            ),
-            label_visibility="hidden",
+            # ── Sección 1: Textarea ─────────────────────────────────────────
+            _card_open()
+            st.markdown(label_upper("Entreno libre"), unsafe_allow_html=True)
+            nota = st.text_area(
+                "nota",
+                height=150,
+                key=f"nota_fuerza_{usuario_id}",
+                placeholder=(
+                    "Lunes\n"
+                    "Hip Thrust 3x8 30kg - no he terminado la serie\n"
+                    "Búlgaras 14kg  3x8 - me he sentido débil\n"
+                ),
+                label_visibility="hidden",
         )
 
         if nota.strip():
@@ -467,78 +480,75 @@ div[data-testid="stTextArea"] textarea:focus {
 
         _card_close()
 
+        # ── Sección 2: Stats del mes ──────────────────────────────────────
+        _card_open()
+        anio_cal_temp, mes_cal_temp = st.session_state[_k_cal]
+        dias_mes_temp = _cargar_dias_mes(usuario_id, anio_cal_temp, mes_cal_temp)
+        st.markdown(label_upper("Stats del mes"), unsafe_allow_html=True)
+        n_gym_temp = sum(1 for t in dias_mes_temp.values() if isinstance(t, dict) and t.get("tipo") in ("gym", "both"))
+        n_run_temp = sum(1 for t in dias_mes_temp.values() if isinstance(t, dict) and t.get("tipo") in ("run", "both"))
+        n_tot_temp = len(dias_mes_temp)
+        st.markdown(
+            f"<div style='display:flex;flex-direction:column;gap:12px;'>"
+            f"<div style='background:rgba(163,230,53,0.08);border-radius:10px;padding:12px;text-align:center;'>"
+            f"<div style='color:#a3e635;font-size:1.8rem;font-weight:800;'>{n_run_temp}</div>"
+            f"<div style='color:#8B949E;font-size:0.72rem;font-weight:600;text-transform:uppercase;'>🏃 Carreras</div>"
+            f"</div>"
+            f"<div style='background:rgba(167,139,250,0.08);border-radius:10px;padding:12px;text-align:center;'>"
+            f"<div style='color:#a78bfa;font-size:1.8rem;font-weight:800;'>{n_gym_temp}</div>"
+            f"<div style='color:#8B949E;font-size:0.72rem;font-weight:600;text-transform:uppercase;'>🏋️ Fuerza</div>"
+            f"</div>"
+            f"<div style='background:rgba(201,255,0,0.06);border-radius:10px;padding:12px;text-align:center;'>"
+            f"<div style='color:#C9FF00;font-size:1.8rem;font-weight:800;'>{n_tot_temp}</div>"
+            f"<div style='color:#8B949E;font-size:0.72rem;font-weight:600;text-transform:uppercase;'>📅 Días</div>"
+            f"</div>"
+            f"</div>",
+            unsafe_allow_html=True)
+        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+        # Leyenda
+        st.markdown(
+            f"<div style='color:{TXT3};font-size:9px;'>"
+            f"<div style='display:flex;align-items:center;gap:5px;margin-bottom:4px;'><span style='width:7px;height:7px;border-radius:50%;background:#a3e635;display:inline-block;'></span>Carrera</div>"
+            f"<div style='display:flex;align-items:center;gap:5px;margin-bottom:4px;'><span style='width:7px;height:7px;border-radius:50%;background:#a78bfa;display:inline-block;'></span>Fuerza</div>"
+            f"<div style='display:flex;align-items:center;gap:5px;'><span style='width:7px;height:7px;border-radius:50%;background:#60a5fa;display:inline-block;'></span>Ambos</div>"
+            f"</div>",
+            unsafe_allow_html=True)
+        _card_close()
+
     # ======================================================================
     # COLUMNA DERECHA
     # ======================================================================
     with col_der:
-        # ── Calendar + Stats side-by-side ───────────────────────────────
-        _sub_stats, _sub_cal = st.columns([1, 2], gap="medium")
-
+        # ── Sección 3: Calendario (todo el ancho) ──────────────────────────
         anio_cal, mes_cal = st.session_state[_k_cal]
         dias_mes = _cargar_dias_mes(usuario_id, anio_cal, mes_cal)
 
-        # Stats on the LEFT of the calendar (below the entry)
-        with _sub_stats:
-            _card_open()
-            st.markdown(label_upper("Stats del mes"), unsafe_allow_html=True)
-            n_gym = sum(1 for t in dias_mes.values() if isinstance(t, dict) and t.get("tipo") in ("gym", "both"))
-            n_run = sum(1 for t in dias_mes.values() if isinstance(t, dict) and t.get("tipo") in ("run", "both"))
-            n_tot = len(dias_mes)
+        _card_open()
+        st.markdown(label_upper("Calendario del mes"), unsafe_allow_html=True)
+
+        nav_l, nav_c, nav_r = st.columns([1, 4, 1])
+        with nav_l:
+            if st.button("◀", key=f"cal_prev_{usuario_id}"):
+                m, y = mes_cal - 1, anio_cal
+                if m < 1: m, y = 12, y - 1
+                st.session_state[_k_cal] = (y, m)
+                st.rerun()
+        with nav_c:
             st.markdown(
-                f"<div style='display:flex;flex-direction:column;gap:12px;'>"
-                f"<div style='background:rgba(163,230,53,0.08);border-radius:10px;padding:12px;text-align:center;'>"
-                f"<div style='color:#a3e635;font-size:1.8rem;font-weight:800;'>{n_run}</div>"
-                f"<div style='color:#8B949E;font-size:0.72rem;font-weight:600;text-transform:uppercase;'>🏃 Carreras</div>"
-                f"</div>"
-                f"<div style='background:rgba(167,139,250,0.08);border-radius:10px;padding:12px;text-align:center;'>"
-                f"<div style='color:#a78bfa;font-size:1.8rem;font-weight:800;'>{n_gym}</div>"
-                f"<div style='color:#8B949E;font-size:0.72rem;font-weight:600;text-transform:uppercase;'>🏋️ Fuerza</div>"
-                f"</div>"
-                f"<div style='background:rgba(201,255,0,0.06);border-radius:10px;padding:12px;text-align:center;'>"
-                f"<div style='color:#C9FF00;font-size:1.8rem;font-weight:800;'>{n_tot}</div>"
-                f"<div style='color:#8B949E;font-size:0.72rem;font-weight:600;text-transform:uppercase;'>📅 Días</div>"
-                f"</div>"
-                f"</div>",
+                f"<div style='text-align:center;font-size:13px;font-weight:700;"
+                f"color:{TXT1};padding:4px 0;'>"
+                f"{MESES_ES[mes_cal-1]} {anio_cal}</div>",
                 unsafe_allow_html=True)
-            st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
-            # Leyenda
-            st.markdown(
-                f"<div style='color:{TXT3};font-size:9px;'>"
-                f"<div style='display:flex;align-items:center;gap:5px;margin-bottom:4px;'><span style='width:7px;height:7px;border-radius:50%;background:#a3e635;display:inline-block;'></span>Carrera</div>"
-                f"<div style='display:flex;align-items:center;gap:5px;margin-bottom:4px;'><span style='width:7px;height:7px;border-radius:50%;background:#a78bfa;display:inline-block;'></span>Fuerza</div>"
-                f"<div style='display:flex;align-items:center;gap:5px;'><span style='width:7px;height:7px;border-radius:50%;background:#60a5fa;display:inline-block;'></span>Ambos</div>"
-                f"</div>",
-                unsafe_allow_html=True)
-            _card_close()
+        with nav_r:
+            if st.button("▶", key=f"cal_next_{usuario_id}"):
+                m, y = mes_cal + 1, anio_cal
+                if m > 12: m, y = 1, y + 1
+                st.session_state[_k_cal] = (y, m)
+                st.rerun()
 
-        # Calendar on the RIGHT
-        with _sub_cal:
-            _card_open()
-            st.markdown(label_upper("Calendario del mes"), unsafe_allow_html=True)
-
-            nav_l, nav_c, nav_r = st.columns([1, 4, 1])
-            with nav_l:
-                if st.button("◀", key=f"cal_prev_{usuario_id}"):
-                    m, y = mes_cal - 1, anio_cal
-                    if m < 1: m, y = 12, y - 1
-                    st.session_state[_k_cal] = (y, m)
-                    st.rerun()
-            with nav_c:
-                st.markdown(
-                    f"<div style='text-align:center;font-size:13px;font-weight:700;"
-                    f"color:{TXT1};padding:4px 0;'>"
-                    f"{MESES_ES[mes_cal-1]} {anio_cal}</div>",
-                    unsafe_allow_html=True)
-            with nav_r:
-                if st.button("▶", key=f"cal_next_{usuario_id}"):
-                    m, y = mes_cal + 1, anio_cal
-                    if m > 12: m, y = 1, y + 1
-                    st.session_state[_k_cal] = (y, m)
-                    st.rerun()
-
-            # Renderizar calendario interactivo
-            dia_sel = _render_calendario_interactivo(usuario_id, dias_mes, anio_cal, mes_cal, _k_cal)
-            _card_close()
+        # Renderizar calendario interactivo
+        dia_sel = _render_calendario_interactivo(usuario_id, dias_mes, anio_cal, mes_cal, _k_cal)
+        _card_close()
 
         # ── Sección 4: Sesiones guardadas ──────────────────────────────
         _card_open()
