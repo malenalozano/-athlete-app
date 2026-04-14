@@ -100,7 +100,7 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
         conn = get_db_connection()
         try:
             actvs = conn.execute(
-                "SELECT fecha, tipo_deporte, duracion_min, distancia_m/1000.0 FROM actividades_garmin "
+                "SELECT fecha, tipo_deporte, ROUND(CAST(tiempo_seg AS REAL)/60, 1) as duracion_min, distancia_m/1000.0 FROM actividades_garmin "
                 "WHERE usuario_id=? AND fecha >= ? AND fecha < ? ORDER BY fecha",
                 (usuario_id, lunes.strftime("%Y-%m-%d"), hoy_date)).fetchall()
             for i in range(dias_pasados):
