@@ -400,39 +400,25 @@ if active_tab == "generar":
     elif st.session_state["plan_selected_day_idx"] >= len(dias_plan):
         st.session_state["plan_selected_day_idx"] = idx_hoy
 
-    week_cols = st.columns(7, gap="large")
+    week_cols = st.columns(7, gap="small")
     for i, dia in enumerate(dias_plan[:7]):
         with week_cols[i]:
             tipo = dia.get("tipo", "—")
-            color = _get_activity_color(tipo)
             fecha_obj = datetime.fromisoformat(dia.get("fecha", "2000-01-01"))
             day_name = _dia_corto_es(fecha_obj)
             day_date = fecha_obj.strftime("%d")
 
             duration_km = f"{dia.get('km', 0):.1f} km" if dia.get('km', 0) else f"{dia.get('duracion_min', '—')}''"
-            zone = dia.get('intensidad', 'Z1-Z2')
             emoji = _EMOJIS.get(tipo, "📅")
 
             is_selected = st.session_state.get("plan_selected_day_idx") == i
-            border_style = f"2px solid {color};box-shadow:0 0 16px {color}66;" if is_selected else f"1px solid {color}55;"
-            bg_style = f"linear-gradient(135deg,{color}12,{color}07);" if is_selected else "#161B22;"
-            footer_bg = "rgba(255,255,255,0.06)" if is_selected else "rgba(255,255,255,0.035)"
-
-            card_html = f"""
-<div style="border:{border_style}background:{bg_style}border-radius:16px;padding:1rem 0.9rem 0.85rem;min-height:170px;display:flex;flex-direction:column;gap:.55rem;position:relative;margin-bottom:.5rem;">
-  <div style="color:#8B949E;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;">{day_name}</div>
-  <div style="color:white;font-size:1rem;font-weight:800;line-height:1;">{day_date}</div>
-  <div style="display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;">
-    <span style="font-size:.95rem;">{emoji}</span>
-    <span style="color:{color};font-size:.76rem;font-weight:800;line-height:1.2;">{tipo}</span>
-  </div>
-  <div style="color:#C9E1FF;font-size:.82rem;font-weight:700;">{duration_km}</div>
-  <div style="background:{footer_bg};border-radius:8px;padding:.35rem .55rem;font-size:.68rem;color:#8B949E;">{zone}</div>
-</div>"""
-            st.markdown(card_html, unsafe_allow_html=True)
-
-            if st.button(f"Ver {day_name}", key=f"plan_day_{i}", use_container_width=True,
-                        type="primary" if is_selected else "secondary"):
+            label = f"{day_name} {day_date}\n{emoji} {tipo}\n{duration_km}"
+            if st.button(
+                label,
+                key=f"plan_day_{i}",
+                use_container_width=True,
+                type="primary" if is_selected else "secondary",
+            ):
                 st.session_state["plan_selected_day_idx"] = i
                 st.rerun()
 
