@@ -290,13 +290,7 @@ def _cargar_dias_mes(usuario_id: int, anio: int, mes: int) -> dict:
 
 
 def _render_calendario_interactivo(usuario_id: int, dias_mes: dict, anio: int, mes: int, _k_cal: str):
-    """Renderiza un calendario interactivo con filtro de sesiones por día."""
-    colores = {
-        "run":  {"bg": "#1a3a1a", "border": "#a3e635", "dot": "#a3e635", "emoji": "🏃"},
-        "gym":  {"bg": "#1e1b3a", "border": "#818cf8", "dot": "#a78bfa", "emoji": "🏋️"},
-        "both": {"bg": "#1a2a1a", "border": "#a3e635", "dot": "#a3e635", "emoji": "💪🏃"},
-        "sport": {"bg": "#162338", "border": "#60a5fa", "dot": "#93c5fd", "emoji": _DEFAULT_SPORT_EMOJI},
-    }
+    """Renderiza calendario visual + selector de día para filtrar sesiones."""
     hoy = date.today()
     primer_dia, total_dias = calendar.monthrange(anio, mes)
     
@@ -305,72 +299,32 @@ def _render_calendario_interactivo(usuario_id: int, dias_mes: dict, anio: int, m
     if _k_day_selected not in st.session_state:
         st.session_state[_k_day_selected] = None
     
-    cabecera_dias = ["L", "M", "X", "J", "V", "S", "D"]
-    
-    # Renderizar encabezado días de la semana
-    cols_cab = st.columns(7)
-    for idx, dia_nom in enumerate(cabecera_dias):
-        with cols_cab[idx]:
-            st.markdown(
-                f"<div style='text-align:center;font-size:10px;color:#484f58;"
-                f"font-weight:600;padding:4px 0;'>{dia_nom}</div>",
-                unsafe_allow_html=True
-            )
-    
-    # Renderizar días del mes con buttons interactivos
-    col_idx = 0
-    cols_dia = st.columns(7)
-    
-    # Espacios vacíos iniciales
-    for _ in range(primer_dia):
-        col_idx += 1
-    
-    for dia in range(1, total_dias + 1):
-        # Avanzar a la siguiente fila si es necesario
-        if col_idx >= 7:
-            cols_dia = st.columns(7)
-            col_idx = 0
-        
-        with cols_dia[col_idx]:
-            info = dias_mes.get(dia, {})
-            tipo = info.get("tipo", "") if isinstance(info, dict) else str(info)
-            cfg = colores.get(tipo, {})
-            bg = cfg.get("bg", "#161b22")
-            border = cfg.get("border", "#21262d")
-            emoji = info.get("emoji", cfg.get("emoji", "")) if isinstance(info, dict) else cfg.get("emoji", "")
-            es_hoy = (anio == hoy.year and mes == hoy.month and dia == hoy.day)
-            es_seleccionado = st.session_state[_k_day_selected] == dia
-            
-            # Estilos dinámicos según selección
-            border_style = f"border:2px solid #a3e635; box-shadow:0 0 0 2px #a3e63522;" if es_hoy else f"border:2px solid {border};"
-            if es_seleccionado:
-                border_style = "border:3px solid #60a5fa; box-shadow:0 0 8px #60a5fa60;"
-                bg = "#162d4d"
-            
-            color_txt = cfg.get("dot", "#484f58") if tipo else "#484f58"
-            font_w = "700" if tipo or es_hoy else "400"
-            
-            if st.button(
-                f"{dia}\n{emoji}" if emoji else str(dia),
-                key=f"dia_{usuario_id}_{anio}_{mes}_{dia}",
-                use_container_width=True,
-                help=f"Ver sesiones del {dia} de {MESES_ES[mes-1]}" if hasattr(st, 'MESES_ES') or True else ""
-            ):
-                st.session_state[_k_day_selected] = dia if st.session_state[_k_day_selected] != dia else None
-                st.rerun()
-        
-        col_idx += 1
-    
-    # Leyenda
-    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+    # Mostrar el HTML del calendario original
     st.markdown(
-        f"<div style='color:{TXT3};font-size:9px;display:flex;gap:12px;flex-wrap:wrap;'>"
-        f"<div><span style='width:7px;height:7px;border-radius:50%;background:#a3e635;display:inline-block;margin-right:4px;'></span>Carrera</div>"
-        f"<div><span style='width:7px;height:7px;border-radius:50%;background:#a78bfa;display:inline-block;margin-right:4px;'></span>Fuerza</div>"
-        f"<div><span style='width:7px;height:7px;border-radius:50%;background:#60a5fa;display:inline-block;margin-right:4px;'></span>Ambos</div>"
-        f"</div>",
+        html_calendario_entreno(dias_mes, anio, mes),
         unsafe_allow_html=True
     )
+    
+    # Añadir selector de día para filtrar
+    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+    dias_disponibles = ["— Sin filtro —"] + [str(d) for d in sorted(dias_mes.keys())]
+    
+    col_sel, col_clear = st.columns([3, 1])
+    with col_sel:
+        dia_index = st.selectbox(
+            "Filtrar por día:",
+            options=range(len(dias_disponibles)),
+            format_func=lambda i: dias_disponibles[i],
+            key=f"sel_dia_{usuario_id}_{anio}_{mes}",
+            label_visibility="collapsed"
+        )
+        dia_sel = None if dia_index == 0 else int(dias_disponibles[dia_index])
+        st.session_state[_k_day_selected] = dia_sel
+    
+    with col_clear:
+        if st.button("✕", key=f"clear_sel_{usuario_id}_{anio}_{mes}", help="Limpiar filtro"):
+            st.session_state[_k_day_selected] = None
+            st.rerun()
     
     return st.session_state[_k_day_selected]
 
@@ -822,8 +776,6 @@ div[data-testid="stTextArea"] textarea:focus {
         _card_open()
         
         # Mostrar el día seleccionado si existe
-        _k_day_selected = f"dia_seleccionado_{usuario_id}_{anio_cal}_{mes_cal}"
-        dia_sel = st.session_state.get(_k_day_selected, None)
         if dia_sel:
             fecha_sel_str = f"{anio_cal:04d}-{mes_cal:02d}-{dia_sel:02d}"
             st.markdown(
@@ -833,6 +785,7 @@ div[data-testid="stTextArea"] textarea:focus {
                 unsafe_allow_html=True
             )
             # Botón para limpiar filtro
+            _k_day_selected = f"dia_seleccionado_{usuario_id}_{anio_cal}_{mes_cal}"
             if st.button("✕ Limpiar filtro", key=f"clear_day_filter_{usuario_id}_{anio_cal}_{mes_cal}"):
                 st.session_state[_k_day_selected] = None
                 st.rerun()
