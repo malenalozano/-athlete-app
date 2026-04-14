@@ -288,23 +288,8 @@ st.markdown(f"<h2 style='color:#e6edf3;font-weight:700;margin:4px 0 4px;'>Garmin
             unsafe_allow_html=True)
 st.markdown("<div class='garmin-sub'>Sincroniza tu reloj y revisa exactamente qué datos han entrado.</div>", unsafe_allow_html=True)
 
-# Tab navigation via session_state
 if "garmin_active_tab" not in st.session_state:
     st.session_state["garmin_active_tab"] = "sync"
-
-tab_cols = st.columns(2, gap="small")
-with tab_cols[0]:
-    if st.button("🔄 Sincronización", use_container_width=True,
-                 type="primary" if st.session_state["garmin_active_tab"] == "sync" else "secondary"):
-        st.session_state["garmin_active_tab"] = "sync"
-        st.rerun()
-with tab_cols[1]:
-    if st.button("📊 Historial", use_container_width=True,
-                 type="primary" if st.session_state["garmin_active_tab"] == "hist" else "secondary"):
-        st.session_state["garmin_active_tab"] = "hist"
-        st.rerun()
-
-st.markdown("<div style='margin-top:16px;'></div>", unsafe_allow_html=True)
 
 active_tab = st.session_state.get("garmin_active_tab", "sync")
 

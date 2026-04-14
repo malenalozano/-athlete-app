@@ -217,21 +217,6 @@ if st.session_state.plan_data is None:
 # ---------------------------------------------------------------------------
 active_tab = st.session_state.get("plan_active_tab", "generar")
 
-# Tab buttons
-tab_nav1, tab_nav2 = st.columns(2, gap="small")
-with tab_nav1:
-    if st.button("📋 Generar Plan", use_container_width=True,
-                 type="primary" if active_tab == "generar" else "secondary",
-                 key="tab_generar"):
-        st.session_state.plan_active_tab = "generar"
-        st.rerun()
-with tab_nav2:
-    if st.button("📊 Datos del Entrenador", use_container_width=True,
-                 type="primary" if active_tab == "datos" else "secondary",
-                 key="tab_datos"):
-        st.session_state.plan_active_tab = "datos"
-        st.rerun()
-
 # ============================================================================
 # TAB 1: GENERAR PLAN
 # ============================================================================

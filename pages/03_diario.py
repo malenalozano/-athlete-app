@@ -92,56 +92,7 @@ active_tab = st.session_state.get("diario_active_tab", "libre")
 if active_tab == "ciclo" and uid != 1:
     active_tab = "libre"
 
-# Tab navigation buttons
-_tab_options = ["libre", "ejercicios", "lesiones"]
-if _es_mujer:
-    _tab_options.insert(1, "ciclo")
-
-tab_col1, tab_col2, tab_col3, tab_col4 = st.columns([1, 1, 1, 1])
-with tab_col1:
-    if st.button("📓 Entreno libre", use_container_width=True,
-                 key="tab_libre",
-                 type="primary" if active_tab == "libre" else "secondary"):
-        st.session_state.diario_active_tab = "libre"
-        st.rerun()
-
-with tab_col2:
-    if _es_mujer:
-        if st.button("🩸 Ciclo", use_container_width=True,
-                     key="tab_ciclo",
-                     type="primary" if active_tab == "ciclo" else "secondary"):
-            st.session_state.diario_active_tab = "ciclo"
-            st.rerun()
-    else:
-        if st.button("🏋️ Ejercicios", use_container_width=True,
-                     key="tab_ejercicios",
-                     type="primary" if active_tab == "ejercicios" else "secondary"):
-            st.session_state.diario_active_tab = "ejercicios"
-            st.rerun()
-
-with tab_col3:
-    if _es_mujer:
-        if st.button("🏋️ Ejercicios", use_container_width=True,
-                     key="tab_ejercicios_ciclo",
-                     type="primary" if active_tab == "ejercicios" else "secondary"):
-            st.session_state.diario_active_tab = "ejercicios"
-            st.rerun()
-    else:
-        if st.button("🩹 Lesiones", use_container_width=True,
-                     key="tab_lesiones",
-                     type="primary" if active_tab == "lesiones" else "secondary"):
-            st.session_state.diario_active_tab = "lesiones"
-            st.rerun()
-
-with tab_col4:
-    if _es_mujer:
-        if st.button("🩹 Lesiones", use_container_width=True,
-                     key="tab_lesiones_ciclo",
-                     type="primary" if active_tab == "lesiones" else "secondary"):
-            st.session_state.diario_active_tab = "lesiones"
-            st.rerun()
-
-st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
 # ===========================================================================
 # TAB 1 — CICLO MENSTRUAL (solo mujeres)
