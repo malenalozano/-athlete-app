@@ -5,7 +5,11 @@ st.navigation(position="hidden") + navbar HTML propia en cada página.
 
 import streamlit as st
 import os, sys
-sys.path.insert(0, os.path.dirname(__file__))
+
+# Ensure correct import path for both local and Streamlit Cloud
+_app_dir = os.path.dirname(os.path.abspath(__file__))
+if _app_dir not in sys.path:
+    sys.path.insert(0, _app_dir)
 
 from src.core.access_control import require_auth
 
