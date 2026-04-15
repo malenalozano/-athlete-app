@@ -400,8 +400,13 @@ div[data-testid="stTextArea"] textarea:focus {
     _k_res  = f"resultado_ia_{usuario_id}"
     _k_ses  = f"sesiones_detectadas_{usuario_id}"
     _k_cal  = f"cal_cursor_{usuario_id}"
+    _k_nota  = f"nota_fuerza_{usuario_id}"
+    _k_limpiar_nota = f"limpiar_nota_fuerza_{usuario_id}"
     if _k_res not in st.session_state: st.session_state[_k_res] = None
     if _k_ses not in st.session_state: st.session_state[_k_ses] = []
+    if st.session_state.get(_k_limpiar_nota):
+        st.session_state[_k_nota] = ""
+        st.session_state[_k_limpiar_nota] = False
     if _k_cal not in st.session_state:
         hoy = date.today()
         st.session_state[_k_cal] = (hoy.year, hoy.month)
@@ -429,7 +434,7 @@ div[data-testid="stTextArea"] textarea:focus {
         nota = st.text_area(
             "nota",
             height=150,
-            key=f"nota_fuerza_{usuario_id}",
+            key=_k_nota,
             placeholder=(
                 "Lunes\n"
                 "Hip Thrust 3x8 30kg - no he terminado la serie\n"
@@ -1051,7 +1056,7 @@ def _guardar_sesiones(usuario_id: int, sesiones: list):
         st.success(f"✅ {n} sesión{'es' if n>1 else ''} guardada{'s' if n>1 else ''}")
         st.session_state[f"resultado_ia_{usuario_id}"] = None
         st.session_state[f"sesiones_detectadas_{usuario_id}"] = []
-        st.session_state[f"nota_fuerza_{usuario_id}"] = ""
+        st.session_state[f"limpiar_nota_fuerza_{usuario_id}"] = True
         st.rerun()
     except Exception as e:
         st.error(f"Error SQL: {e}")
