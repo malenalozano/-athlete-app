@@ -80,7 +80,7 @@ except Exception:
     _fecha_obj = _date(2027, 2, 21)
 _dias_left    = (_fecha_obj - _date.today()).days
 _semanas_left = _dias_left // 7
-_obj_nombre   = str(perfil.get("objetivo_nombre") or "").strip()
+_obj_nombre   = str(perfil.get("objetivo_nombre") or perfil.get("objetivo") or "").strip()
 if not _obj_nombre:
     _obj_nombre = "Ultra Madrid-Segovia" if user_actual == 2 else "Maratón de Sevilla" if user_actual == 1 else ("Ultra Madrid-Segovia" if _es_ultra_dash else "Maratón de Sevilla")
 

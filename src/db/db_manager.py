@@ -422,7 +422,7 @@ def obtener_perfil(usuario_id):
     if row is None:
         return None
 
-    return {
+    perfil = {
         "id": row[0],
         "nombre": row[1],
         "edad": row[2],
@@ -438,6 +438,20 @@ def obtener_perfil(usuario_id):
         "fecha_objetivo": row[12],   # YYYY-MM-DD de la carrera objetivo
         "objetivo_tipo": row[13],    # 'maraton', 'ultramaraton', etc.
     }
+
+    # Compatibilidad con datos antiguos: corrige el objetivo principal mostrado.
+    objetivo_txt = str(perfil.get("objetivo") or "").strip()
+    objetivo_low = objetivo_txt.lower()
+    if int(perfil.get("id") or 0) == 1 and (
+        "valencia" in objetivo_low or objetivo_low in ("maraton", "maratón")
+    ):
+        perfil["objetivo"] = "Maratón de Sevilla"
+    elif int(perfil.get("id") or 0) == 2 and (
+        "valencia" in objetivo_low or objetivo_low in ("ultramaraton", "ultramaratón", "ultra")
+    ):
+        perfil["objetivo"] = "Ultra Madrid-Segovia"
+
+    return perfil
 
 
 def guardar_perfil(usuario_id, datos):
