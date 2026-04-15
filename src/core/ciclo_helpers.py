@@ -10,7 +10,7 @@ import calendar
 import calendar as _calendar
 import pandas as pd
 import streamlit as st
-from datetime import timedelta
+from datetime import date, timedelta
 
 
 _SANGRADO_REGLA = {"Ligero", "Medio", "Fuerte"}
@@ -145,6 +145,7 @@ def predecir_fases_ciclo(df_fisio, horizonte_dias=90, ciclo_dias_personalizado=N
 
 def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
     """Renderiza el calendario mensual coloreado por fase del ciclo."""
+    hoy = date.today()
     mes_matrix = calendar.monthcalendar(anio, mes)
     prev_month = 12 if mes == 1 else mes - 1
     prev_year = anio - 1 if mes == 1 else anio
@@ -226,7 +227,14 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
                     txt_color = estilo_fase["txt"]
                     borde = f"2px solid {estilo_fase['border']}" if org == "Registrado" else f"1px solid {estilo_fase['border']}"
 
+                    es_hoy = (anio == hoy.year and mes == hoy.month and day == hoy.day)
+                    if es_hoy:
+                        bg = "linear-gradient(180deg, rgba(201, 255, 0, 0.24), rgba(201, 255, 0, 0.12))"
+                        txt_color = "#f8ffd8"
+                        borde = "2px solid rgba(201, 255, 0, 0.92)"
+
                 em_sangre = em_sintomas = em_animo = em_feedback = ""
+                marca_hoy = ""
                 if tipo == "curr" and day in reg_por_dia:
                     r = reg_por_dia[day]
                     sangre = str(r.get("sangre") or "Sin sangre").strip()
@@ -238,11 +246,23 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
                     em_animo = "".join(animo_emoji.get(x.strip(), "") for x in animo.split(",") if x.strip() and animo not in ("None", "", "Normal"))
                     em_feedback = feedback_emoji.get(feedback, "")
 
+                if tipo == "curr" and anio == hoy.year and mes == hoy.month and day == hoy.day:
+                    marca_hoy = (
+                        "<div style='display:inline-flex;align-items:center;gap:4px;"
+                        "margin-top:4px;padding:2px 7px;border-radius:999px;"
+                        "background:rgba(201,255,0,0.16);border:1px solid rgba(201,255,0,0.52);"
+                        "color:#f8ffd8;font-size:0.62rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;'>"
+                        "Hoy</div>"
+                    )
+
                 st.markdown(
                     f"<div style='background:{bg};border:{borde};border-radius:14px;padding:10px 9px 8px;height:130px;"
                     f"overflow:hidden;display:flex;flex-direction:column;justify-content:flex-start;backdrop-filter:blur(8px);"
                     f"box-shadow:inset 0 1px 0 rgba(255,255,255,0.04);'>"
-                    f"<div style='font-weight:800;color:{txt_color};line-height:1.1;font-size:0.98rem;'>{day}</div>"
+                    f"<div style='font-weight:800;color:{txt_color};line-height:1.1;font-size:0.98rem;display:flex;align-items:center;justify-content:space-between;gap:6px;'>"
+                    f"<span>{day}</span>"
+                    f"{marca_hoy}"
+                    f"</div>"
                     f"<div style='font-size:1rem;line-height:1.1;margin-top:6px;'>{em_sangre}</div>"
                     f"<div style='font-size:1rem;line-height:1.1;margin-top:2px;'>{em_sintomas}</div>"
                     f"<div style='font-size:1rem;line-height:1.1;margin-top:2px;'>{em_animo}</div>"

@@ -484,6 +484,7 @@ div[data-testid="stTextArea"] textarea:focus {
         # ── Mostrar resultados del procesamiento (DETALLES COMPLETOS) ──────
         if st.session_state.get(_k_res) and st.session_state.get(_k_ses):
             sesiones_detectadas = st.session_state[_k_ses]
+            st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
             st.markdown(
                 f"<div style='color:#a3e635;font-size:13px;font-weight:700;margin-bottom:10px;'>"
                 f"✅ {len(sesiones_detectadas)} sesión{'es' if len(sesiones_detectadas) > 1 else ''} detectada{'s' if len(sesiones_detectadas) > 1 else ''}</div>",
@@ -647,7 +648,6 @@ div[data-testid="stTextArea"] textarea:focus {
                 )
 
         # ── Sección 2: Stats del mes ──────────────────────────────────────
-        _card_open()
         anio_cal_temp, mes_cal_temp = st.session_state[_k_cal]
         dias_mes_temp = _cargar_dias_mes(usuario_id, anio_cal_temp, mes_cal_temp)
         st.markdown(label_upper("Stats del mes"), unsafe_allow_html=True)
@@ -670,6 +670,7 @@ div[data-testid="stTextArea"] textarea:focus {
             f"</div>"
             f"</div>",
             unsafe_allow_html=True)
+        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
         # Leyenda
         st.markdown(
             f"<div style='color:{TXT3};font-size:9px;'>"
@@ -678,7 +679,6 @@ div[data-testid="stTextArea"] textarea:focus {
             f"<div style='display:flex;align-items:center;gap:5px;'><span style='width:7px;height:7px;border-radius:50%;background:#60a5fa;display:inline-block;'></span>Ambos</div>"
             f"</div>",
             unsafe_allow_html=True)
-        _card_close()
 
     # ======================================================================
     # COLUMNA DERECHA
@@ -713,8 +713,7 @@ div[data-testid="stTextArea"] textarea:focus {
         dia_sel = _render_calendario_interactivo(usuario_id, dias_mes, anio_cal, mes_cal, _k_cal)
 
         # ── Sección 4: Sesiones guardadas ──────────────────────────────
-        _card_open()
-        
+
         # SELECTBOX para filtrar por día - AQUÍ y no en el calendario
         if dias_mes:
             st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
@@ -981,7 +980,6 @@ div[data-testid="stTextArea"] textarea:focus {
                     )
 
         conn.close()
-        _card_close()
 
 
 # ---------------------------------------------------------------------------

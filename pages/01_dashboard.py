@@ -486,10 +486,6 @@ else:
                 f"</div></div>",
                 unsafe_allow_html=True)
 
-    with st.expander(f"Ver historial completo ({len(df_pesos)} ejercicios)"):
-        _df_pesos_full = df_pesos[["Ejercicio", "Peso", "S×R", "Δ"]].copy()
-        st.dataframe(_df_pesos_full, use_container_width=True, hide_index=True)
-
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
