@@ -258,7 +258,7 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
                 st.markdown(
                     f"<div style='background:{bg};border:{borde};border-radius:14px;padding:10px 9px 8px;height:130px;"
                     f"overflow:hidden;display:flex;flex-direction:column;justify-content:flex-start;backdrop-filter:blur(8px);"
-                    f"box-shadow:inset 0 1px 0 rgba(255,255,255,0.04);">"
+                    f"box-shadow:inset 0 1px 0 rgba(255,255,255,0.04);'>"
                     f"<div style='font-weight:800;color:{txt_color};line-height:1.1;font-size:0.98rem;display:flex;align-items:center;justify-content:space-between;gap:6px;'>"
                     f"<span>{day}</span>"
                     f"{marca_hoy}"
