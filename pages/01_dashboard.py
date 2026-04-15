@@ -310,7 +310,7 @@ _kpi_card(_kpi_cols[1], "HRV",         hrv_val,    "ms",             _delta_html
 _kpi_card(_kpi_cols[2], "FUERZA",      fuerza_val, "sesiones",       _delta_html(fuerza_delta_num, 0), "#a855f7", "💪")
 _kpi_card(_kpi_cols[3], "SUEÑO MEDIO", sueno_val,  "h/noche",        _delta_html(sueno_delta_num, 1),  "#f97316", "🌙")
 
-st.markdown("<div style='height:1.6rem;'></div>", unsafe_allow_html=True)
+st.markdown("<div style='height:2rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # 3. Plan Esta Semana
