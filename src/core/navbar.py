@@ -72,8 +72,16 @@ header {{ display: none !important; }}
     gap: 4px !important;
 }}
 
-.main .block-container {{
-    padding-top: 72px !important;
+[data-testid="stAppViewContainer"] {{
+    padding-top: 150px !important;
+}}
+
+.main {{
+    padding-top: 150px !important;
+}}
+
+[data-testid="stMainBlockContainer"] {{
+    padding-top: 150px !important;
 }}
 
 /* ── Page links ── */
