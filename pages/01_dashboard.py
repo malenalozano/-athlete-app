@@ -232,6 +232,79 @@ def _render_plan_esta_semana(user_actual):
         st.info("Aún no hay plan para esta semana.")
         st.page_link("pages/02_plan.py", label="→ Ir a Plan Semanal y generar uno")
 
+
+def _render_progresion_pesos(user_actual):
+    st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:0 0 1rem;">
+  <span style="color:#a855f7;font-size:1rem;">💪</span>
+  <span style="font-size:0.82rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Progresión de Pesos</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(168,85,247,0.3),transparent);margin-left:0.4rem;"></div>
+</div>""", unsafe_allow_html=True)
+    df_pesos = progresion_pesos_ejercicios(user_actual)
+    if df_pesos.empty:
+        st.info("Registra sesiones de fuerza en el **Diario** para ver la progresión.")
+    else:
+        _pw_cols = st.columns(min(len(df_pesos), 4), gap="small")
+        for _pi, (_, _row) in enumerate(df_pesos.head(4).iterrows()):
+            _tc = "#00db81" if _row["_trend"] == "up" else ("#ef4444" if _row["_trend"] == "dn" else "#8B949E")
+            _ti = "↑" if _row["_trend"] == "up" else ("↓" if _row["_trend"] == "dn" else "—")
+            with _pw_cols[_pi]:
+                st.markdown(
+                    f"<div style='background:linear-gradient(135deg,#0f1724,#101928);border:1px solid rgba(168,85,247,0.15);"
+                    f"border-left:3px solid rgba(168,85,247,0.5);border-radius:10px;padding:0.75rem 0.9rem;margin-bottom:2.2rem;'>"
+                    f"<div style='color:#C9E1FF;font-size:0.8rem;font-weight:600;margin-bottom:4px;'>{_row['Ejercicio']}</div>"
+                    f"<div style='display:flex;align-items:baseline;gap:6px;'>"
+                    f"<span style='color:white;font-size:1.1rem;font-weight:800;'>{_row['Peso']} kg</span>"
+                    f"<span style='color:#9ca3af;font-size:0.72rem;'>{_row['S×R']}</span>"
+                    f"<span style='color:{_tc};font-weight:800;font-size:0.85rem;margin-left:auto;'>{_ti} {_row['Δ']}</span>"
+                    f"</div></div>",
+                    unsafe_allow_html=True)
+
+        st.markdown("<div style='height:1.25rem;'></div>", unsafe_allow_html=True)
+
+        with st.expander(f"Ver historial completo ({len(df_pesos)} ejercicios)"):
+            _fcol, _scol = st.columns(2)
+            with _fcol:
+                _grupos = sorted([g for g in df_pesos["Grupo"].dropna().astype(str).unique().tolist() if g.strip()])
+                _grupo_sel = st.selectbox(
+                    "Filtrar por grupo",
+                    options=["Todos"] + _grupos,
+                    index=0,
+                    key=f"pesos_group_{user_actual}",
+                )
+            with _scol:
+                _orden_sel = st.selectbox(
+                    "Ordenar por",
+                    options=["Más reciente", "Mayor subida (Δ)", "Mayor bajada (Δ)", "Mayor peso actual"],
+                    index=0,
+                    key=f"pesos_sort_{user_actual}",
+                )
+
+            _df_pesos_full = df_pesos.copy()
+            if _grupo_sel != "Todos":
+                _df_pesos_full = _df_pesos_full[_df_pesos_full["Grupo"] == _grupo_sel]
+
+            if _orden_sel == "Mayor subida (Δ)":
+                _df_pesos_full = _df_pesos_full.sort_values(["_delta_num", "_orden_fecha"], ascending=[False, False])
+            elif _orden_sel == "Mayor bajada (Δ)":
+                _df_pesos_full = _df_pesos_full.sort_values(["_delta_num", "_orden_fecha"], ascending=[True, False])
+            elif _orden_sel == "Mayor peso actual":
+                _df_pesos_full = _df_pesos_full.sort_values(["_peso_num", "_orden_fecha"], ascending=[False, False])
+            else:
+                _df_pesos_full = _df_pesos_full.sort_values(
+                    ["_orden_fecha", "_orden_sesion", "_orden_reg"],
+                    ascending=[False, False, False],
+                )
+
+            if _df_pesos_full.empty:
+                st.info("No hay ejercicios para ese filtro.")
+            else:
+                st.dataframe(
+                    _df_pesos_full[["Ejercicio", "Grupo", "Peso", "S×R", "Δ"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
 _kpi_card(_kpi_cols[0], "KM",          km_val,     "Últimos 7 días", _delta_html(km_delta_num, 1),     "#22c55e", "👟")
 _kpi_card(_kpi_cols[1], "HRV",         hrv_val,    "ms",             _delta_html(hrv_delta_num, 0),    "#3b82f6", "♡")
 _kpi_card(_kpi_cols[2], "FUERZA",      fuerza_val, "sesiones",       _delta_html(fuerza_delta_num, 0), "#a855f7", "💪")
@@ -425,7 +498,14 @@ else:
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 7. Recovery & Carga (donuts + RHR + sparklines)
+# 7. Progresión de Pesos
+# ---------------------------------------------------------------------------
+_render_progresion_pesos(user_actual)
+
+st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# 8. Recovery & Carga (donuts + RHR + sparklines)
 # ---------------------------------------------------------------------------
 st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
@@ -462,83 +542,6 @@ try:
 
 finally:
     conn.close()
-
-st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
-
-# ---------------------------------------------------------------------------
-# 8. Progresión de Pesos
-# ---------------------------------------------------------------------------
-# ── Progresión de Pesos (full width row) ─────────────────────────────────────
-st.markdown("""
-<div style="display:flex;align-items:center;gap:0.5rem;margin:0 0 1rem;">
-  <span style="color:#a855f7;font-size:1rem;">💪</span>
-  <span style="font-size:0.82rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Progresión de Pesos</span>
-  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(168,85,247,0.3),transparent);margin-left:0.4rem;"></div>
-</div>""", unsafe_allow_html=True)
-df_pesos = progresion_pesos_ejercicios(user_actual)
-if df_pesos.empty:
-    st.info("Registra sesiones de fuerza en el **Diario** para ver la progresión.")
-else:
-    _pw_cols = st.columns(min(len(df_pesos), 4), gap="small")
-    for _pi, (_, _row) in enumerate(df_pesos.head(4).iterrows()):
-        _tc = "#00db81" if _row["_trend"] == "up" else ("#ef4444" if _row["_trend"] == "dn" else "#8B949E")
-        _ti = "↑" if _row["_trend"] == "up" else ("↓" if _row["_trend"] == "dn" else "—")
-        with _pw_cols[_pi]:
-            st.markdown(
-                f"<div style='background:linear-gradient(135deg,#0f1724,#101928);border:1px solid rgba(168,85,247,0.15);"
-                f"border-left:3px solid rgba(168,85,247,0.5);border-radius:10px;padding:0.75rem 0.9rem;margin-bottom:2.2rem;'>"
-                f"<div style='color:#C9E1FF;font-size:0.8rem;font-weight:600;margin-bottom:4px;'>{_row['Ejercicio']}</div>"
-                f"<div style='display:flex;align-items:baseline;gap:6px;'>"
-                f"<span style='color:white;font-size:1.1rem;font-weight:800;'>{_row['Peso']} kg</span>"
-                f"<span style='color:#9ca3af;font-size:0.72rem;'>{_row['S×R']}</span>"
-                f"<span style='color:{_tc};font-weight:800;font-size:0.85rem;margin-left:auto;'>{_ti} {_row['Δ']}</span>"
-                f"</div></div>",
-                unsafe_allow_html=True)
-
-    st.markdown("<div style='height:1.25rem;'></div>", unsafe_allow_html=True)
-
-    with st.expander(f"Ver historial completo ({len(df_pesos)} ejercicios)"):
-        _fcol, _scol = st.columns(2)
-        with _fcol:
-            _grupos = sorted([g for g in df_pesos["Grupo"].dropna().astype(str).unique().tolist() if g.strip()])
-            _grupo_sel = st.selectbox(
-                "Filtrar por grupo",
-                options=["Todos"] + _grupos,
-                index=0,
-                key=f"pesos_group_{user_actual}",
-            )
-        with _scol:
-            _orden_sel = st.selectbox(
-                "Ordenar por",
-                options=["Más reciente", "Mayor subida (Δ)", "Mayor bajada (Δ)", "Mayor peso actual"],
-                index=0,
-                key=f"pesos_sort_{user_actual}",
-            )
-
-        _df_pesos_full = df_pesos.copy()
-        if _grupo_sel != "Todos":
-            _df_pesos_full = _df_pesos_full[_df_pesos_full["Grupo"] == _grupo_sel]
-
-        if _orden_sel == "Mayor subida (Δ)":
-            _df_pesos_full = _df_pesos_full.sort_values(["_delta_num", "_orden_fecha"], ascending=[False, False])
-        elif _orden_sel == "Mayor bajada (Δ)":
-            _df_pesos_full = _df_pesos_full.sort_values(["_delta_num", "_orden_fecha"], ascending=[True, False])
-        elif _orden_sel == "Mayor peso actual":
-            _df_pesos_full = _df_pesos_full.sort_values(["_peso_num", "_orden_fecha"], ascending=[False, False])
-        else:
-            _df_pesos_full = _df_pesos_full.sort_values(
-                ["_orden_fecha", "_orden_sesion", "_orden_reg"],
-                ascending=[False, False, False],
-            )
-
-        if _df_pesos_full.empty:
-            st.info("No hay ejercicios para ese filtro.")
-        else:
-            st.dataframe(
-                _df_pesos_full[["Ejercicio", "Grupo", "Peso", "S×R", "Δ"]],
-                use_container_width=True,
-                hide_index=True,
-            )
 
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
