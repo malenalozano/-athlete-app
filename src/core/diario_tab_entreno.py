@@ -495,6 +495,7 @@ div[data-testid="stTextArea"] textarea:focus {
             for i, ses in enumerate(sesiones_detectadas, 1):
                 meta = ses["meta"]
                 res = ses["res"]
+                vinculo_running = ses.get("vinculo_running")
                 fecha_seg = ses["fecha"]
                 fecha_str = fecha_seg.strftime("%d %b %Y")
                 tipo_txt = meta["tipo"].capitalize()
@@ -535,6 +536,24 @@ div[data-testid="stTextArea"] textarea:focus {
                             f"</div>",
                             unsafe_allow_html=True
                         )
+
+                    if vinculo_running:
+                        km_vinc = (_safe_float(vinculo_running.get("distancia_m")) or 0) / 1000
+                        tipo_vinc = str(vinculo_running.get("tipo_deporte", "Garmin") or "Garmin")
+                        st.markdown(
+                            f"<div style='background:rgba(96,165,250,0.1);border:1px solid #30363d;border-radius:8px;padding:10px;margin-bottom:12px;'>"
+                            f"<div style='color:#60a5fa;font-size:11px;font-weight:600;margin-bottom:4px;'>🔗 Enlazado con Garmin</div>"
+                            f"<div style='color:{TXT2};font-size:12px;'>{tipo_vinc} · {km_vinc:.1f}km · {vinculo_running.get('fecha', '')}</div>"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.markdown(
+                            f"<div style='background:rgba(255,255,255,0.03);border:1px solid #30363d;border-radius:8px;padding:10px;margin-bottom:12px;'>"
+                            f"<div style='color:{TXT3};font-size:11px;font-weight:600;'>🔗 Sin enlace con actividad Garmin</div>"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
                     
                     # Mostrar ejercicios si existen
                     if n_ej > 0 and res.get("datos"):
@@ -545,7 +564,7 @@ div[data-testid="stTextArea"] textarea:focus {
                         )
                         
                         # Tabla de ejercicios
-                        cols_header = st.columns([2.5, 1, 1, 1.2, 1.2, 1.5])
+                        cols_header = st.columns([2.8, 1, 1, 1.4, 1.8])
                         with cols_header[0]:
                             st.markdown(f"<div style='color:{TXT3};font-size:10px;font-weight:700;'>Ejercicio</div>", unsafe_allow_html=True)
                         with cols_header[1]:
@@ -555,19 +574,16 @@ div[data-testid="stTextArea"] textarea:focus {
                         with cols_header[3]:
                             st.markdown(f"<div style='color:{TXT3};font-size:10px;font-weight:700;'>Peso (kg)</div>", unsafe_allow_html=True)
                         with cols_header[4]:
-                            st.markdown(f"<div style='color:{TXT3};font-size:10px;font-weight:700;'>RPE</div>", unsafe_allow_html=True)
-                        with cols_header[5]:
                             st.markdown(f"<div style='color:{TXT3};font-size:10px;font-weight:700;'>Grupo muscular</div>", unsafe_allow_html=True)
                         
                         st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
                         
                         for ej_idx, ej in enumerate(res["datos"], 1):
-                            cols_ej = st.columns([2.5, 1, 1, 1.2, 1.2, 1.5])
+                            cols_ej = st.columns([2.8, 1, 1, 1.4, 1.8])
                             nombre_ej = ej.get("ejercicio", "—")
                             series = ej.get("series", "—")
                             reps = ej.get("repeticiones", "—")
                             peso = ej.get("peso", "—")
-                            rpe = ej.get("rpe", "—")
                             grupo = ej.get("grupo_muscular", "—")
                             
                             with cols_ej[0]:
@@ -580,8 +596,6 @@ div[data-testid="stTextArea"] textarea:focus {
                                 peso_txt = f"{peso}kg" if peso != "—" else "—"
                                 st.markdown(f"<div style='color:{TXT2};font-size:11px;text-align:center;'>{peso_txt}</div>", unsafe_allow_html=True)
                             with cols_ej[4]:
-                                st.markdown(f"<div style='color:{TXT2};font-size:11px;text-align:center;'>{rpe}</div>", unsafe_allow_html=True)
-                            with cols_ej[5]:
                                 st.markdown(f"<div style='color:{TXT3};font-size:10px;'>{grupo}</div>", unsafe_allow_html=True)
                             
                             # Mostrar notas si existen
@@ -1010,16 +1024,15 @@ def _guardar_sesiones(usuario_id: int, sesiones: list):
             for ej in res_s["datos"]:
                 conn.execute(
                     "INSERT INTO ejercicios_fuerza "
-                    "(sesion_id,ejercicio,peso,series,repeticiones,"
-                    "grupo_muscular,musculo_principal,rpe,sensaciones) "
-                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                        "(sesion_id,ejercicio,peso,series,repeticiones,"
+                        "grupo_muscular,musculo_principal,sensaciones) "
+                        "VALUES (?,?,?,?,?,?,?,?)",
                     (sesion_id, ej.get("ejercicio",""),
                      float(ej.get("peso",0) or 0),
                      int(ej.get("series",0) or 0),
                      int(ej.get("repeticiones",0) or 0),
                      ej.get("grupo_muscular","Tren Inferior"),
                      ej.get("musculo_principal","Varios"),
-                     int(ej.get("rpe",5) or 5),
                      ej.get("notas","")))
                 ej_id = buscar_ejercicio_id(usuario_id, ej.get("ejercicio",""))
                 
@@ -1047,8 +1060,7 @@ def _guardar_sesiones(usuario_id: int, sesiones: list):
                         float(ej.get("peso",0) or 0),
                         int(ej.get("series",0) or 1),
                         int(ej.get("repeticiones",0) or 1),
-                        int(ej.get("rpe",6) or 6),
-                        str(ej.get("notas","") or ""))
+                        notas=str(ej.get("notas","") or ""))
 
         conn.commit()
         st.cache_data.clear()

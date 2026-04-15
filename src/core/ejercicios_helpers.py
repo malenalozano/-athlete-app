@@ -145,13 +145,14 @@ def buscar_ejercicio_id(usuario_id: int, nombre: str) -> int | None:
 
 
 def guardar_historial(usuario_id: int, ejercicio_id: int, fecha: str,
-                      peso: float, series: int, reps: int, rpe: int = 6, notas: str = ""):
+                      peso: float, series: int, reps: int, rpe: int | None = None, notas: str = ""):
     conn = get_db_connection()
     try:
+        rpe_valor = rpe if rpe is not None else None
         conn.execute(
             "INSERT INTO historial_ejercicio (ejercicio_id,usuario_id,fecha,peso,series,repeticiones,rpe,notas) "
             "VALUES (?,?,?,?,?,?,?,?)",
-            (ejercicio_id, usuario_id, fecha, peso, series, reps, rpe, notas))
+            (ejercicio_id, usuario_id, fecha, peso, series, reps, rpe_valor, notas))
         conn.commit()
     except Exception:
         pass
