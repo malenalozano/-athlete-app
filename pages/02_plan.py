@@ -292,8 +292,13 @@ if active_tab == "generar":
 </div>""", unsafe_allow_html=True)
 
     with hero_right:
-        st.markdown('<div class="plan-cta-card">', unsafe_allow_html=True)
-        st.markdown('<div class="plan-cta-label">Generación manual</div>', unsafe_allow_html=True)
+        st.markdown("""
+<div class="plan-cta-card">
+  <div class="plan-cta-label">Generación manual</div>
+</div>""", unsafe_allow_html=True)
+        
+        st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+        
         if st.button("⚡ Regenerar plan (con IA)", type="primary", use_container_width=True, key="plan_generate"):
             with st.spinner("Generando plan..."):
                 try:
@@ -315,11 +320,19 @@ if active_tab == "generar":
                     st.error(f"**Traceback completo:**\n\n```\n{traceback.format_exc()}\n```")
                     st.stop()
             st.rerun()
+        
+        st.markdown("<div style='height:0.4rem;'></div>", unsafe_allow_html=True)
+        
         sin_ia = st.checkbox("Sin IA", key="plan_sin_ia")
         if sin_ia:
             st.session_state.plan_ia = False
-        st.markdown('<div class="plan-cta-hint">La sincronización y los cambios del plan siguen siendo manuales desde aquí. El botón usa IA solo cuando se activa.</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+        
+        st.markdown("""
+<div class="plan-cta-card">
+  <div class="plan-cta-hint">La sincronización y los cambios del plan siguen siendo manuales desde aquí. El botón usa IA solo cuando se activa.</div>
+</div>""", unsafe_allow_html=True)
 
     # Week navigation
     nav_c1, nav_c2, nav_c3 = st.columns([0.08, 0.84, 0.08])

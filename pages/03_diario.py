@@ -94,12 +94,20 @@ st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 st.markdown(
     """
 <style>
-.stFormSubmitButton > button[kind="primary"] {
+form button[type="submit"],
+form [data-testid="stBaseButton-primary"] button,
+.stFormSubmitButton button {
     background: #a3e635 !important;
     color: #0d1117 !important;
     border: none !important;
     font-weight: 600 !important;
     border-radius: 8px !important;
+}
+form button[type="submit"]:hover,
+form [data-testid="stBaseButton-primary"] button:hover,
+.stFormSubmitButton button:hover {
+    background: #a3e635 !important;
+    opacity: 0.9 !important;
 }
 </style>
 """,
