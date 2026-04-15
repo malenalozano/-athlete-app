@@ -329,15 +329,36 @@ def _reaplicar_slots_semana(dias_ordenados: list[dict], lunes_semana: datetime) 
 
 
 def _map_sorted_labels_to_days(sorted_labels: list[str], original_labels: list[str], original_days: list[dict]) -> list[dict]:
-    """Resuelve el orden devuelto por el sortable preservando duplicados."""
+    """Resuelve el orden devuelto por el sortable de forma robusta ante cambios de espacios/saltos."""
+
+    def _norm(txt: str) -> str:
+        return " ".join(str(txt or "").replace("\r", " ").replace("\n", " ").split()).strip().lower()
+
+    def _slot_key(txt: str) -> str:
+        n = _norm(txt)
+        parts = n.split(" ")
+        if len(parts) >= 2:
+            return f"{parts[0]} {parts[1]}"
+        return n
+
     remaining = list(range(len(original_labels)))
+    original_norm = [_norm(x) for x in original_labels]
+    original_slot = [_slot_key(x) for x in original_labels]
+
     mapped: list[dict] = []
     for lbl in sorted_labels:
-        found_pos = next((pos for pos, idx in enumerate(remaining) if original_labels[idx] == lbl), None)
+        lbl_norm = _norm(lbl)
+        lbl_slot = _slot_key(lbl)
+
+        found_pos = next((pos for pos, idx in enumerate(remaining) if original_norm[idx] == lbl_norm), None)
+        if found_pos is None:
+            found_pos = next((pos for pos, idx in enumerate(remaining) if original_slot[idx] == lbl_slot), None)
         if found_pos is None:
             continue
+
         original_idx = remaining.pop(found_pos)
         mapped.append(dict(original_days[original_idx]))
+
     return mapped if len(mapped) == len(original_days) else [dict(d) for d in original_days]
 
 
