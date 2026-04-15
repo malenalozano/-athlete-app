@@ -173,7 +173,6 @@ div[data-testid="stHorizontalBlock"].subtab-row button:hover {
 
 
 def _logo_html(auth_user: str) -> str:
-    sub = f"{auth_user} &nbsp;·&nbsp; Maratón 2026" if auth_user else "Maratón 2026"
     return (
         "<div style='display:flex;align-items:center;gap:12px;height:80px;"
         "padding-right:16px;border-right:1px solid rgba(255,255,255,0.06);'>"
@@ -186,7 +185,6 @@ def _logo_html(auth_user: str) -> str:
         "background:linear-gradient(90deg,#C9FF00,#00D4FF);"
         "-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>"
         "Proyecto Athlete</p>"
-        f"<p style='font-size:11px;color:#8B949E;margin:4px 0 0;line-height:1;'>{sub}</p>"
         "</div></div>"
     )
 
