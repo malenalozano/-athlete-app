@@ -131,7 +131,7 @@ st.markdown(f"""
       <p style="color:#8B949E;font-size:0.875rem;margin:0 0 1rem;">{fecha_es}</p>
       <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">
         {_ciclo_badge_html}
-        <span style="background:rgba(59,130,246,0.2);color:#93c5fd;border:1px solid rgba(59,130,246,0.3);border-radius:9999px;padding:4px 12px;font-size:0.75rem;font-weight:600;">🗓 Fase: {fase_hoy['fase_nombre']}</span>
+        <span style="background:rgba(59,130,246,0.2);color:#93c5fd;border:1px solid rgba(59,130,246,0.3);border-radius:9999px;padding:4px 12px;font-size:0.75rem;font-weight:600;">🗓 Fase: {fase_hoy.get('fase_nombre', 'Desconocida')}</span>
       </div>
     </div>
     <div style="border-radius:16px;padding:1.25rem 2rem;text-align:center;flex-shrink:0;background:linear-gradient(135deg,rgba(0,212,255,0.12),rgba(59,130,246,0.1));border:1px solid rgba(0,212,255,0.3);box-shadow:0 0 24px rgba(0,212,255,0.15);">
