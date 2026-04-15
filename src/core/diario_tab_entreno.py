@@ -477,6 +477,54 @@ div[data-testid="stTextArea"] textarea:focus {
                 st.session_state[_k_res] = True
                 st.rerun()
 
+        # ── Mostrar resultados del procesamiento ─────────────────────────
+        if st.session_state.get(_k_res) and st.session_state.get(_k_ses):
+            sesiones_detectadas = st.session_state[_k_ses]
+            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='background:rgba(163,230,53,0.08);border:1px solid #30363d;border-radius:10px;padding:12px;'>"
+                f"<div style='color:#a3e635;font-size:12px;font-weight:600;margin-bottom:8px;'>✅ {len(sesiones_detectadas)} sesión{'es' if len(sesiones_detectadas) > 1 else ''} detectada{'s' if len(sesiones_detectadas) > 1 else ''}</div>",
+                unsafe_allow_html=True
+            )
+            
+            for i, ses in enumerate(sesiones_detectadas, 1):
+                meta = ses["meta"]
+                res = ses["res"]
+                fecha_str = ses["fecha"].strftime("%d %b %Y")
+                tipo_txt = meta["tipo"].capitalize()
+                n_ej = len(res.get("datos", []))
+                
+                if n_ej > 0:
+                    grupos = list({e.get("grupo_muscular", "").strip() for e in res["datos"] if e.get("grupo_muscular")})
+                    descripcion = f"{n_ej} ej. · {', '.join(grupos[:2]) or 'General'}"
+                else:
+                    descripcion = tipo_txt or "Nota"
+                
+                st.markdown(
+                    f"<div style='background:#16191e;border:1px solid #30363d;border-radius:8px;padding:8px;margin:6px 0;'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:center;'>"
+                    f"<div style='color:{TXT1};font-size:11px;'>"
+                    f"<b>{descripcion}</b> · {fecha_str}</div>"
+                    f"<div style='color:{TXT3};font-size:9px;'>{tipo_txt}</div>"
+                    f"</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+            # Botón para guardar
+            c_guardar, c_limpiar = st.columns([2, 1])
+            with c_guardar:
+                if st.button("💾 Guardar sesiones", use_container_width=True, type="primary"):
+                    _guardar_sesiones(usuario_id, sesiones_detectadas)
+            with c_limpiar:
+                if st.button("Descartar", use_container_width=True):
+                    st.session_state[_k_ses] = []
+                    st.session_state[_k_res] = None
+                    st.session_state[f"nota_fuerza_{usuario_id}"] = ""
+                    st.rerun()
+
         _card_close()
 
         # ── Sección 2: Stats del mes ──────────────────────────────────────
@@ -906,6 +954,7 @@ def _guardar_sesiones(usuario_id: int, sesiones: list):
         st.success(f"✅ {n} sesión{'es' if n>1 else ''} guardada{'s' if n>1 else ''}")
         st.session_state[f"resultado_ia_{usuario_id}"] = None
         st.session_state[f"sesiones_detectadas_{usuario_id}"] = []
+        st.session_state[f"nota_fuerza_{usuario_id}"] = ""
         st.rerun()
     except Exception as e:
         st.error(f"Error SQL: {e}")
