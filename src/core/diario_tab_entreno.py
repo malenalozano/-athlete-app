@@ -477,41 +477,133 @@ div[data-testid="stTextArea"] textarea:focus {
                 st.session_state[_k_res] = True
                 st.rerun()
 
-        # ── Mostrar resultados del procesamiento ─────────────────────────
+        # ── Mostrar resultados del procesamiento (DETALLES COMPLETOS) ──────
         if st.session_state.get(_k_res) and st.session_state.get(_k_ses):
             sesiones_detectadas = st.session_state[_k_ses]
-            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
             st.markdown(
-                f"<div style='background:rgba(163,230,53,0.08);border:1px solid #30363d;border-radius:10px;padding:12px;'>"
-                f"<div style='color:#a3e635;font-size:12px;font-weight:600;margin-bottom:8px;'>✅ {len(sesiones_detectadas)} sesión{'es' if len(sesiones_detectadas) > 1 else ''} detectada{'s' if len(sesiones_detectadas) > 1 else ''}</div>",
+                f"<div style='color:#a3e635;font-size:13px;font-weight:700;margin-bottom:10px;'>"
+                f"✅ {len(sesiones_detectadas)} sesión{'es' if len(sesiones_detectadas) > 1 else ''} detectada{'s' if len(sesiones_detectadas) > 1 else ''}</div>",
                 unsafe_allow_html=True
             )
             
             for i, ses in enumerate(sesiones_detectadas, 1):
                 meta = ses["meta"]
                 res = ses["res"]
-                fecha_str = ses["fecha"].strftime("%d %b %Y")
+                fecha_seg = ses["fecha"]
+                fecha_str = fecha_seg.strftime("%d %b %Y")
                 tipo_txt = meta["tipo"].capitalize()
                 n_ej = len(res.get("datos", []))
+                nota_estado = ses.get("nota_estado", "")
                 
-                if n_ej > 0:
-                    grupos = list({e.get("grupo_muscular", "").strip() for e in res["datos"] if e.get("grupo_muscular")})
-                    descripcion = f"{n_ej} ej. · {', '.join(grupos[:2]) or 'General'}"
-                else:
-                    descripcion = tipo_txt or "Nota"
+                # Color según tipo
+                color_tipo = "#a3e635" if tipo_txt == "Carrera" else "#a78bfa" if tipo_txt == "Fuerza" else "#60a5fa"
                 
-                st.markdown(
-                    f"<div style='background:#16191e;border:1px solid #30363d;border-radius:8px;padding:8px;margin:6px 0;'>"
-                    f"<div style='display:flex;justify-content:space-between;align-items:center;'>"
-                    f"<div style='color:{TXT1};font-size:11px;'>"
-                    f"<b>{descripcion}</b> · {fecha_str}</div>"
-                    f"<div style='color:{TXT3};font-size:9px;'>{tipo_txt}</div>"
-                    f"</div>"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
+                # ── Expander por sesión ──
+                with st.expander(
+                    f"📅 {fecha_str} · {tipo_txt} · {n_ej} ejercicio{'s' if n_ej != 1 else ''}",
+                    expanded=(i == 1)  # Primera sesión expandida por defecto
+                ):
+                    # Encabezado con info
+                    st.markdown(
+                        f"<div style='background:#16191e;border:1px solid #30363d;border-radius:10px;padding:12px;margin-bottom:12px;'>"
+                        f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;'>"
+                        f"<div>"
+                        f"<div style='color:{TXT3};font-size:10px;font-weight:600;text-transform:uppercase;margin-bottom:4px;'>📅 Fecha</div>"
+                        f"<div style='color:{TXT1};font-size:13px;font-weight:600;'>{fecha_str}</div>"
+                        f"</div>"
+                        f"<div>"
+                        f"<div style='color:{TXT3};font-size:10px;font-weight:600;text-transform:uppercase;margin-bottom:4px;'>🏷️ Tipo</div>"
+                        f"<div style='color:{color_tipo};font-size:13px;font-weight:600;'>{tipo_txt}</div>"
+                        f"</div>"
+                        f"</div>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+                    
+                    # Mostrar nota de estado si existe
+                    if nota_estado:
+                        st.markdown(
+                            f"<div style='background:rgba(96,165,250,0.1);border:1px solid #30363d;border-radius:8px;padding:10px;margin-bottom:12px;'>"
+                            f"<div style='color:#60a5fa;font-size:11px;font-weight:600;margin-bottom:4px;'>💭 Estado reportado:</div>"
+                            f"<div style='color:{TXT2};font-size:12px;'>{nota_estado}</div>"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+                    
+                    # Mostrar ejercicios si existen
+                    if n_ej > 0 and res.get("datos"):
+                        st.markdown(
+                            f"<div style='color:{TXT2};font-size:12px;font-weight:600;margin-bottom:8px;'>"
+                            f"💪 Ejercicios procesados ({n_ej}):</div>",
+                            unsafe_allow_html=True
+                        )
+                        
+                        # Tabla de ejercicios
+                        cols_header = st.columns([2.5, 1, 1, 1.2, 1.2, 1.5])
+                        with cols_header[0]:
+                            st.markdown(f"<div style='color:{TXT3};font-size:10px;font-weight:700;'>Ejercicio</div>", unsafe_allow_html=True)
+                        with cols_header[1]:
+                            st.markdown(f"<div style='color:{TXT3};font-size:10px;font-weight:700;'>series</div>", unsafe_allow_html=True)
+                        with cols_header[2]:
+                            st.markdown(f"<div style='color:{TXT3};font-size:10px;font-weight:700;'>Reps</div>", unsafe_allow_html=True)
+                        with cols_header[3]:
+                            st.markdown(f"<div style='color:{TXT3};font-size:10px;font-weight:700;'>Peso (kg)</div>", unsafe_allow_html=True)
+                        with cols_header[4]:
+                            st.markdown(f"<div style='color:{TXT3};font-size:10px;font-weight:700;'>RPE</div>", unsafe_allow_html=True)
+                        with cols_header[5]:
+                            st.markdown(f"<div style='color:{TXT3};font-size:10px;font-weight:700;'>Grupo muscular</div>", unsafe_allow_html=True)
+                        
+                        st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
+                        
+                        for ej_idx, ej in enumerate(res["datos"], 1):
+                            cols_ej = st.columns([2.5, 1, 1, 1.2, 1.2, 1.5])
+                            nombre_ej = ej.get("ejercicio", "—")
+                            series = ej.get("series", "—")
+                            reps = ej.get("repeticiones", "—")
+                            peso = ej.get("peso", "—")
+                            rpe = ej.get("rpe", "—")
+                            grupo = ej.get("grupo_muscular", "—")
+                            
+                            with cols_ej[0]:
+                                st.markdown(f"<div style='color:{TXT1};font-size:11px;font-weight:500;'><b>{nombre_ej}</b></div>", unsafe_allow_html=True)
+                            with cols_ej[1]:
+                                st.markdown(f"<div style='color:{TXT2};font-size:11px;text-align:center;'>{series}</div>", unsafe_allow_html=True)
+                            with cols_ej[2]:
+                                st.markdown(f"<div style='color:{TXT2};font-size:11px;text-align:center;'>{reps}</div>", unsafe_allow_html=True)
+                            with cols_ej[3]:
+                                peso_txt = f"{peso}kg" if peso != "—" else "—"
+                                st.markdown(f"<div style='color:{TXT2};font-size:11px;text-align:center;'>{peso_txt}</div>", unsafe_allow_html=True)
+                            with cols_ej[4]:
+                                st.markdown(f"<div style='color:{TXT2};font-size:11px;text-align:center;'>{rpe}</div>", unsafe_allow_html=True)
+                            with cols_ej[5]:
+                                st.markdown(f"<div style='color:{TXT3};font-size:10px;'>{grupo}</div>", unsafe_allow_html=True)
+                            
+                            # Mostrar notas si existen
+                            notas = ej.get("notas", "")
+                            if notas:
+                                st.markdown(
+                                    f"<div style='margin-left:0;margin-top:4px;padding:8px;background:#16191e;border-left:3px solid #60a5fa;border-radius:4px;'>"
+                                    f"<div style='color:#60a5fa;font-size:9px;font-weight:600;'>📝 Notas:</div>"
+                                    f"<div style='color:{TXT2};font-size:10px;margin-top:2px;'>{notas}</div>"
+                                    f"</div>",
+                                    unsafe_allow_html=True
+                                )
+                    else:
+                        if tipo_txt == "Carrera":
+                            st.markdown(
+                                f"<div style='color:{TXT3};font-size:11px;'>"
+                                f"🏃 Sesión de <b>carrera</b> detectada</div>",
+                                unsafe_allow_html=True
+                            )
+                        else:
+                            st.markdown(
+                                f"<div style='color:{TXT3};font-size:11px;'>"
+                                f"📝 Nota de entrenamiento registrada</div>",
+                                unsafe_allow_html=True
+                            )
             
-            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
             
             # Botón para guardar
             c_guardar, c_limpiar = st.columns([2, 1])
