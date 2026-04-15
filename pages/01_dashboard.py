@@ -44,7 +44,8 @@ except Exception as e:
     st.stop()
 
 perfil = obtener_perfil(user_actual) or {}
-nombre = perfil.get("nombre", "Atleta")
+nombre = str(perfil.get("nombre", "Atleta") or "Atleta").strip()
+saludo_nombre = f"{saludo}, {nombre} 👋"
 
 # ---------------------------------------------------------------------------
 # Datos base
@@ -132,8 +133,8 @@ _hero_html = (
     '<div style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:1.5rem;flex-wrap:wrap;">'
     '<div>'
     '<h1 style="font-size:2.25rem;font-weight:800;color:white;margin:0 0 0.5rem;line-height:1.2;">'
-    f'{saludo}, <span style="background:linear-gradient(90deg,#C9FF00,#00D4FF);'
-    f'-webkit-background-clip:text;-webkit-text-fill-color:transparent;">{nombre}</span> 👋'
+    f'<span style="background:linear-gradient(90deg,#C9FF00,#00D4FF);'
+    f'-webkit-background-clip:text;-webkit-text-fill-color:transparent;">{saludo_nombre}</span>'
     '</h1>'
     f'<p style="color:#8B949E;font-size:0.875rem;margin:0 0 1rem;">{fecha_es}</p>'
     '<div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">'
