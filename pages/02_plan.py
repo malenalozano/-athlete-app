@@ -604,12 +604,19 @@ if active_tab == "generar":
 """,
         )
 
+        st.write("**DEBUG - Base:**", base_labels[:2] if len(base_labels) > 0 else "vacío")
+        st.write("**DEBUG - Ordenado:**", labels_ordenados[:2] if len(labels_ordenados) > 0 else "vacío")
+        
         if labels_ordenados != base_labels:
+            st.write("✅ Detectado cambio, remapeando...")
             dias_ordenados = _map_sorted_labels_to_days(labels_ordenados, base_labels, dias_plan)
+            st.write("**DEBUG - Ordenado mapeado:**", dias_ordenados)
             plan["dias"] = _reaplicar_slots_semana(dias_ordenados, lunes)
             st.session_state.plan_data = plan
             st.session_state["plan_selected_day_idx"] = 0
             st.rerun()
+        else:
+            st.write("❌ Sin cambios detectados")
 
         # Click de día para ver detalle (manteniendo una sola fila semanal visible).
         pick_cols = st.columns(len(dias_plan), gap="small")
