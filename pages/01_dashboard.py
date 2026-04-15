@@ -187,7 +187,6 @@ st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:0.7rem 0 1.15rem;">
   <span style="color:#C9FF00;font-size:1.1rem;">◈</span>
     <span style="font-size:1.08rem;font-weight:800;color:white;text-transform:uppercase;letter-spacing:0.07em;">Resumen Últimos 7 Días</span>
-    <span style="font-size:0.62rem;color:#8B949E;background:#30363D;padding:3px 8px;border-radius:999px;">build 2026-04-15</span>
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.35),transparent);margin-left:0.5rem;"></div>
 </div>
 """, unsafe_allow_html=True)
