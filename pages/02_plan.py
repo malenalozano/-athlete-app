@@ -317,10 +317,10 @@ if active_tab == "generar":
     # Hero banner with integrated CTA
     hero_left, hero_right = st.columns([0.78, 0.22], gap="large")
     with hero_left:
-                st.markdown(
-                        f"<h2 style='color:white;font-size:1.25rem;font-weight:800;margin:0;'>Plan Semanal — {lunes.strftime('%-d al')} {(lunes + timedelta(6)).strftime('%-d %b')}</h2>",
-                        unsafe_allow_html=True,
-                )
+        st.markdown(
+            f"<h2 style='color:white;font-size:1.25rem;font-weight:800;margin:0;'>Plan Semanal — {lunes.strftime('%-d al')} {(lunes + timedelta(6)).strftime('%-d %b')}</h2>",
+            unsafe_allow_html=True,
+        )
 
     with hero_right:
         st.markdown('<div class="plan-cta-label">Generación manual</div>', unsafe_allow_html=True)

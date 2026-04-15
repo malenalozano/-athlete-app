@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useState, useRef, useCallback } from "react";
+import { useLocation } from "react-router";
 import { Header } from "../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { useUser } from "../context/UserContext";
+import { DndProvider, useDrag, useDrop } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 import {
   Sparkles,
   Calendar,
@@ -18,6 +19,8 @@ import {
   Target,
   Clock,
   X,
+  GripVertical,
+  ChevronDown,
 } from "lucide-react";
 import {
   BarChart,
@@ -132,11 +135,276 @@ const TYPE_COLORS: Record<string, { border: string; bg: string; text: string; ba
   },
 };
 
+// ── Drag-and-drop Day Card ─────────────────────────────────────────────────────
+
+const DRAG_TYPE = "DAY_CARD";
+
+interface DayCardProps {
+  day: typeof weekPlan[0];
+  index: number;
+  isSelected: boolean;
+  onSelect: (day: typeof weekPlan[0]) => void;
+  onMove: (from: number, to: number) => void;
+}
+
+function DayCard({ day, index, isSelected, onSelect, onMove }: DayCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const gripRef = useRef<HTMLDivElement>(null);
+  const colors = TYPE_COLORS[day.type] ?? TYPE_COLORS.rest;
+
+  const [{ isDragging }, drag, dragPreview] = useDrag({
+    type: DRAG_TYPE,
+    item: { index },
+    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+  });
+
+  const [{ isOver }, drop] = useDrop({
+    accept: DRAG_TYPE,
+    hover: (item: { index: number }) => {
+      if (item.index === index) return;
+      onMove(item.index, index);
+      item.index = index;
+    },
+    collect: (monitor) => ({ isOver: monitor.isOver() }),
+  });
+
+  // drag preview on the whole card, drag handle on the grip icon
+  dragPreview(drop(cardRef));
+  drag(gripRef);
+
+  return (
+    <div
+      ref={cardRef}
+      onClick={() => onSelect(day)}
+      className={`border-l-4 ${colors.border} rounded-xl transition-all cursor-pointer group relative select-none`}
+      style={{
+        background: "rgba(22,27,34,0.8)",
+        borderRight: `1px solid ${isSelected ? "rgba(201,255,0,0.3)" : "rgba(255,255,255,0.05)"}`,
+        borderTop: `1px solid ${isSelected ? "rgba(201,255,0,0.2)" : "rgba(255,255,255,0.05)"}`,
+        borderBottom: `1px solid ${isSelected ? "rgba(201,255,0,0.2)" : "rgba(255,255,255,0.05)"}`,
+        opacity: isDragging ? 0.35 : 1,
+        boxShadow: isOver
+          ? "0 0 0 2px rgba(201,255,0,0.5), 0 0 20px rgba(201,255,0,0.15)"
+          : isSelected
+          ? "0 0 0 1px rgba(201,255,0,0.4), 0 0 20px rgba(201,255,0,0.1)"
+          : "none",
+        transform: isOver ? "scale(1.04)" : "scale(1)",
+        transition: "transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease",
+      }}
+    >
+      {/* Grip handle — separate drag source */}
+      <div
+        ref={gripRef}
+        onClick={(e) => e.stopPropagation()}
+        className="absolute top-2 right-2 opacity-0 group-hover:opacity-70 transition-opacity cursor-grab active:cursor-grabbing p-1 rounded"
+        style={{ zIndex: 2 }}
+        title="Arrastra para mover"
+      >
+        <GripVertical className="h-3 w-3 text-[#8B949E]" />
+      </div>
+
+      <div className="p-4">
+        <p className="text-[10px] text-[#8B949E] font-bold mb-1">{day.day}</p>
+        <p className="text-xs text-white font-semibold mb-2">{day.date}</p>
+        <p className={`text-xs font-bold mb-1 ${colors.text}`}>{day.activity}</p>
+        <p className="text-[10px] text-[#8B949E] mb-2">{day.duration}</p>
+        {day.zone !== "—" && (
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${colors.badge}`}>
+            {day.zone}
+          </span>
+        )}
+        {isSelected ? (
+          <div className="mt-2 flex items-center gap-1">
+            <ChevronDown className="h-3 w-3 text-[#C9FF00]" />
+            <span className="text-[10px] text-[#C9FF00] font-semibold">Detalles abajo</span>
+          </div>
+        ) : (
+          <p className="text-[10px] text-[#8B949E] mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            Click para ver detalles
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Day Detail Panel ───────────────────────────────────────────────────────────
+
+function DayDetailPanel({ day, onClose }: { day: typeof weekPlan[0]; onClose: () => void }) {
+  const colors = TYPE_COLORS[day.type] ?? TYPE_COLORS.rest;
+  const typeLabel =
+    day.type === "running" ? "Carrera" : day.type === "strength" ? "Fuerza" : "Descanso";
+
+  return (
+    <div
+      className="rounded-2xl overflow-hidden mt-4"
+      style={{
+        background: "rgba(18,23,30,0.97)",
+        border: "1px solid rgba(201,255,0,0.2)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(201,255,0,0.08)",
+      }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-5 py-4"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className={`w-1 h-10 rounded-full`}
+            style={{
+              background:
+                day.type === "running"
+                  ? "#00D4FF"
+                  : day.type === "strength"
+                  ? "#A855F7"
+                  : "#22C55E",
+              boxShadow:
+                day.type === "running"
+                  ? "0 0 8px rgba(0,212,255,0.6)"
+                  : day.type === "strength"
+                  ? "0 0 8px rgba(168,85,247,0.6)"
+                  : "0 0 8px rgba(34,197,94,0.6)",
+            }}
+          />
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-base font-bold text-white">{day.activity}</p>
+              <Badge className={colors.badge}>{typeLabel}</Badge>
+            </div>
+            <p className="text-xs text-[#8B949E] mt-0.5">
+              {day.day} · {day.date}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+        >
+          <X className="h-4 w-4 text-[#8B949E]" />
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="p-5 space-y-4">
+        {/* Stats row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div
+            className="rounded-xl p-4"
+            style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)" }}
+          >
+            <p className="text-[10px] text-[#8B949E] mb-1 uppercase tracking-wider font-semibold">Duración / Distancia</p>
+            <p className="text-sm font-bold text-white">{day.duration}</p>
+          </div>
+          <div
+            className="rounded-xl p-4"
+            style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)" }}
+          >
+            <p className="text-[10px] text-[#8B949E] mb-1 uppercase tracking-wider font-semibold">Zona</p>
+            <p className="text-sm font-bold text-white">{day.zone}</p>
+          </div>
+          <div
+            className="rounded-xl p-4 col-span-2"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+          >
+            <p className="text-[10px] text-[#8B949E] mb-1 uppercase tracking-wider font-semibold flex items-center gap-1">
+              <Sparkles className="h-3 w-3 text-cyan-400" /> Instrucciones
+            </p>
+            <p className="text-sm text-[#C8D1D9]">{day.notes}</p>
+          </div>
+        </div>
+
+        {/* Running objectives */}
+        {day.type === "running" && (
+          <div
+            className="rounded-xl p-4"
+            style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}
+          >
+            <p className="text-sm font-semibold text-white mb-3">Objetivos de la sesión</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {[
+                `Mantener ritmo constante en ${day.zone}`,
+                "Cadencia objetivo: 175-180 spm",
+                "Sensación: Conversacional / Controlado",
+              ].map((obj, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="text-cyan-400 mt-0.5 shrink-0">✓</span>
+                  <p className="text-sm text-white">{obj}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Strength focus */}
+        {day.type === "strength" && (
+          <div
+            className="rounded-xl p-4"
+            style={{ background: "rgba(168,85,247,0.05)", border: "1px solid rgba(168,85,247,0.15)" }}
+          >
+            <p className="text-sm font-semibold text-white mb-3">Enfoque de la sesión</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {[
+                "Fuerza específica para running",
+                "Prevención de lesiones",
+                "Economía de carrera mejorada",
+              ].map((obj, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="text-purple-400 mt-0.5 shrink-0">•</span>
+                  <p className="text-sm text-white">{obj}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Rest */}
+        {day.type === "rest" && (
+          <div
+            className="rounded-xl p-4"
+            style={{ background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.15)" }}
+          >
+            <p className="text-sm font-semibold text-white mb-3">Actividades recomendadas</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {[
+                "Movilidad articular 10-15 min",
+                "Foam roller en cuádriceps e isquios",
+                "Hidratación y nutrición de recuperación",
+              ].map((obj, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="text-green-400 mt-0.5 shrink-0">→</span>
+                  <p className="text-sm text-white">{obj}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Generar Plan tab ───────────────────────────────────────────────────────────
 
-function GenerarPlan() {
+function GenerarPlanInner() {
   const { userId } = useUser();
+  const [days, setDays] = useState(weekPlan);
   const [selectedDay, setSelectedDay] = useState<typeof weekPlan[0] | null>(null);
+
+  const moveDay = useCallback((from: number, to: number) => {
+    setDays((prev) => {
+      const updated = [...prev];
+      const [moved] = updated.splice(from, 1);
+      updated.splice(to, 0, moved);
+      return updated;
+    });
+    // Keep selectedDay in sync
+    setSelectedDay(null);
+  }, []);
+
+  const handleSelect = (day: typeof weekPlan[0]) => {
+    setSelectedDay((prev) => (prev?.activity === day.activity && prev?.day === day.day ? null : day));
+  };
 
   return (
     <div className="space-y-8">
@@ -208,120 +476,34 @@ function GenerarPlan() {
 
       {/* Week Grid */}
       <div>
-        <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
+        <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
           <Calendar className="h-4 w-4 text-cyan-400" />
           Distribución Semanal
         </h3>
+        <p className="text-[11px] text-[#8B949E] mb-4 flex items-center gap-1.5">
+          <GripVertical className="h-3 w-3" />
+          Arrastra las tarjetas para reorganizar los entrenamientos · Haz click para ver detalles
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
-          {weekPlan.map((day) => {
-            const colors = TYPE_COLORS[day.type] ?? TYPE_COLORS.rest;
-            return (
-              <Card
-                key={day.day}
-                onClick={() => setSelectedDay(day)}
-                className={`border-l-4 ${colors.border} bg-gradient-to-br ${colors.bg} rounded-xl transition-all hover:scale-[1.02] cursor-pointer group`}
-                style={{ background: "rgba(22,27,34,0.8)", borderRight: "1px solid rgba(255,255,255,0.05)", borderTop: "1px solid rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}
-              >
-                <CardContent className="p-4">
-                  <p className="text-[10px] text-[#8B949E] font-bold mb-1">{day.day}</p>
-                  <p className="text-xs text-white font-semibold mb-2">{day.date}</p>
-                  <p className={`text-xs font-bold mb-1 ${colors.text}`}>{day.activity}</p>
-                  <p className="text-[10px] text-[#8B949E] mb-2">{day.duration}</p>
-                  {day.zone !== "—" && (
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${colors.badge}`}>
-                      {day.zone}
-                    </span>
-                  )}
-                  <p className="text-[10px] text-[#8B949E] mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    Click para ver detalles
-                  </p>
-                </CardContent>
-              </Card>
-            );
-          })}
+          {days.map((day, index) => (
+            <DayCard
+              key={`${day.day}-${day.activity}`}
+              day={day}
+              index={index}
+              isSelected={selectedDay?.activity === day.activity && selectedDay?.day === day.day}
+              onSelect={handleSelect}
+              onMove={moveDay}
+            />
+          ))}
         </div>
 
-        {/* Modal de detalles de sesión */}
-        <Dialog open={!!selectedDay} onOpenChange={() => setSelectedDay(null)}>
-          <DialogContent className="bg-[#161B22] border border-cyan-400/25 max-w-2xl">
-            {selectedDay && (
-              <>
-                <DialogHeader>
-                  <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
-                    {selectedDay.activity}
-                    <Badge className={TYPE_COLORS[selectedDay.type]?.badge || "bg-gray-400/15 text-gray-300"}>
-                      {selectedDay.type === "running" ? "Carrera" : selectedDay.type === "strength" ? "Fuerza" : "Descanso"}
-                    </Badge>
-                  </DialogTitle>
-                  <p className="text-sm text-[#8B949E]">{selectedDay.day} {selectedDay.date}</p>
-                </DialogHeader>
-                <div className="space-y-4 mt-4">
-                  {/* Resumen */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)" }}>
-                      <p className="text-xs text-[#8B949E] mb-1">Duración</p>
-                      <p className="text-lg font-bold text-white">{selectedDay.duration}</p>
-                    </div>
-                    <div className="rounded-xl p-4" style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)" }}>
-                      <p className="text-xs text-[#8B949E] mb-1">Zona</p>
-                      <p className="text-lg font-bold text-white">{selectedDay.zone}</p>
-                    </div>
-                  </div>
-
-                  {/* Instrucciones */}
-                  <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <p className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-cyan-400" />
-                      Instrucciones
-                    </p>
-                    <p className="text-sm text-[#8B949E]">{selectedDay.notes}</p>
-                  </div>
-
-                  {/* Objetivos específicos */}
-                  {selectedDay.type === "running" && (
-                    <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
-                      <p className="text-sm font-semibold text-white mb-3">Objetivos de la sesión</p>
-                      <div className="space-y-2">
-                        <div className="flex items-start gap-2">
-                          <span className="text-cyan-400 mt-0.5">✓</span>
-                          <p className="text-sm text-white">Mantener ritmo constante en {selectedDay.zone}</p>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="text-cyan-400 mt-0.5">✓</span>
-                          <p className="text-sm text-white">Cadencia objetivo: 175-180 spm</p>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="text-cyan-400 mt-0.5">✓</span>
-                          <p className="text-sm text-white">Sensación: Conversacional / Controlado</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedDay.type === "strength" && (
-                    <div className="rounded-xl p-4" style={{ background: "rgba(168,85,247,0.05)", border: "1px solid rgba(168,85,247,0.15)" }}>
-                      <p className="text-sm font-semibold text-white mb-3">Enfoque de la sesión</p>
-                      <div className="space-y-2">
-                        <div className="flex items-start gap-2">
-                          <span className="text-purple-400 mt-0.5">•</span>
-                          <p className="text-sm text-white">Fuerza específica para running</p>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="text-purple-400 mt-0.5">•</span>
-                          <p className="text-sm text-white">Prevención de lesiones</p>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="text-purple-400 mt-0.5">•</span>
-                          <p className="text-sm text-white">Economía de carrera mejorada</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </DialogContent>
-        </Dialog>
+        {/* Detail panel appears below the grid */}
+        {selectedDay && (
+          <DayDetailPanel
+            day={selectedDay}
+            onClose={() => setSelectedDay(null)}
+          />
+        )}
       </div>
 
       {/* AI Suggestions */}
@@ -359,6 +541,14 @@ function GenerarPlan() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function GenerarPlan() {
+  return (
+    <DndProvider backend={HTML5Backend}>
+      <GenerarPlanInner />
+    </DndProvider>
   );
 }
 

@@ -168,7 +168,7 @@ st.markdown(_hero_html, unsafe_allow_html=True)
 st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:0.7rem 0 1.15rem;">
   <span style="color:#C9FF00;font-size:1.1rem;">◈</span>
-    <span style="font-size:0.98rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Resumen Últimos 7 Días</span>
+    <span style="font-size:1.08rem;font-weight:800;color:white;text-transform:uppercase;letter-spacing:0.07em;">Resumen Últimos 7 Días</span>
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.35),transparent);margin-left:0.5rem;"></div>
 </div>
 """, unsafe_allow_html=True)
@@ -203,7 +203,7 @@ def _render_plan_esta_semana(user_actual):
     st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:0 0 1.15rem;">
   <span style="color:#C9FF00;font-size:1rem;">📋</span>
-    <span style="font-size:0.95rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Plan Esta Semana</span>
+    <span style="font-size:1.05rem;font-weight:800;color:white;text-transform:uppercase;letter-spacing:0.07em;">Plan Esta Semana</span>
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.3),transparent);margin-left:0.4rem;"></div>
 </div>""", unsafe_allow_html=True)
     lunes_str = inicio_semana(datetime.now()).strftime("%Y-%m-%d")
@@ -237,7 +237,7 @@ def _render_progresion_pesos(user_actual):
     st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:0 0 1.15rem;">
   <span style="color:#a855f7;font-size:1rem;">💪</span>
-    <span style="font-size:0.95rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Progresión de Pesos</span>
+    <span style="font-size:1.05rem;font-weight:800;color:white;text-transform:uppercase;letter-spacing:0.07em;">Progresión de Pesos</span>
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(168,85,247,0.3),transparent);margin-left:0.4rem;"></div>
 </div>""", unsafe_allow_html=True)
     df_pesos = progresion_pesos_ejercicios(user_actual)
@@ -326,7 +326,7 @@ titulo_macrociclo = obtener_titulo_macrociclo(user_actual)
 st.markdown(f"""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:1.25rem 0 1.15rem;">
   <span style="color:#00D4FF;font-size:1.1rem;">↗</span>
-    <span style="font-size:0.98rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">{titulo_macrociclo}</span>
+    <span style="font-size:1.08rem;font-weight:800;color:white;text-transform:uppercase;letter-spacing:0.07em;">{titulo_macrociclo}</span>
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(0,212,255,0.35),transparent);margin-left:0.5rem;"></div>
 </div>
 """, unsafe_allow_html=True)
@@ -345,7 +345,7 @@ _pct_chk     = int(100 * _completados / _total_chk) if _total_chk else 0
 st.markdown(f"""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:1.25rem 0 1.15rem;">
   <span style="color:#C9FF00;font-size:1.1rem;">◎</span>
-    <span style="font-size:0.98rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Checkpoints de Rendimiento</span>
+    <span style="font-size:1.08rem;font-weight:800;color:white;text-transform:uppercase;letter-spacing:0.07em;">Checkpoints de Rendimiento</span>
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.35),transparent);margin-left:0.5rem;"></div>
 </div>
 <div style="border-radius:16px;padding:1.25rem;margin-bottom:1rem;background:linear-gradient(135deg,rgba(201,255,0,0.06),rgba(0,212,255,0.04));border:1px solid rgba(201,255,0,0.2);">
@@ -398,7 +398,7 @@ import plotly.graph_objects as go
 st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:1.25rem 0 1.15rem;">
   <span style="color:#22c55e;font-size:1.1rem;">👟</span>
-    <span style="font-size:0.98rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Progreso de Running — Últimas 8 Semanas</span>
+    <span style="font-size:1.08rem;font-weight:800;color:white;text-transform:uppercase;letter-spacing:0.07em;">Progreso de Running — Últimas 8 Semanas</span>
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(34,197,94,0.35),transparent);margin-left:0.5rem;"></div>
 </div>
 """, unsafe_allow_html=True)
@@ -505,12 +505,26 @@ _render_progresion_pesos(user_actual)
 st.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 8. Recovery & Carga (donuts + RHR + sparklines)
+# 8. Gráfico de sueño
+# ---------------------------------------------------------------------------
+st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
+    <span style="color:#f97316;font-size:1.1rem;">🌙</span>
+    <span style="font-size:0.85rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Sueño — última semana</span>
+    <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(249,115,22,0.35),transparent);margin-left:0.5rem;"></div>
+</div>
+""", unsafe_allow_html=True)
+render_grafico_sueno(user_actual)
+
+st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# 9. Recovery & Carga (donuts + RHR + sparklines)
 # ---------------------------------------------------------------------------
 st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:1.25rem 0 1.15rem;">
   <span style="color:#00D4FF;font-size:1.1rem;">◉</span>
-    <span style="font-size:0.98rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Recovery & Carga</span>
+    <span style="font-size:1.08rem;font-weight:800;color:white;text-transform:uppercase;letter-spacing:0.07em;">Recovery & Carga</span>
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(0,212,255,0.35),transparent);margin-left:0.5rem;"></div>
 </div>
 """, unsafe_allow_html=True)
@@ -546,7 +560,7 @@ finally:
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 9. Biométricos Garmin
+# 10. Biométricos Garmin
 # ---------------------------------------------------------------------------
 st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
@@ -588,20 +602,6 @@ else:
     row = st.columns(7, gap="small")
     for col, (lbl, val, unit, mx, colr) in zip(row, bio_cards):
         col.markdown(_bio_card(lbl, val, unit, mx, colr), unsafe_allow_html=True)
-
-st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
-
-# ---------------------------------------------------------------------------
-# 10. Gráfico de sueño
-# ---------------------------------------------------------------------------
-st.markdown("""
-<div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
-  <span style="color:#f97316;font-size:1.1rem;">🌙</span>
-  <span style="font-size:0.85rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Sueño — última semana</span>
-  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(249,115,22,0.35),transparent);margin-left:0.5rem;"></div>
-</div>
-""", unsafe_allow_html=True)
-render_grafico_sueno(user_actual)
 
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
