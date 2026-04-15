@@ -589,6 +589,22 @@ if active_tab == "generar":
             st.session_state.plan_data = plan
             st.session_state["plan_selected_day_idx"] = 0
             st.rerun()
+
+        # Click de día para ver detalle (manteniendo una sola fila semanal visible).
+        pick_cols = st.columns(len(dias_plan), gap="small")
+        for i, d in enumerate(dias_plan):
+            fecha_obj = datetime.fromisoformat(d.get("fecha", "2000-01-01"))
+            day_name = _DIA_CORTO[fecha_obj.weekday()] if 0 <= fecha_obj.weekday() < 7 else fecha_obj.strftime("%a").upper()[:3]
+            is_selected = st.session_state.get("plan_selected_day_idx") == i
+            with pick_cols[i]:
+                if st.button(
+                    day_name,
+                    key=f"plan_day_pick_{i}_{lunes.strftime('%Y%m%d')}",
+                    use_container_width=True,
+                    type="primary" if is_selected else "secondary",
+                ):
+                    st.session_state["plan_selected_day_idx"] = i
+                    st.rerun()
     elif dias_plan:
         msg = "No se pudo cargar drag-and-drop."
         if _SORTABLES_IMPORT_ERROR:
