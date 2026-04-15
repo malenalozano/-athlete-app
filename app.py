@@ -119,23 +119,6 @@ div[data-testid="stDataFrameResizable"] {
     border: 1px solid #21262d !important;
     border-radius: 10px !important;
 }
-div[data-testid="stButton"] > button[kind="primary"],
-div[data-testid="stFormSubmitButton"] > button[kind="primary"],
-.stButton > button[kind="primary"],
-.stFormSubmitButton > button[kind="primary"] {
-    background: #a3e635 !important;
-    color: #0d1117 !important;
-    border: none !important;
-    box-shadow: 0 3px 10px rgba(163, 230, 53, 0.25) !important;
-}
-div[data-testid="stButton"] > button[kind="primary"]:hover,
-div[data-testid="stFormSubmitButton"] > button[kind="primary"]:hover,
-.stButton > button[kind="primary"]:hover,
-.stFormSubmitButton > button[kind="primary"]:hover {
-    background: #a3e635 !important;
-    transform: translateY(-1px) !important;
-    box-shadow: 0 6px 20px rgba(163, 230, 53, 0.34) !important;
-}
 </style>""", unsafe_allow_html=True)
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
