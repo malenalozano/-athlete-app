@@ -80,7 +80,9 @@ except Exception:
     _fecha_obj = _date(2027, 2, 21)
 _dias_left    = (_fecha_obj - _date.today()).days
 _semanas_left = _dias_left // 7
-_obj_nombre   = perfil.get("objetivo_nombre") or "Valencia Marathon"
+_obj_nombre   = str(perfil.get("objetivo_nombre") or "").strip()
+if not _obj_nombre:
+    _obj_nombre = "Ultra Madrid-Segovia" if user_actual == 2 else "Maratón de Sevilla" if user_actual == 1 else ("Ultra Madrid-Segovia" if _es_ultra_dash else "Maratón de Sevilla")
 
 # ---------------------------------------------------------------------------
 # KPI data
@@ -486,6 +488,8 @@ else:
                 f"<span style='color:{_tc};font-weight:800;font-size:0.85rem;margin-left:auto;'>{_ti} {_row['Δ']}</span>"
                 f"</div></div>",
                 unsafe_allow_html=True)
+
+    st.markdown("<div style='height:1.2rem;'></div>", unsafe_allow_html=True)
 
     with st.expander(f"Ver historial completo ({len(df_pesos)} ejercicios)"):
         _fcol, _scol = st.columns(2)

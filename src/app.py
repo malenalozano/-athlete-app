@@ -1878,6 +1878,7 @@ if user_actual == 1:
         "genero": "Mujer",
         "peso": 55,
         "objetivo": "Maratón",
+        "objetivo_nombre": "Maratón de Sevilla",
         "ritmo": "4:00-5:00",
         "fecha_objetivo": "2027-02-21",
         "objetivo_tipo": "maraton",
@@ -1890,6 +1891,7 @@ elif user_actual == 2:
         "genero": "Hombre",
         "peso": 70,
         "objetivo": "Ultramaratón",
+        "objetivo_nombre": "Ultra Madrid-Segovia",
         "fecha_objetivo": "2026-09-19",
         "objetivo_tipo": "ultramaraton",
         "carrera": 1,
@@ -2886,20 +2888,6 @@ if menu in ("Dashboard", "Inicio"):
         unsafe_allow_html=True,
     )
 
-    # Widget de tarjetas de fases de macrociclo (dinámico por usuario)
-    from src.core.dashboard_ui import render_macrociclo as _render_macrociclo
-    _objetivo_label = "Ultramaratón" if perfil.get("objetivo_tipo", "").lower() in ("ultramaraton", "ultra") else "Maratón"
-    st.markdown(f"""
-        <div class='summary7-head'>
-            <svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>
-                <rect x='3' y='5' width='18' height='16' rx='2'></rect>
-                <path d='M8 3v4M16 3v4M3 10h18'></path>
-            </svg>
-            <span>Macrociclo {_objetivo_label}</span>
-        </div>
-    """, unsafe_allow_html=True)
-    _render_macrociclo(user_actual)
-
     if user_actual == 2:
         estado_malena = obtener_estado_ciclo_malena()
         if estado_malena:
@@ -2940,6 +2928,20 @@ if menu in ("Dashboard", "Inicio"):
                 """,
                 unsafe_allow_html=True,
             )
+
+    # Widget de tarjetas de fases de macrociclo (dinámico por usuario)
+    from src.core.dashboard_ui import render_macrociclo as _render_macrociclo
+    _objetivo_label = "Ultramaratón" if perfil.get("objetivo_tipo", "").lower() in ("ultramaraton", "ultra") else "Maratón"
+    st.markdown(f"""
+        <div class='summary7-head'>
+            <svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>
+                <rect x='3' y='5' width='18' height='16' rx='2'></rect>
+                <path d='M8 3v4M16 3v4M3 10h18'></path>
+            </svg>
+            <span>Macrociclo {_objetivo_label}</span>
+        </div>
+    """, unsafe_allow_html=True)
+    _render_macrociclo(user_actual)
 
     st.markdown("<div class='dash-section-title'><span class='dash-section-icon'><svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'><path d='M3 17l5-5 4 3 9-10'></path><path d='M19 5h2v2'></path></svg></span><span>Progreso de running</span></div>", unsafe_allow_html=True)
     run_prog = progreso_running(df_act)
