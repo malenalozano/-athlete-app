@@ -50,9 +50,17 @@ _CSS = f"""<style>
 /* ── Quitar header nativo ── */
 [data-testid="stToolbar"] {{ display: none !important; }}
 header {{ display: none !important; }}
-.main .block-container {{ padding-top: 0 !important; }}
 
-/* ── STICKY NAVBAR - MÁS AGRESIVO ── */
+/* ── Permitir sticky en contenedores padres ── */
+[data-testid="stAppViewContainer"] {{ overflow: visible !important; }}
+[data-testid="stMainBlockContainer"] {{ overflow: visible !important; }}
+.main {{ overflow: visible !important; }}
+.main .block-container {{ 
+    padding-top: 0 !important;
+    overflow: visible !important;
+}}
+
+/* ── STICKY NAVBAR - FUERTE ── */
 [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type {{
     position: sticky !important;
     top: 0 !important;

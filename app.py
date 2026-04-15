@@ -44,13 +44,20 @@ st.markdown("""<style>
 header[data-testid="stHeader"]   { display:none!important }
 #MainMenu                        { display:none!important }
 footer                           { display:none!important }
+[data-testid="stAppViewContainer"] { overflow: visible !important; }
+[data-testid="stMainBlockContainer"] { overflow: visible !important; }
+.main { overflow: visible !important; }
 .main .block-container {
     padding-top: 1rem !important;
     padding-left: 2rem !important;
     padding-right: 2rem !important;
     max-width: 100% !important;
+    overflow: visible !important;
 }
-[data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
+[data-testid="stVerticalBlock"] { 
+    gap: 0.5rem !important;
+    overflow: visible !important;
+}
 [data-testid="column"] { padding: 0 0.5rem !important; }
 div[data-testid="stButton"] button {
     border-radius: 8px !important;
