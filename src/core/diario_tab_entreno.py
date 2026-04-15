@@ -429,7 +429,6 @@ div[data-testid="stTextArea"] textarea:focus {
     with col_izq:
 
         # ── Sección 1: Textarea ─────────────────────────────────────────
-        _card_open()
         st.markdown(label_upper("Entreno libre"), unsafe_allow_html=True)
         nota = st.text_area(
             "nota",
@@ -648,8 +647,6 @@ div[data-testid="stTextArea"] textarea:focus {
                     on_click=_limpiar_descarte
                 )
 
-        _card_close()
-
         # ── Sección 2: Stats del mes ──────────────────────────────────────
         _card_open()
         anio_cal_temp, mes_cal_temp = st.session_state[_k_cal]
@@ -692,8 +689,6 @@ div[data-testid="stTextArea"] textarea:focus {
         # ── Sección 3: Calendario (todo el ancho) ──────────────────────────
         anio_cal, mes_cal = st.session_state[_k_cal]
         dias_mes = _cargar_dias_mes(usuario_id, anio_cal, mes_cal)
-
-        _card_open()
         st.markdown(label_upper("Calendario del mes"), unsafe_allow_html=True)
 
         nav_l, nav_c, nav_r = st.columns([1, 4, 1])
@@ -718,7 +713,6 @@ div[data-testid="stTextArea"] textarea:focus {
 
         # Renderizar calendario interactivo
         dia_sel = _render_calendario_interactivo(usuario_id, dias_mes, anio_cal, mes_cal, _k_cal)
-        _card_close()
 
         # ── Sección 4: Sesiones guardadas ──────────────────────────────
         _card_open()

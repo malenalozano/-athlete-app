@@ -416,30 +416,43 @@ def metricas_garmin(usuario_id) -> dict:
 
 @st.cache_data(ttl=1800)
 def progresion_pesos_ejercicios(usuario_id) -> pd.DataFrame:
-    """Últimas 2 sesiones por ejercicio — devuelve tabla con delta de peso."""
+    """Últimas 2 entradas por ejercicio con orden estable y delta de peso."""
     conn = get_db_connection()
     try:
         df = pd.read_sql_query(
-            "SELECT e.ejercicio,e.peso,e.series,e.repeticiones,s.fecha "
+            "SELECT e.ejercicio,e.peso,e.series,e.repeticiones,s.fecha,"
+            "s.id AS sesion_id,e.id AS ejercicio_registro_id "
             "FROM ejercicios_fuerza e JOIN sesiones_fuerza s ON s.id=e.sesion_id "
-            "WHERE s.usuario_id=? ORDER BY s.fecha DESC LIMIT 120",
+            "WHERE s.usuario_id=? ORDER BY s.fecha DESC,s.id DESC,e.id DESC LIMIT 300",
             conn, params=(usuario_id,))
     finally:
         conn.close()
     if df.empty: return pd.DataFrame()
+    df["ejercicio"] = df["ejercicio"].astype(str)
+    df["ejercicio_key"] = df["ejercicio"].str.strip().str.lower().str.replace(r"\s+", " ", regex=True)
+    df["fecha_dt"] = pd.to_datetime(df["fecha"], errors="coerce")
     df["peso"] = pd.to_numeric(df["peso"], errors="coerce").fillna(0)
     filas = []
-    for ej, grp in df.groupby("ejercicio"):
-        grp = grp.sort_values("fecha", ascending=False)
+    for _, grp in df.groupby("ejercicio_key", dropna=False):
+        grp = grp.sort_values(["fecha_dt", "sesion_id", "ejercicio_registro_id"], ascending=False)
         u = grp.iloc[0]
         p = grp.iloc[1] if len(grp) > 1 else None
         delta = round(float(u["peso"]) - float(p["peso"]), 1) if p is not None else 0.0
         badge = f"↑ +{delta}" if delta > 0 else (f"↓ {abs(delta)}" if delta < 0 else "=")
-        filas.append({"Ejercicio": ej,
+        filas.append({"Ejercicio": str(u["ejercicio"]).strip(),
                       "Peso": float(u["peso"]) if float(u["peso"]) > 0 else "PC",
                       "S×R": f"{int(u['series'])}×{int(u['repeticiones'])}",
-                      "Δ": badge, "_trend": "up" if delta > 0 else ("dn" if delta < 0 else "eq")})
-    return pd.DataFrame(filas)
+                      "Δ": badge,
+                      "_trend": "up" if delta > 0 else ("dn" if delta < 0 else "eq"),
+                      "_orden_fecha": u["fecha_dt"],
+                      "_orden_sesion": int(u["sesion_id"]),
+                      "_orden_reg": int(u["ejercicio_registro_id"]),
+        })
+    out = pd.DataFrame(filas)
+    if out.empty:
+        return out
+    out = out.sort_values(["_orden_fecha", "_orden_sesion", "_orden_reg"], ascending=False)
+    return out.reset_index(drop=True)
 
 
 def construir_calendario_semanal_actividades(df_act, df_fuerza, semana_inicio):
