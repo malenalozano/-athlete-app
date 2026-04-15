@@ -94,6 +94,13 @@ st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 st.markdown(
     """
 <style>
+.stFormSubmitButton > button[kind="primary"] {
+    background: #a3e635 !important;
+    color: #0d1117 !important;
+    border: none !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+}
 </style>
 """,
     unsafe_allow_html=True,

@@ -70,8 +70,12 @@ div[data-testid="stRadio"] input[type="radio"] { display:none; }
     background: linear-gradient(180deg, rgba(17,29,42,0.98), rgba(14,20,31,0.98));
     border: 1px solid rgba(0,212,255,0.18);
     border-radius: 16px;
-    padding: 1.1rem 1rem 1rem;
-    min-height: 100%;
+    padding: 0.85rem 1rem 0.95rem;
+    min-height: auto;
+    height: fit-content;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
 }
 .plan-cta-label {
     color:#8B949E;
