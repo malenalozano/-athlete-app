@@ -381,6 +381,8 @@ if active_tab == "generar":
             st.session_state.plan_cursor += timedelta(weeks=1)
             st.session_state.plan_data = None; st.rerun()
 
+    st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+
     if st.session_state.plan_data is None:
         st.info("Pulsa **⚡ Regenerar plan** para generar el plan de esta semana con IA personalizada.")
         st.stop()
