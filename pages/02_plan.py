@@ -10,8 +10,12 @@ from src.core.navbar import render_navbar
 from src.db.db_manager import get_db_connection, obtener_credenciales_garmin, obtener_perfil as _obtener_perfil
 from src.core.plan_ui_helpers import (
     html_semaforo, html_barra_fase,
-    html_detalle_carrera, html_detalle_fuerza, html_detalle_descanso,
 )
+
+try:
+    from streamlit_sortables import sort_items
+except Exception:
+    sort_items = None
 
 render_navbar("plan")
 
@@ -35,6 +39,7 @@ _BADGE = {"Fuerza":"#a855f7","Tirada Larga":"#C9FF00","Progresiva":"#C9FF00",
           "Carrera Z2":"#22c55e","Tempo (umbral)":"#f97316","Regenerativo":"#00D4FF",
           "Intervalos VO2max":"#ef4444","Descanso":"#3a4150","Movilidad":"#3a4150"}
 _TYPE_COLORS = {"running":"#22d3ee", "strength":"#c084fc", "rest":"#4ade80", "default":"#C9FF00"}
+_DIA_CORTO = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"]
 
 # ---------------------------------------------------------------------------
 # CSS global: radio como tarjeta clickable vertical
@@ -97,6 +102,27 @@ div[data-testid="stRadio"] input[type="radio"] { display:none; }
     flex-direction: column;
     justify-content: space-between;
     border-radius: 14px;
+}
+
+.sortable-component {
+    margin-bottom: .65rem;
+}
+.sortable-item, .sortable-item:hover {
+    background: linear-gradient(135deg, rgba(13,23,35,0.95), rgba(16,26,40,0.95));
+    border: 1px solid rgba(0, 212, 255, 0.16);
+    border-radius: 10px;
+    color: #C9E1FF;
+    font-size: .76rem;
+    font-weight: 700;
+    line-height: 1.2;
+    min-height: 58px;
+    width: 138px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: .5rem .55rem;
+    white-space: pre-line;
 }
 </style>""", unsafe_allow_html=True)
 
@@ -252,6 +278,44 @@ def _get_activity_color(tipo: str) -> str:
     return _TYPE_COLORS.get(activity_type, _TYPE_COLORS["default"])
 
 
+def _formatear_slot_fecha(fecha_iso: str) -> str:
+    try:
+        return datetime.fromisoformat(fecha_iso).strftime("%d/%m")
+    except Exception:
+        return fecha_iso[5:] if len(fecha_iso) >= 10 else fecha_iso
+
+
+def _build_sort_item(slot_idx: int, dia: dict) -> str:
+    tipo = str(dia.get("tipo", "Sesion"))
+    emoji = _EMOJIS.get(tipo, "📅")
+    fecha_txt = _formatear_slot_fecha(str(dia.get("fecha", "")))
+    return f"{_DIA_CORTO[slot_idx]} {fecha_txt}\n{emoji} {tipo}"
+
+
+def _reaplicar_slots_semana(dias_ordenados: list[dict], lunes_semana: datetime) -> list[dict]:
+    out: list[dict] = []
+    for idx, d in enumerate(dias_ordenados):
+        slot_fecha = (lunes_semana + timedelta(days=idx)).strftime("%Y-%m-%d")
+        nuevo = dict(d)
+        nuevo["fecha"] = slot_fecha
+        nuevo["dia"] = _DIA_CORTO[idx] if idx < len(_DIA_CORTO) else nuevo.get("dia", "DIA")
+        out.append(nuevo)
+    return out
+
+
+def _map_sorted_labels_to_days(sorted_labels: list[str], original_labels: list[str], original_days: list[dict]) -> list[dict]:
+    """Resuelve el orden devuelto por el sortable preservando duplicados."""
+    remaining = list(range(len(original_labels)))
+    mapped: list[dict] = []
+    for lbl in sorted_labels:
+        found_pos = next((pos for pos, idx in enumerate(remaining) if original_labels[idx] == lbl), None)
+        if found_pos is None:
+            continue
+        original_idx = remaining.pop(found_pos)
+        mapped.append(dict(original_days[original_idx]))
+    return mapped if len(mapped) == len(original_days) else [dict(d) for d in original_days]
+
+
 def _normalizar_dias_semana(dias: list[dict]) -> list[dict]:
     """Garantiza una sola sesión por fecha para que KPI/UI sean coherentes (7 días)."""
     if not dias:
@@ -345,30 +409,32 @@ if active_tab == "generar":
             st.session_state.plan_cursor += timedelta(weeks=1)
             st.session_state.plan_data = None; st.rerun()
     with nav_c4:
-        if st.button("⚡ Regenerar", type="primary", use_container_width=False, key="plan_generate_small"):
-            with st.spinner("Generando plan..."):
-                try:
-                    from src.plan.entrenador import generar_entrenamiento_semana
-                    plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
+        _spacer, right_controls = st.columns([0.35, 0.65], gap="small")
+        with right_controls:
+            if st.button("⚡ Regenerar", type="primary", use_container_width=True, key="plan_generate_small"):
+                with st.spinner("Generando plan..."):
+                    try:
+                        from src.plan.entrenador import generar_entrenamiento_semana
+                        plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
 
-                    # DEBUG: mostrar tipos generados
-                    tipos_gen = [d.get("tipo", "?") for d in plan_nuevo.get("dias", [])]
-                    if not any(t not in ("Regenerativo", "Descanso", "Movilidad") for t in tipos_gen):
-                        st.warning(f"⚠️ Aviso: Plan generado solo con tipos: {tipos_gen}. Revisando...")
+                        # DEBUG: mostrar tipos generados
+                        tipos_gen = [d.get("tipo", "?") for d in plan_nuevo.get("dias", [])]
+                        if not any(t not in ("Regenerativo", "Descanso", "Movilidad") for t in tipos_gen):
+                            st.warning(f"⚠️ Aviso: Plan generado solo con tipos: {tipos_gen}. Revisando...")
 
-                    plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, user_actual, lunes, datetime.now())
-                    st.session_state.plan_data = plan_nuevo
-                    st.session_state.plan_ia = True
-                    _auto_guardar(user_actual, lunes, plan_nuevo)
-                except Exception as e:
-                    st.error(f"❌ Error generando plan:\n\n{str(e)}")
-                    import traceback
-                    st.error(f"**Traceback completo:**\n\n```\n{traceback.format_exc()}\n```")
-                    st.stop()
-            st.rerun()
-        sin_ia = st.checkbox("Sin IA", key="plan_sin_ia")
-        if sin_ia:
-            st.session_state.plan_ia = False
+                        plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, user_actual, lunes, datetime.now())
+                        st.session_state.plan_data = plan_nuevo
+                        st.session_state.plan_ia = True
+                        _auto_guardar(user_actual, lunes, plan_nuevo)
+                    except Exception as e:
+                        st.error(f"❌ Error generando plan:\n\n{str(e)}")
+                        import traceback
+                        st.error(f"**Traceback completo:**\n\n```\n{traceback.format_exc()}\n```")
+                        st.stop()
+                st.rerun()
+            sin_ia = st.checkbox("Sin IA", key="plan_sin_ia")
+            if sin_ia:
+                st.session_state.plan_ia = False
 
     st.markdown("<div style='height:2.2rem;'></div>", unsafe_allow_html=True)
 
@@ -416,11 +482,9 @@ if active_tab == "generar":
   <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.3),transparent);margin-left:.5rem;"></div>
 </div>""", unsafe_allow_html=True)
 
-    # Week day cards (7 columns) with click interactivity
-    week_cols = st.columns(7, gap="small")
-
-    # Initialize selected day to today (if present in this week), else first day
     dias_plan = plan.get("dias", [])
+
+    # Inicializa selección del día (hoy si existe, si no lunes)
     hoy_str = datetime.now().strftime("%Y-%m-%d")
     idx_hoy = next((idx for idx, d in enumerate(dias_plan) if d.get("fecha") == hoy_str), 0)
     if "plan_selected_day_idx" not in st.session_state:
@@ -428,30 +492,59 @@ if active_tab == "generar":
     elif st.session_state["plan_selected_day_idx"] is None:
         st.session_state["plan_selected_day_idx"] = idx_hoy
     elif st.session_state["plan_selected_day_idx"] >= len(dias_plan):
-        st.session_state["plan_selected_day_idx"] = idx_hoy
+        st.session_state["plan_selected_day_idx"] = 0
 
-    for i, dia in enumerate(plan.get("dias", [])):
-        if i >= 7:
-            break
+    # Drag & Drop para reordenar sesiones entre los slots de lunes-domingo.
+    if sort_items is not None and dias_plan:
+        st.caption("Arrastra las tarjetas para mover entrenamientos de un dia a otro.")
+        base_labels = [_build_sort_item(i, d) for i, d in enumerate(dias_plan)]
+        labels_ordenados = sort_items(
+            base_labels,
+            direction="horizontal",
+            key=f"plan_sortable_{lunes.strftime('%Y%m%d')}",
+            custom_style="""
+.sortable-component { padding: .05rem 0 .2rem 0; }
+.sortable-container { background: transparent; }
+.sortable-container-header { display: none; }
+.sortable-container-body { gap: .5rem; }
+""",
+        )
+
+        if labels_ordenados != base_labels:
+            dias_ordenados = _map_sorted_labels_to_days(labels_ordenados, base_labels, dias_plan)
+            plan["dias"] = _reaplicar_slots_semana(dias_ordenados, lunes)
+            st.session_state.plan_data = plan
+            st.session_state["plan_selected_day_idx"] = 0
+            st.rerun()
+    elif dias_plan:
+        st.info("No se pudo cargar drag-and-drop. Ejecuta pip install streamlit-sortables para activarlo.")
+
+    # Vista semanal (calendario) con click para ver detalle debajo
+    dias_plan = plan.get("dias", [])
+    week_cols = st.columns(min(7, max(1, len(dias_plan))), gap="small")
+    for i, dia in enumerate(dias_plan):
         with week_cols[i]:
             tipo = dia.get("tipo", "—")
             color = _get_activity_color(tipo)
             fecha_obj = datetime.fromisoformat(dia.get("fecha", "2000-01-01"))
-            day_name = fecha_obj.strftime("%a").upper()[:3]
+            day_name = _DIA_CORTO[fecha_obj.weekday()] if 0 <= fecha_obj.weekday() < 7 else fecha_obj.strftime("%a").upper()[:3]
             day_date = fecha_obj.strftime("%d")
 
-            duration_km = f"{dia.get('km', 0):.1f} km" if dia.get('km', 0) else f"{dia.get('duracion_min', '—')}''"
+            duration_km = f"{dia.get('km', 0):.1f} km" if dia.get('km', 0) else f"{dia.get('duracion_min', '—')} min"
             zone = dia.get('intensidad', 'Z1-Z2')
             emoji = _EMOJIS.get(tipo, "📅")
 
-            # Add border glow effect when selected
             is_selected = st.session_state.get("plan_selected_day_idx") == i
             border_style = f"2px solid {color};box-shadow:0 0 16px {color}66;" if is_selected else f"4px solid {color};"
             bg_style = f"linear-gradient(135deg,{color}15,{color}08);" if is_selected else "#161B22;"
 
-            card_html = f"""
-<div style="border-left:{border_style}background:{bg_style}border-radius:14px;padding:1rem 0.75rem;cursor:pointer;transition:all 0.2s;position:relative;">
-  <div style="color:#8B949E;font-size:.7rem;font-weight:700;text-transform:uppercase;margin-bottom:.3rem;">{day_name}</div>
+            st.markdown(
+                f"""
+<div style="border-left:{border_style}background:{bg_style}border-radius:14px;padding:1rem 0.75rem;position:relative;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.28rem;">
+    <div style="color:#8B949E;font-size:.7rem;font-weight:700;text-transform:uppercase;">{day_name}</div>
+    <div style="color:#8B949E;font-size:.68rem;">::</div>
+  </div>
   <div style="color:white;font-size:.95rem;font-weight:700;margin-bottom:.5rem;">{day_date}</div>
   <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;">
     <span style="font-size:.9rem;">{emoji}</span>
@@ -459,29 +552,32 @@ if active_tab == "generar":
   </div>
   <div style="color:#C9E1FF;font-size:.8rem;font-weight:600;margin-bottom:.4rem;">{duration_km}</div>
   <div style="background:rgba(255,255,255,0.1);border-radius:4px;padding:.3rem .5rem;font-size:.65rem;color:#8B949E;">{zone}</div>
-</div>"""
-            st.markdown(card_html, unsafe_allow_html=True)
+</div>""",
+                unsafe_allow_html=True,
+            )
 
-            if st.button(f"Ver {day_name}", key=f"plan_day_{i}", use_container_width=True,
-                        type="primary" if is_selected else "secondary"):
+            if st.button(f"Ver detalle {day_name}", key=f"plan_day_{i}", use_container_width=True,
+                         type="primary" if is_selected else "secondary"):
                 st.session_state["plan_selected_day_idx"] = i
                 st.rerun()
 
-    # Detailed day view: ONLY details for selected day (no side day list)
+    # Detalle integrado debajo del calendario (sin tarjeta emergente)
     selected_idx = st.session_state.get("plan_selected_day_idx")
     if selected_idx is not None and selected_idx < len(dias_plan):
-        st.divider()
+        st.markdown("<div style='height:.35rem;'></div>", unsafe_allow_html=True)
+        st.subheader("Detalle del dia seleccionado")
         dia = dias_plan[selected_idx]
-        tipo = dia["tipo"]
-        st.markdown(
-            f"<div style='font-weight:800;color:#C9E1FF;font-size:1rem;margin-bottom:8px;'>"
-            f"{dia['dia']} — {dia['fecha'][5:]}</div>",
-            unsafe_allow_html=True,
-        )
+        tipo = dia.get("tipo", "—")
+
+        dm1, dm2, dm3, dm4 = st.columns(4, gap="small")
+        dm1.metric("Dia", dia.get("dia", "—"))
+        dm2.metric("Fecha", _formatear_slot_fecha(str(dia.get("fecha", ""))))
+        dm3.metric("Sesion", tipo)
+        dm4.metric("Intensidad", dia.get("intensidad", "—"))
 
         if tipo in _TIPOS_FUERZA:
-            st.markdown(html_detalle_fuerza(dia), unsafe_allow_html=True)
-            if fase["dias_fuerza"] > 0:
+            st.info("Sesion de fuerza. La tabla de ejercicios recomendados aparece justo debajo.")
+            if fase.get("dias_fuerza", 0) > 0:
                 from src.plan.memoria_fuerza import generar_tabla_fuerza_semana
                 conn = get_db_connection()
                 try:
@@ -493,7 +589,17 @@ if active_tab == "generar":
         elif tipo in _TIPOS_CARRERA:
             from src.garmin.workout_builder import sesion_a_bloques
             bloques = sesion_a_bloques(dia)
-            st.markdown(html_detalle_carrera(dia, bloques), unsafe_allow_html=True)
+            if bloques:
+                st.markdown("**Bloques de la sesion**")
+                df_bloques = pd.DataFrame([
+                    {
+                        "Zona": b.get("zona", "—"),
+                        "Min": round(float(b.get("duracion_min", 0) or 0), 1),
+                        "Tipo": b.get("tipo", "—"),
+                    }
+                    for b in bloques
+                ])
+                st.dataframe(df_bloques, use_container_width=True, hide_index=True)
 
             if st.button("⌚ Enviar workout a Garmin", key=f"garmin_{selected_idx}"):
                 from src.garmin.garmin_sync import cargar_sesion_tokens
@@ -501,7 +607,7 @@ if active_tab == "generar":
                 email = cred[0] if cred else None
                 gc = st.session_state.get("gc") or cargar_sesion_tokens(email, usuario_id=user_actual)
                 if gc is None:
-                    st.warning("Conecta tu cuenta Garmin primero en la página Garmin.")
+                    st.warning("Conecta tu cuenta Garmin primero en la pagina Garmin.")
                 else:
                     with st.spinner("Enviando workout a Garmin..."):
                         try:
@@ -513,17 +619,11 @@ if active_tab == "generar":
                         except Exception as e:
                             st.error(f"Error al enviar a Garmin: {e}")
         else:
-            st.markdown(html_detalle_descanso(dia), unsafe_allow_html=True)
+            st.info("Dia de descanso o movilidad. Recomendado: movilidad suave, foam roller e hidratacion.")
 
-        # Descripción IA
         if st.session_state.get("plan_ia") and dia.get("descripcion_ia"):
-            st.markdown(
-                f"<div style='background:#0f1e10;border-left:3px solid #a3e635;border-radius:0 8px 8px 0;"
-                f"padding:10px 14px;margin:8px 0;font-size:12px;color:#c9d1d9;'>"
-                f"<span style='font-size:10px;color:#a3e635;text-transform:uppercase;letter-spacing:0.6px;"
-                f"font-weight:700;'>🤖 Entrenador IA</span><br><br>"
-                f"{dia['descripcion_ia']}</div>",
-                unsafe_allow_html=True)
+            st.markdown("**Entrenador IA**")
+            st.write(str(dia.get("descripcion_ia", "")))
 
         ajuste = st.text_area(
             "Ajuste",

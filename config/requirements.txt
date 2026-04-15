@@ -1,4 +1,5 @@
 streamlit
+streamlit-sortables
 garminconnect
 pandas
 plotly
