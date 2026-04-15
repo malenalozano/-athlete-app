@@ -593,8 +593,10 @@ if active_tab == "generar":
                 b1, b2, b3 = st.columns(3, gap="small")
                 with b1:
                     if i > 0 and st.button("⬆️", key=f"move_up_{i}", use_container_width=True):
+                        # Swap entrenamientos
                         plan["dias"][i], plan["dias"][i-1] = plan["dias"][i-1], plan["dias"][i]
                         st.session_state.plan_data = plan
+                        _auto_guardar(user_actual, lunes, plan)
                         st.session_state["plan_selected_day_idx"] = i - 1
                         st.rerun()
                 with b2:
@@ -604,8 +606,10 @@ if active_tab == "generar":
                         st.rerun()
                 with b3:
                     if i < len(dias_plan) - 1 and st.button("⬇️", key=f"move_down_{i}", use_container_width=True):
+                        # Swap entrenamientos
                         plan["dias"][i], plan["dias"][i+1] = plan["dias"][i+1], plan["dias"][i]
                         st.session_state.plan_data = plan
+                        _auto_guardar(user_actual, lunes, plan)
                         st.session_state["plan_selected_day_idx"] = i + 1
                         st.rerun()
 
