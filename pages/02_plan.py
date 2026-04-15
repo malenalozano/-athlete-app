@@ -550,94 +550,64 @@ if active_tab == "generar":
     elif st.session_state["plan_selected_day_idx"] >= len(dias_plan):
         st.session_state["plan_selected_day_idx"] = 0
 
-    # Drag & Drop para reordenar sesiones entre los slots de lunes-domingo.
-    if sort_items is not None and dias_plan:
-        st.caption("Arrastra las tarjetas para mover entrenamientos de un dia a otro.")
-        base_labels = [_build_sort_item(i, d) for i, d in enumerate(dias_plan)]
-        labels_ordenados = sort_items(
-            base_labels,
-            direction="horizontal",
-            key=f"plan_sortable_{lunes.strftime('%Y%m%d')}",
-            custom_style="""
-.sortable-component {
-    padding: .05rem 0 .2rem 0 !important;
-}
-.sortable-container {
-    background: transparent !important;
-    padding: 0 !important;
-}
-.sortable-container-header {
-    display: none !important;
-}
-.sortable-container-body {
-    background: transparent !important;
-    border-radius: 0 !important;
-    min-height: auto !important;
-    width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: .5rem !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    overflow-x: auto !important;
-}
-.sortable-item, .sortable-item:hover {
-    background: linear-gradient(135deg, rgba(13,23,35,0.98), rgba(16,26,40,0.98)) !important;
-    color: #C9E1FF !important;
-    border: 1px solid rgba(0, 212, 255, 0.24) !important;
-    border-radius: 10px !important;
-    margin: 0 !important;
-    padding: .55rem .62rem !important;
-    min-height: 68px !important;
-    min-width: 170px !important;
-    height: auto !important;
-    font-size: .74rem !important;
-    font-weight: 700 !important;
-    line-height: 1.2 !important;
-    white-space: pre-line !important;
-    text-align: left !important;
-    box-shadow: none !important;
-}
-.sortable-item:active {
-    cursor: grabbing !important;
-}
-""",
-        )
-
-        st.write("**DEBUG - Base:**", base_labels[:2] if len(base_labels) > 0 else "vacío")
-        st.write("**DEBUG - Ordenado:**", labels_ordenados[:2] if len(labels_ordenados) > 0 else "vacío")
+    # Reordenación de sesiones con botones ↑/↓ (alternativa funcional a drag-drop)
+    if dias_plan:
+        st.caption("Usa ↑/↓ para reordenar o haz click en un día para ver detalles")
         
-        if labels_ordenados != base_labels:
-            st.write("✅ Detectado cambio, remapeando...")
-            dias_ordenados = _map_sorted_labels_to_days(labels_ordenados, base_labels, dias_plan)
-            st.write("**DEBUG - Ordenado mapeado:**", dias_ordenados)
-            plan["dias"] = _reaplicar_slots_semana(dias_ordenados, lunes)
-            st.session_state.plan_data = plan
-            st.session_state["plan_selected_day_idx"] = 0
-            st.rerun()
-        else:
-            st.write("❌ Sin cambios detectados")
-
-        # Click de día para ver detalle (manteniendo una sola fila semanal visible).
-        pick_cols = st.columns(len(dias_plan), gap="small")
+        # Fila de tarjetas con botones de reordenación
+        reorder_cols = st.columns([1.2] * len(dias_plan), gap="small")
         for i, d in enumerate(dias_plan):
-            fecha_obj = datetime.fromisoformat(d.get("fecha", "2000-01-01"))
-            day_name = _DIA_CORTO[fecha_obj.weekday()] if 0 <= fecha_obj.weekday() < 7 else fecha_obj.strftime("%a").upper()[:3]
-            is_selected = st.session_state.get("plan_selected_day_idx") == i
-            with pick_cols[i]:
-                if st.button(
-                    day_name,
-                    key=f"plan_day_pick_{i}_{lunes.strftime('%Y%m%d')}",
-                    use_container_width=True,
-                    type="primary" if is_selected else "secondary",
-                ):
-                    st.session_state["plan_selected_day_idx"] = i
-                    st.rerun()
-    elif dias_plan:
-        msg = "No se pudo cargar drag-and-drop."
-        if _SORTABLES_IMPORT_ERROR:
-            msg = f"{msg} Error: {_SORTABLES_IMPORT_ERROR}"
-        st.warning(msg)
+            with reorder_cols[i]:
+                tipo = d.get("tipo", "—")
+                color = _get_activity_color(tipo)
+                fecha_obj = datetime.fromisoformat(d.get("fecha", "2000-01-01"))
+                day_name = _DIA_CORTO[fecha_obj.weekday()] if 0 <= fecha_obj.weekday() < 7 else fecha_obj.strftime("%a").upper()[:3]
+                day_date = fecha_obj.strftime("%d")
+                duration_km = f"{d.get('km', 0):.1f} km" if d.get('km', 0) else f"{d.get('duracion_min', '—')} min"
+                zone = d.get('intensidad', 'Z1-Z2')
+                emoji = _EMOJIS.get(tipo, "📅")
+                
+                is_selected = st.session_state.get("plan_selected_day_idx") == i
+                border_style = f"2px solid {color};box-shadow:0 0 16px {color}66;" if is_selected else f"4px solid {color};"
+                bg_style = f"linear-gradient(135deg,{color}15,{color}08);" if is_selected else "#161B22;"
+                
+                st.markdown(
+                    f"""
+<div style="border-left:{border_style}background:{bg_style}border-radius:14px;padding:1rem 0.75rem;position:relative;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.28rem;">
+    <div style="color:#8B949E;font-size:.7rem;font-weight:700;text-transform:uppercase;">{day_name}</div>
+    <div style="color:#8B949E;font-size:.68rem;">::</div>
+  </div>
+  <div style="color:white;font-size:.95rem;font-weight:700;margin-bottom:.5rem;">{day_date}</div>
+  <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;">
+    <span style="font-size:.9rem;">{emoji}</span>
+    <span style="color:{color};font-size:.75rem;font-weight:700;">{tipo}</span>
+  </div>
+  <div style="color:#C9E1FF;font-size:.8rem;font-weight:600;margin-bottom:.4rem;">{duration_km}</div>
+  <div style="background:rgba(255,255,255,0.1);border-radius:4px;padding:.3rem .5rem;font-size:.65rem;color:#8B949E;">{zone}</div>
+</div>""",
+                    unsafe_allow_html=True,
+                )
+                
+                # Botones de reordenación y selección
+                b1, b2, b3 = st.columns(3, gap="small")
+                with b1:
+                    if i > 0 and st.button("⬆️", key=f"move_up_{i}", use_container_width=True):
+                        plan["dias"][i], plan["dias"][i-1] = plan["dias"][i-1], plan["dias"][i]
+                        st.session_state.plan_data = plan
+                        st.session_state["plan_selected_day_idx"] = i - 1
+                        st.rerun()
+                with b2:
+                    if st.button(day_name, key=f"plan_day_pick_{i}", use_container_width=True, 
+                                type="primary" if is_selected else "secondary"):
+                        st.session_state["plan_selected_day_idx"] = i
+                        st.rerun()
+                with b3:
+                    if i < len(dias_plan) - 1 and st.button("⬇️", key=f"move_down_{i}", use_container_width=True):
+                        plan["dias"][i], plan["dias"][i+1] = plan["dias"][i+1], plan["dias"][i]
+                        st.session_state.plan_data = plan
+                        st.session_state["plan_selected_day_idx"] = i + 1
+                        st.rerun()
 
     # Detalle integrado debajo del calendario (estilo original)
     selected_idx = st.session_state.get("plan_selected_day_idx")
