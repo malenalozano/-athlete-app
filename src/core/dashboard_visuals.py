@@ -122,7 +122,8 @@ def render_strain_recovery_donuts(recovery_score, acwr=None):
             f"<span style='font-size:0.72rem;color:#8B949E;'>HRV · sueño · estrés · batería</span></div>",
             unsafe_allow_html=True)
 
-        if st.button("Que significa este numero", key="btn_recovery_donut_info", use_container_width=True):
+        _rec_info_cols = st.columns([1, 8], gap="small")
+        if _rec_info_cols[0].button("i", key="btn_recovery_donut_info", help="Que significa este numero"):
             st.session_state["show_recovery_donut_info"] = not show_recovery_info
 
         if st.session_state.get("show_recovery_donut_info", False):
@@ -173,7 +174,8 @@ def render_strain_recovery_donuts(recovery_score, acwr=None):
             f"<span style='font-size:0.72rem;color:#8B949E;'>ACWR {acwr:.2f} (agudo/crónico)</span></div>",
             unsafe_allow_html=True)
 
-        if st.button("Que significa este numero", key="btn_strain_donut_info", use_container_width=True):
+        _str_info_cols = st.columns([1, 8], gap="small")
+        if _str_info_cols[0].button("i", key="btn_strain_donut_info", help="Que significa este numero"):
             st.session_state["show_strain_donut_info"] = not show_strain_info
 
         if st.session_state.get("show_strain_donut_info", False):
