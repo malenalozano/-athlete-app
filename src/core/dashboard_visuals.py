@@ -80,6 +80,9 @@ def render_strain_recovery_donuts(recovery_score, acwr=None):
 
     _BG = "rgba(0,0,0,0)"  # transparente — la tarjeta exterior ya tiene fondo
 
+    show_recovery_info = st.session_state.get("show_recovery_donut_info", False)
+    show_strain_info = st.session_state.get("show_strain_donut_info", False)
+
     # RECOVERY DONUT
     with col1:
         fig_rec = go.Figure(data=[go.Pie(
@@ -119,6 +122,18 @@ def render_strain_recovery_donuts(recovery_score, acwr=None):
             f"<span style='font-size:0.72rem;color:#8B949E;'>HRV · sueño · estrés · batería</span></div>",
             unsafe_allow_html=True)
 
+        if st.button("Que significa este numero", key="btn_recovery_donut_info", use_container_width=True):
+            st.session_state["show_recovery_donut_info"] = not show_recovery_info
+
+        if st.session_state.get("show_recovery_donut_info", False):
+            st.info(
+                "Recovery (0-100): indica tu nivel de recuperacion para hoy.\n"
+                "- Alto (>=70): buena disponibilidad para entrenar.\n"
+                "- Medio (50-69): entrena con control.\n"
+                "- Bajo (<50): prioriza recuperacion.\n"
+                "Se calcula con HRV, sueno, estres, body battery y carga reciente."
+            )
+
     # STRAIN DONUT
     with col2:
         fig_str = go.Figure(data=[go.Pie(
@@ -157,6 +172,18 @@ def render_strain_recovery_donuts(recovery_score, acwr=None):
             f"letter-spacing:0.08em;'>Strain Load</span><br>"
             f"<span style='font-size:0.72rem;color:#8B949E;'>ACWR {acwr:.2f} (agudo/crónico)</span></div>",
             unsafe_allow_html=True)
+
+        if st.button("Que significa este numero", key="btn_strain_donut_info", use_container_width=True):
+            st.session_state["show_strain_donut_info"] = not show_strain_info
+
+        if st.session_state.get("show_strain_donut_info", False):
+            st.info(
+                "Strain (0-100): representa la carga de entrenamiento acumulada.\n"
+                "Se deriva del ACWR (carga aguda/carga cronica).\n"
+                "- ACWR ~0.8-1.3: zona razonable.\n"
+                "- ACWR >1.3: aumenta el riesgo por fatiga.\n"
+                "- ACWR >1.5: riesgo alto de sobrecarga."
+            )
 
 
 # ============================================================================
