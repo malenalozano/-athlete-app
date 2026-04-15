@@ -484,7 +484,6 @@ div[data-testid="stTextArea"] textarea:focus {
         # ── Mostrar resultados del procesamiento (DETALLES COMPLETOS) ──────
         if st.session_state.get(_k_res) and st.session_state.get(_k_ses):
             sesiones_detectadas = st.session_state[_k_ses]
-            st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
             st.markdown(
                 f"<div style='color:#a3e635;font-size:13px;font-weight:700;margin-bottom:10px;'>"
                 f"✅ {len(sesiones_detectadas)} sesión{'es' if len(sesiones_detectadas) > 1 else ''} detectada{'s' if len(sesiones_detectadas) > 1 else ''}</div>",
@@ -671,7 +670,6 @@ div[data-testid="stTextArea"] textarea:focus {
             f"</div>"
             f"</div>",
             unsafe_allow_html=True)
-        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
         # Leyenda
         st.markdown(
             f"<div style='color:{TXT3};font-size:9px;'>"

@@ -361,6 +361,8 @@ if active_tab == "generar":
     _kpi_card(kpi_c3, "💪", "Fuerza", str(fuerza_count), "#c084fc", "rgba(192,132,252,0.1)", "rgba(192,132,252,0.25)")
     _kpi_card(kpi_c4, "📍", "Fase", fase_nombre, "#f97316", "rgba(249,115,22,0.1)", "rgba(249,115,22,0.25)")
 
+    st.markdown("<div style='height:0.7rem;'></div>", unsafe_allow_html=True)
+
     # Semáforo and fase bar
     st.markdown(html_semaforo(semaforo, plan["km_totales"], plan["acwr"]), unsafe_allow_html=True)
     st.markdown(html_barra_fase(fase), unsafe_allow_html=True)

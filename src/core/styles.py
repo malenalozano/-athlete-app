@@ -67,7 +67,9 @@ textarea:focus, input:focus {{
 
 /* ── Botones primary ── */
 [data-testid="stBaseButton-primary"] > button,
-button[kind="primary"] {{
+button[kind="primary"],
+.stFormSubmitButton > button,
+form button[type="submit"] {{
     background: {ACCENT} !important;
     color: #0d1117 !important;
     border: none !important;
