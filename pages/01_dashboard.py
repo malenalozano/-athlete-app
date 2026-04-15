@@ -194,24 +194,21 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-_kpi_cols_top = st.columns(4, gap="small")
-_kpi_cols_bottom = st.columns(4, gap="small")
-
-def _kpi_card(col, label, value, period, delta_html_str, border_color, icon_char):
-    col.markdown(f"""
-<div style="background:#161B22;border-left:4px solid {border_color};border-top:0;border-right:0;border-bottom:0;border-radius:12px;padding:1.4rem 1.2rem 1rem;min-height:110px;">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
-    <div style="display:flex;align-items:center;gap:0.4rem;">
-      <span style="color:{border_color};font-size:1rem;">{icon_char}</span>
-      <span style="font-size:0.72rem;color:#8B949E;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">{label}</span>
+def _kpi_card_html(label, value, period, delta_html_str, border_color, icon_char):
+        return f"""
+<div style="background:#161B22;border-left:4px solid {border_color};border-top:0;border-right:0;border-bottom:0;border-radius:12px;padding:0.95rem 0.9rem;min-height:120px;display:flex;flex-direction:column;justify-content:space-between;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:0.55rem;">
+        <div style="display:flex;align-items:center;gap:0.34rem;min-width:0;">
+            <span style="color:{border_color};font-size:0.9rem;">{icon_char}</span>
+            <span style="font-size:0.66rem;color:#8B949E;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{label}</span>
+        </div>
+        <span style="font-size:0.62rem;color:#8B949E;background:#30363D;padding:2px 7px;border-radius:6px;white-space:nowrap;">{period}</span>
     </div>
-    <span style="font-size:0.68rem;color:#8B949E;background:#30363D;padding:3px 8px;border-radius:6px;">{period}</span>
-  </div>
-  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;">
-    <span style="font-size:1.875rem;font-weight:800;color:white;line-height:1;">{value}</span>
-    {delta_html_str}
-  </div>
-</div>""", unsafe_allow_html=True)
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;">
+        <span style="font-size:1.95rem;font-weight:800;color:white;line-height:1;">{value}</span>
+        {delta_html_str}
+    </div>
+</div>"""
 
 
 def _render_plan_esta_semana(user_actual):
@@ -327,17 +324,23 @@ def _render_progresion_pesos(user_actual):
                     hide_index=True,
                 )
 
-_kpi_card(_kpi_cols_top[0], "KM",          km_val,        "Últimos 7 días", _delta_html(km_delta_num, 1),     "#22c55e", "👟")
-_kpi_card(_kpi_cols_top[1], "HRV",         hrv_val,       "ms",             _delta_html(hrv_delta_num, 0),    "#3b82f6", "♡")
-_kpi_card(_kpi_cols_top[2], "FUERZA",      fuerza_val,    "sesiones",       _delta_html(fuerza_delta_num, 0), "#a855f7", "💪")
-_kpi_card(_kpi_cols_top[3], "SUEÑO MEDIO", sueno_val,     "h/noche",        _delta_html(sueno_delta_num, 1),  "#f97316", "🌙")
+_kpi_cards_html = [
+    _kpi_card_html("KM",          km_val,        "Últimos 7 días", _delta_html(km_delta_num, 1),     "#22c55e", "👟"),
+    _kpi_card_html("HRV",         hrv_val,       "ms",             _delta_html(hrv_delta_num, 0),    "#3b82f6", "♡"),
+    _kpi_card_html("FUERZA",      fuerza_val,    "sesiones",       _delta_html(fuerza_delta_num, 0), "#a855f7", "💪"),
+    _kpi_card_html("SUEÑO MEDIO", sueno_val,     "h/noche",        _delta_html(sueno_delta_num, 1),  "#f97316", "🌙"),
+    _kpi_card_html("CADENCIA",    cadencia_val,  "spm",            _no_delta_html,                    "#22c55e", "👣"),
+    _kpi_card_html("ACWR",        acwr_val,      "ratio",          _no_delta_html,                    acwr_color, "⚖"),
+    _kpi_card_html("FC REPOSO",   fc_reposo_val, "bpm",            _no_delta_html,                    "#C9E1FF", "❤"),
+    _kpi_card_html("ESTRÉS",      estres_val,    "score",          _no_delta_html,                    "#f97316", "⚠"),
+]
 
-st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
-
-_kpi_card(_kpi_cols_bottom[0], "CADENCIA",  cadencia_val,  "spm",   _no_delta_html, "#22c55e", "👣")
-_kpi_card(_kpi_cols_bottom[1], "ACWR",      acwr_val,      "ratio", _no_delta_html, acwr_color, "⚖")
-_kpi_card(_kpi_cols_bottom[2], "FC REPOSO", fc_reposo_val, "bpm",   _no_delta_html, "#C9E1FF", "❤")
-_kpi_card(_kpi_cols_bottom[3], "ESTRÉS",    estres_val,    "score", _no_delta_html, "#f97316", "⚠")
+st.markdown(
+    "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0.55rem;'>"
+    + "".join(_kpi_cards_html)
+    + "</div>",
+    unsafe_allow_html=True,
+)
 
 st.markdown("<div style='height:2rem;'></div>", unsafe_allow_html=True)
 
