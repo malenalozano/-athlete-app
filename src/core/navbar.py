@@ -59,14 +59,14 @@ header {{ display: none !important; }}
     padding: 8px 24px !important;
     margin: 0 -4rem 0 -4rem !important;
     align-items: center !important;
-    min-height: 88px !important;
+    min-height: 94px !important;
     gap: 4px !important;
 }}
 
 {_NAV} > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
     display: flex !important;
     align-items: center !important;
-    min-height: 80px !important;
+    min-height: 86px !important;
 }}
 
 {_NAV} > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div {{
@@ -77,13 +77,13 @@ header {{ display: none !important; }}
 {_NAV} [data-testid="stPageLink"] {{
     display: flex !important;
     align-items: center !important;
-    height: 80px !important;
+    height: 86px !important;
 }}
 {_NAV} [data-testid="stPageLink"] p {{
-    font-size: 14px !important;
+    font-size: 15px !important;
     font-weight: 600 !important;
     color: #8B949E !important;
-    padding: 10px 16px !important;
+    padding: 11px 18px !important;
     margin: 0 !important;
     border-radius: 12px !important;
     border: 1px solid transparent !important;
@@ -103,17 +103,17 @@ header {{ display: none !important; }}
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    min-height: 80px !important;
+    min-height: 86px !important;
 }}
 {_NAV} .st-key-navbar_sync button {{
-    width: 48px !important;
-    height: 48px !important;
+    width: 52px !important;
+    height: 52px !important;
     padding: 0 !important;
     border-radius: 14px !important;
     border: 1px solid rgba(201,255,0,0.55) !important;
     background: linear-gradient(180deg, rgba(201,255,0,0.22) 0%, rgba(201,255,0,0.08) 100%) !important;
     color: #C9FF00 !important;
-    font-size: 20px !important;
+    font-size: 22px !important;
     font-weight: 700 !important;
     box-shadow: 0 0 0 1px rgba(201,255,0,0.18) inset, 0 8px 20px rgba(201,255,0,0.22) !important;
     min-height: 0 !important;
@@ -132,7 +132,7 @@ header {{ display: none !important; }}
 {_NAV} .st-key-navbar_user_select {{
     display: flex !important;
     align-items: center !important;
-    min-height: 80px !important;
+    min-height: 86px !important;
 }}
 {_NAV} .st-key-navbar_user_select [data-testid="stSelectbox"] {{
     margin-top: 0 !important;
@@ -143,11 +143,11 @@ header {{ display: none !important; }}
     border: 1px solid rgba(255,255,255,0.1) !important;
     border-radius: 10px !important;
     color: white !important;
-    font-size: 13px !important;
+    font-size: 14px !important;
     font-weight: 600 !important;
     padding: 0 12px !important;
-    min-height: 40px !important;
-    height: 40px !important;
+    min-height: 44px !important;
+    height: 44px !important;
 }}
 </style>"""
 
@@ -174,14 +174,14 @@ div[data-testid="stHorizontalBlock"].subtab-row button:hover {
 
 def _logo_html(auth_user: str) -> str:
     return (
-        "<div style='display:flex;align-items:center;gap:12px;height:80px;"
+        "<div style='display:flex;align-items:center;gap:12px;height:86px;'"
         "padding-right:16px;border-right:1px solid rgba(255,255,255,0.06);'>"
-        "<div style='width:44px;height:44px;border-radius:12px;flex-shrink:0;"
-        "display:flex;align-items:center;justify-content:center;font-size:22px;"
+        "<div style='width:48px;height:48px;border-radius:13px;flex-shrink:0;'"
+        "display:flex;align-items:center;justify-content:center;font-size:24px;'"
         "background:linear-gradient(135deg,#C9FF00 0%,#00D4FF 50%,#A855F7 100%);"
         "box-shadow:0 0 20px rgba(201,255,0,0.4);'>⚡</div>"
         "<div style='line-height:1;'>"
-        "<p style='font-size:15px;font-weight:700;margin:0;line-height:1;"
+        "<p style='font-size:16px;font-weight:700;margin:0;line-height:1;'"
         "background:linear-gradient(90deg,#C9FF00,#00D4FF);"
         "-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>"
         "Proyecto Athlete</p>"
@@ -191,10 +191,10 @@ def _logo_html(auth_user: str) -> str:
 
 def _active_item_html(label: str, icon: str, color: str, bg: str, border: str, glow: str) -> str:
     return (
-        "<div style='display:flex;align-items:center;height:80px;'>"
+        "<div style='display:flex;align-items:center;height:86px;'>"
         f"<div style='position:relative;display:flex;align-items:center;gap:8px;"
-        f"padding:10px 16px;border-radius:12px;background:{bg};border:1px solid {border};"
-        f"color:{color};font-size:14px;font-weight:700;white-space:nowrap;"
+        f"padding:11px 18px;border-radius:12px;background:{bg};border:1px solid {border};"
+        f"color:{color};font-size:15px;font-weight:700;white-space:nowrap;"
         f"box-shadow:{glow};'>"
         f"<span>{icon}</span><span>{label}</span>"
         "</div></div>"
