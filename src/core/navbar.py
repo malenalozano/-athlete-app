@@ -258,6 +258,32 @@ def _render_subtabs(pagina_activa: str):
 
 def render_navbar(pagina_activa: str):
     st.markdown(_CSS, unsafe_allow_html=True)
+    
+    # Inyectar JavaScript para forzar sticky
+    st.markdown("""
+    <script>
+    const waitForElement = setInterval(() => {
+        const navBar = document.querySelector('[data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type');
+        if (navBar) {
+            navBar.style.position = 'sticky';
+            navBar.style.top = '0';
+            navBar.style.zIndex = '999';
+            navBar.style.backgroundColor = 'rgba(14,17,23,0.98)';
+            
+            // También arregla los padres
+            let parent = navBar.parentElement;
+            while (parent && parent !== document.body) {
+                parent.style.overflow = 'visible';
+                parent.style.overflowX = 'visible';
+                parent = parent.parentElement;
+            }
+            clearInterval(waitForElement);
+        }
+    }, 100);
+    
+    setTimeout(() => clearInterval(waitForElement), 5000);
+    </script>
+    """, unsafe_allow_html=True)
 
     auth_user = str(st.session_state.get("auth_user", "")).strip()
 
