@@ -133,7 +133,7 @@ _hero_html = (
     '<div>'
     '<h1 style="font-size:2.25rem;font-weight:800;color:white;margin:0 0 0.5rem;line-height:1.2;">'
     f'{saludo}, <span style="background:linear-gradient(90deg,#C9FF00,#00D4FF);'
-    '-webkit-background-clip:text;-webkit-text-fill-color:transparent;">{nombre}</span> 👋'
+    f'-webkit-background-clip:text;-webkit-text-fill-color:transparent;">{nombre}</span> 👋'
     '</h1>'
     f'<p style="color:#8B949E;font-size:0.875rem;margin:0 0 1rem;">{fecha_es}</p>'
     '<div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">'
@@ -485,6 +485,49 @@ else:
                 f"<span style='color:{_tc};font-weight:800;font-size:0.85rem;margin-left:auto;'>{_ti} {_row['Δ']}</span>"
                 f"</div></div>",
                 unsafe_allow_html=True)
+
+    with st.expander(f"Ver historial completo ({len(df_pesos)} ejercicios)"):
+        _fcol, _scol = st.columns(2)
+        with _fcol:
+            _grupos = sorted([g for g in df_pesos["Grupo"].dropna().astype(str).unique().tolist() if g.strip()])
+            _grupo_sel = st.selectbox(
+                "Filtrar por grupo",
+                options=["Todos"] + _grupos,
+                index=0,
+                key=f"pesos_group_{user_actual}",
+            )
+        with _scol:
+            _orden_sel = st.selectbox(
+                "Ordenar por",
+                options=["Más reciente", "Mayor subida (Δ)", "Mayor bajada (Δ)", "Mayor peso actual"],
+                index=0,
+                key=f"pesos_sort_{user_actual}",
+            )
+
+        _df_pesos_full = df_pesos.copy()
+        if _grupo_sel != "Todos":
+            _df_pesos_full = _df_pesos_full[_df_pesos_full["Grupo"] == _grupo_sel]
+
+        if _orden_sel == "Mayor subida (Δ)":
+            _df_pesos_full = _df_pesos_full.sort_values(["_delta_num", "_orden_fecha"], ascending=[False, False])
+        elif _orden_sel == "Mayor bajada (Δ)":
+            _df_pesos_full = _df_pesos_full.sort_values(["_delta_num", "_orden_fecha"], ascending=[True, False])
+        elif _orden_sel == "Mayor peso actual":
+            _df_pesos_full = _df_pesos_full.sort_values(["_peso_num", "_orden_fecha"], ascending=[False, False])
+        else:
+            _df_pesos_full = _df_pesos_full.sort_values(
+                ["_orden_fecha", "_orden_sesion", "_orden_reg"],
+                ascending=[False, False, False],
+            )
+
+        if _df_pesos_full.empty:
+            st.info("No hay ejercicios para ese filtro.")
+        else:
+            st.dataframe(
+                _df_pesos_full[["Ejercicio", "Grupo", "Peso", "S×R", "Δ"]],
+                use_container_width=True,
+                hide_index=True,
+            )
 
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 

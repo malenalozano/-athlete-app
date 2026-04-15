@@ -420,7 +420,7 @@ def progresion_pesos_ejercicios(usuario_id) -> pd.DataFrame:
     conn = get_db_connection()
     try:
         df = pd.read_sql_query(
-            "SELECT e.ejercicio,e.peso,e.series,e.repeticiones,s.fecha,"
+            "SELECT e.ejercicio,e.grupo_muscular,e.peso,e.series,e.repeticiones,s.fecha,"
             "s.id AS sesion_id,e.id AS ejercicio_registro_id "
             "FROM ejercicios_fuerza e JOIN sesiones_fuerza s ON s.id=e.sesion_id "
             "WHERE s.usuario_id=? ORDER BY s.fecha DESC,s.id DESC,e.id DESC LIMIT 300",
@@ -439,10 +439,14 @@ def progresion_pesos_ejercicios(usuario_id) -> pd.DataFrame:
         p = grp.iloc[1] if len(grp) > 1 else None
         delta = round(float(u["peso"]) - float(p["peso"]), 1) if p is not None else 0.0
         badge = f"↑ +{delta}" if delta > 0 else (f"↓ {abs(delta)}" if delta < 0 else "=")
+        peso_num = float(u["peso"]) if float(u["peso"]) > 0 else 0.0
         filas.append({"Ejercicio": str(u["ejercicio"]).strip(),
-                      "Peso": float(u["peso"]) if float(u["peso"]) > 0 else "PC",
+                  "Grupo": str(u.get("grupo_muscular") or "Sin grupo").strip(),
+                  "Peso": peso_num if peso_num > 0 else "PC",
+                  "_peso_num": peso_num,
                       "S×R": f"{int(u['series'])}×{int(u['repeticiones'])}",
                       "Δ": badge,
+                  "_delta_num": delta,
                       "_trend": "up" if delta > 0 else ("dn" if delta < 0 else "eq"),
                       "_orden_fecha": u["fecha_dt"],
                       "_orden_sesion": int(u["sesion_id"]),

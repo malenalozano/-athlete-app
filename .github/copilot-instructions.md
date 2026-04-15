@@ -13,6 +13,9 @@ Mantener siempre la coherencia visual y de experiencia de usuario entre las dife
 ## Reglas de Código
 - **Privacidad:** Nunca imprimir contraseñas ni emails en la consola o en la interfaz (usar `type="password"` en inputs). Siempre tener mucho cuidado con estas cosas, maxima seguridad.
 
+## Flujo de Trabajo
+- Cuando hagas cambios en este repositorio, intenta hacer `git push` al terminar. Si no es posible por autenticación, red o estado del repositorio, informa del bloqueo y no des por hecho que se subió.
+
 ## Lógica de Negocio Específica
 1. **No Duplicados:** Al insertar actividades de Garmin, usar siempre el `activityId` de Garmin como referencia para evitar repeticiones.
 2. **Filtro de Deporte:** (Regla eliminada, ahora se cargan todas las actividades desde Garmin).
