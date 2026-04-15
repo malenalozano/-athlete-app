@@ -21,4 +21,4 @@ No usar `src/app.py` (retirado para evitar confusiones).
 
 ## Nota
 
-`src/app_legacy.py` se conserva solo como referencia histórica de código extraído/refactorizado.
+El código refactorizado se conserva en módulos pequeños dentro de `src/core/`.
