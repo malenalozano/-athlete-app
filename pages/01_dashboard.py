@@ -193,7 +193,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-_kpi_cols = st.columns(8, gap="small")
+_kpi_cols_top = st.columns(4, gap="small")
+_kpi_cols_bottom = st.columns(4, gap="small")
 
 def _kpi_card(col, label, value, period, delta_html_str, border_color, icon_char):
     col.markdown(f"""
@@ -325,14 +326,17 @@ def _render_progresion_pesos(user_actual):
                     hide_index=True,
                 )
 
-_kpi_card(_kpi_cols[0], "KM",          km_val,     "Últimos 7 días", _delta_html(km_delta_num, 1),     "#22c55e", "👟")
-_kpi_card(_kpi_cols[1], "HRV",         hrv_val,    "ms",             _delta_html(hrv_delta_num, 0),    "#3b82f6", "♡")
-_kpi_card(_kpi_cols[2], "FUERZA",      fuerza_val, "sesiones",       _delta_html(fuerza_delta_num, 0), "#a855f7", "💪")
-_kpi_card(_kpi_cols[3], "SUEÑO MEDIO", sueno_val,  "h/noche",        _delta_html(sueno_delta_num, 1),  "#f97316", "🌙")
-_kpi_card(_kpi_cols[4], "CADENCIA",    cadencia_val,  "spm",            _no_delta_html,                   "#22c55e", "👣")
-_kpi_card(_kpi_cols[5], "ACWR",        acwr_val,      "ratio",          _no_delta_html,                   acwr_color, "⚖")
-_kpi_card(_kpi_cols[6], "FC REPOSO",   fc_reposo_val, "bpm",            _no_delta_html,                   "#C9E1FF", "❤")
-_kpi_card(_kpi_cols[7], "ESTRÉS",      estres_val,    "score",          _no_delta_html,                   "#f97316", "⚠")
+_kpi_card(_kpi_cols_top[0], "KM",          km_val,        "Últimos 7 días", _delta_html(km_delta_num, 1),     "#22c55e", "👟")
+_kpi_card(_kpi_cols_top[1], "HRV",         hrv_val,       "ms",             _delta_html(hrv_delta_num, 0),    "#3b82f6", "♡")
+_kpi_card(_kpi_cols_top[2], "FUERZA",      fuerza_val,    "sesiones",       _delta_html(fuerza_delta_num, 0), "#a855f7", "💪")
+_kpi_card(_kpi_cols_top[3], "SUEÑO MEDIO", sueno_val,     "h/noche",        _delta_html(sueno_delta_num, 1),  "#f97316", "🌙")
+
+st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
+
+_kpi_card(_kpi_cols_bottom[0], "CADENCIA",  cadencia_val,  "spm",   _no_delta_html, "#22c55e", "👣")
+_kpi_card(_kpi_cols_bottom[1], "ACWR",      acwr_val,      "ratio", _no_delta_html, acwr_color, "⚖")
+_kpi_card(_kpi_cols_bottom[2], "FC REPOSO", fc_reposo_val, "bpm",   _no_delta_html, "#C9E1FF", "❤")
+_kpi_card(_kpi_cols_bottom[3], "ESTRÉS",    estres_val,    "score", _no_delta_html, "#f97316", "⚠")
 
 st.markdown("<div style='height:2rem;'></div>", unsafe_allow_html=True)
 
