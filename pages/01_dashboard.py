@@ -28,16 +28,20 @@ from src.db.db_manager import get_db_connection
 
 render_navbar("dashboard")
 
-if "usuario_id" not in st.session_state:
-    st.warning("Selecciona tu perfil en la página de inicio.")
-    st.stop()
-user_actual = st.session_state.usuario_id
+try:
+    if "usuario_id" not in st.session_state:
+        st.warning("Selecciona tu perfil en la página de inicio.")
+        st.stop()
+    user_actual = st.session_state.usuario_id
 
-if "dashboard_last_user" not in st.session_state:
-    st.session_state["dashboard_last_user"] = user_actual
-elif st.session_state["dashboard_last_user"] != user_actual:
-    st.cache_data.clear()
-    st.session_state["dashboard_last_user"] = user_actual
+    if "dashboard_last_user" not in st.session_state:
+        st.session_state["dashboard_last_user"] = user_actual
+    elif st.session_state["dashboard_last_user"] != user_actual:
+        st.cache_data.clear()
+        st.session_state["dashboard_last_user"] = user_actual
+except Exception as e:
+    st.error(f"Error al cargar el dashboard: {e}")
+    st.stop()
 
 perfil = obtener_perfil(user_actual) or {}
 nombre = perfil.get("nombre", "Atleta")
@@ -99,7 +103,8 @@ def _delta_html(num, decimales=1):
     color = "#22c55e" if num > 0 else "#f85149"
     bg    = "rgba(34,197,94,0.1)" if num > 0 else "rgba(248,81,73,0.1)"
     flecha = "↗" if num > 0 else "↘"
-    return f'<span style="font-size:0.75rem;font-weight:700;padding:3px 8px;border-radius:6px;background:{bg};color:{color};">{flecha} {signo}{num:.{decimales}f}</span>'
+    valor_formateado = f"{num:.{decimales}f}"
+    return f'<span style="font-size:0.75rem;font-weight:700;padding:3px 8px;border-radius:6px;background:{bg};color:{color};">{flecha} {signo}{valor_formateado}</span>'
 
 _ciclo_badge_html = ""
 if estado_ciclo:
@@ -110,6 +115,10 @@ if estado_ciclo:
 # ---------------------------------------------------------------------------
 # 1. Hero Greeting
 # ---------------------------------------------------------------------------
+# Preparar valores para evitar problemas de formato
+_fase_nombre = fase_hoy.get('fase_nombre', 'Desconocida') if isinstance(fase_hoy, dict) else 'Desconocida'
+_fecha_formateada = _fecha_obj.strftime('%d %b %Y') if _fecha_obj else '—'
+
 st.markdown(f"""
 <div style="
   position:relative;
@@ -131,14 +140,14 @@ st.markdown(f"""
       <p style="color:#8B949E;font-size:0.875rem;margin:0 0 1rem;">{fecha_es}</p>
       <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">
         {_ciclo_badge_html}
-        <span style="background:rgba(59,130,246,0.2);color:#93c5fd;border:1px solid rgba(59,130,246,0.3);border-radius:9999px;padding:4px 12px;font-size:0.75rem;font-weight:600;">🗓 Fase: {fase_hoy.get('fase_nombre', 'Desconocida')}</span>
+        <span style="background:rgba(59,130,246,0.2);color:#93c5fd;border:1px solid rgba(59,130,246,0.3);border-radius:9999px;padding:4px 12px;font-size:0.75rem;font-weight:600;">🗓 Fase: {_fase_nombre}</span>
       </div>
     </div>
     <div style="border-radius:16px;padding:1.25rem 2rem;text-align:center;flex-shrink:0;background:linear-gradient(135deg,rgba(0,212,255,0.12),rgba(59,130,246,0.1));border:1px solid rgba(0,212,255,0.3);box-shadow:0 0 24px rgba(0,212,255,0.15);">
       <p style="font-size:0.65rem;color:#8B949E;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 0.25rem;">Objetivo principal</p>
       <p style="font-size:1rem;font-weight:800;color:white;margin:0 0 0.25rem;">{_obj_nombre}</p>
       <p style="font-size:1.875rem;font-weight:900;margin:0.25rem 0 0;background:linear-gradient(90deg,#00D4FF,#C9FF00);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">{_dias_left} días</p>
-      <p style="font-size:0.65rem;color:#8B949E;margin:0.25rem 0 0;">{_fecha_obj.strftime('%d %b %Y')} · {_semanas_left} semanas</p>
+      <p style="font-size:0.65rem;color:#8B949E;margin:0.25rem 0 0;">{_fecha_formateada} · {_semanas_left} semanas</p>
     </div>
   </div>
 </div>
