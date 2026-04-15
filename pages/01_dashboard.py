@@ -45,7 +45,6 @@ except Exception as e:
 
 perfil = obtener_perfil(user_actual) or {}
 nombre = str(perfil.get("nombre", "Atleta") or "Atleta").strip()
-saludo_nombre = f"{saludo}, {nombre} 👋"
 
 # ---------------------------------------------------------------------------
 # Datos base
@@ -57,6 +56,7 @@ _MESES_ES = {"January":"enero","February":"febrero","March":"marzo","April":"abr
              "September":"septiembre","October":"octubre","November":"noviembre","December":"diciembre"}
 hora = datetime.now().hour
 saludo = "Buenos días" if hora < 13 else ("Buenas tardes" if hora < 20 else "Buenas noches")
+saludo_nombre = f"{saludo}, {nombre} 👋"
 hoy = datetime.now()
 fecha_es = f"{_DIAS_ES[hoy.strftime('%A')]} {hoy.day} de {_MESES_ES[hoy.strftime('%B')]} de {hoy.year}"
 
@@ -486,7 +486,7 @@ else:
         with _pw_cols[_pi]:
             st.markdown(
                 f"<div style='background:linear-gradient(135deg,#0f1724,#101928);border:1px solid rgba(168,85,247,0.15);"
-                f"border-left:3px solid rgba(168,85,247,0.5);border-radius:10px;padding:0.75rem 0.9rem;'>"
+                f"border-left:3px solid rgba(168,85,247,0.5);border-radius:10px;padding:0.75rem 0.9rem;margin-bottom:2.2rem;'>"
                 f"<div style='color:#C9E1FF;font-size:0.8rem;font-weight:600;margin-bottom:4px;'>{_row['Ejercicio']}</div>"
                 f"<div style='display:flex;align-items:baseline;gap:6px;'>"
                 f"<span style='color:white;font-size:1.1rem;font-weight:800;'>{_row['Peso']} kg</span>"
@@ -495,11 +495,7 @@ else:
                 f"</div></div>",
                 unsafe_allow_html=True)
 
-    st.markdown("<div style='height:6.5rem;'></div>", unsafe_allow_html=True)
-    st.markdown(
-        "<div style='height:1px;background:linear-gradient(90deg,rgba(168,85,247,0.28),rgba(168,85,247,0.08),transparent);margin:0 0 1.2rem 0;'></div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown("<div style='height:1.25rem;'></div>", unsafe_allow_html=True)
 
     with st.expander(f"Ver historial completo ({len(df_pesos)} ejercicios)"):
         _fcol, _scol = st.columns(2)
