@@ -605,17 +605,22 @@ div[data-testid="stTextArea"] textarea:focus {
             
             st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
             
+            # Función para limpiar el descarte
+            def _limpiar_descarte():
+                st.session_state[_k_ses] = []
+                st.session_state[_k_res] = None
+            
             # Botón para guardar
             c_guardar, c_limpiar = st.columns([2, 1])
             with c_guardar:
                 if st.button("💾 Guardar sesiones", use_container_width=True, type="primary"):
                     _guardar_sesiones(usuario_id, sesiones_detectadas)
             with c_limpiar:
-                if st.button("Descartar", use_container_width=True):
-                    st.session_state[_k_ses] = []
-                    st.session_state[_k_res] = None
-                    st.session_state[f"nota_fuerza_{usuario_id}"] = ""
-                    st.rerun()
+                st.button(
+                    "Descartar",
+                    use_container_width=True,
+                    on_click=_limpiar_descarte
+                )
 
         _card_close()
 
