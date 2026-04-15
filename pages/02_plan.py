@@ -699,7 +699,7 @@ if active_tab == "generar":
         for i in range(len(dias_plan)):
             with reorder_btn_cols[i]:
                 # Mostrar botones ↑↓ solo si hay espacio
-                mini_cols = st.columns(2, gap="tiny")
+                mini_cols = st.columns(2, gap="small")
                 with mini_cols[0]:
                     if i > 0 and st.button("⬆", key=f"move_up_{i}", use_container_width=True, help="Mover arriba"):
                         plan["dias"][i], plan["dias"][i-1] = plan["dias"][i-1], plan["dias"][i]
