@@ -345,7 +345,7 @@ if active_tab == "generar":
             st.session_state.plan_cursor += timedelta(weeks=1)
             st.session_state.plan_data = None; st.rerun()
     with nav_c4:
-        if st.button("⚡ Regenerar", type="primary", use_container_width=True, key="plan_generate_small"):
+        if st.button("⚡ Regenerar", type="primary", use_container_width=False, key="plan_generate_small"):
             with st.spinner("Generando plan..."):
                 try:
                     from src.plan.entrenador import generar_entrenamiento_semana
