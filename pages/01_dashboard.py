@@ -324,12 +324,12 @@ def _render_progresion_pesos(user_actual):
 
 _kpi_cards_html = [
     _kpi_card_html("KM",          km_val,        "Últimos 7 días", _delta_html(km_delta_num, 1),     "#22c55e", "👟"),
-    _kpi_card_html("HRV",         hrv_val,       "ms",             _delta_html(hrv_delta_num, 0),    "#3b82f6", "♡"),
     _kpi_card_html("FUERZA",      fuerza_val,    "sesiones",       _delta_html(fuerza_delta_num, 0), "#a855f7", "💪"),
     _kpi_card_html("SUEÑO MEDIO", sueno_val,     "h/noche",        _delta_html(sueno_delta_num, 1),  "#f97316", "🌙"),
-    _kpi_card_html("CADENCIA",    cadencia_val,  "spm",            _no_delta_html,                    "#22c55e", "👣"),
-    _kpi_card_html("FC REPOSO",   fc_reposo_val, "bpm",            _no_delta_html,                    "#C9E1FF", "❤"),
     _kpi_card_html("ESTRÉS",      estres_val,    "score",          _no_delta_html,                    "#f97316", "⚠"),
+    _kpi_card_html("CADENCIA",    cadencia_val,  "spm",            _no_delta_html,                    "#22c55e", "👣"),
+    _kpi_card_html("HRV",         hrv_val,       "ms",             _delta_html(hrv_delta_num, 0),    "#3b82f6", "♡"),
+    _kpi_card_html("FC REPOSO",   fc_reposo_val, "bpm",            _no_delta_html,                    "#C9E1FF", "❤"),
 ]
 
 st.markdown(
