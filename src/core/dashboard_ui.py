@@ -1,7 +1,7 @@
 """
 src/core/dashboard_ui.py
 Componentes de UI del Dashboard: checkpoints, ciclo, macrociclo, tema Plotly.
-Extraído de src/app_legacy.py.
+Extraído del monolito legacy (retirado).
 """
 
 import pandas as pd

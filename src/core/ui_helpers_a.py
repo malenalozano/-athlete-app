@@ -1,7 +1,7 @@
 """
 src/core/ui_helpers_a.py
 Helpers de sesión y parsing de notas de entrenamiento.
-Extraído de src/app_legacy.py.
+Extraído del monolito legacy (retirado).
 """
 
 import os

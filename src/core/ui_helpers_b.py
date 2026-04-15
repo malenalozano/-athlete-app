@@ -1,7 +1,7 @@
 """
 src/core/ui_helpers_b.py
 Parsing de fechas en texto libre y gestión de estudios científicos.
-Extraído de src/app_legacy.py.
+Extraído del monolito legacy (retirado).
 """
 
 import io

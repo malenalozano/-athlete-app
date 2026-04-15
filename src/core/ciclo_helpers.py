@@ -1,7 +1,7 @@
 """
 src/core/ciclo_helpers.py
 Predicción de fases del ciclo menstrual y renderizado de calendario.
-Extraído de src/app_legacy.py (líneas 1543-1762).
+Extraído del monolito legacy (retirado).
 NOTA: render_calendario_ciclo supera las 200 líneas por sí sola; se mantiene
 en un único archivo para no duplicar la función de calendario.
 """
