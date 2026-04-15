@@ -5,6 +5,7 @@ Sub-tabs: Generar Plan (cards de días) | Datos (análisis completo del entrenad
 import pandas as pd
 import streamlit as st
 from datetime import datetime, timedelta
+from html import escape
 
 from src.core.navbar import render_navbar
 from src.db.db_manager import get_db_connection, obtener_credenciales_garmin, obtener_perfil as _obtener_perfil
@@ -14,8 +15,10 @@ from src.core.plan_ui_helpers import (
 
 try:
     from streamlit_sortables import sort_items
-except Exception:
+    _SORTABLES_IMPORT_ERROR = ""
+except Exception as e:
     sort_items = None
+    _SORTABLES_IMPORT_ERROR = str(e)
 
 render_navbar("plan")
 
@@ -130,6 +133,45 @@ div[data-testid="stRadio"] input[type="radio"] { display:none; }
 # Helpers
 # ---------------------------------------------------------------------------
 def _lunes_de(dt): return dt - timedelta(days=dt.weekday())
+
+def _descomponer_recomendacion(texto: str) -> tuple[str, str, str]:
+    """Convierte una alerta libre en icono, titulo y descripcion legibles."""
+    bruto = str(texto or "").strip()
+    if not bruto:
+        return "💡", "Recomendacion semanal", ""
+
+    icono = "💡"
+    trozos = bruto.split(" ", 1)
+    if trozos and trozos[0] and not trozos[0][0].isalnum():
+        icono = trozos[0]
+        bruto = trozos[1].strip() if len(trozos) > 1 else ""
+
+    titulo, desc = bruto, ""
+    for sep in (" — ", ": "):
+        if sep in bruto:
+            titulo, desc = bruto.split(sep, 1)
+            titulo, desc = titulo.strip(), desc.strip()
+            break
+
+    if not desc and len(titulo) > 96:
+        punto = titulo.find(". ")
+        if 25 <= punto <= 90:
+            desc = titulo[punto + 2 :].strip()
+            titulo = titulo[: punto + 1].strip()
+
+    if not titulo:
+        titulo = "Recomendacion semanal"
+    return icono, titulo, desc
+
+def _estilo_recomendacion(texto: str) -> tuple[str, str]:
+    t = str(texto or "").lower()
+    if any(k in t for k in ("🚫", "⛔", "bloque", "prohib")):
+        return "#fca5a5", "rgba(239,68,68,0.10)"
+    if any(k in t for k in ("⚠", "fatiga", "reduc", "insuficiente")):
+        return "#fbbf24", "rgba(251,191,36,0.10)"
+    if any(k in t for k in ("✅", "seguir", "ok", "completado")):
+        return "#86efac", "rgba(34,197,94,0.10)"
+    return "#67e8f9", "rgba(255,255,255,0.03)"
 
 def _rango_semana_es(lunes: datetime) -> str:
     """Format week range in Spanish, e.g. '6-12 abril'."""
@@ -409,32 +451,35 @@ if active_tab == "generar":
             st.session_state.plan_cursor += timedelta(weeks=1)
             st.session_state.plan_data = None; st.rerun()
     with nav_c4:
-        _spacer, right_controls = st.columns([0.35, 0.65], gap="small")
+        _spacer, right_controls = st.columns([0.22, 0.78], gap="small")
         with right_controls:
-            if st.button("⚡ Regenerar", type="primary", use_container_width=True, key="plan_generate_small"):
-                with st.spinner("Generando plan..."):
-                    try:
-                        from src.plan.entrenador import generar_entrenamiento_semana
-                        plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
+            sin_col, regen_col = st.columns([0.42, 0.58], gap="small")
+            with sin_col:
+                sin_ia = st.checkbox("Sin IA", key="plan_sin_ia")
+                if sin_ia:
+                    st.session_state.plan_ia = False
+            with regen_col:
+                if st.button("⚡ Regenerar", type="primary", use_container_width=True, key="plan_generate_small"):
+                    with st.spinner("Generando plan..."):
+                        try:
+                            from src.plan.entrenador import generar_entrenamiento_semana
+                            plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
 
-                        # DEBUG: mostrar tipos generados
-                        tipos_gen = [d.get("tipo", "?") for d in plan_nuevo.get("dias", [])]
-                        if not any(t not in ("Regenerativo", "Descanso", "Movilidad") for t in tipos_gen):
-                            st.warning(f"⚠️ Aviso: Plan generado solo con tipos: {tipos_gen}. Revisando...")
+                            # DEBUG: mostrar tipos generados
+                            tipos_gen = [d.get("tipo", "?") for d in plan_nuevo.get("dias", [])]
+                            if not any(t not in ("Regenerativo", "Descanso", "Movilidad") for t in tipos_gen):
+                                st.warning(f"⚠️ Aviso: Plan generado solo con tipos: {tipos_gen}. Revisando...")
 
-                        plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, user_actual, lunes, datetime.now())
-                        st.session_state.plan_data = plan_nuevo
-                        st.session_state.plan_ia = True
-                        _auto_guardar(user_actual, lunes, plan_nuevo)
-                    except Exception as e:
-                        st.error(f"❌ Error generando plan:\n\n{str(e)}")
-                        import traceback
-                        st.error(f"**Traceback completo:**\n\n```\n{traceback.format_exc()}\n```")
-                        st.stop()
-                st.rerun()
-            sin_ia = st.checkbox("Sin IA", key="plan_sin_ia")
-            if sin_ia:
-                st.session_state.plan_ia = False
+                            plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, user_actual, lunes, datetime.now())
+                            st.session_state.plan_data = plan_nuevo
+                            st.session_state.plan_ia = True
+                            _auto_guardar(user_actual, lunes, plan_nuevo)
+                        except Exception as e:
+                            st.error(f"❌ Error generando plan:\n\n{str(e)}")
+                            import traceback
+                            st.error(f"**Traceback completo:**\n\n```\n{traceback.format_exc()}\n```")
+                            st.stop()
+                    st.rerun()
 
     st.markdown("<div style='height:2.2rem;'></div>", unsafe_allow_html=True)
 
@@ -503,10 +548,46 @@ if active_tab == "generar":
             direction="horizontal",
             key=f"plan_sortable_{lunes.strftime('%Y%m%d')}",
             custom_style="""
-.sortable-component { padding: .05rem 0 .2rem 0; }
-.sortable-container { background: transparent; }
-.sortable-container-header { display: none; }
-.sortable-container-body { gap: .5rem; }
+.sortable-component {
+    padding: .05rem 0 .2rem 0 !important;
+}
+.sortable-container {
+    background: transparent !important;
+    padding: 0 !important;
+}
+.sortable-container-header {
+    display: none !important;
+}
+.sortable-container-body {
+    background: transparent !important;
+    border-radius: 0 !important;
+    min-height: auto !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: .5rem !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow-x: auto !important;
+}
+.sortable-item, .sortable-item:hover {
+    background: linear-gradient(135deg, rgba(13,23,35,0.98), rgba(16,26,40,0.98)) !important;
+    color: #C9E1FF !important;
+    border: 1px solid rgba(0, 212, 255, 0.22) !important;
+    border-radius: 8px !important;
+    margin: 0 !important;
+    padding: .48rem .62rem !important;
+    min-height: 40px !important;
+    height: auto !important;
+    font-size: .75rem !important;
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
+    white-space: pre !important;
+    box-shadow: none !important;
+}
+.sortable-item:active {
+    cursor: grabbing !important;
+}
 """,
         )
 
@@ -517,7 +598,10 @@ if active_tab == "generar":
             st.session_state["plan_selected_day_idx"] = 0
             st.rerun()
     elif dias_plan:
-        st.info("No se pudo cargar drag-and-drop. Ejecuta pip install streamlit-sortables para activarlo.")
+        msg = "No se pudo cargar drag-and-drop."
+        if _SORTABLES_IMPORT_ERROR:
+            msg = f"{msg} Error: {_SORTABLES_IMPORT_ERROR}"
+        st.warning(msg)
 
     # Vista semanal (calendario) con click para ver detalle debajo
     dias_plan = plan.get("dias", [])
@@ -643,26 +727,62 @@ if active_tab == "generar":
     st.markdown(html_semaforo(semaforo, plan["km_totales"], plan["acwr"]), unsafe_allow_html=True)
     st.markdown(html_barra_fase(fase), unsafe_allow_html=True)
 
-    # Alertas
-    if plan["alertas"]:
-        st.divider()
-        for a in plan["alertas"]:
-            (st.error if "⛔" in a or "🚫" in a else st.warning if "⚠️" in a else st.info)(a)
+    recomendaciones_semana = []
+    vistos = set()
 
-    # AI Recommendations card
-    if plan.get("alertas") or (st.session_state.get("plan_ia") and any(d.get("descripcion_ia") for d in plan.get("dias", []))):
-        st.markdown("""
-<div style="background:linear-gradient(135deg,rgba(168,85,247,0.1),rgba(0,212,255,0.05));
-border:1px solid rgba(168,85,247,0.25);border-radius:16px;padding:1.5rem;margin:1.5rem 0;">
-  <div style="color:white;font-size:.9rem;font-weight:700;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem;">
-    ✨ Recomendaciones del Entrenador IA
+    for a in plan.get("alertas", []):
+        texto = str(a or "").strip()
+        clave = texto.lower()
+        if texto and clave not in vistos:
+            recomendaciones_semana.append(texto)
+            vistos.add(clave)
+
+    if st.session_state.get("plan_ia"):
+        for d in plan.get("dias", []):
+            desc_ia = str(d.get("descripcion_ia") or "").strip()
+            if not desc_ia:
+                continue
+            dia_lbl = str(d.get("dia") or "Sesion")
+            tipo_lbl = str(d.get("tipo") or "Entrenamiento")
+            texto = f"{tipo_lbl} ({dia_lbl}) — {desc_ia}"
+            clave = texto.lower()
+            if clave not in vistos:
+                recomendaciones_semana.append(texto)
+                vistos.add(clave)
+
+    if recomendaciones_semana:
+        filas_html = []
+        for rec in recomendaciones_semana:
+            icono, titulo, descripcion = _descomponer_recomendacion(rec)
+            color_titulo, fondo = _estilo_recomendacion(rec)
+            descripcion_html = (
+                f"<p style='color:#8B949E;font-size:.74rem;line-height:1.4;margin:.2rem 0 0 0;'>{escape(descripcion)}</p>"
+                if descripcion else ""
+            )
+            filas_html.append(
+                f"""
+<div style="display:flex;align-items:flex-start;gap:.7rem;padding:.72rem .8rem;border-radius:12px;
+background:{fondo};border:1px solid rgba(255,255,255,0.06);margin-bottom:.55rem;">
+  <span style="font-size:1rem;line-height:1.1;">{escape(icono)}</span>
+  <div style="min-width:0;">
+    <p style="margin:0;color:{color_titulo};font-size:.81rem;font-weight:700;line-height:1.3;">{escape(titulo)}</p>
+    {descripcion_html}
   </div>
-  <div style="color:#C9E1FF;font-size:.85rem;line-height:1.6;">""", unsafe_allow_html=True)
+</div>"""
+            )
 
-        for a in plan.get("alertas", []):
-            st.markdown(f"<div style='margin-bottom:.5rem;'>• {a}</div>", unsafe_allow_html=True)
-
-        st.markdown("</div></div>", unsafe_allow_html=True)
+        st.markdown(
+            f"""
+<div style="background:linear-gradient(135deg,rgba(168,85,247,0.09),rgba(0,212,255,0.05));
+border:1px solid rgba(168,85,247,0.24);border-radius:16px;padding:1rem 1rem .95rem;margin:1.2rem 0 0 0;">
+  <div style="display:flex;align-items:center;gap:.5rem;color:#ffffff;font-size:.88rem;font-weight:700;margin:0 0 .7rem 0;">
+    <span style="color:#c084fc;">✨</span>
+    Recomendaciones IA para esta semana
+  </div>
+  {''.join(filas_html)}
+</div>""",
+            unsafe_allow_html=True,
+        )
 
     # Guardar
     st.divider()

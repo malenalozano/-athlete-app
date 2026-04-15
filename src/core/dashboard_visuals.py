@@ -171,7 +171,7 @@ def render_strain_recovery_donuts(recovery_score, acwr=None):
             f"<div style='text-align:center;margin-top:-12px;'>"
             f"<span style='font-size:0.75rem;font-weight:700;color:{strain_color};text-transform:uppercase;"
             f"letter-spacing:0.08em;'>Strain Load</span><br>"
-            f"<span style='font-size:0.72rem;color:#8B949E;'>Carga relativa reciente</span></div>",
+            f"<span style='font-size:0.72rem;color:#8B949E;'>ACWR {acwr:.2f} (agudo/crónico)</span></div>",
             unsafe_allow_html=True)
 
         _str_info_cols = st.columns([1, 8], gap="small")
@@ -181,10 +181,10 @@ def render_strain_recovery_donuts(recovery_score, acwr=None):
         if st.session_state.get("show_strain_donut_info", False):
             st.info(
                 "Strain (0-100): representa la carga de entrenamiento acumulada.\n"
-                "Se calcula comparando carga reciente vs tu capacidad habitual.\n"
-                "- Bajo: margen de recuperacion amplio.\n"
-                "- Medio: carga controlada.\n"
-                "- Alto: mayor riesgo por fatiga y sobrecarga."
+                "Se deriva del ACWR (carga aguda/carga cronica).\n"
+                "- ACWR ~0.8-1.3: zona razonable.\n"
+                "- ACWR >1.3: aumenta el riesgo por fatiga.\n"
+                "- ACWR >1.5: riesgo alto de sobrecarga."
             )
 
 
