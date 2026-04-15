@@ -171,8 +171,6 @@ def _active_item_html(label: str, icon: str, color: str, bg: str, border: str, g
         f"padding:6px 10px;border-radius:10px;background:{bg};border:1px solid {border};"
         f"color:{color};font-size:12px;font-weight:600;white-space:nowrap;"
         f"box-shadow:{glow};'>"
-        f"<span style='position:absolute;top:-3px;right:-3px;width:8px;height:8px;"
-        f"border-radius:50%;background:{color};border:2px solid #0E1117;'></span>"
         f"<span>{icon}</span><span>{label}</span>"
         "</div></div>"
     )

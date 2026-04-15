@@ -78,9 +78,6 @@ def _inicio_ultima_regla(conn, usuario_id: int, fecha_ref=None):
 
     return inicios_validos[-1] if inicios_validos else None
 
-st.markdown(f"<h2 style='color:#e6edf3;font-weight:600;margin:8px 0 16px;'>Diario</h2>",
-            unsafe_allow_html=True)
-
 from src.db.db_manager import obtener_perfil as _obtener_perfil
 _perfil_actual = _obtener_perfil(user_actual) or {}
 _genero_actual = str(_perfil_actual.get("genero", "")).strip().lower()
@@ -97,21 +94,6 @@ st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 st.markdown(
     """
 <style>
-.stFormSubmitButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #C9FF00 0%, #A3E635 52%, #84CC16 100%) !important;
-    color: #0b0f14 !important;
-    border: 1px solid rgba(201,255,0,0.32) !important;
-    border-radius: 14px !important;
-    font-weight: 800 !important;
-    letter-spacing: 0.01em !important;
-    box-shadow: 0 10px 24px rgba(163, 230, 53, 0.22) !important;
-    transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease !important;
-}
-.stFormSubmitButton > button[kind="primary"]:hover {
-    transform: translateY(-1px) !important;
-    filter: brightness(1.03) saturate(1.02) !important;
-    box-shadow: 0 14px 28px rgba(163, 230, 53, 0.28) !important;
-}
 </style>
 """,
     unsafe_allow_html=True,
