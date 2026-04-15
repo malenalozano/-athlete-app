@@ -363,12 +363,6 @@ if active_tab == "generar":
 
     st.markdown("<div style='height:1.35rem;'></div>", unsafe_allow_html=True)
 
-    # Semáforo and fase bar
-    st.markdown(html_semaforo(semaforo, plan["km_totales"], plan["acwr"]), unsafe_allow_html=True)
-    st.markdown(html_barra_fase(fase), unsafe_allow_html=True)
-
-    st.markdown("<div style='height:0.35rem;'></div>", unsafe_allow_html=True)
-
     # "Distribución Semanal" heading
     st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:1.5rem 0 1rem;">
@@ -498,6 +492,11 @@ if active_tab == "generar":
             st.session_state.plan_data = plan
             st.success("Cambio anotado.")
             st.rerun()
+
+    # Semáforo + Acondicionamiento (fase): debajo de la distribución semanal
+    st.markdown("<div style='height:0.35rem;'></div>", unsafe_allow_html=True)
+    st.markdown(html_semaforo(semaforo, plan["km_totales"], plan["acwr"]), unsafe_allow_html=True)
+    st.markdown(html_barra_fase(fase), unsafe_allow_html=True)
 
     # Alertas
     if plan["alertas"]:
