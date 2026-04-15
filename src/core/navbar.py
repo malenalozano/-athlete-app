@@ -56,10 +56,10 @@ header {{ display: none !important; }}
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
     border-bottom: 1px solid rgba(255,255,255,0.06) !important;
-    padding: 0 24px !important;
+    padding: 8px 24px !important;
     margin: 0 -4rem 0 -4rem !important;
     align-items: center !important;
-    min-height: 64px !important;
+    min-height: 88px !important;
     gap: 4px !important;
 }}
 
@@ -67,20 +67,20 @@ header {{ display: none !important; }}
 {_NAV} [data-testid="stPageLink"] {{
     display: flex !important;
     align-items: center !important;
-    height: 64px !important;
+    height: 80px !important;
 }}
 {_NAV} [data-testid="stPageLink"] p {{
-    font-size: 12px !important;
+    font-size: 14px !important;
     font-weight: 600 !important;
     color: #8B949E !important;
-    padding: 6px 10px !important;
+    padding: 10px 16px !important;
     margin: 0 !important;
-    border-radius: 10px !important;
+    border-radius: 12px !important;
     border: 1px solid transparent !important;
     white-space: nowrap !important;
     display: flex !important;
     align-items: center !important;
-    gap: 5px !important;
+    gap: 8px !important;
     transition: color 0.2s, background 0.2s !important;
 }}
 {_NAV} [data-testid="stPageLink"]:hover p {{
@@ -90,15 +90,15 @@ header {{ display: none !important; }}
 
 /* ── Sync button ── */
 {_NAV} button[kind="secondary"] {{
-    width: 32px !important; height: 32px !important;
+    width: 42px !important; height: 42px !important;
     padding: 0 !important; border-radius: 50% !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
     background: transparent !important;
     color: #8b949e !important;
-    font-size: 14px !important;
+    font-size: 17px !important;
     min-height: 0 !important;
     line-height: 1 !important;
-    margin-top: 16px !important;
+    margin-top: 0 !important;
 }}
 {_NAV} button[kind="secondary"]:hover {{
     background: rgba(255,255,255,0.06) !important;
@@ -106,16 +106,16 @@ header {{ display: none !important; }}
 }}
 
 /* ── Selectbox user ── */
-{_NAV} [data-testid="stSelectbox"] {{ margin-top: 14px !important; }}
+{_NAV} [data-testid="stSelectbox"] {{ margin-top: 0 !important; }}
 {_NAV} [data-testid="stSelectbox"] > div > div {{
     background: rgba(48,54,61,0.6) !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
-    border-radius: 8px !important;
+    border-radius: 10px !important;
     color: white !important;
-    font-size: 12px !important;
-    padding: 0 8px !important;
-    min-height: 32px !important;
-    height: 32px !important;
+    font-size: 13px !important;
+    padding: 0 10px !important;
+    min-height: 40px !important;
+    height: 40px !important;
 }}
 </style>"""
 
@@ -143,28 +143,28 @@ div[data-testid="stHorizontalBlock"].subtab-row button:hover {
 def _logo_html(auth_user: str) -> str:
     sub = f"{auth_user} &nbsp;·&nbsp; Maratón 2026" if auth_user else "Maratón 2026"
     return (
-        "<div style='display:flex;align-items:center;gap:10px;height:64px;"
+        "<div style='display:flex;align-items:center;gap:12px;height:80px;"
         "padding-right:16px;border-right:1px solid rgba(255,255,255,0.06);'>"
-        "<div style='width:36px;height:36px;border-radius:10px;flex-shrink:0;"
-        "display:flex;align-items:center;justify-content:center;font-size:18px;"
+        "<div style='width:44px;height:44px;border-radius:12px;flex-shrink:0;"
+        "display:flex;align-items:center;justify-content:center;font-size:22px;"
         "background:linear-gradient(135deg,#C9FF00 0%,#00D4FF 50%,#A855F7 100%);"
         "box-shadow:0 0 20px rgba(201,255,0,0.4);'>⚡</div>"
         "<div style='line-height:1;'>"
-        "<p style='font-size:13px;font-weight:700;margin:0;line-height:1;"
+        "<p style='font-size:15px;font-weight:700;margin:0;line-height:1;"
         "background:linear-gradient(90deg,#C9FF00,#00D4FF);"
         "-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>"
         "Proyecto Athlete</p>"
-        f"<p style='font-size:10px;color:#8B949E;margin:2px 0 0;line-height:1;'>{sub}</p>"
+        f"<p style='font-size:11px;color:#8B949E;margin:4px 0 0;line-height:1;'>{sub}</p>"
         "</div></div>"
     )
 
 
 def _active_item_html(label: str, icon: str, color: str, bg: str, border: str, glow: str) -> str:
     return (
-        "<div style='display:flex;align-items:center;height:64px;'>"
-        f"<div style='position:relative;display:flex;align-items:center;gap:5px;"
-        f"padding:6px 10px;border-radius:10px;background:{bg};border:1px solid {border};"
-        f"color:{color};font-size:12px;font-weight:600;white-space:nowrap;"
+        "<div style='display:flex;align-items:center;height:80px;'>"
+        f"<div style='position:relative;display:flex;align-items:center;gap:8px;"
+        f"padding:10px 16px;border-radius:12px;background:{bg};border:1px solid {border};"
+        f"color:{color};font-size:14px;font-weight:700;white-space:nowrap;"
         f"box-shadow:{glow};'>"
         f"<span>{icon}</span><span>{label}</span>"
         "</div></div>"
