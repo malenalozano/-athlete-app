@@ -579,6 +579,12 @@ div[data-testid="stTextArea"] textarea:focus {
                         st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
                         
                         for ej_idx, ej in enumerate(res["datos"], 1):
+                            if ej_idx > 1:
+                                st.markdown(
+                                    "<div style='height:10px;'></div>"
+                                    "<div style='border-top:1px solid rgba(255,255,255,0.08);margin:0 0 10px 0;'></div>",
+                                    unsafe_allow_html=True,
+                                )
                             cols_ej = st.columns([2.8, 1, 1, 1.4, 1.8])
                             nombre_ej = ej.get("ejercicio", "—")
                             series = ej.get("series", "—")
@@ -602,12 +608,13 @@ div[data-testid="stTextArea"] textarea:focus {
                             notas = ej.get("notas", "")
                             if notas:
                                 st.markdown(
-                                    f"<div style='margin-left:0;margin-top:4px;padding:8px;background:#16191e;border-left:3px solid #60a5fa;border-radius:4px;'>"
+                                    f"<div style='margin-left:10px;margin-top:8px;padding:10px 12px;background:#16191e;border-left:3px solid #60a5fa;border-radius:6px;'>"
                                     f"<div style='color:#60a5fa;font-size:9px;font-weight:600;'>📝 Notas:</div>"
-                                    f"<div style='color:{TXT2};font-size:10px;margin-top:2px;'>{notas}</div>"
+                                    f"<div style='color:{TXT2};font-size:10px;margin-top:4px;line-height:1.5;'>{notas}</div>"
                                     f"</div>",
                                     unsafe_allow_html=True
                                 )
+                            st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
                     else:
                         if tipo_txt == "Carrera":
                             st.markdown(
