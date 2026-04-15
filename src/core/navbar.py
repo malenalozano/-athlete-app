@@ -279,7 +279,7 @@ def render_navbar(pagina_activa: str):
     nav_container = st.container(key="main_navbar")
     with nav_container:
         # ── Main nav row: logo | 4 pages | spacer | sync | user ─────────────
-        cols = st.columns([2.4, 1.1, 1.3, 1.0, 0.95, 4.5, 1.4])
+        cols = st.columns([2.4, 1.1, 1.3, 1.0, 0.95, 5.0, 0.7, 1.4])
 
         with cols[0]:
             st.markdown(_logo_html(auth_user), unsafe_allow_html=True)
@@ -291,8 +291,8 @@ def render_navbar(pagina_activa: str):
                 else:
                     st.page_link(path, label=f"{icon} {label}")
 
-        # Sync button
-        with cols[5]:
+        # Sync button (right side, next to profile selector)
+        with cols[6]:
             if st.button("↻", key="navbar_sync", help="Sincronizar Garmin (últimos 7 días)"):
                 gc = st.session_state.get("gc")
                 if gc is None:
@@ -343,7 +343,7 @@ def render_navbar(pagina_activa: str):
         _opciones      = list(_perfiles_dict.keys())
         _idx_actual    = next((i for i, k in enumerate(_opciones) if _perfiles_dict[k] == _current_uid), 0)
 
-        with cols[6]:
+        with cols[7]:
             _sel = st.selectbox(
                 "usuario",
                 _opciones,
