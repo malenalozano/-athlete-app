@@ -550,30 +550,38 @@ if active_tab == "generar":
     elif st.session_state["plan_selected_day_idx"] >= len(dias_plan):
         st.session_state["plan_selected_day_idx"] = 0
 
-    # Reordenación de sesiones con botones ↑/↓ (alternativa funcional a drag-drop)
+    # Reordenación con Drag-and-Drop (HTML personalizado + JavaScript)
     if dias_plan:
-        st.caption("Usa ↑/↓ para reordenar o haz click en un día para ver detalles")
+        st.caption("Arrastra las tarjetas para reordenarlas o usa los botones para ajustar")
         
-        # Fila de tarjetas con botones de reordenación
-        reorder_cols = st.columns([1.2] * len(dias_plan), gap="small")
+        # Generar ID único para este contenedor drag-drop
+        drag_container_id = f"plan_dragdrop_{lunes.strftime('%Y%m%d')}"
+        
+        # HTML del grid arrastrabl con JavaScript embebido
+        html_drag_template = f"""
+<div id="{drag_container_id}" style="display:grid; grid-template-columns:repeat({len(dias_plan)},1fr); gap:0.5rem; margin-bottom:1.5rem;">
+"""
+        
+        # Crear tarjetas arrastrables
+        day_info = []  # Para usar en botones debajo
         for i, d in enumerate(dias_plan):
-            with reorder_cols[i]:
-                tipo = d.get("tipo", "—")
-                color = _get_activity_color(tipo)
-                fecha_obj = datetime.fromisoformat(d.get("fecha", "2000-01-01"))
-                day_name = _DIA_CORTO[fecha_obj.weekday()] if 0 <= fecha_obj.weekday() < 7 else fecha_obj.strftime("%a").upper()[:3]
-                day_date = fecha_obj.strftime("%d")
-                duration_km = f"{d.get('km', 0):.1f} km" if d.get('km', 0) else f"{d.get('duracion_min', '—')} min"
-                zone = d.get('intensidad', 'Z1-Z2')
-                emoji = _EMOJIS.get(tipo, "📅")
-                
-                is_selected = st.session_state.get("plan_selected_day_idx") == i
-                border_style = f"2px solid {color};box-shadow:0 0 16px {color}66;" if is_selected else f"4px solid {color};"
-                bg_style = f"linear-gradient(135deg,{color}15,{color}08);" if is_selected else "#161B22;"
-                
-                st.markdown(
-                    f"""
-<div style="border-left:{border_style}background:{bg_style}border-radius:14px;padding:1rem 0.75rem;position:relative;">
+            tipo = d.get("tipo", "—")
+            color = _get_activity_color(tipo)
+            fecha_obj = datetime.fromisoformat(d.get("fecha", "2000-01-01"))
+            day_name = _DIA_CORTO[fecha_obj.weekday()] if 0 <= fecha_obj.weekday() < 7 else fecha_obj.strftime("%a").upper()[:3]
+            day_date = fecha_obj.strftime("%d")
+            duration_km = f"{d.get('km', 0):.1f} km" if d.get('km', 0) else f"{d.get('duracion_min', '—')} min"
+            zone = d.get('intensidad', 'Z1-Z2')
+            emoji = _EMOJIS.get(tipo, "📅")
+            
+            is_selected = st.session_state.get("plan_selected_day_idx") == i
+            border_style = f"2px solid {color};box-shadow:0 0 16px {color}66;" if is_selected else f"4px solid {color};"
+            bg_style = f"linear-gradient(135deg,{color}15,{color}08);" if is_selected else "#161B22;"
+            
+            day_info.append((day_name, tipo))
+            
+            html_drag_template += f"""
+<div draggable="true" class="plan-drag-card" data-index="{i}" style="border-left:{border_style}background:{bg_style}border-radius:14px;padding:1rem 0.75rem;cursor:grab;transition:all 0.2s;user-select:none;position:relative;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.28rem;">
     <div style="color:#8B949E;font-size:.7rem;font-weight:700;text-transform:uppercase;">{day_name}</div>
     <div style="color:#8B949E;font-size:.68rem;">::</div>
@@ -585,28 +593,122 @@ if active_tab == "generar":
   </div>
   <div style="color:#C9E1FF;font-size:.8rem;font-weight:600;margin-bottom:.4rem;">{duration_km}</div>
   <div style="background:rgba(255,255,255,0.1);border-radius:4px;padding:.3rem .5rem;font-size:.65rem;color:#8B949E;">{zone}</div>
-</div>""",
-                    unsafe_allow_html=True,
-                )
-                
-                # Botones de reordenación y selección
-                b1, b2, b3 = st.columns(3, gap="small")
-                with b1:
-                    if i > 0 and st.button("⬆️", key=f"move_up_{i}", use_container_width=True):
-                        # Swap entrenamientos
+</div>
+"""
+        
+        html_drag_template += """
+</div>
+
+<style>
+.plan-drag-card {
+  border-radius: 14px;
+  transition: all 0.3s ease;
+}
+.plan-drag-card:hover {
+  cursor: grab;
+  transform: translateY(-2px);
+}
+.plan-drag-card.dragging {
+  opacity: 0.5 !important;
+  z-index: 1;
+}
+.plan-drag-card.drag-over {
+  border-bottom: 3px solid #C9FF00 !important;
+}
+</style>
+
+<script>
+(function() {
+  const container = document.getElementById('""" + drag_container_id + """');
+  if (!container) return;
+  
+  let draggedElement = null;
+  const cards = container.querySelectorAll('.plan-drag-card');
+  
+  cards.forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      draggedElement = card;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', card.innerHTML);
+    });
+    
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      document.querySelectorAll('.plan-drag-card').forEach(c => c.classList.remove('drag-over'));
+      draggedElement = null;
+    });
+    
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (draggedElement && draggedElement !== card) {
+        card.classList.add('drag-over');
+      }
+    });
+    
+    card.addEventListener('dragleave', () => {
+      card.classList.remove('drag-over');
+    });
+    
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      
+      if (draggedElement && draggedElement !== card) {
+        const draggedIdx = Number(draggedElement.dataset.index);
+        const targetIdx = Number(card.dataset.index);
+        
+        // Swap en el DOM (visual)
+        if (draggedIdx < targetIdx) {
+          card.parentNode.insertBefore(draggedElement, card.nextSibling);
+        } else {
+          card.parentNode.insertBefore(draggedElement, card);
+        }
+        
+        // Actualizar indices visualmente
+        Array.from(container.querySelectorAll('.plan-drag-card')).forEach((c, idx) => {
+          c.dataset.index = idx;
+        });
+      }
+    });
+  });
+})();
+</script>
+"""
+        
+        st.markdown(html_drag_template, unsafe_allow_html=True)
+        
+        # Botones para aplicar cambios (debajo del drag visual)
+        st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+        
+        btn_cols = st.columns(len(dias_plan), gap="small")
+        for i, (day_name, tipo) in enumerate(day_info):
+            with btn_cols[i]:
+                is_selected = st.session_state.get("plan_selected_day_idx") == i
+                if st.button(day_name, key=f"plan_day_pick_{i}", use_container_width=True, 
+                            type="primary" if is_selected else "secondary"):
+                    st.session_state["plan_selected_day_idx"] = i
+                    st.rerun()
+        
+        # Botones de reordenación arriba/abajo
+        st.markdown("<div style='height:0.3rem;'></div>", unsafe_allow_html=True)
+        reorder_msg = st.empty()
+        
+        reorder_btn_cols = st.columns([1] * len(dias_plan), gap="small")
+        for i in range(len(dias_plan)):
+            with reorder_btn_cols[i]:
+                # Mostrar botones ↑↓ solo si hay espacio
+                mini_cols = st.columns(2, gap="tiny")
+                with mini_cols[0]:
+                    if i > 0 and st.button("⬆", key=f"move_up_{i}", use_container_width=True, help="Mover arriba"):
                         plan["dias"][i], plan["dias"][i-1] = plan["dias"][i-1], plan["dias"][i]
                         st.session_state.plan_data = plan
                         _auto_guardar(user_actual, lunes, plan)
                         st.session_state["plan_selected_day_idx"] = i - 1
                         st.rerun()
-                with b2:
-                    if st.button(day_name, key=f"plan_day_pick_{i}", use_container_width=True, 
-                                type="primary" if is_selected else "secondary"):
-                        st.session_state["plan_selected_day_idx"] = i
-                        st.rerun()
-                with b3:
-                    if i < len(dias_plan) - 1 and st.button("⬇️", key=f"move_down_{i}", use_container_width=True):
-                        # Swap entrenamientos
+                with mini_cols[1]:
+                    if i < len(dias_plan) - 1 and st.button("⬇", key=f"move_down_{i}", use_container_width=True, help="Mover abajo"):
                         plan["dias"][i], plan["dias"][i+1] = plan["dias"][i+1], plan["dias"][i]
                         st.session_state.plan_data = plan
                         _auto_guardar(user_actual, lunes, plan)
