@@ -34,6 +34,11 @@ try:
         st.stop()
     user_actual = st.session_state.usuario_id
 
+    # One-time cache refresh so dashboard UI/data changes show immediately after deploy/restart.
+    if "dashboard_force_refresh_done" not in st.session_state:
+        st.cache_data.clear()
+        st.session_state["dashboard_force_refresh_done"] = True
+
     if "dashboard_last_user" not in st.session_state:
         st.session_state["dashboard_last_user"] = user_actual
     elif st.session_state["dashboard_last_user"] != user_actual:
@@ -560,6 +565,30 @@ try:
         recovery_score = datos.get("hrv_recovery", {}).get("recovery_score", 50)
         acwr           = datos.get("acwr", 1.0)
         render_strain_recovery_donuts(recovery_score, acwr)
+
+        _help_cols = st.columns(2, gap="small")
+        if _help_cols[0].button("Info Recovery", key="dashboard_info_recovery_btn", use_container_width=True):
+            st.session_state["dashboard_info_recovery_open"] = not st.session_state.get("dashboard_info_recovery_open", False)
+        if _help_cols[1].button("Info Carga/Strain", key="dashboard_info_strain_btn", use_container_width=True):
+            st.session_state["dashboard_info_strain_open"] = not st.session_state.get("dashboard_info_strain_open", False)
+
+        if st.session_state.get("dashboard_info_recovery_open", False):
+            st.info(
+                "Recovery (0-100): nivel de recuperacion para hoy.\n"
+                "- >=70: buena disponibilidad para entrenar.\n"
+                "- 50-69: entrenar con control.\n"
+                "- <50: priorizar recuperacion.\n"
+                "Se calcula con HRV, sueno, estres, body battery y carga reciente."
+            )
+
+        if st.session_state.get("dashboard_info_strain_open", False):
+            st.info(
+                "Strain (0-100): carga de entrenamiento acumulada, derivada del ACWR.\n"
+                "ACWR = carga aguda / carga cronica.\n"
+                "- ~0.8-1.3: zona razonable.\n"
+                "- >1.3: sube el riesgo de fatiga.\n"
+                "- >1.5: riesgo alto de sobrecarga."
+            )
     except Exception as e:
         st.caption(f"Sin datos de recuperación: {e}")
 
