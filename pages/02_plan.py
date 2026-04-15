@@ -9,9 +9,6 @@ from html import escape
 
 from src.core.navbar import render_navbar
 from src.db.db_manager import get_db_connection, obtener_credenciales_garmin, obtener_perfil as _obtener_perfil
-from src.core.plan_ui_helpers import (
-    html_semaforo, html_barra_fase,
-)
 
 try:
     from streamlit_sortables import sort_items
@@ -481,7 +478,14 @@ if active_tab == "generar":
                             st.stop()
                     st.rerun()
 
-    st.markdown("<div style='height:2.2rem;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style='height:1rem;'></div>
+        <div style='height:1px;background:linear-gradient(90deg,rgba(0,212,255,0.0),rgba(0,212,255,0.28),rgba(201,255,0,0.22),rgba(0,212,255,0.28),rgba(0,212,255,0.0));'></div>
+        <div style='height:1.8rem;'></div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if st.session_state.plan_data is None:
         st.info("Pulsa **⚡ Regenerar** para generar el plan de esta semana con IA personalizada.")
@@ -721,11 +725,6 @@ if active_tab == "generar":
             st.session_state.plan_data = plan
             st.success("Cambio anotado.")
             st.rerun()
-
-    # Semáforo + Acondicionamiento (fase): debajo de la distribución semanal
-    st.markdown("<div style='height:0.35rem;'></div>", unsafe_allow_html=True)
-    st.markdown(html_semaforo(semaforo, plan["km_totales"], plan["acwr"]), unsafe_allow_html=True)
-    st.markdown(html_barra_fase(fase), unsafe_allow_html=True)
 
     recomendaciones_semana = []
     vistos = set()
