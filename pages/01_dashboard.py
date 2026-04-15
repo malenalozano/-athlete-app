@@ -191,6 +191,47 @@ def _kpi_card(col, label, value, period, delta_html_str, border_color, icon_char
   </div>
 </div>""", unsafe_allow_html=True)
 
+
+def _render_plan_esta_semana(user_actual):
+    _EMOJIS = {"Tirada Larga":"🏃","Progresiva":"📈","Tempo (umbral)":"⚡","Intervalos VO2max":"🔥",
+               "Carrera Z2":"🚶","Regenerativo":"💧","Fuerza":"💪","Fuerza Activ.":"💪",
+               "Fuerza Tren Superior":"💪","Descanso":"🛌","Movilidad":"🧘","Sustitución":"🔄","Rodaje Corto":"🏃"}
+    _BADGE  = {"Fuerza":"#a855f7","Tirada Larga":"#C9FF00","Progresiva":"#C9FF00","Carrera Z2":"#22c55e",
+               "Tempo (umbral)":"#f97316","Regenerativo":"#00D4FF","Intervalos VO2max":"#ef4444",
+               "Descanso":"#3a4150","Movilidad":"#3a4150"}
+
+    st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:0 0 1rem;">
+  <span style="color:#C9FF00;font-size:1rem;">📋</span>
+  <span style="font-size:0.82rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Plan Esta Semana</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.3),transparent);margin-left:0.4rem;"></div>
+</div>""", unsafe_allow_html=True)
+    lunes_str = inicio_semana(datetime.now()).strftime("%Y-%m-%d")
+    try:
+        plan_dash = cargar_plan_semana_cache(user_actual, lunes_str)
+    except Exception:
+        plan_dash = None
+    if plan_dash and plan_dash.get("dias"):
+        _day_cols = st.columns(7, gap="small")
+        for _i, _dia in enumerate(plan_dash["dias"][:7]):
+            _bc  = _BADGE.get(_dia["tipo"], "#8B949E")
+            _sub = f"{_dia['km']} km" if _dia.get("km") else f"{_dia.get('duracion_min', '—')}'"
+            _em  = _EMOJIS.get(_dia["tipo"], "📅")
+            with _day_cols[_i]:
+                st.markdown(
+                    f"<div style='background:linear-gradient(135deg,#0f1724,#101928);"
+                    f"border:1px solid rgba(255,255,255,0.06);border-top:3px solid {_bc};"
+                    f"border-radius:12px;padding:0.8rem 0.6rem;text-align:center;min-height:110px;'>"
+                    f"<div style='color:#8B949E;font-size:0.68rem;font-weight:700;text-transform:uppercase;margin-bottom:4px;'>{_dia['dia']}</div>"
+                    f"<div style='font-size:1.1rem;margin:4px 0;'>{_em}</div>"
+                    f"<div style='color:{_bc};font-size:0.72rem;font-weight:700;margin-bottom:4px;line-height:1.3;'>{_dia['tipo']}</div>"
+                    f"<div style='color:#6b7280;font-size:0.68rem;'>{_sub}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True)
+    else:
+        st.info("Aún no hay plan para esta semana.")
+        st.page_link("pages/02_plan.py", label="→ Ir a Plan Semanal y generar uno")
+
 _kpi_card(_kpi_cols[0], "KM",          km_val,     "Últimos 7 días", _delta_html(km_delta_num, 1),     "#22c55e", "👟")
 _kpi_card(_kpi_cols[1], "HRV",         hrv_val,    "ms",             _delta_html(hrv_delta_num, 0),    "#3b82f6", "♡")
 _kpi_card(_kpi_cols[2], "FUERZA",      fuerza_val, "sesiones",       _delta_html(fuerza_delta_num, 0), "#a855f7", "💪")
@@ -199,7 +240,14 @@ _kpi_card(_kpi_cols[3], "SUEÑO MEDIO", sueno_val,  "h/noche",        _delta_htm
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 3. Macrociclo
+# 3. Plan Esta Semana
+# ---------------------------------------------------------------------------
+_render_plan_esta_semana(user_actual)
+
+st.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# 4. Macrociclo
 # ---------------------------------------------------------------------------
 titulo_macrociclo = obtener_titulo_macrociclo(user_actual)
 st.markdown(f"""
@@ -214,7 +262,7 @@ render_macrociclo(user_actual)
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 4. Checkpoints de rendimiento
+# 5. Checkpoints de rendimiento
 # ---------------------------------------------------------------------------
 objetivos_cards = checkpoints_objetivo_dashboard(user_actual, _objetivo_tipo)
 _total_chk   = len(objetivos_cards) if objetivos_cards else 0
@@ -270,7 +318,7 @@ if objetivos_cards:
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 5. Progreso de Running — Últimas 8 Semanas
+# 6. Progreso de Running — Últimas 8 Semanas
 # ---------------------------------------------------------------------------
 import plotly.graph_objects as go
 
@@ -377,7 +425,7 @@ else:
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 6. Recovery & Carga (donuts + RHR + sparklines)
+# 7. Recovery & Carga (donuts + RHR + sparklines)
 # ---------------------------------------------------------------------------
 st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
@@ -418,50 +466,8 @@ finally:
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 7. Plan Esta Semana + Progresión de Pesos
+# 8. Progresión de Pesos
 # ---------------------------------------------------------------------------
-_EMOJIS = {"Tirada Larga":"🏃","Progresiva":"📈","Tempo (umbral)":"⚡","Intervalos VO2max":"🔥",
-           "Carrera Z2":"🚶","Regenerativo":"💧","Fuerza":"💪","Fuerza Activ.":"💪",
-           "Fuerza Tren Superior":"💪","Descanso":"🛌","Movilidad":"🧘","Sustitución":"🔄","Rodaje Corto":"🏃"}
-_BADGE  = {"Fuerza":"#a855f7","Tirada Larga":"#C9FF00","Progresiva":"#C9FF00","Carrera Z2":"#22c55e",
-           "Tempo (umbral)":"#f97316","Regenerativo":"#00D4FF","Intervalos VO2max":"#ef4444",
-           "Descanso":"#3a4150","Movilidad":"#3a4150"}
-
-# ── Plan Esta Semana (full width, 7-column day grid) ──────────────────────────
-st.markdown("""
-<div style="display:flex;align-items:center;gap:0.5rem;margin:0 0 1rem;">
-  <span style="color:#C9FF00;font-size:1rem;">📋</span>
-  <span style="font-size:0.82rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Plan Esta Semana</span>
-  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,255,0,0.3),transparent);margin-left:0.4rem;"></div>
-</div>""", unsafe_allow_html=True)
-lunes_str = inicio_semana(datetime.now()).strftime("%Y-%m-%d")
-try:
-    plan_dash = cargar_plan_semana_cache(user_actual, lunes_str)
-except Exception:
-    plan_dash = None
-if plan_dash and plan_dash.get("dias"):
-    _day_cols = st.columns(7, gap="small")
-    for _i, _dia in enumerate(plan_dash["dias"][:7]):
-        _bc  = _BADGE.get(_dia["tipo"], "#8B949E")
-        _sub = f"{_dia['km']} km" if _dia.get("km") else f"{_dia.get('duracion_min', '—')}'"
-        _em  = _EMOJIS.get(_dia["tipo"], "📅")
-        with _day_cols[_i]:
-            st.markdown(
-                f"<div style='background:linear-gradient(135deg,#0f1724,#101928);"
-                f"border:1px solid rgba(255,255,255,0.06);border-top:3px solid {_bc};"
-                f"border-radius:12px;padding:0.8rem 0.6rem;text-align:center;min-height:110px;'>"
-                f"<div style='color:#8B949E;font-size:0.68rem;font-weight:700;text-transform:uppercase;margin-bottom:4px;'>{_dia['dia']}</div>"
-                f"<div style='font-size:1.1rem;margin:4px 0;'>{_em}</div>"
-                f"<div style='color:{_bc};font-size:0.72rem;font-weight:700;margin-bottom:4px;line-height:1.3;'>{_dia['tipo']}</div>"
-                f"<div style='color:#6b7280;font-size:0.68rem;'>{_sub}</div>"
-                f"</div>",
-                unsafe_allow_html=True)
-else:
-    st.info("Aún no hay plan para esta semana.")
-    st.page_link("pages/02_plan.py", label="→ Ir a Plan Semanal y generar uno")
-
-st.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
-
 # ── Progresión de Pesos (full width row) ─────────────────────────────────────
 st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:0 0 1rem;">
@@ -537,7 +543,7 @@ else:
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 8. Biométricos Garmin
+# 9. Biométricos Garmin
 # ---------------------------------------------------------------------------
 st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
@@ -583,7 +589,7 @@ else:
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 9. Gráfico de sueño
+# 10. Gráfico de sueño
 # ---------------------------------------------------------------------------
 st.markdown("""
 <div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
@@ -597,7 +603,7 @@ render_grafico_sueno(user_actual)
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# 10. Recordatorio analítica (al final del dashboard)
+# 11. Recordatorio analítica (al final del dashboard)
 # ---------------------------------------------------------------------------
 FECHA_ANALITICA = datetime(2026, 5, 1)
 dias_anal = (FECHA_ANALITICA - datetime.now()).days

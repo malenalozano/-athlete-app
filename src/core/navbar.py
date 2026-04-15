@@ -52,8 +52,8 @@ _CSS = f"""<style>
 header {{ display: none !important; }}
 .main .block-container {{ padding-top: 0 !important; }}
 
-/* ── Navbar container ── */
-{_NAV} {{
+/* ── Navbar container - sticky ── */
+.main [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-child {{
     position: sticky !important;
     top: 0 !important;
     z-index: 999 !important;
@@ -66,10 +66,6 @@ header {{ display: none !important; }}
     align-items: center !important;
     min-height: 64px !important;
     gap: 4px !important;
-}}
-
-.main .block-container {{
-    padding-top: 0 !important;
 }}
 
 /* ── Page links ── */
