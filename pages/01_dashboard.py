@@ -105,7 +105,6 @@ sueno_delta_num  = float(res.get("sueno_delta") or 0)
 hrv_delta_num    = float(res.get("hrv_delta") or 0)
 
 met = metricas_garmin(user_actual)
-acwr_color = "#ef4444" if (met.get("acwr") or 0) > 1.3 else "#C9FF00"
 
 def _fmt_metric(val, dec=0):
     if val is None:
@@ -113,7 +112,6 @@ def _fmt_metric(val, dec=0):
     return f"{float(val):.{dec}f}"
 
 cadencia_val = _fmt_metric(met.get("cadencia"), 0)
-acwr_val = _fmt_metric(met.get("acwr"), 2)
 fc_reposo_val = _fmt_metric(met.get("fc_reposo"), 0)
 estres_val = _fmt_metric(met.get("estres"), 0)
 
@@ -330,7 +328,6 @@ _kpi_cards_html = [
     _kpi_card_html("FUERZA",      fuerza_val,    "sesiones",       _delta_html(fuerza_delta_num, 0), "#a855f7", "💪"),
     _kpi_card_html("SUEÑO MEDIO", sueno_val,     "h/noche",        _delta_html(sueno_delta_num, 1),  "#f97316", "🌙"),
     _kpi_card_html("CADENCIA",    cadencia_val,  "spm",            _no_delta_html,                    "#22c55e", "👣"),
-    _kpi_card_html("ACWR",        acwr_val,      "ratio",          _no_delta_html,                    acwr_color, "⚖"),
     _kpi_card_html("FC REPOSO",   fc_reposo_val, "bpm",            _no_delta_html,                    "#C9E1FF", "❤"),
     _kpi_card_html("ESTRÉS",      estres_val,    "score",          _no_delta_html,                    "#f97316", "⚠"),
 ]
