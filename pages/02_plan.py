@@ -277,9 +277,6 @@ if active_tab == "generar":
     with hero_left:
         st.markdown(f"""
 <div class="plan-hero-card" style="position:relative;overflow:hidden;">
-  <div style="position:absolute;top:-20px;right:-20px;width:160px;height:160px;
-  border-radius:50%;background:radial-gradient(circle,rgba(0,212,255,0.18),transparent);
-  filter:blur(30px);pointer-events:none;"></div>
   <div style="position:relative;display:flex;flex-direction:column;gap:.65rem;">
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
       <span style="background:rgba(34,211,238,0.2);color:#22d3ee;border:1px solid rgba(34,211,238,0.3);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;">Semana 8 · Pre-Específico</span>
