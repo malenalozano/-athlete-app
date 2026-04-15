@@ -54,18 +54,26 @@ header {{ display: none !important; }}
 
 /* ── Navbar container ── */
 {_NAV} {{
-    position: sticky !important;
+    position: fixed !important;
     top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
     z-index: 999 !important;
     background: linear-gradient(180deg, rgba(14,17,23,0.98) 0%, rgba(22,27,34,0.95) 100%) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
     border-bottom: 1px solid rgba(255,255,255,0.06) !important;
     padding: 0 24px !important;
-    margin: 0 -4rem 0 -4rem !important;
+    margin: 0 !important;
     align-items: center !important;
     min-height: 64px !important;
     gap: 4px !important;
+}}
+
+.main .block-container {{
+    padding-top: 72px !important;
 }}
 
 /* ── Page links ── */
