@@ -99,6 +99,21 @@ fuerza_delta_num = float(res.get("fuerza_delta") or 0)
 sueno_delta_num  = float(res.get("sueno_delta") or 0)
 hrv_delta_num    = float(res.get("hrv_delta") or 0)
 
+met = metricas_garmin(user_actual)
+acwr_color = "#ef4444" if (met.get("acwr") or 0) > 1.3 else "#C9FF00"
+
+def _fmt_metric(val, dec=0):
+    if val is None:
+        return "—"
+    return f"{float(val):.{dec}f}"
+
+cadencia_val = _fmt_metric(met.get("cadencia"), 0)
+acwr_val = _fmt_metric(met.get("acwr"), 2)
+fc_reposo_val = _fmt_metric(met.get("fc_reposo"), 0)
+estres_val = _fmt_metric(met.get("estres"), 0)
+
+_no_delta_html = '<span style="font-size:0.75rem;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(125,133,144,0.12);color:#8B949E;">—</span>'
+
 def _delta_html(num, decimales=1):
     if num == 0:
         return '<span style="font-size:0.75rem;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(125,133,144,0.12);color:#8B949E;">— 0</span>'
@@ -173,7 +188,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-_kpi_cols = st.columns(4, gap="small")
+_kpi_cols = st.columns(8, gap="small")
 
 def _kpi_card(col, label, value, period, delta_html_str, border_color, icon_char):
     col.markdown(f"""
@@ -309,6 +324,10 @@ _kpi_card(_kpi_cols[0], "KM",          km_val,     "Últimos 7 días", _delta_ht
 _kpi_card(_kpi_cols[1], "HRV",         hrv_val,    "ms",             _delta_html(hrv_delta_num, 0),    "#3b82f6", "♡")
 _kpi_card(_kpi_cols[2], "FUERZA",      fuerza_val, "sesiones",       _delta_html(fuerza_delta_num, 0), "#a855f7", "💪")
 _kpi_card(_kpi_cols[3], "SUEÑO MEDIO", sueno_val,  "h/noche",        _delta_html(sueno_delta_num, 1),  "#f97316", "🌙")
+_kpi_card(_kpi_cols[4], "CADENCIA",    cadencia_val,  "spm",            _no_delta_html,                   "#22c55e", "👣")
+_kpi_card(_kpi_cols[5], "ACWR",        acwr_val,      "ratio",          _no_delta_html,                   acwr_color, "⚖")
+_kpi_card(_kpi_cols[6], "FC REPOSO",   fc_reposo_val, "bpm",            _no_delta_html,                   "#C9E1FF", "❤")
+_kpi_card(_kpi_cols[7], "ESTRÉS",      estres_val,    "score",          _no_delta_html,                   "#f97316", "⚠")
 
 st.markdown("<div style='height:2rem;'></div>", unsafe_allow_html=True)
 
@@ -556,52 +575,6 @@ try:
 
 finally:
     conn.close()
-
-st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
-
-# ---------------------------------------------------------------------------
-# 10. Biométricos Garmin
-# ---------------------------------------------------------------------------
-st.markdown("""
-<div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1rem;">
-  <span style="color:#3b82f6;font-size:1.1rem;">⌚</span>
-  <span style="font-size:0.85rem;font-weight:700;color:white;text-transform:uppercase;letter-spacing:0.07em;">Biométricos Garmin — últimos 7 días</span>
-  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(59,130,246,0.35),transparent);margin-left:0.5rem;"></div>
-</div>
-""", unsafe_allow_html=True)
-
-met = metricas_garmin(user_actual)
-
-if all(v is None for v in met.values()):
-    st.markdown("<div style='background:#161b22;border:1px solid #30363d;border-radius:10px;"
-                "padding:20px;text-align:center;color:#484f58;font-size:13px;'>"
-                "Sin datos Garmin aún — sincroniza en la página de <b>Garmin</b> para ver tus métricas."
-                "</div>", unsafe_allow_html=True)
-else:
-    def _bio_card(label, value, unit="", max_val=100, color="#C9FF00"):
-        v_str = f"{value:.0f} {unit}".strip() if value is not None else "—"
-        pct   = min(int(100 * float(value) / max_val), 100) if value is not None else 0
-        return (f"<div style='background:#0f1724;border:1px solid rgba(201,255,0,0.1);"
-                f"border-radius:10px;padding:10px 12px;min-height:78px;'>"
-                f"<div style='color:#8B949E;font-size:0.62rem;font-weight:700;text-transform:uppercase;"
-                f"letter-spacing:.07em;line-height:1.1;margin-bottom:6px;'>{label}</div>"
-                f"<div style='color:{color};font-weight:800;font-size:0.95rem;margin-bottom:6px;'>{v_str}</div>"
-                f"<div style='background:rgba(48,54,61,0.6);border-radius:3px;height:3px;'>"
-                f"<div style='background:{color};width:{pct}%;height:3px;border-radius:3px;'></div></div></div>")
-
-    acwr_color = "#ef4444" if (met["acwr"] or 0) > 1.3 else "#C9FF00"
-    bio_cards = [
-        ("HRV",        met["hrv"],         "ms",  80,   "#00D4FF"),
-        ("Sueño",      met["sueno_h"],      "h",   9,    "#7EB8E0"),
-        ("Score Sueño",met["sueno_score"],  "",    100,  "#7EB8E0"),
-        ("Cadencia",   met["cadencia"],     "spm", 200,  "#22c55e"),
-        ("ACWR",       met["acwr"],         "",    1.5,  acwr_color),
-        ("FC Reposo",  met["fc_reposo"],    "bpm", 80,   "#C9E1FF"),
-        ("Estrés",     met["estres"],       "",    100,  "#f97316"),
-    ]
-    row = st.columns(7, gap="small")
-    for col, (lbl, val, unit, mx, colr) in zip(row, bio_cards):
-        col.markdown(_bio_card(lbl, val, unit, mx, colr), unsafe_allow_html=True)
 
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 

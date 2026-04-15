@@ -315,12 +315,7 @@ active_tab = st.session_state.get("plan_active_tab", "generar")
 if active_tab == "generar":
 
     # Hero banner with integrated CTA
-    hero_left, hero_right = st.columns([0.78, 0.22], gap="large")
-    with hero_left:
-        st.markdown(
-            f"<h2 style='color:white;font-size:1.25rem;font-weight:800;margin:0;'>Plan Semanal — {lunes.strftime('%-d al')} {(lunes + timedelta(6)).strftime('%-d %b')}</h2>",
-            unsafe_allow_html=True,
-        )
+    _, hero_right = st.columns([0.78, 0.22], gap="large")
 
     with hero_right:
         st.markdown('<div class="plan-cta-label">Generación manual</div>', unsafe_allow_html=True)
@@ -381,7 +376,7 @@ if active_tab == "generar":
             st.session_state.plan_cursor += timedelta(weeks=1)
             st.session_state.plan_data = None; st.rerun()
 
-    st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:2.2rem;'></div>", unsafe_allow_html=True)
 
     if st.session_state.plan_data is None:
         st.info("Pulsa **⚡ Regenerar plan** para generar el plan de esta semana con IA personalizada.")
