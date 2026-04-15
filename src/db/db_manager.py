@@ -246,8 +246,7 @@ _ALL_SCHEMA_SQL = [
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nombre TEXT, edad INTEGER, genero TEXT, peso REAL, objetivo TEXT,
         carrera INTEGER, fuerza INTEGER, nivel TEXT, ritmo TEXT,
-        email_garmin TEXT, password_garmin TEXT, password_garmin_enc TEXT,
-        rol TEXT, fecha_objetivo TEXT, objetivo_tipo TEXT, objetivo_nombre TEXT
+        email_garmin TEXT, password_garmin TEXT, password_garmin_enc TEXT, rol TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS ejercicios_por_defecto (
         id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER,
@@ -338,7 +337,6 @@ _ALL_SCHEMA_SQL = [
     "ALTER TABLE usuarios ADD COLUMN password_garmin_enc TEXT",
     "ALTER TABLE usuarios ADD COLUMN fecha_objetivo TEXT",
     "ALTER TABLE usuarios ADD COLUMN objetivo_tipo TEXT",
-    "ALTER TABLE usuarios ADD COLUMN objetivo_nombre TEXT",
     "ALTER TABLE usuarios ADD COLUMN garmin_tokens TEXT",
     "ALTER TABLE usuarios ADD COLUMN ciclo_dias_personalizado INTEGER",
     "ALTER TABLE diario_fisiologia ADD COLUMN sangre TEXT",
@@ -387,18 +385,16 @@ _ALL_SCHEMA_SQL = [
     # ── Default profiles (INSERT OR IGNORE — preserves existing data) ────────
     """INSERT OR IGNORE INTO usuarios
         (id, nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
-         fecha_objetivo, objetivo_tipo, objetivo_nombre)
+         fecha_objetivo, objetivo_tipo)
        VALUES (1, 'Malena', 22, 'Mujer', 58.0,
                'Maratón Sub 3:30 — 21 Feb 2027', 1, 1, 'Intermedio', '5:30',
-               '2027-02-21', 'maraton', 'Maratón de Sevilla')""",
+               '2027-02-21', 'maraton')""",
     """INSERT OR IGNORE INTO usuarios
         (id, nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
-         fecha_objetivo, objetivo_tipo, objetivo_nombre)
+         fecha_objetivo, objetivo_tipo)
        VALUES (2, 'Dani', 26, 'Hombre', 72.0,
                'Ultramaratón 100km — Sep 2026', 1, 1, 'Intermedio', '5:00',
-               '2026-09-19', 'ultramaraton', 'Ultra Madrid-Segovia')""",
-        "UPDATE usuarios SET objetivo_nombre = 'Maratón de Sevilla' WHERE id = 1",
-        "UPDATE usuarios SET objetivo_nombre = 'Ultra Madrid-Segovia' WHERE id = 2",
+               '2026-09-19', 'ultramaraton')""",
 ]
 
 
@@ -415,7 +411,7 @@ def obtener_perfil(usuario_id):
     row = conn.execute(
         """
         SELECT id, nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
-             email_garmin, password_garmin_enc, fecha_objetivo, objetivo_tipo, objetivo_nombre
+               email_garmin, password_garmin_enc, fecha_objetivo, objetivo_tipo
         FROM usuarios
         WHERE id = ?
         """,
@@ -441,7 +437,6 @@ def obtener_perfil(usuario_id):
         "password_garmin_enc": row[11],
         "fecha_objetivo": row[12],   # YYYY-MM-DD de la carrera objetivo
         "objetivo_tipo": row[13],    # 'maraton', 'ultramaraton', etc.
-        "objetivo_nombre": row[14],
     }
 
 
@@ -461,7 +456,6 @@ def guardar_perfil(usuario_id, datos):
         datos.get("ritmo"),
         datos.get("fecha_objetivo"),
         datos.get("objetivo_tipo"),
-        datos.get("objetivo_nombre"),
         usuario_id,
     )
 
@@ -471,7 +465,7 @@ def guardar_perfil(usuario_id, datos):
             UPDATE usuarios
             SET nombre = ?, edad = ?, genero = ?, peso = ?, objetivo = ?,
                 carrera = ?, fuerza = ?, nivel = ?, ritmo = ?,
-                fecha_objetivo = ?, objetivo_tipo = ?, objetivo_nombre = ?
+                fecha_objetivo = ?, objetivo_tipo = ?
             WHERE id = ?
             """,
             params,
@@ -481,8 +475,8 @@ def guardar_perfil(usuario_id, datos):
             """
             INSERT INTO usuarios
             (nombre, edad, genero, peso, objetivo, carrera, fuerza, nivel, ritmo,
-             fecha_objetivo, objetivo_tipo, objetivo_nombre, id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             fecha_objetivo, objetivo_tipo, id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             params,
         )
