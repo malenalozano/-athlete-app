@@ -52,8 +52,8 @@ _CSS = f"""<style>
 header {{ display: none !important; }}
 .main .block-container {{ padding-top: 0 !important; }}
 
-/* ── Navbar container - sticky ── */
-.main [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-child {{
+/* ── Navbar sticky ── */
+div.athlete-navbar-container {{
     position: sticky !important;
     top: 0 !important;
     z-index: 999 !important;
@@ -61,11 +61,6 @@ header {{ display: none !important; }}
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
     border-bottom: 1px solid rgba(255,255,255,0.06) !important;
-    padding: 0 24px !important;
-    margin: 0 -4rem 0 -4rem !important;
-    align-items: center !important;
-    min-height: 64px !important;
-    gap: 4px !important;
 }}
 
 /* ── Page links ── */

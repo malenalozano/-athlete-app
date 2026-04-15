@@ -495,7 +495,11 @@ else:
                 f"</div></div>",
                 unsafe_allow_html=True)
 
-    st.markdown("<div style='height:4.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='height:1px;background:linear-gradient(90deg,rgba(168,85,247,0.28),rgba(168,85,247,0.08),transparent);margin:0 0 1.2rem 0;'></div>",
+        unsafe_allow_html=True,
+    )
 
     with st.expander(f"Ver historial completo ({len(df_pesos)} ejercicios)"):
         _fcol, _scol = st.columns(2)
