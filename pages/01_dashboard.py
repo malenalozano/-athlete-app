@@ -489,7 +489,7 @@ else:
                 f"</div></div>",
                 unsafe_allow_html=True)
 
-    st.markdown("<div style='height:2rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:3rem;'></div>", unsafe_allow_html=True)
 
     with st.expander(f"Ver historial completo ({len(df_pesos)} ejercicios)"):
         _fcol, _scol = st.columns(2)
