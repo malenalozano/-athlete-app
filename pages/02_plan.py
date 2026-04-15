@@ -106,15 +106,15 @@ div[data-testid="stRadio"] input[type="radio"] { display:none; }
 def _lunes_de(dt): return dt - timedelta(days=dt.weekday())
 
 def _rango_semana_es(lunes: datetime) -> str:
-    """Format week range in Spanish, e.g. '6 - 12 abril'."""
+    """Format week range in Spanish, e.g. '6-12 abril'."""
     fin = lunes + timedelta(days=6)
     meses = {
         1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
         7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
     }
     if lunes.month == fin.month:
-        return f"{lunes.day} - {fin.day} {meses[fin.month]}"
-    return f"{lunes.day} {meses[lunes.month]} - {fin.day} {meses[fin.month]}"
+        return f"{lunes.day}-{fin.day} {meses[fin.month]}"
+    return f"{lunes.day} {meses[lunes.month]}-{fin.day} {meses[fin.month]}"
 
 def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
     conn = get_db_connection()
@@ -314,41 +314,10 @@ active_tab = st.session_state.get("plan_active_tab", "generar")
 # ============================================================================
 if active_tab == "generar":
 
-    # Hero banner with integrated CTA
-    _, hero_right = st.columns([0.78, 0.22], gap="large")
-
-    with hero_right:
-        st.markdown('<div class="plan-cta-label">Generación manual</div>', unsafe_allow_html=True)
-        if st.button("⚡ Regenerar plan (con IA)", type="primary", use_container_width=True, key="plan_generate"):
-            with st.spinner("Generando plan..."):
-                try:
-                    from src.plan.entrenador import generar_entrenamiento_semana
-                    plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
-
-                    # DEBUG: mostrar tipos generados
-                    tipos_gen = [d.get("tipo", "?") for d in plan_nuevo.get("dias", [])]
-                    if not any(t not in ("Regenerativo", "Descanso", "Movilidad") for t in tipos_gen):
-                        st.warning(f"⚠️ Aviso: Plan generado solo con tipos: {tipos_gen}. Revisando...")
-
-                    plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, user_actual, lunes, datetime.now())
-                    st.session_state.plan_data = plan_nuevo
-                    st.session_state.plan_ia = True
-                    _auto_guardar(user_actual, lunes, plan_nuevo)
-                except Exception as e:
-                    st.error(f"❌ Error generando plan:\n\n{str(e)}")
-                    import traceback
-                    st.error(f"**Traceback completo:**\n\n```\n{traceback.format_exc()}\n```")
-                    st.stop()
-            st.rerun()
-        st.markdown("<div style='height:0.2rem;'></div>", unsafe_allow_html=True)
-        sin_ia = st.checkbox("Sin IA", key="plan_sin_ia")
-        if sin_ia:
-            st.session_state.plan_ia = False
-
-    # Week navigation
-    nav_c1, nav_c2, nav_c3 = st.columns([0.24, 0.52, 0.24], gap="small")
+    # Compact controls: previous week, current week label, next week, regenerate.
+    nav_c1, nav_c2, nav_c3, nav_c4 = st.columns([0.13, 0.45, 0.13, 0.29], gap="small")
     with nav_c1:
-        if st.button("⬅️ Semana anterior", key="plan_prev", use_container_width=True):
+        if st.button("⬅️", key="plan_prev", use_container_width=True, help="Semana anterior"):
             st.session_state.plan_cursor -= timedelta(weeks=1)
             st.session_state.plan_data = None; st.rerun()
     with nav_c2:
@@ -372,14 +341,39 @@ if active_tab == "generar":
             unsafe_allow_html=True,
         )
     with nav_c3:
-        if st.button("Semana siguiente ➡️", key="plan_next", use_container_width=True):
+        if st.button("➡️", key="plan_next", use_container_width=True, help="Semana siguiente"):
             st.session_state.plan_cursor += timedelta(weeks=1)
             st.session_state.plan_data = None; st.rerun()
+    with nav_c4:
+        if st.button("⚡ Regenerar", type="primary", use_container_width=True, key="plan_generate_small"):
+            with st.spinner("Generando plan..."):
+                try:
+                    from src.plan.entrenador import generar_entrenamiento_semana
+                    plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
+
+                    # DEBUG: mostrar tipos generados
+                    tipos_gen = [d.get("tipo", "?") for d in plan_nuevo.get("dias", [])]
+                    if not any(t not in ("Regenerativo", "Descanso", "Movilidad") for t in tipos_gen):
+                        st.warning(f"⚠️ Aviso: Plan generado solo con tipos: {tipos_gen}. Revisando...")
+
+                    plan_nuevo = _adaptar_plan_a_hoy(plan_nuevo, user_actual, lunes, datetime.now())
+                    st.session_state.plan_data = plan_nuevo
+                    st.session_state.plan_ia = True
+                    _auto_guardar(user_actual, lunes, plan_nuevo)
+                except Exception as e:
+                    st.error(f"❌ Error generando plan:\n\n{str(e)}")
+                    import traceback
+                    st.error(f"**Traceback completo:**\n\n```\n{traceback.format_exc()}\n```")
+                    st.stop()
+            st.rerun()
+        sin_ia = st.checkbox("Sin IA", key="plan_sin_ia")
+        if sin_ia:
+            st.session_state.plan_ia = False
 
     st.markdown("<div style='height:2.2rem;'></div>", unsafe_allow_html=True)
 
     if st.session_state.plan_data is None:
-        st.info("Pulsa **⚡ Regenerar plan** para generar el plan de esta semana con IA personalizada.")
+        st.info("Pulsa **⚡ Regenerar** para generar el plan de esta semana con IA personalizada.")
         st.stop()
 
     plan = st.session_state.plan_data
