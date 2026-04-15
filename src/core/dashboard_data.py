@@ -1,7 +1,7 @@
 """
 src/core/dashboard_data.py
 Funciones de carga y transformación de datos para el Dashboard.
-Extraído del monolito legacy (retirado).
+Módulo refactorizado desde el código monolítico original.
 """
 
 import pandas as pd

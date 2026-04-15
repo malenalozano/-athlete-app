@@ -396,7 +396,7 @@ _ALL_SCHEMA_SQL = [
                              'Ultra Madrid-Segovia', 1, 1, 'Intermedio', '5:00',
                '2026-09-19', 'ultramaraton')""",
 
-        # Corrección de objetivos legacy en BD existente (sin tocar fechas).
+        # Corrección de objetivos en BD existente (sin tocar fechas).
         """UPDATE usuarios
              SET objetivo = 'Maratón de Sevilla'
              WHERE id = 1

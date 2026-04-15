@@ -859,7 +859,7 @@ def _token_homes(email: str | None = None):
     """
     Construye rutas candidatas de tokens.
     - Preferimos un directorio por cuenta para soportar multiusuario.
-    - Mantenemos compatibilidad con el path legacy (~/.garth_athlete).
+    - Mantenemos compatibilidad con el path antiguo (~/.garth_athlete).
     """
     homes = []
     if email:
