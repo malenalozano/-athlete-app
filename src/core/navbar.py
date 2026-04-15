@@ -63,6 +63,16 @@ header {{ display: none !important; }}
     gap: 4px !important;
 }}
 
+{_NAV} > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+    display: flex !important;
+    align-items: center !important;
+    min-height: 80px !important;
+}}
+
+{_NAV} > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div {{
+    width: 100% !important;
+}}
+
 /* ── Page links ── */
 {_NAV} [data-testid="stPageLink"] {{
     display: flex !important;
@@ -89,31 +99,53 @@ header {{ display: none !important; }}
 }}
 
 /* ── Sync button ── */
-{_NAV} button[kind="secondary"] {{
-    width: 42px !important; height: 42px !important;
-    padding: 0 !important; border-radius: 50% !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    background: transparent !important;
-    color: #8b949e !important;
-    font-size: 17px !important;
+{_NAV} .st-key-navbar_sync {{
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 80px !important;
+}}
+{_NAV} .st-key-navbar_sync button {{
+    width: 48px !important;
+    height: 48px !important;
+    padding: 0 !important;
+    border-radius: 14px !important;
+    border: 1px solid rgba(201,255,0,0.55) !important;
+    background: linear-gradient(180deg, rgba(201,255,0,0.22) 0%, rgba(201,255,0,0.08) 100%) !important;
+    color: #C9FF00 !important;
+    font-size: 20px !important;
+    font-weight: 700 !important;
+    box-shadow: 0 0 0 1px rgba(201,255,0,0.18) inset, 0 8px 20px rgba(201,255,0,0.22) !important;
     min-height: 0 !important;
     line-height: 1 !important;
     margin-top: 0 !important;
 }}
-{_NAV} button[kind="secondary"]:hover {{
-    background: rgba(255,255,255,0.06) !important;
-    color: white !important;
+{_NAV} .st-key-navbar_sync button:hover {{
+    transform: translateY(-1px);
+    border-color: rgba(201,255,0,0.75) !important;
+    background: linear-gradient(180deg, rgba(201,255,0,0.28) 0%, rgba(201,255,0,0.12) 100%) !important;
+    color: #E8FF8A !important;
+    box-shadow: 0 10px 22px rgba(201,255,0,0.30) !important;
 }}
 
 /* ── Selectbox user ── */
-{_NAV} [data-testid="stSelectbox"] {{ margin-top: 0 !important; }}
-{_NAV} [data-testid="stSelectbox"] > div > div {{
+{_NAV} .st-key-navbar_user_select {{
+    display: flex !important;
+    align-items: center !important;
+    min-height: 80px !important;
+}}
+{_NAV} .st-key-navbar_user_select [data-testid="stSelectbox"] {{
+    margin-top: 0 !important;
+    width: 100% !important;
+}}
+{_NAV} .st-key-navbar_user_select [data-testid="stSelectbox"] > div > div {{
     background: rgba(48,54,61,0.6) !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
     border-radius: 10px !important;
     color: white !important;
     font-size: 13px !important;
-    padding: 0 10px !important;
+    font-weight: 600 !important;
+    padding: 0 12px !important;
     min-height: 40px !important;
     height: 40px !important;
 }}
