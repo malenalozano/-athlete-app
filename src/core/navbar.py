@@ -40,31 +40,18 @@ _SUBTAB_COLORS = {
     "garmin": ("#3B82F6", "rgba(59,130,246,0.15)", "rgba(59,130,246,0.5)"),
 }
 
-_NAV = (
-    ".main .block-container > div > "
-    "[data-testid='stVerticalBlock'] > "
-    "[data-testid='stHorizontalBlock']:first-child"
-)
+_NAV = ".st-key-main_navbar"
 
 _CSS = f"""<style>
 /* ── Quitar header nativo ── */
 [data-testid="stToolbar"] {{ display: none !important; }}
 header {{ display: none !important; }}
 
-/* ── Permitir sticky en contenedores padres ── */
-[data-testid="stAppViewContainer"] {{ overflow: visible !important; }}
-[data-testid="stMainBlockContainer"] {{ overflow: visible !important; }}
-.main {{ overflow: visible !important; }}
-.main .block-container {{ 
-    padding-top: 0 !important;
-    overflow: visible !important;
-}}
-
-/* ── STICKY NAVBAR - FUERTE ── */
-[data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type {{
+/* ── Navbar principal (selector estable por key) ── */
+{_NAV} {{
     position: sticky !important;
     top: 0 !important;
-    z-index: 999 !important;
+    z-index: 1000 !important;
     background: linear-gradient(180deg, rgba(14,17,23,0.98) 0%, rgba(22,27,34,0.95) 100%) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
@@ -74,10 +61,6 @@ header {{ display: none !important; }}
     align-items: center !important;
     min-height: 64px !important;
     gap: 4px !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100% !important;
-    overflow: visible !important;
 }}
 
 /* ── Page links ── */
@@ -258,117 +241,93 @@ def _render_subtabs(pagina_activa: str):
 
 def render_navbar(pagina_activa: str):
     st.markdown(_CSS, unsafe_allow_html=True)
-    
-    # Inyectar JavaScript para forzar sticky
-    st.markdown("""
-    <script>
-    const waitForElement = setInterval(() => {
-        const navBar = document.querySelector('[data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type');
-        if (navBar) {
-            navBar.style.position = 'sticky';
-            navBar.style.top = '0';
-            navBar.style.zIndex = '999';
-            navBar.style.backgroundColor = 'rgba(14,17,23,0.98)';
-            
-            // También arregla los padres
-            let parent = navBar.parentElement;
-            while (parent && parent !== document.body) {
-                parent.style.overflow = 'visible';
-                parent.style.overflowX = 'visible';
-                parent = parent.parentElement;
-            }
-            clearInterval(waitForElement);
-        }
-    }, 100);
-    
-    setTimeout(() => clearInterval(waitForElement), 5000);
-    </script>
-    """, unsafe_allow_html=True)
 
     auth_user = str(st.session_state.get("auth_user", "")).strip()
 
-    # ── Main nav row: logo | 4 pages | spacer | sync | user ─────────────────
-    cols = st.columns([2.4, 1.1, 1.3, 1.0, 0.95, 4.5, 1.4])
+    nav_container = st.container(key="main_navbar")
+    with nav_container:
+        # ── Main nav row: logo | 4 pages | spacer | sync | user ─────────────
+        cols = st.columns([2.4, 1.1, 1.3, 1.0, 0.95, 4.5, 1.4])
 
-    with cols[0]:
-        st.markdown(_logo_html(auth_user), unsafe_allow_html=True)
+        with cols[0]:
+            st.markdown(_logo_html(auth_user), unsafe_allow_html=True)
 
-    for i, (path, label, key, icon, color, bg, border, glow) in enumerate(PAGES):
-        with cols[i + 1]:
-            if key == pagina_activa:
-                st.markdown(_active_item_html(label, icon, color, bg, border, glow), unsafe_allow_html=True)
-            else:
-                st.page_link(path, label=f"{icon} {label}")
+        for i, (path, label, key, icon, color, bg, border, glow) in enumerate(PAGES):
+            with cols[i + 1]:
+                if key == pagina_activa:
+                    st.markdown(_active_item_html(label, icon, color, bg, border, glow), unsafe_allow_html=True)
+                else:
+                    st.page_link(path, label=f"{icon} {label}")
 
-    # Sync button
-    with cols[5]:
-        if st.button("↻", key="navbar_sync", help="Sincronizar Garmin (últimos 7 días)"):
-            gc = st.session_state.get("gc")
-            if gc is None:
-                from src.garmin.garmin_sync import cargar_sesion_tokens
-                usuario_id = st.session_state.get("usuario_id", 1)
-                cred = obtener_credenciales_garmin(usuario_id)
-                email = cred[0] if cred else None
-                gc = cargar_sesion_tokens(email, usuario_id=usuario_id)
-                if gc is not None:
-                    st.session_state["gc"] = gc
-            if gc is None:
-                st.warning("Conecta Garmin primero en la página Garmin.")
-            else:
-                usuario_id = st.session_state.get("usuario_id", 1)
-                from src.garmin.garmin_sync import sincronizar_todo_con_sesion
-                with st.spinner():
-                    try:
-                        r = sincronizar_todo_con_sesion(gc, usuario_id, dias=7)
-                        ts = datetime.now().strftime("%d/%m %H:%M")
-                        st.session_state["navbar_sync_ts"] = ts
-                        st.session_state["navbar_sync_r"] = r
-                        st.session_state["garmin_last_sync"] = {"ts": ts, "source": "navbar", "result": r}
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        err_str = str(e)
-                        err_low = err_str.lower()
-                        if any(k in err_low for k in ["401", "authentication", "token", "unauthorized", "expired"]):
-                            st.error("🔑 Sesión Garmin expirada. Ve a Garmin y reconecta.")
-                            from src.db.db_manager import get_db_connection as _gdc
-                            try:
-                                _c = _gdc()
-                                _c.execute("UPDATE usuarios SET garmin_tokens=NULL WHERE id=?", (usuario_id,))
-                                _c.close()
-                            except Exception:
-                                pass
-                            st.session_state.pop("gc", None)
-                        elif "429" in err_str or "rate" in err_low:
-                            st.error("⏳ Garmin bloqueado temporalmente. Espera unas horas.")
-                        elif any(k in err_low for k in ["timeout", "connection", "network", "ssl"]):
-                            st.error("🌐 Error de red al contactar Garmin.")
-                        else:
-                            st.error(f"❌ Error: {err_str[:200]}")
+        # Sync button
+        with cols[5]:
+            if st.button("↻", key="navbar_sync", help="Sincronizar Garmin (últimos 7 días)"):
+                gc = st.session_state.get("gc")
+                if gc is None:
+                    from src.garmin.garmin_sync import cargar_sesion_tokens
+                    usuario_id = st.session_state.get("usuario_id", 1)
+                    cred = obtener_credenciales_garmin(usuario_id)
+                    email = cred[0] if cred else None
+                    gc = cargar_sesion_tokens(email, usuario_id=usuario_id)
+                    if gc is not None:
+                        st.session_state["gc"] = gc
+                if gc is None:
+                    st.warning("Conecta Garmin primero en la página Garmin.")
+                else:
+                    usuario_id = st.session_state.get("usuario_id", 1)
+                    from src.garmin.garmin_sync import sincronizar_todo_con_sesion
+                    with st.spinner():
+                        try:
+                            r = sincronizar_todo_con_sesion(gc, usuario_id, dias=7)
+                            ts = datetime.now().strftime("%d/%m %H:%M")
+                            st.session_state["navbar_sync_ts"] = ts
+                            st.session_state["navbar_sync_r"] = r
+                            st.session_state["garmin_last_sync"] = {"ts": ts, "source": "navbar", "result": r}
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            err_str = str(e)
+                            err_low = err_str.lower()
+                            if any(k in err_low for k in ["401", "authentication", "token", "unauthorized", "expired"]):
+                                st.error("🔑 Sesión Garmin expirada. Ve a Garmin y reconecta.")
+                                from src.db.db_manager import get_db_connection as _gdc
+                                try:
+                                    _c = _gdc()
+                                    _c.execute("UPDATE usuarios SET garmin_tokens=NULL WHERE id=?", (usuario_id,))
+                                    _c.close()
+                                except Exception:
+                                    pass
+                                st.session_state.pop("gc", None)
+                            elif "429" in err_str or "rate" in err_low:
+                                st.error("⏳ Garmin bloqueado temporalmente. Espera unas horas.")
+                            elif any(k in err_low for k in ["timeout", "connection", "network", "ssl"]):
+                                st.error("🌐 Error de red al contactar Garmin.")
+                            else:
+                                st.error(f"❌ Error: {err_str[:200]}")
 
-    # User selector
-    _perfiles_dict = {"👩 Malena": 1, "👨 Dani": 2}
-    _current_uid   = st.session_state.get("usuario_id", 1)
-    _opciones      = list(_perfiles_dict.keys())
-    _idx_actual    = next((i for i, k in enumerate(_opciones) if _perfiles_dict[k] == _current_uid), 0)
+        # User selector
+        _perfiles_dict = {"👩 Malena": 1, "👨 Dani": 2}
+        _current_uid   = st.session_state.get("usuario_id", 1)
+        _opciones      = list(_perfiles_dict.keys())
+        _idx_actual    = next((i for i, k in enumerate(_opciones) if _perfiles_dict[k] == _current_uid), 0)
 
-    with cols[6]:
-        _sel = st.selectbox(
-            "usuario",
-            _opciones,
-            index=_idx_actual,
-            key="navbar_user_select",
-            label_visibility="collapsed",
-        )
-        _new_uid = _perfiles_dict[_sel]
-        if _new_uid != _current_uid:
-            st.session_state["usuario_id"] = _new_uid
-            for _k in ("plan_data", "plan_cursor", "plan_ia", "diario_data",
-                       "ejercicios_data", "gc", "gc_failed", "gc_error",
-                       "dashboard_last_user", "diario_last_user", "navbar_popover_open"):
-                st.session_state.pop(_k, None)
-            st.cache_data.clear()
-            st.rerun()
+        with cols[6]:
+            _sel = st.selectbox(
+                "usuario",
+                _opciones,
+                index=_idx_actual,
+                key="navbar_user_select",
+                label_visibility="collapsed",
+            )
+            _new_uid = _perfiles_dict[_sel]
+            if _new_uid != _current_uid:
+                st.session_state["usuario_id"] = _new_uid
+                for _k in ("plan_data", "plan_cursor", "plan_ia", "diario_data",
+                           "ejercicios_data", "gc", "gc_failed", "gc_error",
+                           "dashboard_last_user", "diario_last_user", "navbar_popover_open"):
+                    st.session_state.pop(_k, None)
+                st.cache_data.clear()
+                st.rerun()
 
     # ── Sub-tabs row (if page has sub-tabs) ─────────────────────────────────
     if pagina_activa in _SUBTABS:
