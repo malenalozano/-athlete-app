@@ -105,6 +105,17 @@ div[data-testid="stRadio"] input[type="radio"] { display:none; }
 # ---------------------------------------------------------------------------
 def _lunes_de(dt): return dt - timedelta(days=dt.weekday())
 
+def _rango_semana_es(lunes: datetime) -> str:
+    """Format week range in Spanish, e.g. '6 - 12 abril'."""
+    fin = lunes + timedelta(days=6)
+    meses = {
+        1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
+        7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
+    }
+    if lunes.month == fin.month:
+        return f"{lunes.day} - {fin.day} {meses[fin.month]}"
+    return f"{lunes.day} {meses[lunes.month]} - {fin.day} {meses[fin.month]}"
+
 def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
     conn = get_db_connection()
     try:
@@ -240,6 +251,33 @@ def _get_activity_color(tipo: str) -> str:
     activity_type = _get_activity_type(tipo)
     return _TYPE_COLORS.get(activity_type, _TYPE_COLORS["default"])
 
+
+def _normalizar_dias_semana(dias: list[dict]) -> list[dict]:
+    """Garantiza una sola sesión por fecha para que KPI/UI sean coherentes (7 días)."""
+    if not dias:
+        return []
+
+    por_fecha = {}
+
+    def _score(d: dict) -> tuple:
+        tipo = str(d.get("tipo", ""))
+        es_descanso = 1 if tipo == "Descanso" else 0
+        es_fuerza = 1 if (tipo in _TIPOS_FUERZA or "Fuerza" in tipo) else 0
+        km = float(d.get("km") or 0)
+        dur = float(d.get("duracion_min") or 0)
+        # Preferimos no-descanso, luego más carga total, luego fuerza.
+        return (es_descanso, -(km + dur / 60.0), -es_fuerza)
+
+    for d in dias:
+        fecha = str(d.get("fecha", ""))[:10]
+        if not fecha:
+            continue
+        actual = por_fecha.get(fecha)
+        if actual is None or _score(d) < _score(actual):
+            por_fecha[fecha] = d
+
+    return [por_fecha[f] for f in sorted(por_fecha.keys())]
+
 # ---------------------------------------------------------------------------
 # Estado
 # ---------------------------------------------------------------------------
@@ -279,17 +317,10 @@ if active_tab == "generar":
     # Hero banner with integrated CTA
     hero_left, hero_right = st.columns([0.78, 0.22], gap="large")
     with hero_left:
-        st.markdown(f"""
-<div class="plan-hero-card" style="position:relative;overflow:hidden;">
-  <div style="position:relative;display:flex;flex-direction:column;gap:.65rem;">
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
-      <span style="background:rgba(34,211,238,0.2);color:#22d3ee;border:1px solid rgba(34,211,238,0.3);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;">Semana 8 · Pre-Específico</span>
-      <span style="background:rgba(74,222,128,0.2);color:#4ade80;border:1px solid rgba(74,222,128,0.3);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;">Plan Activo ✓</span>
-    </div>
-    <h2 style="color:white;font-size:1.25rem;font-weight:800;margin:0;">Plan Semanal — {lunes.strftime('%-d al')} {(lunes+timedelta(6)).strftime('%-d %b')}</h2>
-    <p style="color:#8B949E;font-size:.82rem;margin:0;">Semana del {lunes.strftime('%d/%m/%Y')}</p>
-  </div>
-</div>""", unsafe_allow_html=True)
+                st.markdown(
+                        f"<h2 style='color:white;font-size:1.25rem;font-weight:800;margin:0;'>Plan Semanal — {lunes.strftime('%-d al')} {(lunes + timedelta(6)).strftime('%-d %b')}</h2>",
+                        unsafe_allow_html=True,
+                )
 
     with hero_right:
         st.markdown('<div class="plan-cta-label">Generación manual</div>', unsafe_allow_html=True)
@@ -320,15 +351,33 @@ if active_tab == "generar":
             st.session_state.plan_ia = False
 
     # Week navigation
-    nav_c1, nav_c2, nav_c3 = st.columns([0.08, 0.84, 0.08])
+    nav_c1, nav_c2, nav_c3 = st.columns([0.24, 0.52, 0.24], gap="small")
     with nav_c1:
-        if st.button("◀", key="plan_prev"):
+        if st.button("⬅️ Semana anterior", key="plan_prev", use_container_width=True):
             st.session_state.plan_cursor -= timedelta(weeks=1)
             st.session_state.plan_data = None; st.rerun()
     with nav_c2:
-        pass
+        st.markdown(
+            f"""
+            <div style="
+                height:100%;
+                min-height:46px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                border-radius:12px;
+                border:1px solid rgba(0,212,255,0.2);
+                background:linear-gradient(135deg, rgba(15,23,36,0.95), rgba(16,25,40,0.95));
+                color:#E6F3FF;
+                font-size:1rem;
+                font-weight:800;
+                letter-spacing:0.01em;
+            ">{_rango_semana_es(st.session_state.plan_cursor)}</div>
+            """,
+            unsafe_allow_html=True,
+        )
     with nav_c3:
-        if st.button("▶", key="plan_next"):
+        if st.button("Semana siguiente ➡️", key="plan_next", use_container_width=True):
             st.session_state.plan_cursor += timedelta(weeks=1)
             st.session_state.plan_data = None; st.rerun()
 
@@ -345,15 +394,20 @@ if active_tab == "generar":
         st.error("Error: El plan no contiene datos válidos. Intenta regenerarlo.")
         st.stop()
 
+    # Normalizamos por fecha para evitar inflar KPIs cuando hay sesiones duplicadas en BD.
+    plan["dias"] = _normalizar_dias_semana(plan.get("dias", []))
+    st.session_state.plan_data = plan
+
     fase = plan["fase"]
     semaforo = plan["semaforo"]
 
     # KPI Cards (4 columns)
     kpi_c1, kpi_c2, kpi_c3, kpi_c4 = st.columns(4, gap="medium")
 
-    km_totales = plan.get("km_totales", 0)
-    sesiones_no_descanso = len([d for d in plan.get("dias", []) if d.get("tipo") != "Descanso"])
-    fuerza_count = len([d for d in plan.get("dias", []) if d.get("tipo") in _TIPOS_FUERZA])
+    dias_plan = plan.get("dias", [])
+    km_totales = round(sum(float(d.get("km") or 0) for d in dias_plan), 1)
+    sesiones_no_descanso = len([d for d in dias_plan if d.get("tipo") != "Descanso"])
+    fuerza_count = len([d for d in dias_plan if d.get("tipo") in _TIPOS_FUERZA])
     fase_nombre = fase.get("fase_nombre", "—")
 
     _kpi_card(kpi_c1, "🏃", "KM Semana", f"{km_totales:.1f}", "#00D4FF", "rgba(0,212,255,0.1)", "rgba(0,212,255,0.25)")
