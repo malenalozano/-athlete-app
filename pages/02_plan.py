@@ -411,6 +411,58 @@ def _map_sorted_labels_to_days(sorted_labels: list[str], original_labels: list[s
     return mapped if len(mapped) == len(original_days) else [dict(d) for d in original_days]
 
 
+def _ejercicios_catalogo_por_grupo(usuario_id: int, grupo_dia: str) -> list[dict]:
+    """
+    Devuelve ejercicios NO archivados del catálogo del usuario para un grupo muscular.
+    grupo_dia: "Pull" | "Push" | "Pierna"
+    Pull  → Espalda + Bíceps
+    Push  → Pecho + Hombro + Tríceps
+    Pierna → Tren inferior + Glúteos
+    """
+    _PULL_M  = {"espalda", "bícep", "bicep", "dorsal", "trapecio"}
+    _PUSH_M  = {"pecho", "hombro", "trícep", "tricep", "deltoid", "deltoides"}
+    _LEG_G   = {"tren inferior", "glúteo", "gluteo"}
+    _LEG_M   = {"cuádricep", "quadricep", "isquio", "glúteo", "gluteo", "hip", "femoral", "gemelo", "sentadilla"}
+
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            "SELECT nombre, grupo_muscular, musculo_principal, peso_actual, unidad "
+            "FROM ejercicios_catalogo "
+            "WHERE usuario_id=? AND (archivado IS NULL OR archivado=0)",
+            (usuario_id,)
+        ).fetchall()
+    except Exception:
+        rows = []
+    finally:
+        conn.close()
+
+    result = []
+    for r in rows:
+        nombre  = str(r[0] or "")
+        grupo   = str(r[1] or "").lower().strip()
+        musculo = str(r[2] or "").lower().strip()
+        peso    = float(r[3] or 0)
+        unidad  = str(r[4] or "kg")
+
+        match = False
+        if grupo_dia == "Pull":
+            match = any(k in musculo for k in _PULL_M) or grupo == "espalda"
+        elif grupo_dia == "Push":
+            match = (any(k in musculo for k in _PUSH_M)
+                     and grupo not in _LEG_G
+                     and not any(k in musculo for k in _PULL_M))
+        else:  # Pierna
+            match = grupo in _LEG_G or any(k in musculo for k in _LEG_M)
+
+        if match:
+            result.append({
+                "nombre": nombre, "grupo": r[1] or "", "musculo": r[2] or "",
+                "peso": peso, "unidad": unidad,
+            })
+    return result
+
+
 def _normalizar_dias_semana(dias: list[dict]) -> list[dict]:
     """Garantiza una sola sesión por fecha para que KPI/UI sean coherentes (7 días)."""
     if not dias:
@@ -455,6 +507,8 @@ if "plan_ia" not in st.session_state:
     st.session_state.plan_ia = True
 if "plan_dia_sel" not in st.session_state:
     st.session_state.plan_dia_sel = 0
+if "plan_add_session_day" not in st.session_state:
+    st.session_state["plan_add_session_day"] = None
 
 lunes = st.session_state.plan_cursor
 if st.session_state.plan_data is None:
@@ -897,15 +951,75 @@ if active_tab == "generar":
   <p style="font-size:10px;color:#C8D1D9;font-weight:600;margin:0 0 8px;">{fecha_txt}</p>
   {sessions_inner_html}
 </div>""", unsafe_allow_html=True)
-                btn_label = "▼ Detalles" if is_selected else "Ver detalles"
-                btn_type = "primary" if is_selected else "secondary"
-                if st.button(btn_label, key=f"plan_day_sel_{i}", use_container_width=True, type=btn_type):
-                    st.session_state["plan_selected_day_idx"] = None if is_selected else i
-                    st.rerun()
+                is_adding = st.session_state.get("plan_add_session_day") == i
+                btn_c1, btn_c2 = st.columns([3, 1], gap="small")
+                with btn_c1:
+                    btn_label = "▼ Detalles" if is_selected else "Ver detalles"
+                    btn_type = "primary" if is_selected else "secondary"
+                    if st.button(btn_label, key=f"plan_day_sel_{i}", use_container_width=True, type=btn_type):
+                        st.session_state["plan_selected_day_idx"] = None if is_selected else i
+                        st.session_state["plan_add_session_day"] = None
+                        st.rerun()
+                with btn_c2:
+                    add_type = "primary" if is_adding else "secondary"
+                    if st.button("➕", key=f"plan_day_add_{i}", use_container_width=True, type=add_type, help="Añadir sesión"):
+                        st.session_state["plan_add_session_day"] = None if is_adding else i
+                        st.rerun()
 
         # Mantener estructura de plan sincronizada con el tablero en memoria (sin guardar cada render).
         _sync_plan_from_board(persist=False)
         dias_plan = plan.get("dias", dias_plan)
+
+        # ── Formulario para añadir nueva sesión ─────────────────────────────
+        add_day_idx = st.session_state.get("plan_add_session_day")
+        if add_day_idx is not None and 0 <= add_day_idx < 7:
+            add_fecha = (lunes + timedelta(days=add_day_idx)).strftime("%Y-%m-%d")
+            add_label = _DIA_CORTO[add_day_idx]
+            st.markdown(f"""
+<div style="background:rgba(14,17,23,0.97);border:1px solid rgba(201,255,0,0.25);
+  border-radius:14px;padding:1rem 1.2rem;margin-top:1rem;">
+  <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem;">
+    <span style="color:#C9FF00;font-size:.95rem;">➕</span>
+    <span style="color:white;font-size:.9rem;font-weight:700;">Nueva sesión — {add_label}</span>
+    <span style="color:#8B949E;font-size:.78rem;">{add_fecha}</span>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+            _todos_tipos = sorted(list(_TIPOS_CARRERA) + list(_TIPOS_FUERZA) + ["Descanso", "Movilidad"])
+            af1, af2, af3 = st.columns([2, 1, 1], gap="small")
+            with af1:
+                new_tipo = st.selectbox("Tipo de sesión", _todos_tipos,
+                                        key=f"add_tipo_{add_day_idx}", label_visibility="collapsed")
+            with af2:
+                new_dur = st.number_input("Min", min_value=0, max_value=300, value=45, step=5,
+                                          key=f"add_dur_{add_day_idx}", label_visibility="collapsed")
+            with af3:
+                new_km = st.number_input("KM", min_value=0.0, max_value=100.0, value=0.0, step=0.5,
+                                         key=f"add_km_{add_day_idx}", label_visibility="collapsed", format="%.1f")
+
+            af4, af5, af6 = st.columns([2, 1, 1], gap="small")
+            with af4:
+                new_int = st.text_input("Intensidad", value="Media", key=f"add_int_{add_day_idx}",
+                                        label_visibility="collapsed", placeholder="Ej: Baja / Media / Alta")
+            with af5:
+                if st.button("✅ Añadir", key=f"add_confirm_{add_day_idx}", use_container_width=True, type="primary"):
+                    nueva_ses = {
+                        "tipo": new_tipo,
+                        "km": new_km,
+                        "duracion_min": new_dur,
+                        "intensidad": new_int or "Media",
+                        "descripcion_ia": "",
+                        "alerta": "",
+                    }
+                    board[add_day_idx].append(nueva_ses)
+                    st.session_state[board_key] = board
+                    _sync_plan_from_board(persist=True)
+                    st.session_state["plan_add_session_day"] = None
+                    st.rerun()
+            with af6:
+                if st.button("✕ Cancelar", key=f"add_cancel_{add_day_idx}", use_container_width=True):
+                    st.session_state["plan_add_session_day"] = None
+                    st.rerun()
 
     # ── Panel de detalle del día seleccionado ───────────────────────────────
     selected_idx = st.session_state.get("plan_selected_day_idx")
@@ -932,23 +1046,60 @@ border-radius:16px;overflow:hidden;margin-top:1.2rem;">
           <span style="font-size:.7rem;font-weight:700;padding:2px 9px;border-radius:20px;
             background:{_badge_bg_det};border:1px solid {_badge_border_det};color:{color_det};">{type_label}</span>
         </div>
-        <p style="color:#8B949E;font-size:.75rem;margin:.2rem 0 0;">{dia.get('dia','—')} · {dia.get('fecha','')}</p>
+        <p style="color:#8B949E;font-size:.75rem;margin:.2rem 0 0;">{dia.get('dia','—')} · {dia.get('fecha','')} · {int(dia.get('duracion_min') or 0)} min</p>
       </div>
     </div>
   </div>
-  <div style="padding:1rem 1.25rem;">
 </div>""", unsafe_allow_html=True)
 
         if tipo in _TIPOS_FUERZA:
-            st.markdown(html_detalle_fuerza(dia), unsafe_allow_html=True)
-            if fase.get("dias_fuerza", 0) > 0:
-                from src.plan.memoria_fuerza import generar_tabla_fuerza_semana
-                conn = get_db_connection()
-                try:
-                    tabla = generar_tabla_fuerza_semana(user_actual, fase, semaforo, conn=conn)
-                finally:
-                    conn.close()
-                st.dataframe(pd.DataFrame(tabla), use_container_width=True, hide_index=True)
+            # ── Fuerza: tabs Pull / Push / Pierna con ejercicios del catálogo ──
+            from src.plan.memoria_fuerza import obtener_progresion_ejercicio
+            _GRUPOS_FUERZA = [
+                ("Pull 🏋️", "Pull",   "💙", "#60a5fa", "Espalda · Bíceps"),
+                ("Push 💪", "Push",   "💜", "#c084fc", "Pecho · Hombro · Tríceps"),
+                ("Pierna 🦵","Pierna", "💚", "#4ade80", "Tren inferior · Glúteos"),
+            ]
+            fase_nombre_det = fase.get("fase_nombre", "Acondicionamiento")
+            from src.plan.memoria_fuerza import _ESQUEMAS
+            _ek = next((k for k in _ESQUEMAS if k in fase_nombre_det), "Acondicionamiento")
+            _esq = _ESQUEMAS[_ek]
+            conn_f = get_db_connection()
+            try:
+                tab_pull, tab_push, tab_pierna = st.tabs(["Pull 🏋️", "Push 💪", "Pierna 🦵"])
+                tabs_map = {"Pull": tab_pull, "Push": tab_push, "Pierna": tab_pierna}
+                for _, grupo_key, emoji_g, color_g, subtitulo in _GRUPOS_FUERZA:
+                    with tabs_map[grupo_key]:
+                        ejs = _ejercicios_catalogo_por_grupo(user_actual, grupo_key)
+                        if not ejs:
+                            st.caption(f"Sin ejercicios de {subtitulo} en tu catálogo. Añádelos en la página Ejercicios.")
+                        else:
+                            st.markdown(
+                                f"<p style='color:#8B949E;font-size:.72rem;font-weight:700;"
+                                f"text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem;'>"
+                                f"{subtitulo} · {_esq['series']}×{_esq['reps']} · {_esq['nota']}</p>",
+                                unsafe_allow_html=True)
+                            for ej in ejs:
+                                prog = obtener_progresion_ejercicio(user_actual, ej["nombre"], conn_f)
+                                peso_txt = (
+                                    f"{prog['sugerencia_peso']:.1f} {ej['unidad']}"
+                                    if prog["sugerencia_peso"] > 0 else "Peso corporal"
+                                )
+                                st.markdown(f"""
+<div style="display:flex;align-items:center;justify-content:space-between;
+  background:rgba(22,27,34,0.9);border:1px solid rgba(255,255,255,0.06);
+  border-radius:10px;padding:.55rem .85rem;margin-bottom:.35rem;">
+  <div>
+    <span style="color:white;font-size:.85rem;font-weight:700;">{escape(ej['nombre'])}</span>
+    <span style="color:#8B949E;font-size:.72rem;margin-left:.5rem;">{escape(ej['musculo'])}</span>
+  </div>
+  <div style="text-align:right;">
+    <span style="color:{color_g};font-size:.85rem;font-weight:800;">{peso_txt}</span>
+    <span style="color:#8B949E;font-size:.7rem;margin-left:.4rem;">{_esq['series']}×{_esq['reps']}</span>
+  </div>
+</div>""", unsafe_allow_html=True)
+            finally:
+                conn_f.close()
 
         elif tipo in _TIPOS_CARRERA:
             from src.garmin.workout_builder import sesion_a_bloques

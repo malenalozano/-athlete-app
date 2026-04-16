@@ -345,6 +345,7 @@ _ALL_SCHEMA_SQL = [
     "ALTER TABLE diario_fisiologia ADD COLUMN feedback_entreno TEXT",
     "ALTER TABLE entrenamientos_fuerza ADD COLUMN usuario_id INTEGER",
     "ALTER TABLE ejercicios_fuerza ADD COLUMN sensaciones TEXT",
+    "ALTER TABLE ejercicios_catalogo ADD COLUMN archivado INTEGER DEFAULT 0",
     "ALTER TABLE sesiones_fuerza ADD COLUMN tipo_registro TEXT",
     "ALTER TABLE sesiones_fuerza ADD COLUMN actividad_garmin_id TEXT",
     "ALTER TABLE sesiones_fuerza ADD COLUMN nota_estado TEXT",
