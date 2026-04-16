@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from html import escape
 
 from src.core.navbar import render_navbar
-from src.db.db_manager import get_db_connection, obtener_credenciales_garmin, obtener_perfil as _obtener_perfil
+from src.db.db_manager import get_db_connection, obtener_perfil as _obtener_perfil
 from src.core.plan_ui_helpers import (
     html_detalle_carrera, html_detalle_fuerza, html_detalle_descanso,
 )
@@ -954,24 +954,6 @@ border-radius:16px;overflow:hidden;margin-top:1.2rem;">
             from src.garmin.workout_builder import sesion_a_bloques
             bloques = sesion_a_bloques(dia)
             st.markdown(html_detalle_carrera(dia, bloques), unsafe_allow_html=True)
-
-            if st.button("⌚ Enviar workout a Garmin", key=f"garmin_{selected_idx}"):
-                from src.garmin.garmin_sync import cargar_sesion_tokens
-                cred = obtener_credenciales_garmin(user_actual)
-                email = cred[0] if cred else None
-                gc = st.session_state.get("gc") or cargar_sesion_tokens(email, usuario_id=user_actual)
-                if gc is None:
-                    st.warning("Conecta tu cuenta Garmin primero en la página Garmin.")
-                else:
-                    with st.spinner("Enviando workout a Garmin..."):
-                        try:
-                            from src.garmin.workout_builder import crear_workout_garmin, programar_workout_garmin
-                            wid = crear_workout_garmin(dia, gc)
-                            ok = programar_workout_garmin(gc, wid, dia["fecha"])
-                            cal = " y programado en calendario Garmin." if ok else "."
-                            st.success(f"✅ Workout enviado (ID: {wid}){cal} Sincroniza tu reloj.")
-                        except Exception as e:
-                            st.error(f"Error al enviar a Garmin: {e}")
         else:
             st.markdown(html_detalle_descanso(dia), unsafe_allow_html=True)
 
