@@ -69,7 +69,16 @@ def html_barra_fase(fase: dict) -> str:
 def html_fila_dia(dia: dict, seleccionado: bool) -> str:
     color = _BADGE_COLOR.get(dia["tipo"], "#8B949E")
     emoji = _EMOJIS.get(dia["tipo"], "📅")
-    km_txt = f"{dia['km']} km" if dia["km"] else f"{dia['duracion_min']}'"
+    tipo = str(dia.get("tipo", ""))
+    es_running = any(k in tipo for k in ("Carrera", "Tirada", "Rodaje", "Tempo", "Intervalos", "Fartlek", "Regenerativo", "Progresiva", "Calidad"))
+    km = float(dia.get("km") or 0)
+    dur = float(dia.get("duracion_min") or 0)
+    if es_running and km > 0 and dur > 0:
+        km_txt = f"{km:.1f} km · {dur:.0f} min"
+    elif km > 0:
+        km_txt = f"{km:.1f} km"
+    else:
+        km_txt = f"{dur:.0f} min" if dur > 0 else "—"
     borde = "2px solid #C9FF00" if seleccionado else "1px solid rgba(201,255,0,0.15)"
     bg = "#1a2e3b" if seleccionado else "#131D2B"
     return (
