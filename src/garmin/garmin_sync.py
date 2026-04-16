@@ -1533,14 +1533,23 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
             conexion.close()
 
     # ── 2. Biométricos y sueño de los últimos `dias` días ───────────────
+    # Scannea más días para asegurar que obtiene al menos `dias` días con métricas útiles
     latest_running_list = _safe_api_call(_latest_running_metrics, gc, 12) or []
     latest_running = latest_running_list[0] if latest_running_list else None
 
+    target_bio_days = max(1, int(dias))
+    max_scan_days = min(60, max(14, target_bio_days * 4))  # Scannea hasta 4x más días si faltan con datos
+
     dias_bio = 0
     dias_sueno = 0
+    dias_vacios = 0
     biometricos_importados = []
     sueno_importado = []
-    for i in range(dias):
+    
+    for i in range(max_scan_days):
+        if dias_bio >= target_bio_days:
+            break  # Ya obtuvimos bastantes días con biométricos
+
         fecha = (datetime.now() - timedelta(days=i)).date()
         fecha_iso = fecha.strftime("%Y-%m-%d")
 
@@ -1579,10 +1588,13 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
                     "tiempo_contacto_ms": latest_running.get("tiempo_contacto_ms"),
                     "oscilacion_vertical_cm": latest_running.get("oscilacion_vertical_cm"),
                 })
+            
             if _has_useful_daily_metrics(daily_metrics):
                 guardar_metricas_premium_db(usuario_id, daily_metrics)
                 dias_bio += 1
                 biometricos_importados.append(daily_metrics)
+            else:
+                dias_vacios += 1  # Día sin métricas útiles, seguir buscando
         except GarminConnectAuthenticationError:
             logger.warning(f"Token expiró al obtener métricas para {fecha_iso}")
             raise RuntimeError(
