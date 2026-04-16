@@ -33,7 +33,17 @@ except Exception as e:
 require_auth(_cm)
 
 # Ocultar TODO lo nativo de Streamlit + CSS global del sistema de diseño
-from src.core.styles import GLOBAL_CSS
+try:
+    from src.core.styles import GLOBAL_CSS
+except Exception as e:
+    import logging
+    logging.exception(f"No se pudo importar src.core.styles ({type(e).__name__}: {e}). Usando CSS fallback.")
+    GLOBAL_CSS = """
+<style>
+.stApp, [data-testid="stAppViewContainer"] { background: #0d1117 !important; }
+.main .block-container { max-width: 100% !important; }
+</style>
+"""
 from src.db.db_manager import (
     init_db, asegurar_tabla_ejercicios, asegurar_tabla_catalogo_ejercicios,
     get_db_connection,
