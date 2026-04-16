@@ -549,16 +549,51 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                             
                             # Errores de autenticación / token expirado
                             if any(k in err_low for k in ["401", "token expirado", "token", "unauthorized", "expired", "invalid", "desconecta"]):
-                                st.error(f"🔑 **Error de sesión** — {err_str}")
-                                # Limpiar tokens para forzar reconexión
-                                try:
-                                    _c = get_db_connection()
-                                    _c.execute("UPDATE usuarios SET garmin_tokens=NULL WHERE id=?", (user_actual,))
-                                    _c.commit(); _c.close()
-                                except Exception:
-                                    pass
-                                st.session_state.pop("gc", None)
-                                st.session_state.pop("gc_failed", None)
+                                if "worker api" in err_low:
+                                    st.error(f"🔐 **Error de autenticación del worker** — {err_str}")
+                                elif _is_blocked:
+                                    st.error("⏳ Bloqueo 429 activo. No se puede renovar sesión ahora.")
+                                else:
+                                    st.warning("🔄 Sesión Garmin caducada. Intentando renovar automáticamente...")
+                                    try:
+                                        cred_ref = obtener_credenciales_garmin(user_actual)
+                                        email_ref = cred_ref[0] if cred_ref else None
+                                        pw_ref = _get_saved_password(cred_ref)
+                                        if not email_ref or not pw_ref:
+                                            raise RuntimeError("No hay credenciales guardadas válidas para renovar sesión.")
+
+                                        gc_new = iniciar_sesion_garmin(email_ref, pw_ref, usuario_id=user_actual)
+                                        st.session_state["gc"] = gc_new
+
+                                        r = sincronizar_todo_con_sesion(gc_new, user_actual, dias=int(n_dias))
+                                        ts = datetime.now().strftime("%d/%m %H:%M")
+                                        st.session_state["g_sync"] = ts
+                                        st.session_state["g_sync_r"] = r
+                                        st.session_state["garmin_last_sync"] = {
+                                            "ts": ts,
+                                            "source": "garmin",
+                                            "result": r,
+                                        }
+                                        st.success(
+                                            f"✅ Sesión renovada y sincronización completada: "
+                                            f"{r.get('actividades', 0)} actividades, {r.get('dias_bio', 0)} días biométricos"
+                                        )
+                                        st.cache_data.clear(); st.rerun()
+                                    except Exception as reauth_e:
+                                        st.error(f"🔑 **Error de sesión** — {err_str}")
+                                        st.info(
+                                            "No se pudo renovar automáticamente. "
+                                            "Vuelve a conectar tu cuenta Garmin desde el panel de la izquierda."
+                                        )
+                                        # Limpiar tokens para forzar reconexión manual limpia.
+                                        try:
+                                            _c = get_db_connection()
+                                            _c.execute("UPDATE usuarios SET garmin_tokens=NULL WHERE id=?", (user_actual,))
+                                            _c.commit(); _c.close()
+                                        except Exception:
+                                            pass
+                                        st.session_state.pop("gc", None)
+                                        st.session_state.pop("gc_failed", None)
                             
                             # Error 429 - Bloqueado by Garmin
                             elif "429" in err_str or "bloqueado" in err_low or "rate" in err_low:
