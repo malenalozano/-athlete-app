@@ -572,7 +572,6 @@ if active_tab == "generar":
 
         week_key = lunes.strftime("%Y%m%d")
         board_key = f"plan_session_board_{week_key}"
-        move_key = f"plan_session_move_{week_key}"
 
         # Inicializa tablero: 7 columnas (una por día), cada columna admite varias sesiones.
         if board_key not in st.session_state:
@@ -592,13 +591,9 @@ if active_tab == "generar":
                     }])
                 st.session_state[board_key] = board_init
 
-        if move_key not in st.session_state:
-            st.session_state[move_key] = None
-
         board = st.session_state[board_key]
-        move_src = st.session_state[move_key]
 
-        def _sync_plan_from_board() -> None:
+        def _sync_plan_from_board(persist: bool = True) -> None:
             nuevas = []
             for idx in range(7):
                 fecha = (lunes + timedelta(days=idx)).strftime("%Y-%m-%d")
@@ -624,61 +619,54 @@ if active_tab == "generar":
             plan["dias"] = nuevas
             plan["board_sesiones"] = board
             st.session_state.plan_data = plan
-            _auto_guardar(user_actual, lunes, plan)
+            if persist:
+                _auto_guardar(user_actual, lunes, plan)
 
-        st.caption("Arriba: sesiones (solo nombre) por columnas de días. Puedes mover varias a un mismo día.")
-        if move_src is not None:
-            src_day, src_pos = move_src
-            if 0 <= src_day < 7 and 0 <= src_pos < len(board[src_day]):
-                st.info(f"Mover '{board[src_day][src_pos].get('tipo', 'Sesion')}' desde {_DIA_CORTO[src_day]}: pulsa 'Mover aquí' en la columna destino.")
+        st.caption("Arrastra y suelta sesiones entre columnas (LUN-DOM). Sin botones.")
 
-        # --- TABLERO SUPERIOR (rojo): solo nombres de sesiones ---
-        top_cols = st.columns(7, gap="small")
-        for i in range(7):
-            with top_cols[i]:
-                st.markdown(
-                    f"<div style='background:#3a0f16;border:1px solid #7f1d1d;border-radius:10px;padding:.4rem .45rem;"
-                    f"margin-bottom:.35rem;color:#fecaca;font-size:.72rem;font-weight:700;text-transform:uppercase;'>"
-                    f"{_DIA_CORTO[i]}</div>",
-                    unsafe_allow_html=True,
-                )
+        # --- TABLERO SUPERIOR (rojo): drag & drop real multi-columna ---
+        if sort_items is not None:
+            zws = "\u200b"
+            sortable_input = {}
+            label_to_session = {}
 
-                if board[i]:
-                    for j, ses in enumerate(board[i]):
-                        nombre = str(ses.get("tipo") or "Sesion")
-                        st.markdown(
-                            f"<div style='background:#7f1d1d;border:1px solid #991b1b;border-radius:8px;"
-                            f"padding:.42rem .5rem;margin-bottom:.26rem;color:#fee2e2;font-size:.73rem;font-weight:700;'>"
-                            f"{escape(nombre)}</div>",
-                            unsafe_allow_html=True,
-                        )
-                        if move_src is None:
-                            if st.button("Mover", key=f"board_move_pick_{i}_{j}", use_container_width=True):
-                                st.session_state[move_key] = (i, j)
-                                st.rerun()
-                else:
-                    st.markdown(
-                        "<div style='background:#111827;border:1px dashed #374151;border-radius:8px;padding:.42rem .5rem;"
-                        "margin-bottom:.26rem;color:#9ca3af;font-size:.72rem;'>Sin sesión</div>",
-                        unsafe_allow_html=True,
-                    )
+            for day_idx in range(7):
+                day_name = _DIA_CORTO[day_idx]
+                sortable_input[day_name] = []
+                for ses_idx, ses in enumerate(board[day_idx]):
+                    nombre = str(ses.get("tipo") or "Sesion")
+                    token = zws * (day_idx * 30 + ses_idx + 1)
+                    label = f"{nombre}{token}"
+                    sortable_input[day_name].append(label)
+                    label_to_session[label] = dict(ses)
 
-                if move_src is not None:
-                    src_day, src_pos = move_src
-                    if st.button("Mover aquí", key=f"board_move_drop_{i}", use_container_width=True, type="primary"):
-                        if 0 <= src_day < 7 and 0 <= src_pos < len(board[src_day]):
-                            sesion = board[src_day].pop(src_pos)
-                            board[i].append(sesion)
-                            st.session_state[board_key] = board
-                            st.session_state[move_key] = None
-                            st.session_state["plan_selected_day_idx"] = i
-                            _sync_plan_from_board()
-                            st.rerun()
+            custom_style = """
+.sortable-container { background: #3a0f16 !important; border: 1px solid #7f1d1d !important; border-radius: 10px !important; }
+.sortable-container-header { color: #fecaca !important; font-size: .72rem !important; font-weight: 800 !important; text-transform: uppercase !important; }
+.sortable-container-body { min-height: 96px !important; }
+.sortable-item { background: #7f1d1d !important; border: 1px solid #991b1b !important; color: #fee2e2 !important; border-radius: 8px !important; font-size: .73rem !important; font-weight: 700 !important; }
+"""
 
-        if move_src is not None:
-            if st.button("Cancelar movimiento", key="board_move_cancel", use_container_width=False):
-                st.session_state[move_key] = None
+            sortable_output = sort_items(
+                sortable_input,
+                multi_containers=True,
+                direction="horizontal",
+                key=f"plan_board_drag_{week_key}",
+                custom_style=custom_style,
+            )
+
+            if isinstance(sortable_output, dict) and sortable_output != sortable_input:
+                nuevo_board = []
+                for day_name in _DIA_CORTO:
+                    labels = sortable_output.get(day_name, []) or []
+                    sesiones = [dict(label_to_session[lbl]) for lbl in labels if lbl in label_to_session]
+                    nuevo_board.append(sesiones)
+                board = nuevo_board
+                st.session_state[board_key] = board
+                _sync_plan_from_board(persist=True)
                 st.rerun()
+        else:
+            st.warning("No se pudo cargar drag-and-drop en este entorno.")
 
         st.markdown("<div style='height:.6rem;'></div>", unsafe_allow_html=True)
         st.caption("Calendario fijo de la semana (se actualiza al mover sesiones)")
@@ -715,8 +703,8 @@ if active_tab == "generar":
                     st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
 
-        # Mantener plan sincronizado aunque no haya movimientos en este render.
-        _sync_plan_from_board()
+        # Mantener estructura de plan sincronizada con el tablero en memoria (sin guardar cada render).
+        _sync_plan_from_board(persist=False)
         dias_plan = plan.get("dias", dias_plan)
 
     # Detalle integrado debajo del calendario (estilo original)
