@@ -48,63 +48,112 @@ _DIA_CORTO = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"]
 # CSS global: radio como tarjeta clickable vertical
 # ---------------------------------------------------------------------------
 st.markdown("""<style>
+/* ── Botones primarios ───────────────────────────────────────── */
 div[data-testid="stButton"] > button[kind="primary"] {
-    border-radius: 16px !important;
-    min-height: 3rem !important;
-    font-weight: 800 !important;
-    box-shadow: 0 12px 28px rgba(0, 212, 255, 0.14) !important;
-}
-div[data-testid="stButton"] > button[kind="primary"]:hover {
-    transform: translateY(-1px);
+    border-radius: 12px !important;
+    font-weight: 700 !important;
+    box-shadow: 0 0 20px rgba(0,212,255,0.25) !important;
 }
 
-div[data-testid="stRadio"] > div[role="radiogroup"] { gap: 0 !important; display: flex; flex-wrap: wrap; }
+/* ── Radio como tarjeta ─────────────────────────────────────── */
+div[data-testid="stRadio"] > div[role="radiogroup"] { gap:0!important;display:flex;flex-wrap:wrap; }
 div[data-testid="stRadio"] label {
-    background:#131D2B; border:1px solid rgba(201,255,0,0.15); border-radius:10px;
-    padding:10px 12px; margin-bottom:6px; margin-right:6px; cursor:pointer; flex: 1; min-width:150px;
-    color:#C9E1FF !important; font-size:0.84rem; display:flex; align-items:center; justify-content:center; }
+    background:#131D2B;border:1px solid rgba(201,255,0,0.15);border-radius:10px;
+    padding:10px 12px;margin-bottom:6px;margin-right:6px;cursor:pointer;flex:1;min-width:150px;
+    color:#C9E1FF!important;font-size:0.84rem;display:flex;align-items:center;justify-content:center; }
 div[data-testid="stRadio"] label:has(input[type="radio"]:checked) {
-    border-color:#C9FF00 !important; background:#111f11 !important; color:#C9FF00 !important; }
+    border-color:#C9FF00!important;background:#111f11!important;color:#C9FF00!important; }
 div[data-testid="stRadio"] input[type="radio"] { display:none; }
 
-.plan-hero-card {
-    background: linear-gradient(135deg, rgba(0,212,255,0.12) 0%, rgba(34,197,94,0.06) 52%, rgba(168,85,247,0.08) 100%);
-    border: 1px solid rgba(0,212,255,0.22);
-    border-radius: 16px;
-    padding: 1.35rem 1.4rem;
-    min-height: 100%;
-}
-.plan-cta-card {
-    background: linear-gradient(180deg, rgba(17,29,42,0.98), rgba(14,20,31,0.98));
-    border: 1px solid rgba(0,212,255,0.18);
-    border-radius: 16px;
-    padding: 0.85rem 1rem 0.95rem;
-    min-height: auto;
-    height: fit-content;
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-}
-.plan-cta-label {
-    color:#8B949E;
-    font-size:0.7rem;
-    font-weight:700;
-    text-transform:uppercase;
-    letter-spacing:.08em;
-    margin:0 0 .65rem;
-}
-.plan-cta-hint {
-    color:#8B949E;
-    font-size:0.76rem;
-    line-height:1.35;
-    margin-top:.65rem;
-}
+/* ── KPI card ────────────────────────────────────────────────── */
 .plan-kpi-card {
-    min-height: 92px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    border-radius: 14px;
+    min-height:92px;display:flex;flex-direction:column;justify-content:space-between;border-radius:14px;
+}
+
+/* ── Tarjeta de día (Figma style) ────────────────────────────── */
+.plan-day-card {
+    background: rgba(22,27,34,0.9);
+    border-radius: 12px;
+    padding: 14px 12px;
+    min-height: 155px;
+    position: relative;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    cursor: pointer;
+}
+.plan-day-card:hover { transform: translateY(-2px); }
+.plan-day-card.selected {
+    box-shadow: 0 0 0 2px rgba(201,255,0,0.5), 0 0 20px rgba(201,255,0,0.12) !important;
+}
+.plan-day-label {
+    font-size:10px; color:#8B949E; font-weight:800;
+    text-transform:uppercase; letter-spacing:.1em; margin:0 0 2px;
+}
+.plan-day-date { font-size:11px; color:#C8D1D9; font-weight:600; margin:0 0 10px; }
+.plan-day-activity { font-size:12px; font-weight:800; margin:0 0 4px; line-height:1.2; }
+.plan-day-duration { font-size:10px; color:#8B949E; margin:0 0 8px; }
+.plan-day-badge {
+    display:inline-block; font-size:9px; font-weight:700;
+    padding:2px 8px; border-radius:20px; border:1px solid;
+}
+
+/* ── Sortable drag-and-drop ──────────────────────────────────── */
+.sortable-component {
+    display:grid!important;
+    grid-template-columns:repeat(7,minmax(0,1fr))!important;
+    gap:.4rem!important;
+    align-items:start!important;
+}
+.sortable-container {
+    background:rgba(15,22,35,0.85)!important;
+    border:1px solid rgba(255,255,255,0.07)!important;
+    border-radius:10px!important;
+    padding:6px!important;
+}
+.sortable-container-header {
+    color:#8B949E!important;
+    font-size:.65rem!important;
+    font-weight:800!important;
+    text-transform:uppercase!important;
+    letter-spacing:.1em!important;
+    padding:4px 6px!important;
+    border-bottom:1px solid rgba(255,255,255,0.05)!important;
+    margin-bottom:4px!important;
+}
+.sortable-container-body { min-height:48px!important; padding:2px!important; }
+.sortable-item {
+    background:rgba(30,42,60,0.9)!important;
+    border:1px solid rgba(255,255,255,0.08)!important;
+    color:#C8D1D9!important;
+    border-radius:7px!important;
+    font-size:.68rem!important;
+    font-weight:600!important;
+    padding:5px 7px!important;
+    cursor:grab!important;
+    line-height:1.3!important;
+}
+.sortable-item:hover {
+    background:rgba(40,58,85,0.9)!important;
+    border-color:rgba(201,255,0,0.3)!important;
+    color:white!important;
+}
+
+/* ── Botón "Ver detalle" en tarjeta ─────────────────────────── */
+.plan-day-btn button {
+    border-radius:8px!important;
+    font-size:11px!important;
+    font-weight:700!important;
+    padding:4px 0!important;
+    height:28px!important;
+    min-height:28px!important;
+}
+
+/* ── Panel de detalle del día ────────────────────────────────── */
+.plan-detail-panel {
+    background: rgba(14,17,23,0.97);
+    border: 1px solid rgba(201,255,0,0.2);
+    border-radius: 16px;
+    overflow: hidden;
+    margin-top: 1.5rem;
 }
 
 </style>""", unsafe_allow_html=True)
@@ -514,14 +563,57 @@ if active_tab == "generar":
     fase = plan["fase"]
     semaforo = plan["semaforo"]
 
-    # KPI Cards (4 columns)
-    kpi_c1, kpi_c2, kpi_c3, kpi_c4 = st.columns(4, gap="medium")
-
     dias_plan = plan.get("dias", [])
     km_totales = round(sum(float(d.get("km") or 0) for d in dias_plan), 1)
     sesiones_no_descanso = len([d for d in dias_plan if d.get("tipo") != "Descanso"])
     fuerza_count = len([d for d in dias_plan if d.get("tipo") in _TIPOS_FUERZA])
     fase_nombre = fase.get("fase_nombre", "—")
+
+    # ── Hero Banner ──────────────────────────────────────────────────────────
+    _perfil_plan = {}
+    try:
+        from src.db.db_manager import obtener_perfil as _op
+        _perfil_plan = _op(user_actual) or {}
+    except Exception:
+        pass
+    _fecha_obj_hero = _perfil_plan.get("fecha_objetivo") or _perfil_plan.get("fecha_objetivo_primario")
+    _obj_nombre_hero = _perfil_plan.get("objetivo_primario") or _perfil_plan.get("objetivo_tipo") or "Objetivo"
+    _dias_obj_hero = ""
+    if _fecha_obj_hero:
+        try:
+            _fobj = datetime.strptime(str(_fecha_obj_hero), "%Y-%m-%d")
+            _d = (_fobj - datetime.now()).days
+            if _d > 0:
+                _dias_obj_hero = f" · {_d} días para {_obj_nombre_hero}"
+        except Exception:
+            pass
+    _semana_label = _rango_semana_es(lunes)
+    _semaforo_color_map = {"verde": "#22c55e", "ambar": "#f59e0b", "rojo": "#ef4444"}
+    _sem_color = _semaforo_color_map.get(semaforo.get("color", "ambar"), "#f59e0b")
+    _sem_dot = f"<span style='display:inline-block;width:8px;height:8px;border-radius:50%;background:{_sem_color};margin-right:5px;box-shadow:0 0 6px {_sem_color};'></span>"
+
+    st.markdown(f"""
+<div style="
+    background:linear-gradient(135deg,rgba(0,212,255,0.12) 0%,rgba(34,197,94,0.06) 52%,rgba(168,85,247,0.1) 100%);
+    border:1px solid rgba(0,212,255,0.22);
+    border-radius:18px;padding:1.4rem 1.6rem;margin-bottom:1.2rem;position:relative;overflow:hidden;
+">
+  <div style="position:absolute;top:-30px;right:-30px;width:180px;height:180px;border-radius:50%;
+    background:radial-gradient(circle,rgba(0,212,255,0.12),transparent);pointer-events:none;"></div>
+  <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem;">
+    <span style="background:rgba(0,212,255,0.15);color:#67e8f9;font-size:.7rem;font-weight:700;
+      padding:3px 10px;border-radius:20px;border:1px solid rgba(0,212,255,0.3);">{fase_nombre}</span>
+    <span style="background:rgba(34,197,94,0.15);color:#86efac;font-size:.7rem;font-weight:700;
+      padding:3px 10px;border-radius:20px;border:1px solid rgba(34,197,94,0.3);">
+      {_sem_dot}Semáforo: {semaforo.get("color","—").capitalize()}</span>
+  </div>
+  <h2 style="color:white;font-size:1.35rem;font-weight:800;margin:0 0 .3rem;">
+    Plan Semanal — {_semana_label}</h2>
+  <p style="color:#8B949E;font-size:.82rem;margin:0;">{km_totales} km objetivo esta semana{_dias_obj_hero}</p>
+</div>""", unsafe_allow_html=True)
+
+    # ── KPI Cards ────────────────────────────────────────────────────────────
+    kpi_c1, kpi_c2, kpi_c3, kpi_c4 = st.columns(4, gap="medium")
 
     _kpi_card(kpi_c1, "🏃", "KM Semana", f"{km_totales:.1f}", "#00D4FF", "rgba(0,212,255,0.1)", "rgba(0,212,255,0.25)")
     _kpi_card(kpi_c2, "📋", "Sesiones", str(sesiones_no_descanso), "#4ade80", "rgba(74,222,128,0.1)", "rgba(74,222,128,0.25)")
@@ -622,40 +714,37 @@ if active_tab == "generar":
             if persist:
                 _auto_guardar(user_actual, lunes, plan)
 
-        st.caption("Arrastra y suelta sesiones entre columnas (LUN-DOM). Sin botones.")
+        # --- TABLERO drag & drop multi-columna (dark theme) ---
+        def _session_label(ses: dict) -> str:
+            """Label rico para cada sesión: emoji + tipo + carga. Único en la semana (pool key)."""
+            tipo = str(ses.get("tipo") or "Sesion")
+            emoji = _EMOJIS.get(tipo, "📅")
+            dur = float(ses.get("duracion_min") or 0)
+            km = float(ses.get("km") or 0)
+            carga = f"{km:.1f} km" if km > 0 else (f"{int(dur)} min" if dur > 0 else "—")
+            return f"{emoji} {tipo}\n{carga}"
 
-        # --- TABLERO SUPERIOR (rojo): drag & drop real multi-columna ---
         if sort_items is not None:
-            sortable_input = []
-
-            for day_idx in range(7):
-                day_name = _DIA_CORTO[day_idx]
-                day_items = [str(ses.get("tipo") or "Sesion") for ses in board[day_idx]]
-                sortable_input.append({"header": day_name, "items": day_items})
-
-            custom_style = """
-.sortable-component { display: grid !important; grid-template-columns: repeat(7, minmax(0, 1fr)) !important; gap: .5rem !important; align-items: start !important; }
-.sortable-container { background: #3a0f16 !important; border: 1px solid #7f1d1d !important; border-radius: 10px !important; }
-.sortable-container-header { color: #fecaca !important; font-size: .72rem !important; font-weight: 800 !important; text-transform: uppercase !important; }
-.sortable-container-body { min-height: 96px !important; }
-.sortable-item { background: #7f1d1d !important; border: 1px solid #991b1b !important; color: #fee2e2 !important; border-radius: 8px !important; font-size: .73rem !important; font-weight: 700 !important; }
-"""
+            sortable_input = [
+                {"header": _DIA_CORTO[day_idx], "items": [_session_label(ses) for ses in board[day_idx]]}
+                for day_idx in range(7)
+            ]
 
             sortable_output = sort_items(
                 sortable_input,
                 multi_containers=True,
                 direction="horizontal",
                 key=f"plan_board_drag_{week_key}",
-                custom_style=custom_style,
+                custom_style="",
             )
 
             if isinstance(sortable_output, list) and sortable_output != sortable_input:
-                # Reconstruye sesiones preservando todos los campos, asignando por nombre en orden.
-                pool_por_tipo: dict[str, list[dict]] = {}
+                # Pool por label completo → preserva todos los campos de la sesión original.
+                pool: dict[str, list[dict]] = {}
                 for sesiones_day in board:
                     for ses in sesiones_day:
-                        tipo = str(ses.get("tipo") or "Sesion")
-                        pool_por_tipo.setdefault(tipo, []).append(dict(ses))
+                        lbl = _session_label(ses)
+                        pool.setdefault(lbl, []).append(dict(ses))
 
                 nuevo_por_dia: dict[str, list[dict]] = {d: [] for d in _DIA_CORTO}
                 for container in sortable_output:
@@ -664,104 +753,140 @@ if active_tab == "generar":
                     day_name = str(container.get("header") or "").strip().upper()[:3]
                     if day_name not in nuevo_por_dia:
                         continue
-
-                    labels = container.get("items", []) or []
                     rebuilt: list[dict] = []
-                    for lbl in labels:
-                        tipo = str(lbl or "Sesion").strip()
-                        cand = pool_por_tipo.get(tipo, [])
+                    for lbl in (container.get("items") or []):
+                        cand = pool.get(str(lbl), [])
                         if cand:
                             rebuilt.append(cand.pop(0))
                         else:
-                            rebuilt.append({
-                                "tipo": tipo,
-                                "km": 0,
-                                "duracion_min": 0,
-                                "intensidad": "—",
-                                "descripcion_ia": "",
-                                "alerta": "",
-                            })
+                            # Fallback: extraer tipo del label (línea 1, sin emoji)
+                            partes = str(lbl).split("\n")[0].strip().split(" ", 1)
+                            tipo_fb = partes[1].strip() if len(partes) > 1 else str(lbl).split("\n")[0]
+                            rebuilt.append({"tipo": tipo_fb, "km": 0, "duracion_min": 0,
+                                            "intensidad": "—", "descripcion_ia": "", "alerta": ""})
                     nuevo_por_dia[day_name] = rebuilt
 
                 nuevo_board = [nuevo_por_dia[d] for d in _DIA_CORTO]
+                st.session_state[board_key] = nuevo_board
                 board = nuevo_board
-                st.session_state[board_key] = board
                 _sync_plan_from_board(persist=True)
                 st.rerun()
-        else:
-            st.warning("No se pudo cargar drag-and-drop en este entorno.")
 
-        st.markdown("<div style='height:.6rem;'></div>", unsafe_allow_html=True)
-        st.caption("Calendario fijo de la semana (se actualiza al mover sesiones)")
+        st.markdown("<div style='height:.5rem;'></div>", unsafe_allow_html=True)
 
-        # --- CALENDARIO FIJO INFERIOR (7 columnas, actualizado con el tablero) ---
+        # --- CALENDARIO — tarjetas estilo Figma ---
+        _BORDER_COLOR = {
+            "running": "#22d3ee",
+            "strength": "#c084fc",
+            "rest": "#4ade80",
+            "default": "#C9FF00",
+        }
+        _BADGE_BG = {
+            "running": "rgba(34,211,238,0.12)",
+            "strength": "rgba(192,132,252,0.12)",
+            "rest": "rgba(74,222,128,0.12)",
+            "default": "rgba(201,255,0,0.12)",
+        }
+        _BADGE_BORDER = {
+            "running": "rgba(34,211,238,0.35)",
+            "strength": "rgba(192,132,252,0.35)",
+            "rest": "rgba(74,222,128,0.35)",
+            "default": "rgba(201,255,0,0.35)",
+        }
+
         cal_cols = st.columns(7, gap="small")
         for i in range(7):
-            fecha_txt = (lunes + timedelta(days=i)).strftime("%d/%m")
+            fecha_dt = lunes + timedelta(days=i)
+            # %-d no funciona en Windows; usamos str(day) para evitar cero inicial
+            fecha_txt = f"{fecha_dt.day} {fecha_dt.strftime('%b')}"
             sesiones_dia = board[i]
             sesion_principal = sesiones_dia[0] if sesiones_dia else {
-                "tipo": "Descanso",
-                "km": 0,
-                "duracion_min": 0,
-                "intensidad": "—",
+                "tipo": "Descanso", "km": 0, "duracion_min": 0, "intensidad": "—",
             }
             tipo = str(sesion_principal.get("tipo") or "Descanso")
-            color = _get_activity_color(tipo)
+            act_type = _get_activity_type(tipo)
+            color = _BORDER_COLOR.get(act_type, _BORDER_COLOR["default"])
+            badge_bg = _BADGE_BG.get(act_type, _BADGE_BG["default"])
+            badge_border = _BADGE_BORDER.get(act_type, _BADGE_BORDER["default"])
             emoji = _EMOJIS.get(tipo, "📅")
             km = float(sesion_principal.get("km") or 0)
             dur = float(sesion_principal.get("duracion_min") or 0)
-            carga = f"{km:.1f} km" if km > 0 else (f"{dur:.0f}'" if dur > 0 else "—")
-            extras_txt = f"+{len(sesiones_dia) - 1} sesión" if len(sesiones_dia) == 2 else f"+{len(sesiones_dia) - 1} sesiones"
+            carga = f"{km:.1f} km" if km > 0 else (f"{dur:.0f} min" if dur > 0 else "—")
+            intensidad = str(sesion_principal.get("intensidad") or "").strip()
+            show_badge = intensidad and intensidad != "—"
+            is_selected = st.session_state.get("plan_selected_day_idx") == i
+            is_today = (lunes + timedelta(days=i)).strftime("%Y-%m-%d") == datetime.now().strftime("%Y-%m-%d")
+
+            sel_glow = (
+                "box-shadow:0 0 0 2px rgba(201,255,0,0.5),0 0 24px rgba(201,255,0,0.12);"
+                "border-top:1px solid rgba(201,255,0,0.25);border-right:1px solid rgba(201,255,0,0.25);border-bottom:1px solid rgba(201,255,0,0.25);"
+            ) if is_selected else (
+                "border-top:1px solid rgba(255,255,255,0.05);border-right:1px solid rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05);"
+            )
+            today_dot = f"<span style='display:inline-block;width:5px;height:5px;border-radius:50%;background:#C9FF00;margin-left:4px;vertical-align:middle;'></span>" if is_today else ""
+            badge_html = (
+                f"<div style='margin-top:8px;display:inline-block;font-size:9px;font-weight:700;"
+                f"padding:2px 8px;border-radius:20px;background:{badge_bg};border:1px solid {badge_border};color:{color};'>"
+                f"{escape(intensidad)}</div>"
+            ) if show_badge else ""
+            extras_html = ""
+            if len(sesiones_dia) > 1:
+                n_extra = len(sesiones_dia) - 1
+                extras_html = f"<div style='margin-top:6px;font-size:9px;color:#8B949E;font-weight:700;'>+{n_extra} sesión{'es' if n_extra>1 else ''}</div>"
 
             with cal_cols[i]:
-                st.markdown(
-                    f"<div style='background:linear-gradient(165deg,#071427 0%,#0a1630 60%,#081427 100%);"
-                    f"border:1px solid {color}66;border-radius:11px;padding:.55rem .52rem .58rem;min-height:126px;'>"
-                    f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem;'>"
-                    f"<span style='color:#8EA1C0;font-size:.57rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;'>{_DIA_CORTO[i]}</span>"
-                    f"<span style='color:#6F84A8;font-size:.56rem;font-weight:700;'>{fecha_txt}</span>"
-                    f"</div>"
-                    f"<div style='text-align:center;margin-top:.08rem;'>"
-                    f"<div style='font-size:.90rem;line-height:1.1;margin-bottom:.2rem;'>{emoji}</div>"
-                    f"<div style='color:{color};font-size:.72rem;font-weight:800;line-height:1.15;'>{escape(tipo)}</div>"
-                    f"<div style='color:#9DB0CC;font-size:.64rem;margin-top:.24rem;font-weight:600;'>{carga}</div>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-                if len(sesiones_dia) > 1:
-                    st.markdown(
-                        f"<div style='margin-top:.34rem;text-align:center;color:#7E93B4;font-size:.60rem;font-weight:700;'>{extras_txt}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    for ses in sesiones_dia[1:]:
-                        nombre = str(ses.get("tipo") or "Sesion")
-                        st.markdown(
-                            f"<div style='background:rgba(15,23,42,.55);border:1px solid #1f2f4f;border-radius:7px;padding:.20rem .34rem;"
-                            f"margin-top:.2rem;color:#90A6C7;font-size:.60rem;font-weight:600;text-align:center;'>{escape(nombre)}</div>",
-                            unsafe_allow_html=True,
-                        )
-                is_selected = st.session_state.get("plan_selected_day_idx") == i
-                if st.button("Ver", key=f"plan_day_sel_{i}", use_container_width=True,
-                             type="primary" if is_selected else "secondary"):
-                    st.session_state["plan_selected_day_idx"] = i
+                # Todo el HTML en un solo bloque para que Streamlit no lo fragmente
+                st.markdown(f"""
+<div style="border-left:4px solid {color};border-radius:12px;background:rgba(17,24,35,0.9);
+  {sel_glow}padding:13px 11px 11px;margin-bottom:6px;">
+  <p style="font-size:9px;color:#8B949E;font-weight:800;text-transform:uppercase;
+    letter-spacing:.1em;margin:0 0 2px;line-height:1;">{_DIA_CORTO[i]}{today_dot}</p>
+  <p style="font-size:10px;color:#C8D1D9;font-weight:600;margin:0 0 10px;">{fecha_txt}</p>
+  <p style="font-size:12px;font-weight:800;color:{color};margin:0 0 3px;line-height:1.25;">{emoji} {escape(tipo)}</p>
+  <p style="font-size:10px;color:#8B949E;margin:0 0 4px;">{carga}</p>
+  {badge_html}{extras_html}
+</div>""", unsafe_allow_html=True)
+                btn_label = "▼ Detalles" if is_selected else "Ver detalles"
+                btn_type = "primary" if is_selected else "secondary"
+                if st.button(btn_label, key=f"plan_day_sel_{i}", use_container_width=True, type=btn_type):
+                    st.session_state["plan_selected_day_idx"] = None if is_selected else i
                     st.rerun()
-                st.markdown("</div>", unsafe_allow_html=True)
 
         # Mantener estructura de plan sincronizada con el tablero en memoria (sin guardar cada render).
         _sync_plan_from_board(persist=False)
         dias_plan = plan.get("dias", dias_plan)
 
-    # Detalle integrado debajo del calendario (estilo original)
+    # ── Panel de detalle del día seleccionado ───────────────────────────────
     selected_idx = st.session_state.get("plan_selected_day_idx")
     if selected_idx is not None and selected_idx < len(dias_plan):
-        st.divider()
         dia = dias_plan[selected_idx]
         tipo = dia["tipo"]
-        st.markdown(
-            f"<div style='font-weight:800;color:#C9E1FF;font-size:1rem;margin-bottom:8px;'>"
-            f"{dia['dia']} — {dia['fecha'][5:]}</div>",
-            unsafe_allow_html=True,
-        )
+        act_type_det = _get_activity_type(tipo)
+        color_det = _TYPE_COLORS.get(act_type_det, _TYPE_COLORS["default"])
+        type_label = {"running": "Carrera", "strength": "Fuerza", "rest": "Descanso"}.get(act_type_det, tipo)
+        _badge_bg_det = {"running": "rgba(34,211,238,0.15)", "strength": "rgba(192,132,252,0.15)", "rest": "rgba(74,222,128,0.15)"}.get(act_type_det, "rgba(255,255,255,0.08)")
+        _badge_border_det = {"running": "rgba(34,211,238,0.4)", "strength": "rgba(192,132,252,0.4)", "rest": "rgba(74,222,128,0.4)"}.get(act_type_det, "rgba(255,255,255,0.15)")
+
+        st.markdown(f"""
+<div style="background:rgba(14,17,23,0.97);border:1px solid rgba(201,255,0,0.2);
+border-radius:16px;overflow:hidden;margin-top:1.2rem;">
+  <div style="display:flex;align-items:center;justify-content:space-between;
+    padding:1rem 1.25rem;border-bottom:1px solid rgba(255,255,255,0.06);">
+    <div style="display:flex;align-items:center;gap:.75rem;">
+      <div style="width:4px;height:40px;border-radius:4px;background:{color_det};
+        box-shadow:0 0 8px {color_det}88;"></div>
+      <div>
+        <div style="display:flex;align-items:center;gap:.5rem;">
+          <span style="color:white;font-size:1rem;font-weight:800;">{escape(tipo)}</span>
+          <span style="font-size:.7rem;font-weight:700;padding:2px 9px;border-radius:20px;
+            background:{_badge_bg_det};border:1px solid {_badge_border_det};color:{color_det};">{type_label}</span>
+        </div>
+        <p style="color:#8B949E;font-size:.75rem;margin:.2rem 0 0;">{dia.get('dia','—')} · {dia.get('fecha','')}</p>
+      </div>
+    </div>
+  </div>
+  <div style="padding:1rem 1.25rem;">
+</div>""", unsafe_allow_html=True)
 
         if tipo in _TIPOS_FUERZA:
             st.markdown(html_detalle_fuerza(dia), unsafe_allow_html=True)
@@ -1017,9 +1142,11 @@ border:1px solid rgba(74,222,128,0.25);border-radius:16px;padding:1.5rem 2rem;ma
     _section("🏃", "Análisis de Carrera & Rendimiento", "#22c55e")
 
     _r1, _r2, _r3 = st.columns(3, gap="small")
-    _cad = datos.get("cadencia_media", 0)
+    _cad_raw = datos.get("cadencia_media", 0)
+    _cad = _cad_raw if isinstance(_cad_raw, (int, float)) and _cad_raw is not None else 0
     _cad_note = "↓ Mejorar técnica" if _cad < 170 else ("↑ Excelente" if _cad > 175 else "→ Normal")
-    _acwr_v = datos.get("acwr", 0)
+    _acwr_raw = datos.get("acwr", 0)
+    _acwr_v = _acwr_raw if isinstance(_acwr_raw, (int, float)) and _acwr_raw is not None else 0
     _acwr_note = "🔴 Elevado" if _acwr_v > 1.5 else ("🟡 Moderado" if _acwr_v > 1.3 else "🟢 Normal")
     _metric_card(_r1, "Cadencia Media", f"{_cad:.0f} spm", _cad_note, color="#22c55e")
     _metric_card(_r2, "VO2max",         "—",               "No disponible", color="#8B949E")
