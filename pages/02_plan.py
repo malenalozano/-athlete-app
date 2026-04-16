@@ -551,7 +551,7 @@ if active_tab == "generar":
         st.session_state["plan_selected_day_idx"] = 0
 
     if dias_plan:
-        # Garantiza 7 slots (LUN-DOM) para mostrar siempre el calendario completo.
+        # Garantiza calendario fijo de 7 días.
         if len(dias_plan) != 7:
             dias_plan = _reaplicar_slots_semana(dias_plan[:7], lunes)
             while len(dias_plan) < 7:
@@ -570,97 +570,154 @@ if active_tab == "generar":
             st.session_state.plan_data = plan
             _auto_guardar(user_actual, lunes, plan)
 
-        # Drag-and-drop simplificado y robusto (sin CSS/HTML avanzado).
-        if sort_items is not None:
-            st.caption("Arrastra para mover sesiones entre días y suelta para actualizar el plan semanal.")
-            base_labels = []
-            for i, d in enumerate(dias_plan):
-                tipo = d.get("tipo", "—")
-                km = float(d.get("km") or 0)
-                dur = float(d.get("duracion_min") or 0)
-                carga = f"{km:.1f} km" if km > 0 else (f"{dur:.0f} min" if dur > 0 else "—")
-                base_labels.append(f"{i+1}. {_DIA_CORTO[i]} · {tipo} · {carga}")
+        week_key = lunes.strftime("%Y%m%d")
+        board_key = f"plan_session_board_{week_key}"
+        move_key = f"plan_session_move_{week_key}"
 
-            labels_ordenados = sort_items(
-                base_labels,
-                direction="horizontal",
-                key=f"plan_drag_simple_{lunes.strftime('%Y%m%d')}",
-            )
+        # Inicializa tablero: 7 columnas (una por día), cada columna admite varias sesiones.
+        if board_key not in st.session_state:
+            board_saved = plan.get("board_sesiones") if isinstance(plan.get("board_sesiones"), list) else None
+            if board_saved and len(board_saved) == 7:
+                st.session_state[board_key] = board_saved
+            else:
+                board_init = []
+                for d in dias_plan:
+                    board_init.append([{
+                        "tipo": d.get("tipo", "Descanso"),
+                        "km": float(d.get("km") or 0),
+                        "duracion_min": float(d.get("duracion_min") or 0),
+                        "intensidad": d.get("intensidad", "—"),
+                        "descripcion_ia": d.get("descripcion_ia", ""),
+                        "alerta": d.get("alerta", ""),
+                    }])
+                st.session_state[board_key] = board_init
 
-            if labels_ordenados and labels_ordenados != base_labels:
-                mapa = {lbl: dia for lbl, dia in zip(base_labels, dias_plan)}
-                dias_ordenados = [mapa[lbl] for lbl in labels_ordenados if lbl in mapa]
-                if len(dias_ordenados) == len(dias_plan):
-                    plan["dias"] = _reaplicar_slots_semana(dias_ordenados, lunes)
-                    st.session_state.plan_data = plan
-                    st.session_state["plan_selected_day_idx"] = 0
-                    _auto_guardar(user_actual, lunes, plan)
-                    st.rerun()
+        if move_key not in st.session_state:
+            st.session_state[move_key] = None
 
-        # Fallback fiable: mover manualmente (por si un navegador bloquea drag en iframes).
-        if "plan_move_source" not in st.session_state:
-            st.session_state["plan_move_source"] = None
+        board = st.session_state[board_key]
+        move_src = st.session_state[move_key]
 
-        move_src = st.session_state.get("plan_move_source")
-        if move_src is not None and 0 <= move_src < len(dias_plan):
-            st.info(f"Mover sesión de {_DIA_CORTO[move_src]}: pulsa 'Mover aquí' en el día destino.")
+        def _sync_plan_from_board() -> None:
+            nuevas = []
+            for idx in range(7):
+                fecha = (lunes + timedelta(days=idx)).strftime("%Y-%m-%d")
+                sesiones = board[idx] if idx < len(board) else []
+                if sesiones:
+                    principal = dict(sesiones[0])
+                    principal["fecha"] = fecha
+                    principal["dia"] = _DIA_CORTO[idx]
+                    principal["sesiones_extra"] = [dict(x) for x in sesiones[1:]]
+                    nuevas.append(principal)
+                else:
+                    nuevas.append({
+                        "fecha": fecha,
+                        "dia": _DIA_CORTO[idx],
+                        "tipo": "Descanso",
+                        "km": 0,
+                        "duracion_min": 0,
+                        "intensidad": "—",
+                        "descripcion_ia": "",
+                        "alerta": "",
+                        "sesiones_extra": [],
+                    })
+            plan["dias"] = nuevas
+            plan["board_sesiones"] = board
+            st.session_state.plan_data = plan
+            _auto_guardar(user_actual, lunes, plan)
 
-        week_cols = st.columns(7, gap="small")
-        for i, d in enumerate(dias_plan[:7]):
-            tipo = d.get("tipo", "—")
-            color = _get_activity_color(tipo)
-            fecha_str = d.get("fecha", "")
-            try:
-                day_num = datetime.fromisoformat(fecha_str).strftime("%d")
-            except Exception:
-                day_num = "—"
+        st.caption("Arriba: sesiones (solo nombre) por columnas de días. Puedes mover varias a un mismo día.")
+        if move_src is not None:
+            src_day, src_pos = move_src
+            if 0 <= src_day < 7 and 0 <= src_pos < len(board[src_day]):
+                st.info(f"Mover '{board[src_day][src_pos].get('tipo', 'Sesion')}' desde {_DIA_CORTO[src_day]}: pulsa 'Mover aquí' en la columna destino.")
 
-            emoji = _EMOJIS.get(tipo, "📅")
-            km = float(d.get("km") or 0)
-            dur = float(d.get("duracion_min") or 0)
-            carga = f"{km:.1f} km" if km > 0 else (f"{dur:.0f} min" if dur > 0 else "—")
-            zona = d.get("intensidad", "—")
-            day_label = _DIA_CORTO[i]
-            is_selected = st.session_state.get("plan_selected_day_idx") == i
-
-            with week_cols[i]:
+        # --- TABLERO SUPERIOR (rojo): solo nombres de sesiones ---
+        top_cols = st.columns(7, gap="small")
+        for i in range(7):
+            with top_cols[i]:
                 st.markdown(
-                    f"<div style='background:#161B22;border:1px solid {color}33;border-radius:14px;"
-                    f"padding:0.85rem 0.6rem 0.6rem;margin-bottom:0.3rem;min-height:122px;'>"
-                    f"<div style='color:#8B949E;font-size:.68rem;font-weight:700;text-transform:uppercase;'>{day_label}</div>"
-                    f"<div style='color:white;font-size:1.05rem;font-weight:800;margin-bottom:6px;'>{day_num}</div>"
-                    f"<div style='color:{color};font-size:.72rem;font-weight:700;margin-bottom:4px;'>{emoji} {tipo}</div>"
-                    f"<div style='color:#C9E1FF;font-size:.75rem;font-weight:600;margin-bottom:3px;'>{carga}</div>"
-                    f"<div style='color:#6b7280;font-size:.65rem;'>{zona}</div>"
-                    f"</div>",
+                    f"<div style='background:#3a0f16;border:1px solid #7f1d1d;border-radius:10px;padding:.4rem .45rem;"
+                    f"margin-bottom:.35rem;color:#fecaca;font-size:.72rem;font-weight:700;text-transform:uppercase;'>"
+                    f"{_DIA_CORTO[i]}</div>",
                     unsafe_allow_html=True,
                 )
 
-                if st.button(day_label, key=f"plan_day_sel_{i}", use_container_width=True,
+                if board[i]:
+                    for j, ses in enumerate(board[i]):
+                        nombre = str(ses.get("tipo") or "Sesion")
+                        st.markdown(
+                            f"<div style='background:#7f1d1d;border:1px solid #991b1b;border-radius:8px;"
+                            f"padding:.42rem .5rem;margin-bottom:.26rem;color:#fee2e2;font-size:.73rem;font-weight:700;'>"
+                            f"{escape(nombre)}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        if move_src is None:
+                            if st.button("Mover", key=f"board_move_pick_{i}_{j}", use_container_width=True):
+                                st.session_state[move_key] = (i, j)
+                                st.rerun()
+                else:
+                    st.markdown(
+                        "<div style='background:#111827;border:1px dashed #374151;border-radius:8px;padding:.42rem .5rem;"
+                        "margin-bottom:.26rem;color:#9ca3af;font-size:.72rem;'>Sin sesión</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                if move_src is not None:
+                    src_day, src_pos = move_src
+                    if st.button("Mover aquí", key=f"board_move_drop_{i}", use_container_width=True, type="primary"):
+                        if 0 <= src_day < 7 and 0 <= src_pos < len(board[src_day]):
+                            sesion = board[src_day].pop(src_pos)
+                            board[i].append(sesion)
+                            st.session_state[board_key] = board
+                            st.session_state[move_key] = None
+                            st.session_state["plan_selected_day_idx"] = i
+                            _sync_plan_from_board()
+                            st.rerun()
+
+        if move_src is not None:
+            if st.button("Cancelar movimiento", key="board_move_cancel", use_container_width=False):
+                st.session_state[move_key] = None
+                st.rerun()
+
+        st.markdown("<div style='height:.6rem;'></div>", unsafe_allow_html=True)
+        st.caption("Calendario fijo de la semana (se actualiza al mover sesiones)")
+
+        # --- CALENDARIO FIJO INFERIOR (7 columnas, actualizado con el tablero) ---
+        cal_cols = st.columns(7, gap="small")
+        for i in range(7):
+            fecha_txt = (lunes + timedelta(days=i)).strftime("%d/%m")
+            sesiones_dia = board[i]
+            with cal_cols[i]:
+                st.markdown(
+                    f"<div style='background:#161B22;border:1px solid #30363d;border-radius:12px;padding:.65rem .5rem;min-height:136px;'>"
+                    f"<div style='color:#8B949E;font-size:.68rem;font-weight:700;text-transform:uppercase;'>{_DIA_CORTO[i]}</div>"
+                    f"<div style='color:#e6edf3;font-size:.82rem;font-weight:700;margin-bottom:.45rem;'>{fecha_txt}</div>",
+                    unsafe_allow_html=True,
+                )
+                if sesiones_dia:
+                    for ses in sesiones_dia:
+                        nombre = str(ses.get("tipo") or "Sesion")
+                        st.markdown(
+                            f"<div style='background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:.32rem .42rem;"
+                            f"margin-bottom:.24rem;color:#c9e1ff;font-size:.70rem;font-weight:600;'>{escape(nombre)}</div>",
+                            unsafe_allow_html=True,
+                        )
+                else:
+                    st.markdown(
+                        "<div style='color:#6b7280;font-size:.70rem;'>Descanso</div>",
+                        unsafe_allow_html=True,
+                    )
+                is_selected = st.session_state.get("plan_selected_day_idx") == i
+                if st.button(_DIA_CORTO[i], key=f"plan_day_sel_{i}", use_container_width=True,
                              type="primary" if is_selected else "secondary"):
                     st.session_state["plan_selected_day_idx"] = i
                     st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
 
-                if move_src is None:
-                    if st.button("Mover", key=f"plan_move_src_{i}", use_container_width=True):
-                        st.session_state["plan_move_source"] = i
-                        st.rerun()
-                elif move_src == i:
-                    if st.button("Cancelar", key=f"plan_move_cancel_{i}", use_container_width=True):
-                        st.session_state["plan_move_source"] = None
-                        st.rerun()
-                else:
-                    if st.button("Mover aquí", key=f"plan_move_to_{i}", use_container_width=True, type="primary"):
-                        j = move_src
-                        _SWAP_FIELDS = ["tipo", "km", "duracion_min", "intensidad", "descripcion_ia", "alerta"]
-                        for fld in _SWAP_FIELDS:
-                            dias_plan[i][fld], dias_plan[j][fld] = dias_plan[j].get(fld), dias_plan[i].get(fld)
-                        plan["dias"] = dias_plan
-                        st.session_state.plan_data = plan
-                        st.session_state["plan_move_source"] = None
-                        st.session_state["plan_selected_day_idx"] = i
-                        _auto_guardar(user_actual, lunes, plan)
-                        st.rerun()
+        # Mantener plan sincronizado aunque no haya movimientos en este render.
+        _sync_plan_from_board()
+        dias_plan = plan.get("dias", dias_plan)
 
     # Detalle integrado debajo del calendario (estilo original)
     selected_idx = st.session_state.get("plan_selected_day_idx")
