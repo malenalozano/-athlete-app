@@ -33,14 +33,19 @@ user_actual = st.session_state.usuario_id
 _TIPOS_CARRERA = {"Tirada Larga", "Progresiva", "Carrera Z2", "Regenerativo",
                   "Tempo (umbral)", "Intervalos VO2max", "Rodaje Corto",
                   "Fartlek", "Sustitución", "Calidad"}
-_TIPOS_FUERZA  = {"Fuerza", "Fuerza Activ.", "Fuerza Tren Superior", "Movilidad"}
+_TIPOS_FUERZA  = {
+    "Fuerza", "Fuerza Activ.", "Fuerza Tren Superior",
+    "Fuerza Push", "Fuerza Pull", "Fuerza Pierna", "Movilidad"
+}
 _EMOJIS = {"Tirada Larga":"🏃","Progresiva":"📈","Tempo (umbral)":"⚡",
            "Intervalos VO2max":"🔥","Carrera Z2":"🚶","Regenerativo":"💧",
            "Fuerza":"💪","Fuerza Activ.":"💪","Fuerza Tren Superior":"💪",
+           "Fuerza Push":"💪","Fuerza Pull":"💪","Fuerza Pierna":"💪",
            "Descanso":"🛌","Movilidad":"🧘","Sustitución":"🔄","Rodaje Corto":"🏃"}
 _BADGE = {"Fuerza":"#a855f7","Tirada Larga":"#C9FF00","Progresiva":"#C9FF00",
           "Carrera Z2":"#22c55e","Tempo (umbral)":"#f97316","Regenerativo":"#00D4FF",
-          "Intervalos VO2max":"#ef4444","Descanso":"#3a4150","Movilidad":"#3a4150"}
+          "Intervalos VO2max":"#ef4444","Fuerza Push":"#a855f7","Fuerza Pull":"#a855f7",
+          "Fuerza Pierna":"#a855f7","Descanso":"#3a4150","Movilidad":"#3a4150"}
 _TYPE_COLORS = {"running":"#22d3ee", "strength":"#c084fc", "rest":"#4ade80", "default":"#C9FF00"}
 _DIA_CORTO = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"]
 
@@ -509,6 +514,8 @@ if "plan_dia_sel" not in st.session_state:
     st.session_state.plan_dia_sel = 0
 if "plan_add_session_day" not in st.session_state:
     st.session_state["plan_add_session_day"] = None
+if "plan_moving_session" not in st.session_state:
+    st.session_state["plan_moving_session"] = None   # {"day": i, "idx": j, "ses": {...}}
 
 lunes = st.session_state.plan_cursor
 if st.session_state.plan_data is None:
@@ -620,7 +627,7 @@ if active_tab == "generar":
     dias_plan = plan.get("dias", [])
     km_totales = round(sum(float(d.get("km") or 0) for d in dias_plan), 1)
     sesiones_no_descanso = len([d for d in dias_plan if d.get("tipo") != "Descanso"])
-    fuerza_count = len([d for d in dias_plan if d.get("tipo") in _TIPOS_FUERZA])
+    fuerza_count = len([d for d in dias_plan if d.get("tipo") in _TIPOS_FUERZA or "Fuerza" in str(d.get("tipo", ""))])
     fase_nombre = fase.get("fase_nombre", "—")
 
     # ── Hero Banner ──────────────────────────────────────────────────────────
@@ -739,6 +746,22 @@ if active_tab == "generar":
 
         board = st.session_state[board_key]
 
+        # ── Procesar drop de DnD recibido vía query param ────────────────────
+        import json as _json
+        _dnd_param = st.query_params.get("dnd_move", "")
+        if _dnd_param:
+            try:
+                _mv = _json.loads(_dnd_param)
+                _fd, _fi, _td = int(_mv["from_day"]), int(_mv["from_idx"]), int(_mv["to_day"])
+                if _fd != _td and 0 <= _fd < 7 and 0 <= _td < 7 and 0 <= _fi < len(board[_fd]):
+                    _ses_mv = board[_fd].pop(_fi)
+                    board[_td].append(_ses_mv)
+                    st.session_state[board_key] = board
+            except Exception:
+                pass
+            st.query_params.clear()
+            st.rerun()
+
         def _sync_plan_from_board(persist: bool = True) -> None:
             nuevas = []
             for idx in range(7):
@@ -768,101 +791,7 @@ if active_tab == "generar":
             if persist:
                 _auto_guardar(user_actual, lunes, plan)
 
-        # --- TABLERO drag & drop multi-columna (dark theme) ---
-        def _session_label(ses: dict) -> str:
-            """Label rico para cada sesión: emoji + tipo + carga. Único en la semana (pool key)."""
-            tipo = str(ses.get("tipo") or "Sesion")
-            emoji = _EMOJIS.get(tipo, "📅")
-            dur = float(ses.get("duracion_min") or 0)
-            km = float(ses.get("km") or 0)
-            carga = f"{km:.1f} km" if km > 0 else (f"{int(dur)} min" if dur > 0 else "—")
-            return f"{emoji} {tipo}\n{carga}"
-
-        if sort_items is not None:
-            sortable_input = [
-                {"header": _DIA_CORTO[day_idx], "items": [_session_label(ses) for ses in board[day_idx]]}
-                for day_idx in range(7)
-            ]
-
-            _dnd_css = (
-                "body{margin:0;background:transparent}"
-                ".sortable-component{"
-                "  display:flex!important;flex-direction:row!important;"
-                "  gap:6px!important;align-items:flex-start!important;width:100%!important}"
-                ".sortable-component.vertical{flex-wrap:nowrap!important;min-width:0!important}"
-                ".sortable-component.vertical .sortable-container{"
-                "  flex:1!important;min-width:0!important;padding:0!important;margin:0!important}"
-                ".sortable-container{"
-                "  background:rgba(17,24,35,0.92)!important;"
-                "  border:1px solid rgba(255,255,255,0.08)!important;"
-                "  border-radius:10px!important;overflow:hidden!important}"
-                ".sortable-container-header{"
-                "  background:transparent!important;color:#8B949E!important;"
-                "  font-size:9px!important;font-weight:800!important;"
-                "  text-transform:uppercase!important;letter-spacing:.1em!important;"
-                "  padding:7px 8px 5px!important;"
-                "  border-bottom:1px solid rgba(255,255,255,0.05)!important}"
-                ".sortable-container-body{"
-                "  background:transparent!important;min-height:36px!important;"
-                "  padding:4px!important;width:auto!important}"
-                ".sortable-item,.sortable-item:hover{"
-                "  background:rgba(30,42,60,0.85)!important;"
-                "  border:1px solid rgba(255,255,255,0.08)!important;"
-                "  color:#C8D1D9!important;border-radius:7px!important;"
-                "  font-size:10px!important;font-weight:600!important;"
-                "  padding:5px 7px!important;margin:3px 0!important;"
-                "  height:auto!important;white-space:pre-line!important;line-height:1.35!important}"
-                ".sortable-item:hover{"
-                "  border-color:rgba(201,255,0,0.4)!important;"
-                "  background:rgba(40,58,85,0.9)!important;color:#fff!important}"
-                ".sortable-item.active{opacity:.35!important}"
-            )
-
-            sortable_output = sort_items(
-                sortable_input,
-                multi_containers=True,
-                direction="vertical",
-                key=f"plan_board_drag_{week_key}",
-                custom_style=_dnd_css,
-            )
-
-            if isinstance(sortable_output, list) and sortable_output != sortable_input:
-                # Pool por label completo → preserva todos los campos de la sesión original.
-                pool: dict[str, list[dict]] = {}
-                for sesiones_day in board:
-                    for ses in sesiones_day:
-                        lbl = _session_label(ses)
-                        pool.setdefault(lbl, []).append(dict(ses))
-
-                nuevo_por_dia: dict[str, list[dict]] = {d: [] for d in _DIA_CORTO}
-                for container in sortable_output:
-                    if not isinstance(container, dict):
-                        continue
-                    day_name = str(container.get("header") or "").strip().upper()[:3]
-                    if day_name not in nuevo_por_dia:
-                        continue
-                    rebuilt: list[dict] = []
-                    for lbl in (container.get("items") or []):
-                        cand = pool.get(str(lbl), [])
-                        if cand:
-                            rebuilt.append(cand.pop(0))
-                        else:
-                            # Fallback: extraer tipo del label (línea 1, sin emoji)
-                            partes = str(lbl).split("\n")[0].strip().split(" ", 1)
-                            tipo_fb = partes[1].strip() if len(partes) > 1 else str(lbl).split("\n")[0]
-                            rebuilt.append({"tipo": tipo_fb, "km": 0, "duracion_min": 0,
-                                            "intensidad": "—", "descripcion_ia": "", "alerta": ""})
-                    nuevo_por_dia[day_name] = rebuilt
-
-                nuevo_board = [nuevo_por_dia[d] for d in _DIA_CORTO]
-                st.session_state[board_key] = nuevo_board
-                board = nuevo_board
-                _sync_plan_from_board(persist=True)
-                st.rerun()
-
-        st.markdown("<div style='height:.5rem;'></div>", unsafe_allow_html=True)
-
-        # --- CALENDARIO — tarjetas estilo Figma ---
+        # --- TABLERO DnD + CALENDARIO ---
         _BORDER_COLOR = {
             "running": "#22d3ee",
             "strength": "#c084fc",
@@ -882,88 +811,255 @@ if active_tab == "generar":
             "default": "rgba(201,255,0,0.35)",
         }
 
+        # ── Componente HTML5 Drag & Drop ─────────────────────────────────────
+        _board_js = []
+        _max_items = 0
+        for _bi in range(7):
+            _items_js = []
+            for _si, _ses in enumerate(board[_bi]):
+                _tipo = str(_ses.get("tipo") or "Descanso")
+                _emoji = _EMOJIS.get(_tipo, "📅")
+                _km   = float(_ses.get("km") or 0)
+                _dur  = float(_ses.get("duracion_min") or 0)
+                _carga = f"{_km:.1f}km" if _km > 0 else (f"{int(_dur)}min" if _dur > 0 else "—")
+                _act   = _get_activity_type(_tipo)
+                _col   = _BORDER_COLOR.get(_act, _BORDER_COLOR["default"])
+                _items_js.append({"label": f"{_emoji} {_tipo}\n{_carga}",
+                                   "color": _col, "day": _bi, "idx": _si})
+            _board_js.append({"header": _DIA_CORTO[_bi], "items": _items_js})
+            _max_items = max(_max_items, len(_items_js))
+
+        _bj = _json.dumps(_board_js)
+        _comp_h = max(90, _max_items * 54 + 66)
+
+        _dnd_html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:transparent;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden}}
+.board{{display:flex;gap:6px;width:100%;height:100%}}
+.day-col{{flex:1;min-width:0;background:rgba(17,24,35,0.92);border:1px solid rgba(255,255,255,0.08);
+  border-radius:10px;overflow:hidden;display:flex;flex-direction:column;transition:border-color .15s,background .15s}}
+.day-col.over{{border-color:rgba(201,255,0,0.55)!important;background:rgba(18,32,16,0.97)!important}}
+.day-header{{font-size:9px;color:#8B949E;font-weight:800;text-transform:uppercase;
+  letter-spacing:.1em;padding:7px 8px 5px;border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0}}
+.day-body{{padding:4px;flex:1;min-height:28px}}
+.ses{{border:1px solid rgba(255,255,255,0.07);border-radius:7px;padding:5px 8px;
+  margin-bottom:3px;cursor:grab;font-size:10px;font-weight:600;color:#C8D1D9;
+  background:rgba(28,40,58,0.9);white-space:pre-line;line-height:1.3;
+  user-select:none;transition:opacity .12s,border-color .12s,background .12s}}
+.ses:hover{{border-color:rgba(201,255,0,0.4);background:rgba(40,58,85,0.9);color:#fff}}
+.ses.dragging{{opacity:.25;cursor:grabbing}}
+.ses .dot{{display:inline-block;width:6px;height:6px;border-radius:50%;
+  margin-right:5px;vertical-align:middle;flex-shrink:0}}
+</style></head><body>
+<div class="board" id="board"></div>
+<script>
+const B={_bj};
+let src=null;
+function build(){{
+  const el=document.getElementById('board');
+  el.innerHTML='';
+  B.forEach((day,di)=>{{
+    const col=document.createElement('div');
+    col.className='day-col';
+    const hdr=document.createElement('div');
+    hdr.className='day-header';
+    hdr.textContent=day.header;
+    col.appendChild(hdr);
+    const body=document.createElement('div');
+    body.className='day-body';
+    body.dataset.di=di;
+    body.addEventListener('dragover',e=>{{e.preventDefault();col.classList.add('over')}});
+    body.addEventListener('dragleave',e=>{{if(!col.contains(e.relatedTarget))col.classList.remove('over')}});
+    body.addEventListener('drop',e=>{{
+      e.preventDefault();col.classList.remove('over');
+      if(!src||src.di===di)return;
+      const mv=JSON.stringify({{from_day:src.di,from_idx:src.ii,to_day:di}});
+      window.parent.location.search='?dnd_move='+encodeURIComponent(mv);
+    }});
+    day.items.forEach((item,ii)=>{{
+      const s=document.createElement('div');
+      s.className='ses';s.draggable=true;
+      const dot=document.createElement('span');
+      dot.className='dot';dot.style.background=item.color;
+      s.appendChild(dot);
+      s.appendChild(document.createTextNode(item.label));
+      s.addEventListener('dragstart',e=>{{
+        src={{di,ii}};s.classList.add('dragging');
+        e.dataTransfer.effectAllowed='move';
+      }});
+      s.addEventListener('dragend',()=>{{
+        s.classList.remove('dragging');src=null;
+        document.querySelectorAll('.day-col').forEach(c=>c.classList.remove('over'));
+      }});
+      body.appendChild(s);
+    }});
+    col.appendChild(body);
+    el.appendChild(col);
+  }});
+}}
+build();
+</script></body></html>"""
+
+        st.components.v1.html(_dnd_html, height=_comp_h, scrolling=False)
+        st.markdown("<div style='height:.4rem;'></div>", unsafe_allow_html=True)
+
+        # Banner de modo mover
+        if moving:
+            mov_tipo = moving["ses"].get("tipo", "Sesión")
+            mov_dia  = _DIA_CORTO[moving["day"]]
+            st.markdown(f"""
+<div style="background:rgba(201,255,0,0.08);border:1px solid rgba(201,255,0,0.35);
+  border-radius:10px;padding:.6rem 1rem;margin-bottom:.6rem;
+  display:flex;align-items:center;gap:.6rem;">
+  <span style="color:#C9FF00;font-size:.85rem;">✈</span>
+  <span style="color:#C9FF00;font-size:.82rem;font-weight:700;">Moviendo:</span>
+  <span style="color:white;font-size:.82rem;">{escape(mov_tipo)} ({mov_dia})</span>
+  <span style="color:#8B949E;font-size:.78rem;">— Haz clic en el día destino</span>
+</div>""", unsafe_allow_html=True)
+
         cal_cols = st.columns(7, gap="small")
         for i in range(7):
             fecha_dt = lunes + timedelta(days=i)
             fecha_txt = f"{fecha_dt.day} {fecha_dt.strftime('%b')}"
-            sesiones_dia = board[i]
-            if not sesiones_dia:
-                sesiones_dia = [{"tipo": "Descanso", "km": 0, "duracion_min": 0, "intensidad": "—"}]
-
-            # Color del borde izquierdo: usa la primera sesión no-descanso, si no la primera.
+            sesiones_dia = board[i] if board[i] else [
+                {"tipo": "Descanso", "km": 0, "duracion_min": 0, "intensidad": "—"}
+            ]
             sesion_principal = next(
                 (s for s in sesiones_dia if s.get("tipo") != "Descanso"), sesiones_dia[0]
             )
-            tipo_principal = str(sesion_principal.get("tipo") or "Descanso")
-            act_type_p = _get_activity_type(tipo_principal)
-            color_borde = _BORDER_COLOR.get(act_type_p, _BORDER_COLOR["default"])
-
+            color_borde = _BORDER_COLOR.get(
+                _get_activity_type(str(sesion_principal.get("tipo") or "Descanso")),
+                _BORDER_COLOR["default"]
+            )
             is_selected = st.session_state.get("plan_selected_day_idx") == i
-            is_today = fecha_dt.strftime("%Y-%m-%d") == datetime.now().strftime("%Y-%m-%d")
+            is_today    = fecha_dt.strftime("%Y-%m-%d") == datetime.now().strftime("%Y-%m-%d")
+            is_adding   = st.session_state.get("plan_add_session_day") == i
+            is_move_src = moving and moving["day"] == i
+            is_move_dst = moving and moving["day"] != i  # this day can receive
 
             sel_glow = (
                 "box-shadow:0 0 0 2px rgba(201,255,0,0.5),0 0 24px rgba(201,255,0,0.12);"
-                "border-top:1px solid rgba(201,255,0,0.25);border-right:1px solid rgba(201,255,0,0.25);border-bottom:1px solid rgba(201,255,0,0.25);"
+                "border-top:1px solid rgba(201,255,0,0.25);"
+                "border-right:1px solid rgba(201,255,0,0.25);"
+                "border-bottom:1px solid rgba(201,255,0,0.25);"
             ) if is_selected else (
-                "border-top:1px solid rgba(255,255,255,0.05);border-right:1px solid rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05);"
+                "border-top:1px solid rgba(255,255,255,0.05);"
+                "border-right:1px solid rgba(255,255,255,0.05);"
+                "border-bottom:1px solid rgba(255,255,255,0.05);"
             )
             today_dot = (
                 "<span style='display:inline-block;width:5px;height:5px;border-radius:50%;"
                 "background:#C9FF00;margin-left:4px;vertical-align:middle;'></span>"
             ) if is_today else ""
 
-            # Construir HTML de TODAS las sesiones del día
-            sessions_inner_html = ""
-            for idx_s, ses in enumerate(sesiones_dia):
-                ses_tipo = str(ses.get("tipo") or "Descanso")
-                ses_act = _get_activity_type(ses_tipo)
-                ses_color = _BORDER_COLOR.get(ses_act, _BORDER_COLOR["default"])
-                ses_bg = _BADGE_BG.get(ses_act, _BADGE_BG["default"])
-                ses_bd = _BADGE_BORDER.get(ses_act, _BADGE_BORDER["default"])
-                ses_emoji = _EMOJIS.get(ses_tipo, "📅")
-                ses_km = float(ses.get("km") or 0)
-                ses_dur = float(ses.get("duracion_min") or 0)
-                ses_carga = f"{ses_km:.1f} km" if ses_km > 0 else (f"{int(ses_dur)} min" if ses_dur > 0 else "—")
-                ses_int = str(ses.get("intensidad") or "").strip()
-                badge = (
-                    f"<span style='display:inline-block;font-size:8px;font-weight:700;"
-                    f"padding:1px 6px;border-radius:20px;background:{ses_bg};"
-                    f"border:1px solid {ses_bd};color:{ses_color};margin-top:3px;'>"
-                    f"{escape(ses_int)}</span>"
-                ) if ses_int and ses_int != "—" else ""
-                sep = (
-                    "<div style='height:1px;background:rgba(255,255,255,0.05);margin:7px 0;'></div>"
-                ) if idx_s > 0 else ""
-                sessions_inner_html += (
-                    f"{sep}"
-                    f"<p style='font-size:11px;font-weight:800;color:{ses_color};"
-                    f"margin:0 0 1px;line-height:1.2;'>{ses_emoji} {escape(ses_tipo)}</p>"
-                    f"<p style='font-size:9px;color:#8B949E;margin:0;'>{ses_carga}</p>"
-                    f"{badge}"
-                )
-
             with cal_cols[i]:
+                # ── Cabecera del día ──
                 st.markdown(f"""
-<div style="border-left:4px solid {color_borde};border-radius:12px;
-  background:rgba(17,24,35,0.9);{sel_glow}padding:11px 10px 10px;margin-bottom:6px;">
+<div style="border-left:4px solid {color_borde};border-radius:12px 12px 0 0;
+  background:rgba(17,24,35,0.9);{sel_glow}padding:10px 10px 6px;">
   <p style="font-size:9px;color:#8B949E;font-weight:800;text-transform:uppercase;
     letter-spacing:.1em;margin:0 0 1px;line-height:1;">{_DIA_CORTO[i]}{today_dot}</p>
-  <p style="font-size:10px;color:#C8D1D9;font-weight:600;margin:0 0 8px;">{fecha_txt}</p>
-  {sessions_inner_html}
+  <p style="font-size:10px;color:#C8D1D9;font-weight:600;margin:0;">{fecha_txt}</p>
 </div>""", unsafe_allow_html=True)
-                is_adding = st.session_state.get("plan_add_session_day") == i
+
+                # ── Sesiones individuales con botón ✈ ──
+                real_sessions = board[i]   # lista real (puede estar vacía)
+                if real_sessions:
+                    for idx_s, ses in enumerate(real_sessions):
+                        ses_tipo  = str(ses.get("tipo") or "Descanso")
+                        ses_act   = _get_activity_type(ses_tipo)
+                        ses_color = _BORDER_COLOR.get(ses_act, _BORDER_COLOR["default"])
+                        ses_bg    = _BADGE_BG.get(ses_act, _BADGE_BG["default"])
+                        ses_bd    = _BADGE_BORDER.get(ses_act, _BADGE_BORDER["default"])
+                        ses_emoji = _EMOJIS.get(ses_tipo, "📅")
+                        ses_km    = float(ses.get("km") or 0)
+                        ses_dur   = float(ses.get("duracion_min") or 0)
+                        ses_carga = (f"{ses_km:.1f} km" if ses_km > 0
+                                     else (f"{int(ses_dur)} min" if ses_dur > 0 else "—"))
+                        ses_int   = str(ses.get("intensidad") or "").strip()
+                        badge_html = (
+                            f"<span style='display:inline-block;font-size:8px;font-weight:700;"
+                            f"padding:1px 6px;border-radius:20px;background:{ses_bg};"
+                            f"border:1px solid {ses_bd};color:{ses_color};'>{escape(ses_int)}</span>"
+                        ) if ses_int and ses_int != "—" else ""
+                        this_is_moving = (moving and moving["day"] == i
+                                          and moving["idx"] == idx_s)
+                        chip_opacity = "opacity:.4;" if this_is_moving else ""
+                        chip_border  = (
+                            "border:1px solid rgba(201,255,0,0.55);"
+                            "background:rgba(30,50,20,0.7);"
+                        ) if this_is_moving else (
+                            f"border:1px solid rgba(255,255,255,0.07);"
+                            "background:rgba(22,27,34,0.9);"
+                        )
+
+                        sc1, sc2 = st.columns([5, 1], gap="small")
+                        with sc1:
+                            st.markdown(f"""
+<div style="{chip_border}border-radius:8px;padding:5px 8px;{chip_opacity}">
+  <p style="font-size:10px;font-weight:800;color:{ses_color};margin:0 0 1px;line-height:1.2;">
+    {ses_emoji} {escape(ses_tipo)}</p>
+  <p style="font-size:9px;color:#8B949E;margin:0;">{ses_carga} {badge_html}</p>
+</div>""", unsafe_allow_html=True)
+                        with sc2:
+                            if not moving:
+                                if st.button("✈", key=f"mv_{i}_{idx_s}",
+                                             use_container_width=True, help="Mover a otro día"):
+                                    st.session_state["plan_moving_session"] = {
+                                        "day": i, "idx": idx_s, "ses": dict(ses)
+                                    }
+                                    st.rerun()
+                            elif this_is_moving:
+                                if st.button("✕", key=f"mv_cancel_{i}_{idx_s}",
+                                             use_container_width=True, help="Cancelar mover"):
+                                    st.session_state["plan_moving_session"] = None
+                                    st.rerun()
+                else:
+                    st.markdown(
+                        "<div style='background:rgba(22,27,34,0.5);border-radius:8px;"
+                        "padding:8px;text-align:center;'>"
+                        "<p style='color:#3a4150;font-size:9px;margin:0;'>Sin sesiones</p>"
+                        "</div>", unsafe_allow_html=True)
+
+                # ── Botón destino (modo mover) ──
+                if is_move_dst:
+                    if st.button(f"📥 Mover aquí", key=f"drop_{i}",
+                                 use_container_width=True, type="primary"):
+                        ses_mv   = dict(moving["ses"])
+                        from_d   = moving["day"]
+                        from_idx = moving["idx"]
+                        if 0 <= from_idx < len(board[from_d]):
+                            board[from_d].pop(from_idx)
+                        board[i].append(ses_mv)
+                        st.session_state[board_key] = board
+                        st.session_state["plan_moving_session"] = None
+                        _sync_plan_from_board(persist=True)
+                        st.rerun()
+
+                st.markdown(
+                    "<div style='background:rgba(17,24,35,0.9);border-radius:0 0 12px 12px;"
+                    "padding:4px 6px 8px;border-bottom:1px solid rgba(255,255,255,0.05);"
+                    "border-left:4px solid transparent;border-right:1px solid rgba(255,255,255,0.05);'></div>",
+                    unsafe_allow_html=True)
+
+                # ── Botones inferiores: Detalles + Añadir ──
                 btn_c1, btn_c2 = st.columns([3, 1], gap="small")
                 with btn_c1:
                     btn_label = "▼ Detalles" if is_selected else "Ver detalles"
-                    btn_type = "primary" if is_selected else "secondary"
-                    if st.button(btn_label, key=f"plan_day_sel_{i}", use_container_width=True, type=btn_type):
+                    btn_type  = "primary" if is_selected else "secondary"
+                    if st.button(btn_label, key=f"plan_day_sel_{i}",
+                                 use_container_width=True, type=btn_type):
                         st.session_state["plan_selected_day_idx"] = None if is_selected else i
-                        st.session_state["plan_add_session_day"] = None
+                        st.session_state["plan_add_session_day"]  = None
+                        st.session_state["plan_moving_session"]   = None
                         st.rerun()
                 with btn_c2:
                     add_type = "primary" if is_adding else "secondary"
-                    if st.button("➕", key=f"plan_day_add_{i}", use_container_width=True, type=add_type, help="Añadir sesión"):
+                    if st.button("➕", key=f"plan_day_add_{i}",
+                                 use_container_width=True, type=add_type, help="Añadir sesión"):
                         st.session_state["plan_add_session_day"] = None if is_adding else i
+                        st.session_state["plan_moving_session"]  = None
                         st.rerun()
 
         # Mantener estructura de plan sincronizada con el tablero en memoria (sin guardar cada render).
@@ -1052,7 +1148,7 @@ border-radius:16px;overflow:hidden;margin-top:1.2rem;">
   </div>
 </div>""", unsafe_allow_html=True)
 
-        if tipo in _TIPOS_FUERZA:
+        if tipo in _TIPOS_FUERZA or "Fuerza" in tipo:
             # ── Fuerza: tabs Pull / Push / Pierna con ejercicios del catálogo ──
             from src.plan.memoria_fuerza import obtener_progresion_ejercicio
             _GRUPOS_FUERZA = [

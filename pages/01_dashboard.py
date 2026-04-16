@@ -211,9 +211,11 @@ def _kpi_card_html(label, value, period, delta_html_str, border_color, icon_char
 def _render_plan_esta_semana(user_actual):
     _EMOJIS = {"Tirada Larga":"🏃","Progresiva":"📈","Tempo (umbral)":"⚡","Intervalos VO2max":"🔥",
                "Carrera Z2":"🚶","Regenerativo":"💧","Fuerza":"💪","Fuerza Activ.":"💪",
-               "Fuerza Tren Superior":"💪","Descanso":"🛌","Movilidad":"🧘","Sustitución":"🔄","Rodaje Corto":"🏃"}
+               "Fuerza Tren Superior":"💪","Fuerza Push":"💪","Fuerza Pull":"💪","Fuerza Pierna":"💪",
+               "Descanso":"🛌","Movilidad":"🧘","Sustitución":"🔄","Rodaje Corto":"🏃"}
     _BADGE  = {"Fuerza":"#a855f7","Tirada Larga":"#C9FF00","Progresiva":"#C9FF00","Carrera Z2":"#22c55e",
                "Tempo (umbral)":"#f97316","Regenerativo":"#00D4FF","Intervalos VO2max":"#ef4444",
+               "Fuerza Push":"#a855f7","Fuerza Pull":"#a855f7","Fuerza Pierna":"#a855f7",
                "Descanso":"#3a4150","Movilidad":"#3a4150"}
 
     st.markdown("""

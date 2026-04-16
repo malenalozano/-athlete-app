@@ -67,6 +67,78 @@ _NOMBRE_CALIDAD = {
     "tempo": "Tempo (umbral)",
 }
 
+
+def _distancia_minima(idx: int, objetivos: list[int]) -> int:
+    """Distancia al dia exigente mas cercano dentro de la semana."""
+    if not objetivos:
+        return 7
+    return min(abs(idx - j) for j in objetivos)
+
+
+def _plan_split_fuerza(template: list[dict], fecha_inicio) -> dict:
+    """
+    Asigna enfoque de fuerza por dia (Pierna/Push/Pull) minimizando interferencia.
+
+    Protocolo A (prioridad fuerza/hipertrofia): <=3 dias de carrera o >=3 dias de fuerza.
+    Protocolo B (prioridad carrera hibrida): >=4 dias de carrera.
+    """
+    fuerza_idx = [i for i, t in enumerate(template) if t.get("fuerza_p")]
+    if not fuerza_idx:
+        return {}
+
+    carrera_dias = sum(1 for t in template if t.get("carrera"))
+    prioridad_fuerza = carrera_dias <= 3 or len(fuerza_idx) >= 3
+
+    # Dias de mayor demanda de resistencia: calidad + tirada larga + back-to-back.
+    dias_exigentes = [
+        i for i, t in enumerate(template)
+        if t.get("tipo") in ("Calidad", "Tirada Larga", "Back-to-Back")
+    ]
+
+    # Colocamos Pierna en el dia de fuerza mas alejado de los dias exigentes.
+    leg_idx = max(fuerza_idx, key=lambda i: _distancia_minima(i, dias_exigentes))
+    restantes = [i for i in fuerza_idx if i != leg_idx]
+
+    semana_num = int(fecha_inicio.strftime("%W")) if hasattr(fecha_inicio, "strftime") else 0
+    alterna = semana_num % 2
+
+    plan = {}
+    if prioridad_fuerza:
+        plan[leg_idx] = {
+            "tipo": "Pierna",
+            "protocolo": "Protocolo A",
+            "carga": "70-95% RM, 5-12 reps",
+            "nota": "Priorizar fuerza antes de carrera o separar >=6h",
+        }
+        orden = ["Push", "Pull"] if alterna == 0 else ["Pull", "Push"]
+        for pos, idx in enumerate(restantes):
+            nombre = orden[pos % len(orden)]
+            plan[idx] = {
+                "tipo": nombre,
+                "protocolo": "Protocolo A",
+                "carga": "70-85% RM, 6-12 reps",
+                "nota": "Cardio complementario solo en Z2",
+            }
+    else:
+        # Prioridad carrera: mantenemos fuerza util con poco volumen y carga alta.
+        plan[leg_idx] = {
+            "tipo": "Pierna",
+            "protocolo": "Protocolo B",
+            "carga": "~80% RM, <6 reps, bajo volumen",
+            "nota": "Evitar ubicarla antes de series o tirada larga",
+        }
+        orden = ["Push", "Pull"] if alterna == 0 else ["Pull", "Push"]
+        for pos, idx in enumerate(restantes):
+            nombre = orden[pos % len(orden)]
+            plan[idx] = {
+                "tipo": nombre,
+                "protocolo": "Protocolo B",
+                "carga": "~80% RM, <6 reps, bajo volumen",
+                "nota": "80/20 en carrera para limitar interferencia",
+            }
+
+    return plan
+
 # Templates específicos para ultramaratón (más volumen, back-to-back sábado+domingo)
 _TEMPLATES_ULTRA = {
     "Acondicionamiento": [
@@ -471,6 +543,7 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
     km_base_total = sum(t["km_base"] for t in template)
     km_tl = max(round(km_objetivo - km_base_total, 1), 6.0)
     km_regen = round(km_tl / 3, 1)
+    split_fuerza = _plan_split_fuerza(template, fecha_inicio)
 
     dias = []
     for i, tpl in enumerate(template):
@@ -478,6 +551,15 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
         tipo = tpl["tipo"]
         if tipo == "Calidad":
             tipo = nombre_calidad
+
+        fuerza_alerta = ""
+        if tpl.get("fuerza_p") and tipo == "Fuerza":
+            rec_f = split_fuerza.get(i)
+            if rec_f:
+                tipo = f"Fuerza {rec_f['tipo']}"
+                fuerza_alerta = (
+                    f"🧠 {rec_f['protocolo']} · {rec_f['carga']} · {rec_f['nota']}"
+                )
 
         km = tpl["km_base"]
         if tpl.get("tl"):
@@ -525,6 +607,10 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
             drill_info = " + 5min drills técnica (cadencia)"
             if not alerta:
                 alerta = f"📊 Cadencia baja: incluir drills técnicos"
+
+        # Recomendacion anti-interferencia para sesiones de fuerza por grupo muscular.
+        if fuerza_alerta and "Fuerza" in tipo and "bloqueadas" not in alerta.lower():
+            alerta = f"{alerta} · {fuerza_alerta}" if alerta else fuerza_alerta
 
         dias.append({"dia": _DIAS[i], "fecha": fecha_dia.strftime("%Y-%m-%d"),
                      "tipo": tipo + drill_info, "intensidad": tpl["intensidad"],

@@ -14,6 +14,7 @@ _ICON_SEM = {"verde": "🟢",      "ambar": "🟡",      "rojo": "🔴"}
 
 _BADGE_COLOR = {
     "Fuerza": "#9B59B6", "Fuerza Activ.": "#9B59B6", "Fuerza Tren Superior": "#9B59B6",
+    "Fuerza Push": "#9B59B6", "Fuerza Pull": "#9B59B6", "Fuerza Pierna": "#9B59B6",
     "Tirada Larga": "#C9FF00", "Progresiva": "#C9FF00", "Carrera Z2": "#C9FF00",
     "Tempo (umbral)": "#C9FF00", "Intervalos VO2max": "#FF6B6B", "Calidad": "#FF6B6B",
     "Regenerativo": "#00C8C8", "Rodaje Corto": "#7EB8E0",
@@ -24,7 +25,8 @@ _EMOJIS = {
     "Tirada Larga": "🏃", "Progresiva": "📈", "Tempo (umbral)": "⚡",
     "Intervalos VO2max": "🔥", "Carrera Z2": "🚶", "Rodaje Corto": "🏃",
     "Regenerativo": "💧", "Fuerza": "💪", "Fuerza Activ.": "💪",
-    "Fuerza Tren Superior": "💪", "Descanso": "🛌", "Movilidad": "🧘",
+    "Fuerza Tren Superior": "💪", "Fuerza Push": "💪", "Fuerza Pull": "💪",
+    "Fuerza Pierna": "💪", "Descanso": "🛌", "Movilidad": "🧘",
     "Sustitución": "🔄",
 }
 
