@@ -168,6 +168,37 @@ div[data-testid="stRadio"] input[type="radio"] { display:none; }
 # ---------------------------------------------------------------------------
 def _lunes_de(dt): return dt - timedelta(days=dt.weekday())
 
+def _km_hechos_semana(usuario_id: int, lunes: datetime) -> float:
+    """Suma km de carrera realizados entre lunes y domingo (incluidos)."""
+    domingo = lunes + timedelta(days=6)
+    _tipos_carrera = (
+        "('running', 'trail_running', 'treadmill', "
+        "'indoor_running', 'track_running', 'road_running')"
+    )
+    conn = None
+    try:
+        conn = get_db_connection()
+        row = conn.execute(
+            f"""
+            SELECT COALESCE(SUM(COALESCE(distancia_m, 0)), 0)
+            FROM actividades_garmin
+            WHERE usuario_id=?
+              AND fecha>=?
+              AND fecha<=?
+              AND (tipo_deporte IN {_tipos_carrera} OR tipo_deporte IS NULL)
+            """,
+            (usuario_id, lunes.strftime("%Y-%m-%d"), domingo.strftime("%Y-%m-%d")),
+        ).fetchone()
+        return round(float((row[0] if row else 0) or 0) / 1000, 1)
+    except Exception:
+        return 0.0
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 def _descomponer_recomendacion(texto: str) -> tuple[str, str, str]:
     """Convierte una alerta libre en icono, titulo y descripcion legibles."""
     bruto = str(texto or "").strip()
@@ -367,7 +398,15 @@ def _build_sort_item(slot_idx: int, dia: dict) -> str:
     fecha_txt = _formatear_slot_fecha(str(dia.get("fecha", "")))
     dur = float(dia.get("duracion_min") or 0)
     km = float(dia.get("km") or 0)
-    carga = f"{km:.1f} km" if km > 0 else (f"{dur:.0f} min" if dur > 0 else "—")
+    es_running = _get_activity_type(tipo) == "running"
+    if es_running and km > 0 and dur > 0:
+        carga = f"{km:.1f} km · {dur:.0f} min"
+    elif km > 0:
+        carga = f"{km:.1f} km"
+    elif dur > 0:
+        carga = f"{dur:.0f} min"
+    else:
+        carga = "—"
     return f"{_DIA_CORTO[slot_idx]} {fecha_txt}\n{emoji} {tipo}\n{carga}"
 
 
@@ -416,56 +455,104 @@ def _map_sorted_labels_to_days(sorted_labels: list[str], original_labels: list[s
     return mapped if len(mapped) == len(original_days) else [dict(d) for d in original_days]
 
 
-def _ejercicios_catalogo_por_grupo(usuario_id: int, grupo_dia: str) -> list[dict]:
-    """
-    Devuelve ejercicios NO archivados del catálogo del usuario para un grupo muscular.
-    grupo_dia: "Pull" | "Push" | "Pierna"
-    Pull  → Espalda + Bíceps
-    Push  → Pecho + Hombro + Tríceps
-    Pierna → Tren inferior + Glúteos
-    """
-    _PULL_M  = {"espalda", "bícep", "bicep", "dorsal", "trapecio"}
-    _PUSH_M  = {"pecho", "hombro", "trícep", "tricep", "deltoid", "deltoides"}
-    _LEG_G   = {"tren inferior", "glúteo", "gluteo"}
-    _LEG_M   = {"cuádricep", "quadricep", "isquio", "glúteo", "gluteo", "hip", "femoral", "gemelo", "sentadilla"}
+def _normalizar_txt_fuerza(txt: str) -> str:
+    t = str(txt or "").lower().strip()
+    return (
+        t.replace("á", "a").replace("é", "e").replace("í", "i")
+         .replace("ó", "o").replace("ú", "u").replace("ñ", "n")
+    )
 
+
+def _grupo_fuerza_desde_tipo(tipo: str) -> str | None:
+    t = _normalizar_txt_fuerza(tipo)
+    if "pull" in t:
+        return "Pull"
+    if "push" in t:
+        return "Push"
+    if "pierna" in t:
+        return "Pierna"
+    return None
+
+
+def _nota_bloquea_subida(nota: str) -> bool:
+    n = _normalizar_txt_fuerza(nota)
+    return "sint" in n or "sin t" in n or "sintecnica" in n
+
+
+def _ejercicio_en_grupo_fuerza(grupo_dia: str, ejercicio: str, grupo: str, musculo: str) -> bool:
+    txt = " ".join([
+        _normalizar_txt_fuerza(ejercicio),
+        _normalizar_txt_fuerza(grupo),
+        _normalizar_txt_fuerza(musculo),
+    ])
+    pull_keys = ["espalda", "bicep", "dorsal", "trapecio", "remo", "jalon", "dominada", "curl"]
+    push_keys = ["pecho", "hombro", "tricep", "deltoid", "press", "fondo", "apertura"]
+    leg_keys = ["pierna", "cuadricep", "isquio", "gluteo", "femoral", "gemelo", "sentadilla", "hip thrust", "zancada", "prensa"]
+
+    if grupo_dia == "Pull":
+        return any(k in txt for k in pull_keys)
+    if grupo_dia == "Push":
+        return any(k in txt for k in push_keys) and not any(k in txt for k in leg_keys)
+    if grupo_dia == "Pierna":
+        return any(k in txt for k in leg_keys)
+    return False
+
+
+def _recomendaciones_progresion_grupo(usuario_id: int, grupo_dia: str) -> list[str]:
+    """
+    Recomendaciones generales de progresion para el grupo del dia.
+    Regla solicitada:
+    - Nota con "sinT" => no recomendar subir en ese ejercicio.
+    - Nota vacia => recomendar subida de peso.
+    """
     conn = get_db_connection()
     try:
         rows = conn.execute(
-            "SELECT nombre, grupo_muscular, musculo_principal, peso_actual, unidad "
-            "FROM ejercicios_catalogo "
-            "WHERE usuario_id=? AND (archivado IS NULL OR archivado=0)",
-            (usuario_id,)
+            """SELECT e.ejercicio, e.series, e.repeticiones, e.peso, e.sensaciones,
+                      e.grupo_muscular, e.musculo_principal, s.fecha, e.id
+               FROM ejercicios_fuerza e
+               JOIN sesiones_fuerza s ON s.id = e.sesion_id
+               WHERE s.usuario_id=?
+               ORDER BY s.fecha DESC, e.id DESC""",
+            (usuario_id,),
         ).fetchall()
     except Exception:
         rows = []
     finally:
         conn.close()
 
-    result = []
+    ultimo_por_ej = {}
     for r in rows:
-        nombre  = str(r[0] or "")
-        grupo   = str(r[1] or "").lower().strip()
-        musculo = str(r[2] or "").lower().strip()
-        peso    = float(r[3] or 0)
-        unidad  = str(r[4] or "kg")
+        nombre = str(r[0] or "").strip()
+        if not nombre:
+            continue
+        key = _normalizar_txt_fuerza(nombre)
+        if key not in ultimo_por_ej:
+            ultimo_por_ej[key] = r
 
-        match = False
-        if grupo_dia == "Pull":
-            match = any(k in musculo for k in _PULL_M) or grupo == "espalda"
-        elif grupo_dia == "Push":
-            match = (any(k in musculo for k in _PUSH_M)
-                     and grupo not in _LEG_G
-                     and not any(k in musculo for k in _PULL_M))
-        else:  # Pierna
-            match = grupo in _LEG_G or any(k in musculo for k in _LEG_M)
+    recomendaciones = []
+    for r in ultimo_por_ej.values():
+        nombre = str(r[0] or "").strip()
+        series = int(r[1] or 0)
+        reps = int(r[2] or 0)
+        peso = float(r[3] or 0)
+        nota = str(r[4] or "").strip()
+        grupo = str(r[5] or "")
+        musculo = str(r[6] or "")
 
-        if match:
-            result.append({
-                "nombre": nombre, "grupo": r[1] or "", "musculo": r[2] or "",
-                "peso": peso, "unidad": unidad,
-            })
-    return result
+        if not _ejercicio_en_grupo_fuerza(grupo_dia, nombre, grupo, musculo):
+            continue
+        if _nota_bloquea_subida(nota):
+            continue
+        if nota:
+            continue
+
+        peso_txt = f"{peso:g}kg" if peso > 0 else "peso corporal"
+        recomendaciones.append(
+            f"Subir peso en {nombre} (ultimo: {series}x{reps} {peso_txt} sin nota)."
+        )
+
+    return sorted(recomendaciones)
 
 
 def _normalizar_dias_semana(dias: list[dict]) -> list[dict]:
@@ -626,6 +713,7 @@ if active_tab == "generar":
 
     dias_plan = plan.get("dias", [])
     km_totales = round(sum(float(d.get("km") or 0) for d in dias_plan), 1)
+    km_hechos_semana = _km_hechos_semana(user_actual, lunes)
     sesiones_no_descanso = len([d for d in dias_plan if d.get("tipo") != "Descanso"])
     fuerza_count = len([d for d in dias_plan if d.get("tipo") in _TIPOS_FUERZA or "Fuerza" in str(d.get("tipo", ""))])
     fase_nombre = fase.get("fase_nombre", "—")
@@ -676,7 +764,7 @@ if active_tab == "generar":
     # ── KPI Cards ────────────────────────────────────────────────────────────
     kpi_c1, kpi_c2, kpi_c3, kpi_c4 = st.columns(4, gap="medium")
 
-    _kpi_card(kpi_c1, "🏃", "KM Semana", f"{km_totales:.1f}", "#00D4FF", "rgba(0,212,255,0.1)", "rgba(0,212,255,0.25)")
+    _kpi_card(kpi_c1, "🏃", "KM Semana", f"{km_hechos_semana:.1f}/{km_totales:.1f}", "#00D4FF", "rgba(0,212,255,0.1)", "rgba(0,212,255,0.25)")
     _kpi_card(kpi_c2, "📋", "Sesiones", str(sesiones_no_descanso), "#4ade80", "rgba(74,222,128,0.1)", "rgba(74,222,128,0.25)")
     _kpi_card(kpi_c3, "💪", "Fuerza", str(fuerza_count), "#c084fc", "rgba(192,132,252,0.1)", "rgba(192,132,252,0.25)")
     _kpi_card(kpi_c4, "📍", "Fase", fase_nombre, "#f97316", "rgba(249,115,22,0.1)", "rgba(249,115,22,0.25)")
@@ -745,6 +833,9 @@ if active_tab == "generar":
                 st.session_state[board_key] = board_init
 
         board = st.session_state[board_key]
+        moving = st.session_state.get("plan_moving_session")
+        if not isinstance(moving, dict):
+            moving = None
 
         # ── Procesar drop de DnD recibido vía query param ────────────────────
         import json as _json
@@ -821,7 +912,15 @@ if active_tab == "generar":
                 _emoji = _EMOJIS.get(_tipo, "📅")
                 _km   = float(_ses.get("km") or 0)
                 _dur  = float(_ses.get("duracion_min") or 0)
-                _carga = f"{_km:.1f}km" if _km > 0 else (f"{int(_dur)}min" if _dur > 0 else "—")
+                _es_running = _get_activity_type(_tipo) == "running"
+                if _es_running and _km > 0 and _dur > 0:
+                    _carga = f"{_km:.1f} km · {int(_dur)} min"
+                elif _km > 0:
+                    _carga = f"{_km:.1f} km"
+                elif _dur > 0:
+                    _carga = f"{int(_dur)} min"
+                else:
+                    _carga = "—"
                 _act   = _get_activity_type(_tipo)
                 _col   = _BORDER_COLOR.get(_act, _BORDER_COLOR["default"])
                 _items_js.append({"label": f"{_emoji} {_tipo}\n{_carga}",
@@ -975,8 +1074,14 @@ build();
                         ses_emoji = _EMOJIS.get(ses_tipo, "📅")
                         ses_km    = float(ses.get("km") or 0)
                         ses_dur   = float(ses.get("duracion_min") or 0)
-                        ses_carga = (f"{ses_km:.1f} km" if ses_km > 0
-                                     else (f"{int(ses_dur)} min" if ses_dur > 0 else "—"))
+                        if ses_act == "running" and ses_km > 0 and ses_dur > 0:
+                            ses_carga = f"{ses_km:.1f} km · {int(ses_dur)} min"
+                        elif ses_km > 0:
+                            ses_carga = f"{ses_km:.1f} km"
+                        elif ses_dur > 0:
+                            ses_carga = f"{int(ses_dur)} min"
+                        else:
+                            ses_carga = "—"
                         ses_int   = str(ses.get("intensidad") or "").strip()
                         badge_html = (
                             f"<span style='display:inline-block;font-size:8px;font-weight:700;"
@@ -1149,53 +1254,40 @@ border-radius:16px;overflow:hidden;margin-top:1.2rem;">
 </div>""", unsafe_allow_html=True)
 
         if tipo in _TIPOS_FUERZA or "Fuerza" in tipo:
-            # ── Fuerza: tabs Pull / Push / Pierna con ejercicios del catálogo ──
-            from src.plan.memoria_fuerza import obtener_progresion_ejercicio
-            _GRUPOS_FUERZA = [
-                ("Pull 🏋️", "Pull",   "💙", "#60a5fa", "Espalda · Bíceps"),
-                ("Push 💪", "Push",   "💜", "#c084fc", "Pecho · Hombro · Tríceps"),
-                ("Pierna 🦵","Pierna", "💚", "#4ade80", "Tren inferior · Glúteos"),
-            ]
-            fase_nombre_det = fase.get("fase_nombre", "Acondicionamiento")
-            from src.plan.memoria_fuerza import _ESQUEMAS
-            _ek = next((k for k in _ESQUEMAS if k in fase_nombre_det), "Acondicionamiento")
-            _esq = _ESQUEMAS[_ek]
-            conn_f = get_db_connection()
-            try:
-                tab_pull, tab_push, tab_pierna = st.tabs(["Pull 🏋️", "Push 💪", "Pierna 🦵"])
-                tabs_map = {"Pull": tab_pull, "Push": tab_push, "Pierna": tab_pierna}
-                for _, grupo_key, emoji_g, color_g, subtitulo in _GRUPOS_FUERZA:
-                    with tabs_map[grupo_key]:
-                        ejs = _ejercicios_catalogo_por_grupo(user_actual, grupo_key)
-                        if not ejs:
-                            st.caption(f"Sin ejercicios de {subtitulo} en tu catálogo. Añádelos en la página Ejercicios.")
-                        else:
-                            st.markdown(
-                                f"<p style='color:#8B949E;font-size:.72rem;font-weight:700;"
-                                f"text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem;'>"
-                                f"{subtitulo} · {_esq['series']}×{_esq['reps']} · {_esq['nota']}</p>",
-                                unsafe_allow_html=True)
-                            for ej in ejs:
-                                prog = obtener_progresion_ejercicio(user_actual, ej["nombre"], conn_f)
-                                peso_txt = (
-                                    f"{prog['sugerencia_peso']:.1f} {ej['unidad']}"
-                                    if prog["sugerencia_peso"] > 0 else "Peso corporal"
-                                )
-                                st.markdown(f"""
-<div style="display:flex;align-items:center;justify-content:space-between;
-  background:rgba(22,27,34,0.9);border:1px solid rgba(255,255,255,0.06);
-  border-radius:10px;padding:.55rem .85rem;margin-bottom:.35rem;">
-  <div>
-    <span style="color:white;font-size:.85rem;font-weight:700;">{escape(ej['nombre'])}</span>
-    <span style="color:#8B949E;font-size:.72rem;margin-left:.5rem;">{escape(ej['musculo'])}</span>
-  </div>
-  <div style="text-align:right;">
-    <span style="color:{color_g};font-size:.85rem;font-weight:800;">{peso_txt}</span>
-    <span style="color:#8B949E;font-size:.7rem;margin-left:.4rem;">{_esq['series']}×{_esq['reps']}</span>
-  </div>
-</div>""", unsafe_allow_html=True)
-            finally:
-                conn_f.close()
+            grupo_dia = _grupo_fuerza_desde_tipo(tipo)
+            protocolo = str(dia.get("alerta") or "").strip()
+
+            st.markdown(
+                "<p style='color:#8B949E;font-size:.74rem;font-weight:700;"
+                "text-transform:uppercase;letter-spacing:.07em;margin:.6rem 0 .45rem;'>"
+                "Recomendaciones Generales de Fuerza</p>",
+                unsafe_allow_html=True,
+            )
+
+            if protocolo:
+                st.markdown(
+                    f"<div style='background:rgba(34,58,94,0.22);border:1px solid rgba(96,165,250,0.35);"
+                    f"border-radius:10px;padding:.55rem .75rem;margin-bottom:.55rem;color:#bfdbfe;font-size:.8rem;'>"
+                    f"{escape(protocolo)}</div>",
+                    unsafe_allow_html=True,
+                )
+
+            recs = _recomendaciones_progresion_grupo(user_actual, grupo_dia) if grupo_dia else []
+            if recs:
+                for rec in recs[:8]:
+                    st.markdown(
+                        f"<div style='background:rgba(22,27,34,0.9);border:1px solid rgba(255,255,255,0.07);"
+                        f"border-radius:10px;padding:.5rem .75rem;margin-bottom:.35rem;color:#e5e7eb;font-size:.82rem;'>"
+                        f"• {escape(rec)}</div>",
+                        unsafe_allow_html=True,
+                    )
+            elif grupo_dia:
+                st.caption(
+                    f"Para {grupo_dia} no hay subidas de peso pendientes con tus ultimos registros. "
+                    "Si un ejercicio lleva nota sinT, se omite automaticamente de recomendaciones."
+                )
+            else:
+                st.caption("Sesion de fuerza general. Se aplican solo recomendaciones de protocolo.")
 
         elif tipo in _TIPOS_CARRERA:
             from src.garmin.workout_builder import sesion_a_bloques
