@@ -160,10 +160,10 @@ function DayCard({ day, index, isSelected, onSelect, onMove }: DayCardProps) {
 
   const [{ isOver }, drop] = useDrop({
     accept: DRAG_TYPE,
-    hover: (item: { index: number }) => {
-      if (item.index === index) return;
-      onMove(item.index, index);
-      item.index = index;
+    drop: (item: { index: number }) => {
+      if (item.index !== index) {
+        onMove(item.index, index);
+      }
     },
     collect: (monitor) => ({ isOver: monitor.isOver() }),
   });
@@ -394,11 +394,14 @@ function GenerarPlanInner() {
   const moveDay = useCallback((from: number, to: number) => {
     setDays((prev) => {
       const updated = [...prev];
-      const [moved] = updated.splice(from, 1);
-      updated.splice(to, 0, moved);
+      // Swap only workout content — day name and date stay fixed in their column
+      const workoutKeys = ["activity", "type", "duration", "zone", "notes"] as const;
+      const fromWorkout = Object.fromEntries(workoutKeys.map((k) => [k, updated[from][k]]));
+      const toWorkout = Object.fromEntries(workoutKeys.map((k) => [k, updated[to][k]]));
+      updated[from] = { ...updated[from], ...toWorkout };
+      updated[to] = { ...updated[to], ...fromWorkout };
       return updated;
     });
-    // Keep selectedDay in sync
     setSelectedDay(null);
   }, []);
 
@@ -487,7 +490,7 @@ function GenerarPlanInner() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
           {days.map((day, index) => (
             <DayCard
-              key={`${day.day}-${day.activity}`}
+              key={day.day}
               day={day}
               index={index}
               isSelected={selectedDay?.activity === day.activity && selectedDay?.day === day.day}
