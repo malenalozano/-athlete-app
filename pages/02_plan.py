@@ -730,12 +730,46 @@ if active_tab == "generar":
                 for day_idx in range(7)
             ]
 
+            _dnd_css = (
+                "body{margin:0;background:transparent}"
+                ".sortable-component{"
+                "  display:flex!important;flex-direction:row!important;"
+                "  gap:6px!important;align-items:flex-start!important;width:100%!important}"
+                ".sortable-component.vertical{flex-wrap:nowrap!important;min-width:0!important}"
+                ".sortable-component.vertical .sortable-container{"
+                "  flex:1!important;min-width:0!important;padding:0!important;margin:0!important}"
+                ".sortable-container{"
+                "  background:rgba(17,24,35,0.92)!important;"
+                "  border:1px solid rgba(255,255,255,0.08)!important;"
+                "  border-radius:10px!important;overflow:hidden!important}"
+                ".sortable-container-header{"
+                "  background:transparent!important;color:#8B949E!important;"
+                "  font-size:9px!important;font-weight:800!important;"
+                "  text-transform:uppercase!important;letter-spacing:.1em!important;"
+                "  padding:7px 8px 5px!important;"
+                "  border-bottom:1px solid rgba(255,255,255,0.05)!important}"
+                ".sortable-container-body{"
+                "  background:transparent!important;min-height:36px!important;"
+                "  padding:4px!important;width:auto!important}"
+                ".sortable-item,.sortable-item:hover{"
+                "  background:rgba(30,42,60,0.85)!important;"
+                "  border:1px solid rgba(255,255,255,0.08)!important;"
+                "  color:#C8D1D9!important;border-radius:7px!important;"
+                "  font-size:10px!important;font-weight:600!important;"
+                "  padding:5px 7px!important;margin:3px 0!important;"
+                "  height:auto!important;white-space:pre-line!important;line-height:1.35!important}"
+                ".sortable-item:hover{"
+                "  border-color:rgba(201,255,0,0.4)!important;"
+                "  background:rgba(40,58,85,0.9)!important;color:#fff!important}"
+                ".sortable-item.active{opacity:.35!important}"
+            )
+
             sortable_output = sort_items(
                 sortable_input,
                 multi_containers=True,
-                direction="horizontal",
+                direction="vertical",
                 key=f"plan_board_drag_{week_key}",
-                custom_style="",
+                custom_style=_dnd_css,
             )
 
             if isinstance(sortable_output, list) and sortable_output != sortable_input:
@@ -797,25 +831,21 @@ if active_tab == "generar":
         cal_cols = st.columns(7, gap="small")
         for i in range(7):
             fecha_dt = lunes + timedelta(days=i)
-            # %-d no funciona en Windows; usamos str(day) para evitar cero inicial
             fecha_txt = f"{fecha_dt.day} {fecha_dt.strftime('%b')}"
             sesiones_dia = board[i]
-            sesion_principal = sesiones_dia[0] if sesiones_dia else {
-                "tipo": "Descanso", "km": 0, "duracion_min": 0, "intensidad": "—",
-            }
-            tipo = str(sesion_principal.get("tipo") or "Descanso")
-            act_type = _get_activity_type(tipo)
-            color = _BORDER_COLOR.get(act_type, _BORDER_COLOR["default"])
-            badge_bg = _BADGE_BG.get(act_type, _BADGE_BG["default"])
-            badge_border = _BADGE_BORDER.get(act_type, _BADGE_BORDER["default"])
-            emoji = _EMOJIS.get(tipo, "📅")
-            km = float(sesion_principal.get("km") or 0)
-            dur = float(sesion_principal.get("duracion_min") or 0)
-            carga = f"{km:.1f} km" if km > 0 else (f"{dur:.0f} min" if dur > 0 else "—")
-            intensidad = str(sesion_principal.get("intensidad") or "").strip()
-            show_badge = intensidad and intensidad != "—"
+            if not sesiones_dia:
+                sesiones_dia = [{"tipo": "Descanso", "km": 0, "duracion_min": 0, "intensidad": "—"}]
+
+            # Color del borde izquierdo: usa la primera sesión no-descanso, si no la primera.
+            sesion_principal = next(
+                (s for s in sesiones_dia if s.get("tipo") != "Descanso"), sesiones_dia[0]
+            )
+            tipo_principal = str(sesion_principal.get("tipo") or "Descanso")
+            act_type_p = _get_activity_type(tipo_principal)
+            color_borde = _BORDER_COLOR.get(act_type_p, _BORDER_COLOR["default"])
+
             is_selected = st.session_state.get("plan_selected_day_idx") == i
-            is_today = (lunes + timedelta(days=i)).strftime("%Y-%m-%d") == datetime.now().strftime("%Y-%m-%d")
+            is_today = fecha_dt.strftime("%Y-%m-%d") == datetime.now().strftime("%Y-%m-%d")
 
             sel_glow = (
                 "box-shadow:0 0 0 2px rgba(201,255,0,0.5),0 0 24px rgba(201,255,0,0.12);"
@@ -823,28 +853,49 @@ if active_tab == "generar":
             ) if is_selected else (
                 "border-top:1px solid rgba(255,255,255,0.05);border-right:1px solid rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05);"
             )
-            today_dot = f"<span style='display:inline-block;width:5px;height:5px;border-radius:50%;background:#C9FF00;margin-left:4px;vertical-align:middle;'></span>" if is_today else ""
-            badge_html = (
-                f"<div style='margin-top:8px;display:inline-block;font-size:9px;font-weight:700;"
-                f"padding:2px 8px;border-radius:20px;background:{badge_bg};border:1px solid {badge_border};color:{color};'>"
-                f"{escape(intensidad)}</div>"
-            ) if show_badge else ""
-            extras_html = ""
-            if len(sesiones_dia) > 1:
-                n_extra = len(sesiones_dia) - 1
-                extras_html = f"<div style='margin-top:6px;font-size:9px;color:#8B949E;font-weight:700;'>+{n_extra} sesión{'es' if n_extra>1 else ''}</div>"
+            today_dot = (
+                "<span style='display:inline-block;width:5px;height:5px;border-radius:50%;"
+                "background:#C9FF00;margin-left:4px;vertical-align:middle;'></span>"
+            ) if is_today else ""
+
+            # Construir HTML de TODAS las sesiones del día
+            sessions_inner_html = ""
+            for idx_s, ses in enumerate(sesiones_dia):
+                ses_tipo = str(ses.get("tipo") or "Descanso")
+                ses_act = _get_activity_type(ses_tipo)
+                ses_color = _BORDER_COLOR.get(ses_act, _BORDER_COLOR["default"])
+                ses_bg = _BADGE_BG.get(ses_act, _BADGE_BG["default"])
+                ses_bd = _BADGE_BORDER.get(ses_act, _BADGE_BORDER["default"])
+                ses_emoji = _EMOJIS.get(ses_tipo, "📅")
+                ses_km = float(ses.get("km") or 0)
+                ses_dur = float(ses.get("duracion_min") or 0)
+                ses_carga = f"{ses_km:.1f} km" if ses_km > 0 else (f"{int(ses_dur)} min" if ses_dur > 0 else "—")
+                ses_int = str(ses.get("intensidad") or "").strip()
+                badge = (
+                    f"<span style='display:inline-block;font-size:8px;font-weight:700;"
+                    f"padding:1px 6px;border-radius:20px;background:{ses_bg};"
+                    f"border:1px solid {ses_bd};color:{ses_color};margin-top:3px;'>"
+                    f"{escape(ses_int)}</span>"
+                ) if ses_int and ses_int != "—" else ""
+                sep = (
+                    "<div style='height:1px;background:rgba(255,255,255,0.05);margin:7px 0;'></div>"
+                ) if idx_s > 0 else ""
+                sessions_inner_html += (
+                    f"{sep}"
+                    f"<p style='font-size:11px;font-weight:800;color:{ses_color};"
+                    f"margin:0 0 1px;line-height:1.2;'>{ses_emoji} {escape(ses_tipo)}</p>"
+                    f"<p style='font-size:9px;color:#8B949E;margin:0;'>{ses_carga}</p>"
+                    f"{badge}"
+                )
 
             with cal_cols[i]:
-                # Todo el HTML en un solo bloque para que Streamlit no lo fragmente
                 st.markdown(f"""
-<div style="border-left:4px solid {color};border-radius:12px;background:rgba(17,24,35,0.9);
-  {sel_glow}padding:13px 11px 11px;margin-bottom:6px;">
+<div style="border-left:4px solid {color_borde};border-radius:12px;
+  background:rgba(17,24,35,0.9);{sel_glow}padding:11px 10px 10px;margin-bottom:6px;">
   <p style="font-size:9px;color:#8B949E;font-weight:800;text-transform:uppercase;
-    letter-spacing:.1em;margin:0 0 2px;line-height:1;">{_DIA_CORTO[i]}{today_dot}</p>
-  <p style="font-size:10px;color:#C8D1D9;font-weight:600;margin:0 0 10px;">{fecha_txt}</p>
-  <p style="font-size:12px;font-weight:800;color:{color};margin:0 0 3px;line-height:1.25;">{emoji} {escape(tipo)}</p>
-  <p style="font-size:10px;color:#8B949E;margin:0 0 4px;">{carga}</p>
-  {badge_html}{extras_html}
+    letter-spacing:.1em;margin:0 0 1px;line-height:1;">{_DIA_CORTO[i]}{today_dot}</p>
+  <p style="font-size:10px;color:#C8D1D9;font-weight:600;margin:0 0 8px;">{fecha_txt}</p>
+  {sessions_inner_html}
 </div>""", unsafe_allow_html=True)
                 btn_label = "▼ Detalles" if is_selected else "Ver detalles"
                 btn_type = "primary" if is_selected else "secondary"
