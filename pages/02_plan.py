@@ -626,22 +626,15 @@ if active_tab == "generar":
 
         # --- TABLERO SUPERIOR (rojo): drag & drop real multi-columna ---
         if sort_items is not None:
-            zws = "\u200b"
             sortable_input = []
-            label_to_session = {}
 
             for day_idx in range(7):
                 day_name = _DIA_CORTO[day_idx]
-                day_items = []
-                for ses_idx, ses in enumerate(board[day_idx]):
-                    nombre = str(ses.get("tipo") or "Sesion")
-                    token = zws * (day_idx * 30 + ses_idx + 1)
-                    label = f"{nombre}{token}"
-                    day_items.append(label)
-                    label_to_session[label] = dict(ses)
+                day_items = [str(ses.get("tipo") or "Sesion") for ses in board[day_idx]]
                 sortable_input.append({"header": day_name, "items": day_items})
 
             custom_style = """
+.sortable-component { display: grid !important; grid-template-columns: repeat(7, minmax(0, 1fr)) !important; gap: .5rem !important; align-items: start !important; }
 .sortable-container { background: #3a0f16 !important; border: 1px solid #7f1d1d !important; border-radius: 10px !important; }
 .sortable-container-header { color: #fecaca !important; font-size: .72rem !important; font-weight: 800 !important; text-transform: uppercase !important; }
 .sortable-container-body { min-height: 96px !important; }
@@ -657,13 +650,40 @@ if active_tab == "generar":
             )
 
             if isinstance(sortable_output, list) and sortable_output != sortable_input:
-                nuevo_board = []
-                for day_idx, container in enumerate(sortable_output):
-                    labels = container.get("items", []) if isinstance(container, dict) else []
-                    sesiones = [dict(label_to_session[lbl]) for lbl in labels if lbl in label_to_session]
-                    nuevo_board.append(sesiones)
-                while len(nuevo_board) < 7:
-                    nuevo_board.append([])
+                # Reconstruye sesiones preservando todos los campos, asignando por nombre en orden.
+                pool_por_tipo: dict[str, list[dict]] = {}
+                for sesiones_day in board:
+                    for ses in sesiones_day:
+                        tipo = str(ses.get("tipo") or "Sesion")
+                        pool_por_tipo.setdefault(tipo, []).append(dict(ses))
+
+                nuevo_por_dia: dict[str, list[dict]] = {d: [] for d in _DIA_CORTO}
+                for container in sortable_output:
+                    if not isinstance(container, dict):
+                        continue
+                    day_name = str(container.get("header") or "").strip().upper()[:3]
+                    if day_name not in nuevo_por_dia:
+                        continue
+
+                    labels = container.get("items", []) or []
+                    rebuilt: list[dict] = []
+                    for lbl in labels:
+                        tipo = str(lbl or "Sesion").strip()
+                        cand = pool_por_tipo.get(tipo, [])
+                        if cand:
+                            rebuilt.append(cand.pop(0))
+                        else:
+                            rebuilt.append({
+                                "tipo": tipo,
+                                "km": 0,
+                                "duracion_min": 0,
+                                "intensidad": "—",
+                                "descripcion_ia": "",
+                                "alerta": "",
+                            })
+                    nuevo_por_dia[day_name] = rebuilt
+
+                nuevo_board = [nuevo_por_dia[d] for d in _DIA_CORTO]
                 board = nuevo_board
                 st.session_state[board_key] = board
                 _sync_plan_from_board(persist=True)
