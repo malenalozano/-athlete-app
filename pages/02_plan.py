@@ -4,6 +4,7 @@ Sub-tabs: Generar Plan (cards de días) | Datos (análisis completo del entrenad
 """
 import pandas as pd
 import streamlit as st
+import re
 from datetime import datetime, timedelta
 from html import escape
 
@@ -250,6 +251,15 @@ def _rango_semana_es(lunes: datetime) -> str:
     return f"{lunes.day} {meses[lunes.month]}-{fin.day} {meses[fin.month]}"
 
 def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
+    def _extraer_km_texto(txt: str) -> float:
+        m = re.search(r"(\d+(?:[\.,]\d+)?)\s*km\b", str(txt or ""), flags=re.IGNORECASE)
+        if not m:
+            return 0.0
+        try:
+            return float(m.group(1).replace(",", "."))
+        except Exception:
+            return 0.0
+
     conn = get_db_connection()
     try:
         semana_str = lunes.strftime("%Y-%m-%d")
@@ -268,6 +278,32 @@ def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
             from src.plan.motor import generar_plan_semana
             base = generar_plan_semana(usuario_id, lunes)
             if isinstance(base, dict):
+                base_dias = base.get("dias", []) if isinstance(base.get("dias", []), list) else []
+                km_por_fecha_tipo = {
+                    (str(x.get("fecha", ""))[:10], str(x.get("tipo", ""))): float(x.get("km") or 0)
+                    for x in base_dias
+                }
+                km_por_fecha_running = {}
+                for x in base_dias:
+                    _fx = str(x.get("fecha", ""))[:10]
+                    _tx = str(x.get("tipo", ""))
+                    _kx = float(x.get("km") or 0)
+                    if _tx in _TIPOS_CARRERA and _kx > km_por_fecha_running.get(_fx, 0.0):
+                        km_por_fecha_running[_fx] = _kx
+
+                for d in dias:
+                    if d.get("tipo") in _TIPOS_CARRERA and float(d.get("km") or 0) <= 0:
+                        fecha = str(d.get("fecha", ""))[:10]
+                        tipo = str(d.get("tipo", ""))
+                        km_rec = km_por_fecha_tipo.get((fecha, tipo), 0.0)
+                        if km_rec <= 0:
+                            km_rec = km_por_fecha_running.get(fecha, 0.0)
+                        if km_rec <= 0:
+                            km_rec = _extraer_km_texto(d.get("descripcion_ia", ""))
+                        if km_rec > 0:
+                            d["km"] = round(km_rec, 1)
+
+                base["km_totales"] = round(sum(float(d.get("km") or 0) for d in dias), 1)
                 base["dias"] = dias; base["existe_en_bd"] = True
                 return base
         except Exception:
@@ -601,8 +637,6 @@ if "plan_dia_sel" not in st.session_state:
     st.session_state.plan_dia_sel = 0
 if "plan_add_session_day" not in st.session_state:
     st.session_state["plan_add_session_day"] = None
-if "plan_moving_session" not in st.session_state:
-    st.session_state["plan_moving_session"] = None   # {"day": i, "idx": j, "ses": {...}}
 
 lunes = st.session_state.plan_cursor
 if st.session_state.plan_data is None:
@@ -833,9 +867,6 @@ if active_tab == "generar":
                 st.session_state[board_key] = board_init
 
         board = st.session_state[board_key]
-        moving = st.session_state.get("plan_moving_session")
-        if not isinstance(moving, dict):
-            moving = None
 
         # ── Procesar drop de DnD recibido vía query param ────────────────────
         import json as _json
@@ -1003,20 +1034,6 @@ build();
         st.components.v1.html(_dnd_html, height=_comp_h, scrolling=False)
         st.markdown("<div style='height:.4rem;'></div>", unsafe_allow_html=True)
 
-        # Banner de modo mover
-        if moving:
-            mov_tipo = moving["ses"].get("tipo", "Sesión")
-            mov_dia  = _DIA_CORTO[moving["day"]]
-            st.markdown(f"""
-<div style="background:rgba(201,255,0,0.08);border:1px solid rgba(201,255,0,0.35);
-  border-radius:10px;padding:.6rem 1rem;margin-bottom:.6rem;
-  display:flex;align-items:center;gap:.6rem;">
-  <span style="color:#C9FF00;font-size:.85rem;">✈</span>
-  <span style="color:#C9FF00;font-size:.82rem;font-weight:700;">Moviendo:</span>
-  <span style="color:white;font-size:.82rem;">{escape(mov_tipo)} ({mov_dia})</span>
-  <span style="color:#8B949E;font-size:.78rem;">— Haz clic en el día destino</span>
-</div>""", unsafe_allow_html=True)
-
         cal_cols = st.columns(7, gap="small")
         for i in range(7):
             fecha_dt = lunes + timedelta(days=i)
@@ -1034,8 +1051,6 @@ build();
             is_selected = st.session_state.get("plan_selected_day_idx") == i
             is_today    = fecha_dt.strftime("%Y-%m-%d") == datetime.now().strftime("%Y-%m-%d")
             is_adding   = st.session_state.get("plan_add_session_day") == i
-            is_move_src = moving and moving["day"] == i
-            is_move_dst = moving and moving["day"] != i  # this day can receive
 
             sel_glow = (
                 "box-shadow:0 0 0 2px rgba(201,255,0,0.5),0 0 24px rgba(201,255,0,0.12);"
@@ -1062,7 +1077,7 @@ build();
   <p style="font-size:10px;color:#C8D1D9;font-weight:600;margin:0;">{fecha_txt}</p>
 </div>""", unsafe_allow_html=True)
 
-                # ── Sesiones individuales con botón ✈ ──
+                # ── Sesiones individuales ──
                 real_sessions = board[i]   # lista real (puede estar vacía)
                 if real_sessions:
                     for idx_s, ses in enumerate(real_sessions):
@@ -1088,59 +1103,18 @@ build();
                             f"padding:1px 6px;border-radius:20px;background:{ses_bg};"
                             f"border:1px solid {ses_bd};color:{ses_color};'>{escape(ses_int)}</span>"
                         ) if ses_int and ses_int != "—" else ""
-                        this_is_moving = (moving and moving["day"] == i
-                                          and moving["idx"] == idx_s)
-                        chip_opacity = "opacity:.4;" if this_is_moving else ""
-                        chip_border  = (
-                            "border:1px solid rgba(201,255,0,0.55);"
-                            "background:rgba(30,50,20,0.7);"
-                        ) if this_is_moving else (
-                            f"border:1px solid rgba(255,255,255,0.07);"
-                            "background:rgba(22,27,34,0.9);"
-                        )
-
-                        sc1, sc2 = st.columns([5, 1], gap="small")
-                        with sc1:
-                            st.markdown(f"""
-<div style="{chip_border}border-radius:8px;padding:5px 8px;{chip_opacity}">
+                        st.markdown(f"""
+<div style="border:1px solid rgba(255,255,255,0.07);background:rgba(22,27,34,0.9);border-radius:8px;padding:5px 8px;">
   <p style="font-size:10px;font-weight:800;color:{ses_color};margin:0 0 1px;line-height:1.2;">
     {ses_emoji} {escape(ses_tipo)}</p>
   <p style="font-size:9px;color:#8B949E;margin:0;">{ses_carga} {badge_html}</p>
 </div>""", unsafe_allow_html=True)
-                        with sc2:
-                            if not moving:
-                                if st.button("✈", key=f"mv_{i}_{idx_s}",
-                                             use_container_width=True, help="Mover a otro día"):
-                                    st.session_state["plan_moving_session"] = {
-                                        "day": i, "idx": idx_s, "ses": dict(ses)
-                                    }
-                                    st.rerun()
-                            elif this_is_moving:
-                                if st.button("✕", key=f"mv_cancel_{i}_{idx_s}",
-                                             use_container_width=True, help="Cancelar mover"):
-                                    st.session_state["plan_moving_session"] = None
-                                    st.rerun()
                 else:
                     st.markdown(
                         "<div style='background:rgba(22,27,34,0.5);border-radius:8px;"
                         "padding:8px;text-align:center;'>"
                         "<p style='color:#3a4150;font-size:9px;margin:0;'>Sin sesiones</p>"
                         "</div>", unsafe_allow_html=True)
-
-                # ── Botón destino (modo mover) ──
-                if is_move_dst:
-                    if st.button(f"📥 Mover aquí", key=f"drop_{i}",
-                                 use_container_width=True, type="primary"):
-                        ses_mv   = dict(moving["ses"])
-                        from_d   = moving["day"]
-                        from_idx = moving["idx"]
-                        if 0 <= from_idx < len(board[from_d]):
-                            board[from_d].pop(from_idx)
-                        board[i].append(ses_mv)
-                        st.session_state[board_key] = board
-                        st.session_state["plan_moving_session"] = None
-                        _sync_plan_from_board(persist=True)
-                        st.rerun()
 
                 st.markdown(
                     "<div style='background:rgba(17,24,35,0.9);border-radius:0 0 12px 12px;"
@@ -1157,14 +1131,12 @@ build();
                                  use_container_width=True, type=btn_type):
                         st.session_state["plan_selected_day_idx"] = None if is_selected else i
                         st.session_state["plan_add_session_day"]  = None
-                        st.session_state["plan_moving_session"]   = None
                         st.rerun()
                 with btn_c2:
                     add_type = "primary" if is_adding else "secondary"
                     if st.button("➕", key=f"plan_day_add_{i}",
                                  use_container_width=True, type=add_type, help="Añadir sesión"):
                         st.session_state["plan_add_session_day"] = None if is_adding else i
-                        st.session_state["plan_moving_session"]  = None
                         st.rerun()
 
         # Mantener estructura de plan sincronizada con el tablero en memoria (sin guardar cada render).
