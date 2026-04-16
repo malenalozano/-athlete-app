@@ -2,7 +2,6 @@ import base64
 import hashlib
 import hmac
 import os
-from collections.abc import Mapping
 from datetime import datetime, timedelta
 
 import streamlit as st
@@ -43,6 +42,65 @@ def _get_app_password() -> str:
     return str(os.getenv("APP_PASSWORD", "")).strip()
 
 
+def _get_cookie_secret() -> str:
+    """Secret para firmar la cookie persistente de autenticación."""
+    try:
+        if "AUTH_COOKIE_SECRET" in st.secrets:
+            secret = str(st.secrets.get("AUTH_COOKIE_SECRET", "")).strip()
+            if secret:
+                return secret
+    except Exception:
+        pass
+
+    env_secret = str(os.getenv("AUTH_COOKIE_SECRET", "")).strip()
+    if env_secret:
+        return env_secret
+
+    # Fallback: usable without extra config, but less ideal than AUTH_COOKIE_SECRET.
+    return _get_app_password()
+
+
+def _build_auth_cookie_token() -> str | None:
+    """Crea token firmado con expiración para recordar dispositivo."""
+    secret = _get_cookie_secret()
+    if not secret:
+        return None
+
+    expires = int((datetime.utcnow() + timedelta(days=_COOKIE_DAYS)).timestamp())
+    payload = f"v1:{expires}"
+    sig = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload}:{sig}"
+
+
+def _verify_auth_cookie_token(token: str | None) -> bool:
+    """Valida formato, firma y expiración del token de cookie."""
+    if not token or not isinstance(token, str):
+        return False
+
+    parts = token.split(":")
+    if len(parts) != 3:
+        return False
+    version, exp_s, sig = parts
+    if version != "v1":
+        return False
+
+    try:
+        expires = int(exp_s)
+    except ValueError:
+        return False
+
+    if int(datetime.utcnow().timestamp()) >= expires:
+        return False
+
+    secret = _get_cookie_secret()
+    if not secret:
+        return False
+
+    payload = f"v1:{exp_s}"
+    expected_sig = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected_sig, sig)
+
+
 def require_simple_password_auth(cm=None) -> None:
     """
     Autenticación simple: solo contraseña para acceder a la app.
@@ -61,74 +119,49 @@ def require_simple_password_auth(cm=None) -> None:
     if cm is not None:
         try:
             cookie_token = cm.get(_COOKIE_NAME)
-            if cookie_token == "authenticated":
+            if cookie_token == "authenticated" or _verify_auth_cookie_token(cookie_token):
                 st.session_state["auth_ok"] = True
                 st.rerun()
         except Exception:
             pass
 
-    # ── Pantalla de login con solo contraseña ────────────────────────
+    # ── Pantalla de login: primer elemento visible = campo contraseña ──────
     st.markdown("""
     <style>
     [data-testid="stAppViewContainer"] {
-        background: linear-gradient(135deg, #0E1117 0%, #0A2E0A 52%, #0E1117 100%);
+        background: #0e1117;
         min-height: 100vh;
     }
-    .login-center { max-width: 400px; margin: 12vh auto 0; padding: 0 16px; }
-    .login-title  { font-size: 2.2rem; font-weight: 800; color: #C9FF00; margin-bottom: 8px; letter-spacing: -0.5px; }
-    .login-sub    { color: #8B949E; font-size: 0.95rem; margin-bottom: 32px; line-height: 1.5; }
-    .login-form { background: rgba(13, 17, 23, 0.8); border: 1px solid #30363d; border-radius: 12px; padding: 24px; backdrop-filter: blur(10px); }
     </style>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 1.2, 1])
-    with col2:
-        # Avatar
-        st.markdown(
-            "<div style='text-align:center;margin-bottom:24px;'>"
-            "<div style='width:72px;height:72px;background:linear-gradient(135deg,#C9FF00,#A3E635);border-radius:16px;"
-            "display:inline-flex;align-items:center;justify-content:center;box-shadow:0 12px 32px rgba(201,255,0,0.25);'>"
-            "<svg width='40' height='40' viewBox='0 0 24 24' fill='#0E1117' style='font-weight:bold;'>"
-            "<path d='M16.5 12c1.93 0 3.5-1.57 3.5-3.5S18.43 5 16.5 5 13 6.57 13 8.5s1.57 3.5 3.5 3.5zm-9 0c1.93 0 3.5-1.57 3.5-3.5S9.43 5 7.5 5 4 6.57 4 8.5 5.57 12 7.5 12zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4zm9 0c-.29 0-.74.02-1.5.15 1.42 1.25 2.5 2.71 2.5 4.35v2h6v-2c0-2.66-5.33-4-7-4.5z'/>"
-            "</svg></div>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        # Títulos
-        st.markdown(
-            "<div style='text-align:center;'>"
-            "<div class='login-title'>🏃 athlete.</div>"
-            "<div class='login-sub'>Sistema privado de entrenamiento<br>para Malena y Dani</div>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        # Formulario
+    col_left, col_center, col_right = st.columns([1, 1.3, 1])
+    with col_center:
         with st.form("login_password_form", clear_on_submit=False):
             password = st.text_input(
-                "🔐 Contraseña de acceso",
+                "Contraseña",
                 type="password",
-                placeholder="Ingresa la contraseña",
-                help="Solo personas autorizadas pueden acceder"
+                placeholder="Introduce la contraseña",
+                label_visibility="collapsed",
             )
-            submitted = st.form_submit_button("🔓 Entrar", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("Entrar", type="primary", use_container_width=True)
 
         if submitted:
             if password == app_password:
                 st.session_state["auth_ok"] = True
                 if cm is not None:
                     try:
+                        cookie_token = _build_auth_cookie_token() or "authenticated"
                         cm.set(
                             _COOKIE_NAME,
-                            "authenticated",
+                            cookie_token,
                             expires_at=datetime.now() + timedelta(days=_COOKIE_DAYS),
                         )
                     except Exception:
                         pass
                 st.rerun()
             else:
-                st.error("❌ Contraseña incorrecta. Intenta de nuevo.")
+                st.error("Contraseña incorrecta.")
 
     st.stop()
 

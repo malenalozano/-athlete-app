@@ -11,6 +11,8 @@ _app_dir = os.path.dirname(os.path.abspath(__file__))
 if _app_dir not in sys.path:
     sys.path.insert(0, _app_dir)
 
+from src.core.access_control import require_auth
+
 st.set_page_config(
     page_title="Athlete",
     page_icon="🏃",
@@ -27,8 +29,8 @@ except Exception as e:
     import logging
     logging.warning(f"CookieManager failed to initialize: {e}. Cookie-based auth will be unavailable.")
 
-# ⏸️ AUTENTICACIÓN DESACTIVADA TEMPORALMENTE — Se activará más adelante cuando tengamos la versión final
-# require_auth(_cm)
+# Autenticación por contraseña con persistencia por dispositivo (cookie firmada)
+require_auth(_cm)
 
 # Ocultar TODO lo nativo de Streamlit + CSS global del sistema de diseño
 from src.core.styles import GLOBAL_CSS

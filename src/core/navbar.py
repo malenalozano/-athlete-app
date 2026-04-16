@@ -30,6 +30,7 @@ _SUBTABS = {
     "garmin": [
         ("sync", "⌚ Sincronización"),
         ("hist", "📊 Historial"),
+        ("perfil", "👤 Perfil"),
     ],
 }
 

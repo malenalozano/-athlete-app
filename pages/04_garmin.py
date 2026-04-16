@@ -36,6 +36,7 @@ except ImportError as _e:
     def cargar_sesion_tokens(*a, **kw): return None
     def check_garmin_blockade(*a, **kw): return None
 from src.core.seguridad import encriptar_password, desencriptar_password
+from src.core.access_control import logout
 
 render_navbar("garmin")
 
@@ -882,5 +883,19 @@ elif active_tab == "hist":
             st.dataframe(df_bio_show, use_container_width=True, hide_index=True)
         else:
             st.info("Sin datos biométricos.")
+
+# ===========================================================================
+# TAB 3 — PERFIL
+# ===========================================================================
+elif active_tab == "perfil":
+    st.markdown(label_upper("Perfil"), unsafe_allow_html=True)
+
+    _user_label = "Malena" if int(user_actual) == 1 else "Dani"
+    st.info(f"Sesión activa en este dispositivo para: {_user_label}")
+
+    st.markdown("Si cierras sesión, este dispositivo volverá a pedir contraseña para entrar.")
+    if st.button("Cerrar sesión", type="primary", use_container_width=False):
+        _cm = st.session_state.get("_cm")
+        logout(_cm)
 
 st.markdown("</div>", unsafe_allow_html=True)
