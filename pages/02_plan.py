@@ -627,18 +627,19 @@ if active_tab == "generar":
         # --- TABLERO SUPERIOR (rojo): drag & drop real multi-columna ---
         if sort_items is not None:
             zws = "\u200b"
-            sortable_input = {}
+            sortable_input = []
             label_to_session = {}
 
             for day_idx in range(7):
                 day_name = _DIA_CORTO[day_idx]
-                sortable_input[day_name] = []
+                day_items = []
                 for ses_idx, ses in enumerate(board[day_idx]):
                     nombre = str(ses.get("tipo") or "Sesion")
                     token = zws * (day_idx * 30 + ses_idx + 1)
                     label = f"{nombre}{token}"
-                    sortable_input[day_name].append(label)
+                    day_items.append(label)
                     label_to_session[label] = dict(ses)
+                sortable_input.append({"header": day_name, "items": day_items})
 
             custom_style = """
 .sortable-container { background: #3a0f16 !important; border: 1px solid #7f1d1d !important; border-radius: 10px !important; }
@@ -655,12 +656,14 @@ if active_tab == "generar":
                 custom_style=custom_style,
             )
 
-            if isinstance(sortable_output, dict) and sortable_output != sortable_input:
+            if isinstance(sortable_output, list) and sortable_output != sortable_input:
                 nuevo_board = []
-                for day_name in _DIA_CORTO:
-                    labels = sortable_output.get(day_name, []) or []
+                for day_idx, container in enumerate(sortable_output):
+                    labels = container.get("items", []) if isinstance(container, dict) else []
                     sesiones = [dict(label_to_session[lbl]) for lbl in labels if lbl in label_to_session]
                     nuevo_board.append(sesiones)
+                while len(nuevo_board) < 7:
+                    nuevo_board.append([])
                 board = nuevo_board
                 st.session_state[board_key] = board
                 _sync_plan_from_board(persist=True)
