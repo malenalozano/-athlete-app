@@ -676,28 +676,49 @@ if active_tab == "generar":
         for i in range(7):
             fecha_txt = (lunes + timedelta(days=i)).strftime("%d/%m")
             sesiones_dia = board[i]
+            sesion_principal = sesiones_dia[0] if sesiones_dia else {
+                "tipo": "Descanso",
+                "km": 0,
+                "duracion_min": 0,
+                "intensidad": "—",
+            }
+            tipo = str(sesion_principal.get("tipo") or "Descanso")
+            color = _get_activity_color(tipo)
+            emoji = _EMOJIS.get(tipo, "📅")
+            km = float(sesion_principal.get("km") or 0)
+            dur = float(sesion_principal.get("duracion_min") or 0)
+            carga = f"{km:.1f} km" if km > 0 else (f"{dur:.0f}'" if dur > 0 else "—")
+            extras_txt = f"+{len(sesiones_dia) - 1} sesión" if len(sesiones_dia) == 2 else f"+{len(sesiones_dia) - 1} sesiones"
+
             with cal_cols[i]:
                 st.markdown(
-                    f"<div style='background:#161B22;border:1px solid #30363d;border-radius:12px;padding:.65rem .5rem;min-height:136px;'>"
-                    f"<div style='color:#8B949E;font-size:.68rem;font-weight:700;text-transform:uppercase;'>{_DIA_CORTO[i]}</div>"
-                    f"<div style='color:#e6edf3;font-size:.82rem;font-weight:700;margin-bottom:.45rem;'>{fecha_txt}</div>",
+                    f"<div style='background:linear-gradient(165deg,#071427 0%,#0a1630 60%,#081427 100%);"
+                    f"border:1px solid {color}66;border-radius:11px;padding:.55rem .52rem .58rem;min-height:126px;'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem;'>"
+                    f"<span style='color:#8EA1C0;font-size:.57rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;'>{_DIA_CORTO[i]}</span>"
+                    f"<span style='color:#6F84A8;font-size:.56rem;font-weight:700;'>{fecha_txt}</span>"
+                    f"</div>"
+                    f"<div style='text-align:center;margin-top:.08rem;'>"
+                    f"<div style='font-size:.90rem;line-height:1.1;margin-bottom:.2rem;'>{emoji}</div>"
+                    f"<div style='color:{color};font-size:.72rem;font-weight:800;line-height:1.15;'>{escape(tipo)}</div>"
+                    f"<div style='color:#9DB0CC;font-size:.64rem;margin-top:.24rem;font-weight:600;'>{carga}</div>"
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
-                if sesiones_dia:
-                    for ses in sesiones_dia:
-                        nombre = str(ses.get("tipo") or "Sesion")
-                        st.markdown(
-                            f"<div style='background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:.32rem .42rem;"
-                            f"margin-bottom:.24rem;color:#c9e1ff;font-size:.70rem;font-weight:600;'>{escape(nombre)}</div>",
-                            unsafe_allow_html=True,
-                        )
-                else:
+                if len(sesiones_dia) > 1:
                     st.markdown(
-                        "<div style='color:#6b7280;font-size:.70rem;'>Descanso</div>",
+                        f"<div style='margin-top:.34rem;text-align:center;color:#7E93B4;font-size:.60rem;font-weight:700;'>{extras_txt}</div>",
                         unsafe_allow_html=True,
                     )
+                    for ses in sesiones_dia[1:]:
+                        nombre = str(ses.get("tipo") or "Sesion")
+                        st.markdown(
+                            f"<div style='background:rgba(15,23,42,.55);border:1px solid #1f2f4f;border-radius:7px;padding:.20rem .34rem;"
+                            f"margin-top:.2rem;color:#90A6C7;font-size:.60rem;font-weight:600;text-align:center;'>{escape(nombre)}</div>",
+                            unsafe_allow_html=True,
+                        )
                 is_selected = st.session_state.get("plan_selected_day_idx") == i
-                if st.button(_DIA_CORTO[i], key=f"plan_day_sel_{i}", use_container_width=True,
+                if st.button("Ver", key=f"plan_day_sel_{i}", use_container_width=True,
                              type="primary" if is_selected else "secondary"):
                     st.session_state["plan_selected_day_idx"] = i
                     st.rerun()
