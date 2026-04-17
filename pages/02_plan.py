@@ -913,38 +913,30 @@ if active_tab == "generar":
             if persist:
                 _auto_guardar(user_actual, lunes, plan)
 
-        # --- TABLERO DnD + CALENDARIO ---
+        # ── Colores por tipo de actividad ─────────────────────────────────────
         _BORDER_COLOR = {
-            "running": "#22d3ee",
+            "running":  "#22d3ee",
             "strength": "#c084fc",
-            "rest": "#4ade80",
-            "default": "#C9FF00",
-        }
-        _BADGE_BG = {
-            "running": "rgba(34,211,238,0.12)",
-            "strength": "rgba(192,132,252,0.12)",
-            "rest": "rgba(74,222,128,0.12)",
-            "default": "rgba(201,255,0,0.12)",
-        }
-        _BADGE_BORDER = {
-            "running": "rgba(34,211,238,0.35)",
-            "strength": "rgba(192,132,252,0.35)",
-            "rest": "rgba(74,222,128,0.35)",
-            "default": "rgba(201,255,0,0.35)",
+            "rest":     "#4ade80",
+            "default":  "#C9FF00",
         }
 
-        # ── Componente HTML5 Drag & Drop ─────────────────────────────────────
+        # ── Construir JSON del tablero para el componente HTML ────────────────
         _board_js = []
         _max_items = 0
         for _bi in range(7):
+            _fecha_dt = lunes + timedelta(days=_bi)
+            _is_today = _fecha_dt.strftime("%Y-%m-%d") == datetime.now().strftime("%Y-%m-%d")
             _items_js = []
             for _si, _ses in enumerate(board[_bi]):
-                _tipo = str(_ses.get("tipo") or "Descanso")
+                _tipo  = str(_ses.get("tipo") or "Descanso")
                 _emoji = _EMOJIS.get(_tipo, "📅")
-                _km   = float(_ses.get("km") or 0)
-                _dur  = float(_ses.get("duracion_min") or 0)
-                _es_running = _get_activity_type(_tipo) == "running"
-                if _es_running and _km > 0 and _dur > 0:
+                _km    = float(_ses.get("km") or 0)
+                _dur   = float(_ses.get("duracion_min") or 0)
+                _int   = str(_ses.get("intensidad") or "").strip()
+                _act   = _get_activity_type(_tipo)
+                _col   = _BORDER_COLOR.get(_act, _BORDER_COLOR["default"])
+                if _act == "running" and _km > 0 and _dur > 0:
                     _carga = f"{_km:.1f} km · {int(_dur)} min"
                 elif _km > 0:
                     _carga = f"{_km:.1f} km"
@@ -952,35 +944,69 @@ if active_tab == "generar":
                     _carga = f"{int(_dur)} min"
                 else:
                     _carga = "—"
-                _act   = _get_activity_type(_tipo)
-                _col   = _BORDER_COLOR.get(_act, _BORDER_COLOR["default"])
-                _items_js.append({"label": f"{_emoji} {_tipo}\n{_carga}",
-                                   "color": _col, "day": _bi, "idx": _si})
-            _board_js.append({"header": _DIA_CORTO[_bi], "items": _items_js})
+                _items_js.append({
+                    "label": _tipo, "emoji": _emoji, "carga": _carga,
+                    "int": _int, "color": _col, "day": _bi, "idx": _si
+                })
+            _board_js.append({
+                "header": _DIA_CORTO[_bi],
+                "date": f"{_fecha_dt.day} {_fecha_dt.strftime('%b')}",
+                "today": _is_today,
+                "items": _items_js,
+            })
             _max_items = max(_max_items, len(_items_js))
 
-        _bj = _json.dumps(_board_js)
-        _comp_h = max(90, _max_items * 54 + 66)
+        _bj      = _json.dumps(_board_js, ensure_ascii=False)
+        _comp_h  = max(120, _max_items * 68 + 80)
 
         _dnd_html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{background:transparent;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden}}
-.board{{display:flex;gap:6px;width:100%;height:100%}}
-.day-col{{flex:1;min-width:0;background:rgba(17,24,35,0.92);border:1px solid rgba(255,255,255,0.08);
-  border-radius:10px;overflow:hidden;display:flex;flex-direction:column;transition:border-color .15s,background .15s}}
-.day-col.over{{border-color:rgba(201,255,0,0.55)!important;background:rgba(18,32,16,0.97)!important}}
-.day-header{{font-size:9px;color:#8B949E;font-weight:800;text-transform:uppercase;
-  letter-spacing:.1em;padding:7px 8px 5px;border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0}}
-.day-body{{padding:4px;flex:1;min-height:28px}}
-.ses{{border:1px solid rgba(255,255,255,0.07);border-radius:7px;padding:5px 8px;
-  margin-bottom:3px;cursor:grab;font-size:10px;font-weight:600;color:#C8D1D9;
-  background:rgba(28,40,58,0.9);white-space:pre-line;line-height:1.3;
-  user-select:none;transition:opacity .12s,border-color .12s,background .12s}}
-.ses:hover{{border-color:rgba(201,255,0,0.4);background:rgba(40,58,85,0.9);color:#fff}}
-.ses.dragging{{opacity:.25;cursor:grabbing}}
-.ses .dot{{display:inline-block;width:6px;height:6px;border-radius:50%;
-  margin-right:5px;vertical-align:middle;flex-shrink:0}}
+body{{background:transparent;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}}
+.board{{display:flex;gap:8px;width:100%;height:100%}}
+.day-col{{
+  flex:1;min-width:0;
+  background:rgba(14,17,23,0.97);
+  border:1px solid rgba(255,255,255,0.07);
+  border-radius:12px;overflow:hidden;
+  display:flex;flex-direction:column;
+  transition:border-color .15s,background .15s,box-shadow .15s
+}}
+.day-col.today{{border-color:rgba(201,255,0,0.3);}}
+.day-col.over{{
+  border-color:rgba(201,255,0,0.6)!important;
+  background:rgba(15,28,15,0.98)!important;
+  box-shadow:0 0 0 1px rgba(201,255,0,0.2),0 4px 20px rgba(201,255,0,0.08)!important
+}}
+.day-header{{
+  padding:8px 10px 6px;
+  border-bottom:1px solid rgba(255,255,255,0.05);
+  flex-shrink:0
+}}
+.day-name{{font-size:9px;color:#6b7280;font-weight:800;text-transform:uppercase;letter-spacing:.08em;line-height:1}}
+.day-date{{font-size:11px;color:#c8d1d9;font-weight:700;margin-top:2px;line-height:1}}
+.today-dot{{display:inline-block;width:5px;height:5px;border-radius:50%;background:#C9FF00;margin-left:4px;vertical-align:middle}}
+.day-body{{padding:6px;flex:1;min-height:32px}}
+.empty-day{{text-align:center;padding:10px 4px;color:#374151;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}}
+.ses{{
+  border:1px solid rgba(255,255,255,0.06);
+  border-radius:9px;padding:6px 8px;
+  margin-bottom:4px;cursor:grab;
+  background:rgba(22,27,34,0.95);
+  user-select:none;
+  transition:opacity .12s,border-color .15s,background .15s,transform .1s
+}}
+.ses:hover{{border-color:rgba(201,255,0,0.3);background:rgba(30,40,55,0.98);transform:translateY(-1px)}}
+.ses.dragging{{opacity:.2;cursor:grabbing;transform:scale(.97)}}
+.ses-top{{display:flex;align-items:center;gap:5px;margin-bottom:2px}}
+.ses-dot{{width:7px;height:7px;border-radius:50%;flex-shrink:0}}
+.ses-name{{font-size:10px;font-weight:700;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.ses-sub{{font-size:9px;color:#6b7280;line-height:1.2;padding-left:12px}}
+.ses-int{{
+  display:inline-block;font-size:8px;font-weight:700;
+  padding:1px 5px;border-radius:10px;
+  color:inherit;border:1px solid currentColor;opacity:.75;margin-top:3px
+}}
 </style></head><body>
 <div class="board" id="board"></div>
 <script>
@@ -991,14 +1017,18 @@ function build(){{
   el.innerHTML='';
   B.forEach((day,di)=>{{
     const col=document.createElement('div');
-    col.className='day-col';
+    col.className='day-col'+(day.today?' today':'');
+
+    // Header
     const hdr=document.createElement('div');
     hdr.className='day-header';
-    hdr.textContent=day.header;
-    col.appendChild(hdr);
-    const body=document.createElement('div');
-    body.className='day-body';
-    body.dataset.di=di;
+    const nm=document.createElement('div');nm.className='day-name';nm.textContent=day.header;
+    if(day.today){{const dot=document.createElement('span');dot.className='today-dot';nm.appendChild(dot);}}
+    const dt=document.createElement('div');dt.className='day-date';dt.textContent=day.date;
+    hdr.appendChild(nm);hdr.appendChild(dt);col.appendChild(hdr);
+
+    // Body (drop zone)
+    const body=document.createElement('div');body.className='day-body';body.dataset.di=di;
     body.addEventListener('dragover',e=>{{e.preventDefault();col.classList.add('over')}});
     body.addEventListener('dragleave',e=>{{if(!col.contains(e.relatedTarget))col.classList.remove('over')}});
     body.addEventListener('drop',e=>{{
@@ -1007,13 +1037,30 @@ function build(){{
       const mv=JSON.stringify({{from_day:src.di,from_idx:src.ii,to_day:di}});
       window.parent.location.search='?dnd_move='+encodeURIComponent(mv);
     }});
+
+    if(day.items.length===0){{
+      const empty=document.createElement('div');
+      empty.className='empty-day';empty.textContent='descanso';
+      body.appendChild(empty);
+    }}
+
     day.items.forEach((item,ii)=>{{
-      const s=document.createElement('div');
-      s.className='ses';s.draggable=true;
-      const dot=document.createElement('span');
-      dot.className='dot';dot.style.background=item.color;
-      s.appendChild(dot);
-      s.appendChild(document.createTextNode(item.label));
+      const s=document.createElement('div');s.className='ses';s.draggable=true;
+      // Top row: dot + name
+      const top=document.createElement('div');top.className='ses-top';
+      const dot=document.createElement('span');dot.className='ses-dot';dot.style.background=item.color;
+      const name=document.createElement('span');name.className='ses-name';
+      name.style.color=item.color;name.textContent=item.emoji+' '+item.label;
+      top.appendChild(dot);top.appendChild(name);s.appendChild(top);
+      // Sub row: carga
+      const sub=document.createElement('div');sub.className='ses-sub';
+      sub.textContent=item.carga;
+      if(item.int&&item.int!=='—'){{
+        const badge=document.createElement('span');badge.className='ses-int';
+        badge.style.color=item.color;badge.style.borderColor=item.color;
+        badge.textContent=item.int;sub.appendChild(document.createElement('br'));sub.appendChild(badge);
+      }}
+      s.appendChild(sub);
       s.addEventListener('dragstart',e=>{{
         src={{di,ii}};s.classList.add('dragging');
         e.dataTransfer.effectAllowed='move';
@@ -1032,110 +1079,27 @@ build();
 </script></body></html>"""
 
         st.components.v1.html(_dnd_html, height=_comp_h, scrolling=False)
-        st.markdown("<div style='height:.4rem;'></div>", unsafe_allow_html=True)
 
-        cal_cols = st.columns(7, gap="small")
+        # ── Fila de botones por día (compacta, bajo el tablero) ───────────────
+        btn_cols = st.columns(7, gap="small")
         for i in range(7):
-            fecha_dt = lunes + timedelta(days=i)
-            fecha_txt = f"{fecha_dt.day} {fecha_dt.strftime('%b')}"
-            sesiones_dia = board[i] if board[i] else [
-                {"tipo": "Descanso", "km": 0, "duracion_min": 0, "intensidad": "—"}
-            ]
-            sesion_principal = next(
-                (s for s in sesiones_dia if s.get("tipo") != "Descanso"), sesiones_dia[0]
-            )
-            color_borde = _BORDER_COLOR.get(
-                _get_activity_type(str(sesion_principal.get("tipo") or "Descanso")),
-                _BORDER_COLOR["default"]
-            )
             is_selected = st.session_state.get("plan_selected_day_idx") == i
-            is_today    = fecha_dt.strftime("%Y-%m-%d") == datetime.now().strftime("%Y-%m-%d")
             is_adding   = st.session_state.get("plan_add_session_day") == i
-
-            sel_glow = (
-                "box-shadow:0 0 0 2px rgba(201,255,0,0.5),0 0 24px rgba(201,255,0,0.12);"
-                "border-top:1px solid rgba(201,255,0,0.25);"
-                "border-right:1px solid rgba(201,255,0,0.25);"
-                "border-bottom:1px solid rgba(201,255,0,0.25);"
-            ) if is_selected else (
-                "border-top:1px solid rgba(255,255,255,0.05);"
-                "border-right:1px solid rgba(255,255,255,0.05);"
-                "border-bottom:1px solid rgba(255,255,255,0.05);"
-            )
-            today_dot = (
-                "<span style='display:inline-block;width:5px;height:5px;border-radius:50%;"
-                "background:#C9FF00;margin-left:4px;vertical-align:middle;'></span>"
-            ) if is_today else ""
-
-            with cal_cols[i]:
-                # ── Cabecera del día ──
-                st.markdown(f"""
-<div style="border-left:4px solid {color_borde};border-radius:12px 12px 0 0;
-  background:rgba(17,24,35,0.9);{sel_glow}padding:10px 10px 6px;">
-  <p style="font-size:9px;color:#8B949E;font-weight:800;text-transform:uppercase;
-    letter-spacing:.1em;margin:0 0 1px;line-height:1;">{_DIA_CORTO[i]}{today_dot}</p>
-  <p style="font-size:10px;color:#C8D1D9;font-weight:600;margin:0;">{fecha_txt}</p>
-</div>""", unsafe_allow_html=True)
-
-                # ── Sesiones individuales ──
-                real_sessions = board[i]   # lista real (puede estar vacía)
-                if real_sessions:
-                    for idx_s, ses in enumerate(real_sessions):
-                        ses_tipo  = str(ses.get("tipo") or "Descanso")
-                        ses_act   = _get_activity_type(ses_tipo)
-                        ses_color = _BORDER_COLOR.get(ses_act, _BORDER_COLOR["default"])
-                        ses_bg    = _BADGE_BG.get(ses_act, _BADGE_BG["default"])
-                        ses_bd    = _BADGE_BORDER.get(ses_act, _BADGE_BORDER["default"])
-                        ses_emoji = _EMOJIS.get(ses_tipo, "📅")
-                        ses_km    = float(ses.get("km") or 0)
-                        ses_dur   = float(ses.get("duracion_min") or 0)
-                        if ses_act == "running" and ses_km > 0 and ses_dur > 0:
-                            ses_carga = f"{ses_km:.1f} km · {int(ses_dur)} min"
-                        elif ses_km > 0:
-                            ses_carga = f"{ses_km:.1f} km"
-                        elif ses_dur > 0:
-                            ses_carga = f"{int(ses_dur)} min"
-                        else:
-                            ses_carga = "—"
-                        ses_int   = str(ses.get("intensidad") or "").strip()
-                        badge_html = (
-                            f"<span style='display:inline-block;font-size:8px;font-weight:700;"
-                            f"padding:1px 6px;border-radius:20px;background:{ses_bg};"
-                            f"border:1px solid {ses_bd};color:{ses_color};'>{escape(ses_int)}</span>"
-                        ) if ses_int and ses_int != "—" else ""
-                        st.markdown(f"""
-<div style="border:1px solid rgba(255,255,255,0.07);background:rgba(22,27,34,0.9);border-radius:8px;padding:5px 8px;">
-  <p style="font-size:10px;font-weight:800;color:{ses_color};margin:0 0 1px;line-height:1.2;">
-    {ses_emoji} {escape(ses_tipo)}</p>
-  <p style="font-size:9px;color:#8B949E;margin:0;">{ses_carga} {badge_html}</p>
-</div>""", unsafe_allow_html=True)
-                else:
-                    st.markdown(
-                        "<div style='background:rgba(22,27,34,0.5);border-radius:8px;"
-                        "padding:8px;text-align:center;'>"
-                        "<p style='color:#3a4150;font-size:9px;margin:0;'>Sin sesiones</p>"
-                        "</div>", unsafe_allow_html=True)
-
-                st.markdown(
-                    "<div style='background:rgba(17,24,35,0.9);border-radius:0 0 12px 12px;"
-                    "padding:4px 6px 8px;border-bottom:1px solid rgba(255,255,255,0.05);"
-                    "border-left:4px solid transparent;border-right:1px solid rgba(255,255,255,0.05);'></div>",
-                    unsafe_allow_html=True)
-
-                # ── Botones inferiores: Detalles + Añadir ──
-                btn_c1, btn_c2 = st.columns([3, 1], gap="small")
-                with btn_c1:
-                    btn_label = "▼ Detalles" if is_selected else "Ver detalles"
-                    btn_type  = "primary" if is_selected else "secondary"
-                    if st.button(btn_label, key=f"plan_day_sel_{i}",
-                                 use_container_width=True, type=btn_type):
+            with btn_cols[i]:
+                bc1, bc2 = st.columns([3, 1], gap="small")
+                with bc1:
+                    lbl = "▼" if is_selected else "···"
+                    if st.button(lbl, key=f"plan_day_sel_{i}",
+                                 use_container_width=True,
+                                 type="primary" if is_selected else "secondary"):
                         st.session_state["plan_selected_day_idx"] = None if is_selected else i
                         st.session_state["plan_add_session_day"]  = None
                         st.rerun()
-                with btn_c2:
-                    add_type = "primary" if is_adding else "secondary"
-                    if st.button("➕", key=f"plan_day_add_{i}",
-                                 use_container_width=True, type=add_type, help="Añadir sesión"):
+                with bc2:
+                    if st.button("＋", key=f"plan_day_add_{i}",
+                                 use_container_width=True,
+                                 type="primary" if is_adding else "secondary",
+                                 help="Añadir sesión"):
                         st.session_state["plan_add_session_day"] = None if is_adding else i
                         st.rerun()
 
