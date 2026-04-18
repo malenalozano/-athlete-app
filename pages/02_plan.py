@@ -1068,9 +1068,11 @@ body{{background:transparent;font-family:-apple-system,BlinkMacSystemFont,'Segoe
 }}
 </style></head><body>
 <div class="board" id="board"></div>
+<div id="dbg" style="font-size:9px;color:#6b7280;padding:4px 6px;"></div>
 <script>
 const B={_bj};
 let src=null;
+function dbg(msg){{document.getElementById('dbg').textContent=msg;}}
 function build(){{
   const el=document.getElementById('board');
   el.innerHTML='';
@@ -1099,10 +1101,28 @@ function build(){{
       e.preventDefault();col.classList.remove('over');
       if(!src||src.di===di)return;
       const mv=JSON.stringify({{from_day:src.di,from_idx:src.ii,to_day:di}});
-      try{{
-        window.parent.location.search='?dnd_move='+encodeURIComponent(mv);
-      }}catch(err){{
-        window.parent.location.href=window.parent.location.pathname+'?dnd_move='+encodeURIComponent(mv);
+      dbg('DROP: '+mv+' — intentando navegación…');
+      // Intentar acceso same-origin
+      let parentPath='/plan';
+      let canAccessParent=false;
+      try{{parentPath=window.parent.location.pathname;canAccessParent=true;}}catch(e){{dbg('CROSS-ORIGIN: '+e.message);}}
+      if(canAccessParent){{
+        // Same-origin: modificar URL directamente
+        try{{
+          window.parent.history.replaceState({{}},'',parentPath+'?dnd_move='+encodeURIComponent(mv));
+          window.parent.dispatchEvent(new PopStateEvent('popstate',{{state:{{}}}}));
+          dbg('pushState OK');
+        }}catch(err){{
+          dbg('pushState ERR: '+err.message);
+        }}
+      }}else{{
+        // Cross-origin fallback: form submit target=_parent
+        const frm=document.createElement('form');
+        frm.method='GET';frm.action='/plan';frm.target='_parent';
+        const inp=document.createElement('input');
+        inp.type='hidden';inp.name='dnd_move';inp.value=mv;
+        frm.appendChild(inp);document.body.appendChild(frm);
+        dbg('form submit…');frm.submit();
       }}
     }});
 
