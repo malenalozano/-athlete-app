@@ -538,74 +538,110 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-_z2_cols = st.columns(3, gap="medium")
-with _z2_cols[0]:
-    if _df_z2.empty:
-        st.markdown(
-            "<div style='background:#161B22;border:1px solid rgba(0,212,255,0.15);border-radius:12px;padding:1.5rem;text-align:center;"
-            "color:#484F58;font-size:0.875rem;min-height:220px;display:flex;align-items:center;justify-content:center;'>"
-            "Sin carreras en zona 2 por debajo de 150 ppm aún.</div>",
-            unsafe_allow_html=True,
-        )
-    else:
-        _z2_labels = _df_z2["week_number"].tolist()
-        _z2_week_labels = _df_z2["week_label"].tolist()
-        _z2_speed = _df_z2["velocidad_media_kmh"].round(2).tolist()
-        _z2_sessions = _df_z2["sesiones_z2"].tolist()
+if _df_z2.empty:
+    st.markdown(
+        "<div style='background:#161B22;border:1px solid rgba(0,212,255,0.15);border-radius:12px;padding:1.5rem;text-align:center;"
+        "color:#484F58;font-size:0.875rem;'>Sin carreras en zona 2 por debajo de 150 ppm aún.</div>",
+        unsafe_allow_html=True,
+    )
+else:
+    _z2_labels = _df_z2["week_number"].tolist()
+    _z2_week_labels = _df_z2["week_label"].tolist()
+    _z2_speed = _df_z2["velocidad_media_kmh"].round(2).tolist()
+    _z2_sessions = _df_z2["sesiones_z2"].tolist()
 
-        fig_z2 = go.Figure()
-        fig_z2.add_trace(go.Scatter(
+    _z2_cols = st.columns(3, gap="small")
+
+    # Gráfico 1: Velocidad media
+    with _z2_cols[0]:
+        fig_z2_speed = go.Figure()
+        fig_z2_speed.add_trace(go.Scatter(
             x=[str(w) for w in _z2_labels],
             y=_z2_speed,
             mode="lines+markers",
-            line=dict(color="#00D4FF", width=2.8),
-            marker=dict(color="#C9FF00", size=8, line=dict(color="#0E1117", width=1.5)),
-            hovertemplate="<b>Semana %{x}</b><br>Fecha: %{customdata}<br>Velocidad media: %{y:.2f} km/h<extra></extra>",
-            customdata=_z2_week_labels,
+            line=dict(color="#00D4FF", width=2.5),
+            marker=dict(color="#C9FF00", size=7, line=dict(color="#0E1117", width=1.5)),
+            hovertemplate="<b>Semana %{x}</b><br>%{y:.2f} km/h<extra></extra>",
+            fill="tozeroy",
+            fillcolor="rgba(0,212,255,0.08)",
             showlegend=False,
         ))
-        fig_z2.update_layout(
-            height=280,
+        fig_z2_speed.update_layout(
+            height=260,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=40, r=20, t=24, b=40),
-            xaxis=dict(type="category", showgrid=False, zeroline=False, tickfont=dict(color="#8B949E", size=10), showline=False, title="Semana", title_font=dict(color="#8B949E", size=10)),
-            yaxis=dict(showgrid=True, gridcolor="rgba(48,54,61,0.5)", zeroline=False, tickfont=dict(color="#8B949E", size=10), showline=False, title="km/h", title_font=dict(color="#8B949E", size=10)),
+            margin=dict(l=35, r=15, t=30, b=35),
+            xaxis=dict(type="category", showgrid=False, zeroline=False, tickfont=dict(color="#8B949E", size=9)),
+            yaxis=dict(showgrid=True, gridcolor="rgba(48,54,61,0.4)", zeroline=False, tickfont=dict(color="#8B949E", size=9), ticksuffix=" km/h"),
             font=dict(family="Inter, sans-serif"),
         )
         st.markdown(
-            "<div style='background:#161B22;border:1px solid rgba(0,212,255,0.18);border-radius:12px;padding:1rem 1rem 0.75rem;min-height:220px;'>"
-            "<div style='display:flex;justify-content:space-between;align-items:flex-start;gap:0.75rem;margin-bottom:0.5rem;'>"
-            "<div>"
-            "<div style='color:#00D4FF;font-size:0.95rem;font-weight:800;'>Zona 2</div>"
-            "<div style='color:white;font-size:0.95rem;font-weight:700;margin-top:2px;'>Velocidad media en sesiones &lt; 150 ppm</div>"
-            "</div>"
-            f"<div style='color:#8B949E;font-size:0.8rem;text-align:right;'>Sesiones: {int(sum(_z2_sessions))}</div>"
-            "</div>",
+            "<div style='color:#00D4FF;font-size:0.85rem;font-weight:700;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;'>Velocidad Media</div>",
             unsafe_allow_html=True,
         )
-        st.plotly_chart(fig_z2, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_z2_speed, use_container_width=True, config={"displayModeBar": False})
         st.markdown(
-            f"<div style='display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:-0.2rem;'>"
-            f"<span style='background:rgba(0,212,255,0.12);color:#7dd3fc;border:1px solid rgba(0,212,255,0.2);border-radius:999px;padding:4px 10px;font-size:0.72rem;font-weight:700;'>Última semana: {_z2_speed[-1]:.2f} km/h</span>"
-            f"<span style='background:rgba(201,255,0,0.12);color:#C9FF00;border:1px solid rgba(201,255,0,0.22);border-radius:999px;padding:4px 10px;font-size:0.72rem;font-weight:700;'>Sesiones Z2: {len(_z2_speed)}</span>"
+            f"<div style='color:#7dd3fc;font-size:0.75rem;font-weight:600;text-align:center;margin-top:-0.3rem;'>{_z2_speed[-1]:.2f} km/h</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Gráfico 2: Número de sesiones
+    with _z2_cols[1]:
+        fig_z2_ses = go.Figure()
+        fig_z2_ses.add_trace(go.Bar(
+            x=[str(w) for w in _z2_labels],
+            y=_z2_sessions,
+            marker=dict(color="#C9FF00", line=dict(color="rgba(201,255,0,0.3)", width=1)),
+            hovertemplate="<b>Semana %{x}</b><br>%{y} sesiones<extra></extra>",
+            showlegend=False,
+        ))
+        fig_z2_ses.update_layout(
+            height=260,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=35, r=15, t=30, b=35),
+            xaxis=dict(type="category", showgrid=False, zeroline=False, tickfont=dict(color="#8B949E", size=9)),
+            yaxis=dict(showgrid=True, gridcolor="rgba(48,54,61,0.4)", zeroline=False, tickfont=dict(color="#8B949E", size=9)),
+            font=dict(family="Inter, sans-serif"),
+        )
+        st.markdown(
+            "<div style='color:#C9FF00;font-size:0.85rem;font-weight:700;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;'>Sesiones</div>",
+            unsafe_allow_html=True,
+        )
+        st.plotly_chart(fig_z2_ses, use_container_width=True, config={"displayModeBar": False})
+        st.markdown(
+            f"<div style='color:#C9FF00;font-size:0.75rem;font-weight:600;text-align:center;margin-top:-0.3rem;'>Total: {int(sum(_z2_sessions))} sesiones</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Gráfico 3: Estadísticas resumen
+    with _z2_cols[2]:
+        _z2_avg_speed = sum(_z2_speed) / len(_z2_speed) if _z2_speed else 0
+        _z2_max_speed = max(_z2_speed) if _z2_speed else 0
+        _z2_min_speed = min(_z2_speed) if _z2_speed else 0
+        _z2_avg_sessions = sum(_z2_sessions) / len(_z2_sessions) if _z2_sessions else 0
+
+        st.markdown(
+            "<div style='color:#22c55e;font-size:0.85rem;font-weight:700;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;'>Resumen</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"<div style='background:linear-gradient(135deg,#0f1724,#101928);border-radius:12px;padding:1rem;space-y:0.5rem;'>"
+            f"<div style='margin-bottom:0.75rem;'>"
+            f"<div style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;font-weight:600;margin-bottom:2px;'>Velocidad Promedio</div>"
+            f"<div style='color:#22c55e;font-size:1.15rem;font-weight:800;'>{_z2_avg_speed:.2f} <span style=\"font-size:0.8rem;color:#8B949E;\">km/h</span></div>"
+            f"</div>"
+            f"<div style='margin-bottom:0.75rem;'>"
+            f"<div style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;font-weight:600;margin-bottom:2px;'>Velocidad Máx</div>"
+            f"<div style='color:#00D4FF;font-size:1.15rem;font-weight:800;'>{_z2_max_speed:.2f} <span style=\"font-size:0.8rem;color:#8B949E;\">km/h</span></div>"
+            f"</div>"
+            f"<div style='margin-bottom:0.75rem;'>"
+            f"<div style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;font-weight:600;margin-bottom:2px;'>Sesiones Prom</div>"
+            f"<div style='color:#C9FF00;font-size:1.15rem;font-weight:800;'>{_z2_avg_sessions:.1f} <span style=\"font-size:0.8rem;color:#8B949E;\">por semana</span></div>"
+            f"</div>"
             f"</div>",
             unsafe_allow_html=True,
         )
-
-with _z2_cols[1]:
-    st.markdown(
-        "<div style='background:#161B22;border:1px dashed rgba(139,148,158,0.35);border-radius:12px;padding:1.25rem;min-height:220px;display:flex;align-items:center;justify-content:center;text-align:center;color:#8B949E;'>"
-        "Bloque reservado para métricas de zona 2 por definir</div>",
-        unsafe_allow_html=True,
-    )
-
-with _z2_cols[2]:
-    st.markdown(
-        "<div style='background:#161B22;border:1px dashed rgba(139,148,158,0.35);border-radius:12px;padding:1.25rem;min-height:220px;display:flex;align-items:center;justify-content:center;text-align:center;color:#8B949E;'>"
-        "Bloque reservado para insights complementarios</div>",
-        unsafe_allow_html=True,
-    )
 
 # ---------------------------------------------------------------------------
 # 7. Progresión de Pesos
@@ -679,6 +715,4 @@ if dias_anal < 0:
 elif dias_anal < 15:
     st.error(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). ¡Pide cita urgente!")
 elif dias_anal < 30:
-    st.warning(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). Empieza a gestionar cita.")
-else:
-    st.info(f"🩸 Próxima analítica: 1 mayo 2026 (en {dias_anal} días).")
+    st.warning(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). Pide cita pronto.")
