@@ -83,7 +83,7 @@ def _construir_contexto_atleta(usuario_id: int, fase: dict, semaforo: dict, dato
     lineas = [
         "═══════════════════════════════════════",
         "ATLETA: Malena, 21 años, 55 kg, mujer.",
-        "OBJETIVO: Maratón Sub 3:30 — 21 febrero 2027.",
+        "OBJETIVO: Maratón ritmo 4:58 min/km — 21 febrero 2027.",
         "PERFIL: Atleta híbrida running + fuerza. Historial periostitis tibia.",
         "═══════════════════════════════════════",
         "",
@@ -254,7 +254,7 @@ def _pedir_descripcion_ia(sesion: dict, contexto: str) -> str:
         intens   = sesion.get("intensidad", "")
         dia      = sesion.get("dia", "")
 
-        prompt = f"""Eres el entrenador personal de Malena, atleta híbrida de 21 años entrenando para Maratón Sub 3:30. \
+        prompt = f"""Eres el entrenador personal de Malena, atleta híbrida de 21 años entrenando para maratón a 4:58 min/km. \
 Sé conciso, directo y motivador. USA los datos del contexto para personalizar (no repitas todo el contexto).
 
 CONTEXTO ATLETA:

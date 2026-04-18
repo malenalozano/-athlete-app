@@ -271,7 +271,7 @@ def obtener_titulo_macrociclo(usuario_id: int | None = None) -> str:
     if objetivo_tipo in ("ultramaraton", "ultra", "trail_ultra"):
         return f"Macrociclo — Ultra 100km · {fecha_str}"
     else:
-        return f"Macrociclo — Maratón Sub 3:30 · {fecha_str}"
+        return f"Macrociclo — Maratón (4:58 min/km) · {fecha_str}"
 
 
 def render_macrociclo(usuario_id: int | None = None):

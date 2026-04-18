@@ -33,6 +33,21 @@ def _fmt_fecha_es(fecha: date) -> str:
     return f"{fecha.day:02d} {meses[fecha.month]} {fecha.year}"
 
 
+def _fmt_ritmo_min_km(valor_min_km: float) -> str:
+    try:
+        valor = float(valor_min_km)
+    except Exception:
+        return "-"
+    if valor <= 0:
+        return "-"
+    minutos = int(valor)
+    segundos = int(round((valor - minutos) * 60))
+    if segundos == 60:
+        minutos += 1
+        segundos = 0
+    return f"{minutos}:{segundos:02d} min/km"
+
+
 def inicio_semana(dt):
     """Devuelve el datetime del lunes de la semana de dt."""
     return dt - timedelta(days=dt.weekday())
@@ -103,25 +118,25 @@ def construir_checkpoints_objetivo(perfil, df_act):
     objetivo = (perfil.get("objetivo") or "").lower()
     if "marat" in objetivo:
         checkpoints = [
-            {"nombre": "5K en Sub 22:30", "dist_min": 4.6, "dist_max": 5.4, "ritmo_max": 4.5, "detalle": "Demuestra la velocidad máxima necesaria."},
-            {"nombre": f"10K · {_fmt_fecha_es(FECHA_CHECKPOINT_10K)}", "dist_min": 9.2, "dist_max": 10.8, "ritmo_max": 4.45, "detalle": "Objetivo de control 12 semanas antes de la maratón. Ritmo meta: sub 44:30."},
-            {"nombre": "Media Maratón en Sub 1h42", "dist_min": 20.0, "dist_max": 22.2, "ritmo_max": 4.84, "detalle": "Checkpoint definitivo de preparación."},
+            {"nombre": "5K · ritmo objetivo 4:30 min/km", "dist_min": 4.6, "dist_max": 5.4, "ritmo_max": 4.5, "detalle": "Demuestra capacidad de sostener ritmo alto."},
+            {"nombre": f"10K · {_fmt_fecha_es(FECHA_CHECKPOINT_10K)}", "dist_min": 9.2, "dist_max": 10.8, "ritmo_max": 4.45, "detalle": "Objetivo de control 12 semanas antes de la maratón. Ritmo meta: 4:27 min/km."},
+            {"nombre": "Media Maratón · ritmo objetivo 4:50 min/km", "dist_min": 20.0, "dist_max": 22.2, "ritmo_max": 4.84, "detalle": "Checkpoint definitivo de preparación."},
         ]
     elif "media" in objetivo:
         checkpoints = [
-            {"nombre": "5K en Sub 23:30", "dist_min": 4.6, "dist_max": 5.4, "ritmo_max": 4.7, "detalle": "Velocidad base para media maratón sólida."},
-            {"nombre": "10K en Sub 49:30", "dist_min": 9.2, "dist_max": 10.8, "ritmo_max": 4.95, "detalle": "Umbral aeróbico bien colocado."},
-            {"nombre": "15K en Sub 1h16", "dist_min": 14.0, "dist_max": 16.2, "ritmo_max": 5.07, "detalle": "Confirma resistencia específica."},
+            {"nombre": "5K · ritmo objetivo 4:42 min/km", "dist_min": 4.6, "dist_max": 5.4, "ritmo_max": 4.7, "detalle": "Base de ritmo para media maratón sólida."},
+            {"nombre": "10K · ritmo objetivo 4:57 min/km", "dist_min": 9.2, "dist_max": 10.8, "ritmo_max": 4.95, "detalle": "Umbral aeróbico bien colocado."},
+            {"nombre": "15K · ritmo objetivo 5:04 min/km", "dist_min": 14.0, "dist_max": 16.2, "ritmo_max": 5.07, "detalle": "Confirma resistencia específica."},
         ]
     elif "hyrox" in objetivo:
         checkpoints = [
-            {"nombre": "5K en Sub 25:00", "dist_min": 4.6, "dist_max": 5.4, "ritmo_max": 5.0, "detalle": "Base aeróbica para encadenar estaciones."},
+            {"nombre": "5K · ritmo objetivo 5:00 min/km", "dist_min": 4.6, "dist_max": 5.4, "ritmo_max": 5.0, "detalle": "Base aeróbica para encadenar estaciones."},
             {"nombre": "2+ sesiones fuerza/semana", "dist_min": None, "dist_max": None, "ritmo_max": None, "detalle": "La fuerza sostenida es parte del objetivo."},
         ]
     else:
         checkpoints = [
-            {"nombre": "5K en Sub 25:00", "dist_min": 4.6, "dist_max": 5.4, "ritmo_max": 5.0, "detalle": "Primer gran checkpoint de economía y ritmo."},
-            {"nombre": "10K en Sub 52:00", "dist_min": 9.2, "dist_max": 10.8, "ritmo_max": 5.2, "detalle": "Sostener el ritmo sin deriva fuerte de fatiga."},
+            {"nombre": "5K · ritmo objetivo 5:00 min/km", "dist_min": 4.6, "dist_max": 5.4, "ritmo_max": 5.0, "detalle": "Primer gran checkpoint de economía de carrera."},
+            {"nombre": "10K · ritmo objetivo 5:12 min/km", "dist_min": 9.2, "dist_max": 10.8, "ritmo_max": 5.2, "detalle": "Sostener el ritmo sin deriva fuerte de fatiga."},
         ]
 
     actividades = df_act.copy() if not df_act.empty else pd.DataFrame()
@@ -167,10 +182,10 @@ def checkpoints_objetivo_dashboard(usuario_id, objetivo_tipo=None):
         {
             "titulo": "5K",
             "meta_seg": 22 * 60 + 30,
-            "meta_txt": "Sub 22:30",
+            "meta_txt": _fmt_ritmo_min_km(((22 * 60 + 30) / 60.0) / 5.0),
             "dist_min_km": 4.6,
             "dist_max_km": 5.4,
-            "detalle": "Demuestra la velocidad máxima necesaria",
+            "detalle": "Demuestra capacidad de sostener ritmo alto",
             "accent": "#00db81",
         },
         {
@@ -179,13 +194,13 @@ def checkpoints_objetivo_dashboard(usuario_id, objetivo_tipo=None):
             "meta_txt": _fmt_fecha_es(FECHA_CHECKPOINT_10K),
             "dist_min_km": 9.2,
             "dist_max_km": 10.8,
-            "detalle": "Objetivo de control 12 semanas antes de la maratón. Ritmo meta: sub 44:30",
+            "detalle": "Objetivo de control 12 semanas antes de la maratón. Ritmo meta: 4:27 min/km",
             "accent": "#1ec8ff",
         },
         {
             "titulo": "Media Maratón",
             "meta_seg": 1 * 3600 + 42 * 60,
-            "meta_txt": "Sub 1h42",
+            "meta_txt": _fmt_ritmo_min_km(((1 * 3600 + 42 * 60) / 60.0) / 21.0975),
             "dist_min_km": 20.0,
             "dist_max_km": 22.2,
             "detalle": "El checkpoint definitivo para el ritmo de maratón",
