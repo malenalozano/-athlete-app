@@ -2,7 +2,6 @@
 pages/2_plan.py — Plan semanal rediseñado.
 Sub-tabs: Generar Plan (cards de días) | Datos (análisis completo del entrenador).
 """
-import os
 import pandas as pd
 import streamlit as st
 import re
@@ -22,9 +21,9 @@ except Exception as e:
     sort_items = None
     _SORTABLES_IMPORT_ERROR = str(e)
 
-# ── DnD board component (declare_component para retorno nativo a Python) ──────
-_DND_COMPONENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "streamlit_dnd")
-_dnd_board = st.components.v1.declare_component("dnd_board", path=_DND_COMPONENT_DIR)
+# ── DnD board component (importado desde módulo propio para que declare_component
+#    pueda resolver el frame del llamador correctamente) ────────────────────────
+from src.components.dnd_board import dnd_board as _dnd_board
 
 render_navbar("plan")
 
