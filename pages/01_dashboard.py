@@ -679,4 +679,6 @@ if dias_anal < 0:
 elif dias_anal < 15:
     st.error(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). ¡Pide cita urgente!")
 elif dias_anal < 30:
-    st.warning(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). Empieza a 
+    st.warning(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). Empieza a gestionar cita.")
+else:
+    st.info(f"🩸 Próxima analítica: 1 mayo 2026 (en {dias_anal} días).")
