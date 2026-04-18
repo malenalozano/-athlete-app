@@ -1101,28 +1101,22 @@ function build(){{
       e.preventDefault();col.classList.remove('over');
       if(!src||src.di===di)return;
       const mv=JSON.stringify({{from_day:src.di,from_idx:src.ii,to_day:di}});
-      dbg('DROP: '+mv+' — intentando navegación…');
-      // Intentar acceso same-origin
-      let parentPath='/plan';
-      let canAccessParent=false;
-      try{{parentPath=window.parent.location.pathname;canAccessParent=true;}}catch(e){{dbg('CROSS-ORIGIN: '+e.message);}}
-      if(canAccessParent){{
-        // Same-origin: modificar URL directamente
-        try{{
-          window.parent.history.replaceState({{}},'',parentPath+'?dnd_move='+encodeURIComponent(mv));
-          window.parent.dispatchEvent(new PopStateEvent('popstate',{{state:{{}}}}));
-          dbg('pushState OK');
-        }}catch(err){{
-          dbg('pushState ERR: '+err.message);
-        }}
-      }}else{{
-        // Cross-origin fallback: form submit target=_parent
+      dbg('drop → enviando…');
+      // Estrategia 1: location.href same-origin (Streamlit Cloud = mismo origen)
+      let sent=false;
+      try{{
+        const base=window.parent.location.pathname||'/plan';
+        window.parent.location.href=base+'?dnd_move='+encodeURIComponent(mv);
+        sent=true;dbg('href OK');
+      }}catch(e){{dbg('href err:'+e.message);}}
+      if(!sent){{
+        // Fallback: form GET target=_parent (cross-origin safe)
         const frm=document.createElement('form');
         frm.method='GET';frm.action='/plan';frm.target='_parent';
         const inp=document.createElement('input');
         inp.type='hidden';inp.name='dnd_move';inp.value=mv;
         frm.appendChild(inp);document.body.appendChild(frm);
-        dbg('form submit…');frm.submit();
+        dbg('form OK');frm.submit();
       }}
     }});
 
