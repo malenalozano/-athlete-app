@@ -249,24 +249,25 @@ def obtener_estado_ciclo_malena(usuario_id: int = 1):
     }
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def obtener_titulo_macrociclo(usuario_id: int | None = None) -> str:
     """Devuelve el título dinámico del macrociclo basado en perfil usuario."""
     from src.db.db_manager import obtener_perfil
     from datetime import datetime
-    
+
     if usuario_id is None:
         usuario_id = int(st.session_state.get("usuario_id", 1))
-    
+
     perfil = obtener_perfil(usuario_id) or {}
     objetivo_tipo = str(perfil.get("objetivo_tipo") or "maraton").lower()
     fecha_objetivo = perfil.get("fecha_objetivo", "")
-    
+
     try:
         fecha_obj = datetime.strptime(fecha_objetivo, "%Y-%m-%d").date()
         fecha_str = fecha_obj.strftime("%b %Y")
     except:
         fecha_str = ""
-    
+
     if objetivo_tipo in ("ultramaraton", "ultra", "trail_ultra"):
         return f"Macrociclo — Ultra 100km · {fecha_str}"
     else:

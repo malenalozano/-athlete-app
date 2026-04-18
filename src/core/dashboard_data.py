@@ -445,7 +445,7 @@ def progresion_pesos_ejercicios(usuario_id) -> pd.DataFrame:
             "SELECT e.ejercicio,e.grupo_muscular,e.peso,e.series,e.repeticiones,s.fecha,"
             "s.id AS sesion_id,e.id AS ejercicio_registro_id "
             "FROM ejercicios_fuerza e JOIN sesiones_fuerza s ON s.id=e.sesion_id "
-            "WHERE s.usuario_id=? ORDER BY s.fecha DESC,s.id DESC,e.id DESC LIMIT 300",
+            "WHERE s.usuario_id=? ORDER BY s.fecha DESC,s.id DESC,e.id DESC LIMIT 150",
             conn, params=(usuario_id,))
     finally:
         conn.close()
@@ -514,8 +514,9 @@ def construir_calendario_semanal_actividades(df_act, df_fuerza, semana_inicio):
 
 
 @st.cache_data(ttl=300)
+@st.cache_data(ttl=600)
 def cargar_plan_semana_cache(usuario_id: int, lunes_str: str) -> dict:
-    """Carga el plan semanal con cache de 5 min para el dashboard."""
+    """Carga el plan semanal con cache de 10 min para el dashboard."""
     from src.plan.motor import generar_plan_semana
     try:
         lunes = datetime.strptime(lunes_str, "%Y-%m-%d")

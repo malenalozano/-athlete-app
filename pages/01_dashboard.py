@@ -34,10 +34,11 @@ try:
         st.stop()
     user_actual = st.session_state.usuario_id
 
-    # One-time cache refresh so dashboard UI/data changes show immediately after deploy/restart.
-    if "dashboard_force_refresh_done" not in st.session_state:
+    # One-time cache refresh on first load (not on every rerun)
+    # Only clear cache on actual deploy/restart, not on user navigation
+    if "_app_version" not in st.session_state:
         st.cache_data.clear()
-        st.session_state["dashboard_force_refresh_done"] = True
+        st.session_state["_app_version"] = "1.0"
 
     if "dashboard_last_user" not in st.session_state:
         st.session_state["dashboard_last_user"] = user_actual
@@ -168,11 +169,12 @@ _hero_html = (
     'border:1px solid rgba(0,212,255,0.3);box-shadow:0 0 24px rgba(0,212,255,0.15);">'
     '<p style="font-size:0.65rem;color:#8B949E;text-transform:uppercase;letter-spacing:0.1em;'
     'margin:0 0 0.25rem;">Objetivo principal</p>'
-    f'<p style="font-size:1rem;font-weight:800;color:white;margin:0 0 0.25rem;">{_obj_nombre}</p>'
-    '<p style="font-size:1.875rem;font-weight:900;margin:0.25rem 0 0;'
+    f'<p style="font-size:1rem;font-weight:800;color:white;margin:0 0 0.5rem;">{_obj_nombre}</p>'
+    '<p style="font-size:1.875rem;font-weight:900;margin:0;'
     'background:linear-gradient(90deg,#00D4FF,#C9FF00);-webkit-background-clip:text;'
     f'-webkit-text-fill-color:transparent;">{_dias_left} días</p>'
-    f'<p style="font-size:0.65rem;color:#8B949E;margin:0.25rem 0 0;">{_fecha_formateada} · {_semanas_left} semanas</p>'
+    f'<p style="font-size:1.1rem;font-weight:800;margin:0.25rem 0 0;color:#C9FF00;">{_semanas_left} semanas</p>'
+    f'<p style="font-size:0.65rem;color:#8B949E;margin:0.5rem 0 0;">{_fecha_formateada}</p>'
     '</div>'
     '</div>'
     '</div>'
@@ -553,7 +555,7 @@ with _z2_cols[0]:
 
         fig_z2 = go.Figure()
         fig_z2.add_trace(go.Scatter(
-            x=_z2_labels,
+            x=[str(w) for w in _z2_labels],
             y=_z2_speed,
             mode="lines+markers",
             line=dict(color="#00D4FF", width=2.8),
@@ -563,13 +565,12 @@ with _z2_cols[0]:
             showlegend=False,
         ))
         fig_z2.update_layout(
-            height=260,
+            height=280,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=0, r=0, t=16, b=0),
-            xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(color="#8B949E", size=10), showline=False),
-            yaxis=dict(showgrid=True, gridcolor="rgba(48,54,61,0.5)", zeroline=False, tickfont=dict(color="#8B949E", size=10), showline=False, title="km/h"),
-            xaxis_title="Semana",
+            margin=dict(l=40, r=20, t=24, b=40),
+            xaxis=dict(type="category", showgrid=False, zeroline=False, tickfont=dict(color="#8B949E", size=10), showline=False, title="Semana", title_font=dict(color="#8B949E", size=10)),
+            yaxis=dict(showgrid=True, gridcolor="rgba(48,54,61,0.5)", zeroline=False, tickfont=dict(color="#8B949E", size=10), showline=False, title="km/h", title_font=dict(color="#8B949E", size=10)),
             font=dict(family="Inter, sans-serif"),
         )
         st.markdown(
@@ -678,6 +679,4 @@ if dias_anal < 0:
 elif dias_anal < 15:
     st.error(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). ¡Pide cita urgente!")
 elif dias_anal < 30:
-    st.warning(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). Empieza a gestionar cita.")
-else:
-    st.info(f"🩸 Próxima analítica: 1 mayo 2026 (en {dias_anal} días).")
+    st.warning(f"🩸 Analítica en **{dias_anal} días** (antes del 1 mayo). Empieza a 
