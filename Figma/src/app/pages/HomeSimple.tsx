@@ -21,7 +21,7 @@ export function Home() {
     },
     {
       distance: "10K",
-      time: "Sub 46:30",
+      time: "Sub 44:30",
       description: "Confirma umbral y capacidad de sostener el ritmo",
       status: "pending" as const,
     },

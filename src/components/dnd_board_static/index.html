@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}
+.board{display:flex;gap:8px;width:100%;min-height:80px}
+.day-col{
+  flex:1;min-width:0;
+  background:rgba(14,17,23,0.97);
+  border:1px solid rgba(255,255,255,0.07);
+  border-radius:12px;overflow:hidden;
+  display:flex;flex-direction:column;
+  transition:border-color .15s,background .15s,box-shadow .15s
+}
+.day-col.today{border-color:rgba(201,255,0,0.3)}
+.day-col.over{
+  border-color:rgba(201,255,0,0.6)!important;
+  background:rgba(15,28,15,0.98)!important;
+  box-shadow:0 0 0 1px rgba(201,255,0,0.2),0 4px 20px rgba(201,255,0,0.08)!important
+}
+.day-header{padding:8px 10px 6px;border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0}
+.day-name{font-size:9px;color:#6b7280;font-weight:800;text-transform:uppercase;letter-spacing:.08em;line-height:1}
+.day-date{font-size:11px;color:#c8d1d9;font-weight:700;margin-top:2px;line-height:1}
+.today-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#C9FF00;margin-left:4px;vertical-align:middle}
+.day-body{padding:6px;flex:1;min-height:32px}
+.empty-day{text-align:center;padding:10px 4px;color:#374151;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.ses{
+  border:1px solid rgba(255,255,255,0.06);
+  border-radius:9px;padding:6px 8px;margin-bottom:4px;cursor:grab;
+  background:rgba(22,27,34,0.95);user-select:none;
+  transition:opacity .12s,border-color .15s,background .15s,transform .1s
+}
+.ses:hover{border-color:rgba(201,255,0,0.3);background:rgba(30,40,55,0.98);transform:translateY(-1px)}
+.ses.dragging{opacity:.2;cursor:grabbing;transform:scale(.97)}
+.ses-top{display:flex;align-items:center;gap:5px;margin-bottom:2px}
+.ses-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.ses-name{font-size:10px;font-weight:700;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ses-sub{font-size:9px;color:#6b7280;line-height:1.2;padding-left:12px}
+.ses-int{display:inline-block;font-size:8px;font-weight:700;padding:1px 5px;border-radius:10px;color:inherit;border:1px solid currentColor;opacity:.75;margin-top:3px}
+#dbg{font-size:9px;color:#6b7280;padding:2px 6px;min-height:14px}
+</style>
+</head>
+<body>
+<div class="board" id="board"></div>
+<div id="dbg"></div>
+<script>
+// ── Streamlit component protocol via raw postMessage (no external CDN needed) ──
+var src = null;
+var _valueSent = false;
+
+function dbg(msg) { document.getElementById('dbg').textContent = msg; }
+
+function sendReady() {
+    window.parent.postMessage({ isStreamlitMessage: true, type: 'streamlit:componentReady', apiVersion: 1 }, '*');
+}
+
+function sendValue(value) {
+    window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: 'streamlit:setComponentValue',
+        value: value,
+        dataType: 'json'
+    }, '*');
+}
+
+function sendHeight() {
+    var h = Math.max(80, document.body.scrollHeight + 16);
+    window.parent.postMessage({ isStreamlitMessage: true, type: 'streamlit:setFrameHeight', height: h }, '*');
+}
+
+function renderBoard(B) {
+    src = null;
+    _valueSent = false;
+    var el = document.getElementById('board');
+    el.innerHTML = '';
+
+    B.forEach(function(day, di) {
+        var col = document.createElement('div');
+        col.className = 'day-col' + (day.today ? ' today' : '');
+
+        var hdr = document.createElement('div');
+        hdr.className = 'day-header';
+        var nm = document.createElement('div');
+        nm.className = 'day-name';
+        nm.textContent = day.header;
+        if (day.today) {
+            var dot = document.createElement('span');
+            dot.className = 'today-dot';
+            nm.appendChild(dot);
+        }
+        var dt = document.createElement('div');
+        dt.className = 'day-date';
+        dt.textContent = day.date;
+        hdr.appendChild(nm);
+        hdr.appendChild(dt);
+        col.appendChild(hdr);
+
+        col.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            col.classList.add('over');
+        });
+        col.addEventListener('dragleave', function(e) {
+            if (!col.contains(e.relatedTarget)) col.classList.remove('over');
+        });
+        col.addEventListener('drop', (function(colEl, targetDi) { return function(e) {
+            e.preventDefault();
+            colEl.classList.remove('over');
+            if (!src || src.di === targetDi || _valueSent) return;
+            _valueSent = true;
+            var mv = { from_day: src.di, from_idx: src.ii, to_day: targetDi };
+            dbg('drop → ' + JSON.stringify(mv));
+            sendValue(mv);
+        }; })(col, di));
+
+        var body = document.createElement('div');
+        body.className = 'day-body';
+
+        if (day.items.length === 0) {
+            var empty = document.createElement('div');
+            empty.className = 'empty-day';
+            empty.textContent = 'descanso';
+            body.appendChild(empty);
+        }
+
+        day.items.forEach((function(parentDi) { return function(item, ii) {
+            var s = document.createElement('div');
+            s.className = 'ses';
+            s.draggable = true;
+
+            var top = document.createElement('div');
+            top.className = 'ses-top';
+            top.style.pointerEvents = 'none';
+            var sdot = document.createElement('span');
+            sdot.className = 'ses-dot';
+            sdot.style.background = item.color;
+            var name = document.createElement('span');
+            name.className = 'ses-name';
+            name.style.color = item.color;
+            name.textContent = item.emoji + ' ' + item.label;
+            top.appendChild(sdot);
+            top.appendChild(name);
+            s.appendChild(top);
+
+            var sub = document.createElement('div');
+            sub.className = 'ses-sub';
+            sub.style.pointerEvents = 'none';
+            sub.textContent = item.carga;
+            if (item.int && item.int !== '—') {
+                var badge = document.createElement('span');
+                badge.className = 'ses-int';
+                badge.style.color = item.color;
+                badge.style.borderColor = item.color;
+                badge.textContent = item.int;
+                sub.appendChild(document.createElement('br'));
+                sub.appendChild(badge);
+            }
+            s.appendChild(sub);
+
+            s.addEventListener('dragstart', (function(di2, ii2) { return function(e) {
+                src = { di: di2, ii: ii2 };
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', JSON.stringify({ di: di2, ii: ii2 }));
+                setTimeout(function() { s.classList.add('dragging'); }, 0);
+            }; })(parentDi, ii));
+
+            s.addEventListener('dragend', function() {
+                s.classList.remove('dragging');
+                src = null;
+                document.querySelectorAll('.day-col').forEach(function(c) { c.classList.remove('over'); });
+            });
+
+            body.appendChild(s);
+        }; })(di));
+
+        col.appendChild(body);
+        el.appendChild(col);
+    });
+
+    setTimeout(sendHeight, 50);
+}
+
+window.addEventListener('message', function(event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'streamlit:render') {
+        var args = data.args || {};
+        try {
+            var boardData = typeof args.board === 'string' ? JSON.parse(args.board) : args.board;
+            if (boardData) renderBoard(boardData);
+        } catch(e) {
+            dbg('err: ' + e.message);
+        }
+    }
+});
+
+sendReady();
+</script>
+</body>
+</html>

@@ -10,7 +10,7 @@ from src.core.navbar import render_navbar
 from src.core.dashboard_data import (
     resumen_semana_con_delta, metricas_garmin, progresion_pesos_ejercicios,
     inicio_semana, cargar_plan_semana_cache, checkpoints_objetivo_dashboard,
-    cargar_km_por_semana,
+    cargar_km_por_semana, cargar_zona2_por_semana,
 )
 from src.core.dashboard_ui import (
     obtener_estado_ciclo_malena,
@@ -434,6 +434,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 _df_run = cargar_km_por_semana(user_actual, semanas=8)
+_df_z2 = cargar_zona2_por_semana(user_actual, semanas=8)
 
 if _df_run.empty:
     st.markdown(
@@ -526,6 +527,84 @@ else:
             unsafe_allow_html=True)
 
 st.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
+
+st.markdown("""
+<div style="display:flex;align-items:center;gap:0.5rem;margin:1.25rem 0 1.15rem;">
+  <span style="color:#00D4FF;font-size:1.1rem;">◉</span>
+  <span style="font-size:1.08rem;font-weight:800;color:white;text-transform:uppercase;letter-spacing:0.07em;">Zona 2 — Últimas 8 Semanas</span>
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(0,212,255,0.35),transparent);margin-left:0.5rem;"></div>
+</div>
+""", unsafe_allow_html=True)
+
+_z2_cols = st.columns(3, gap="medium")
+with _z2_cols[0]:
+    if _df_z2.empty:
+        st.markdown(
+            "<div style='background:#161B22;border:1px solid rgba(0,212,255,0.15);border-radius:12px;padding:1.5rem;text-align:center;"
+            "color:#484F58;font-size:0.875rem;min-height:220px;display:flex;align-items:center;justify-content:center;'>"
+            "Sin carreras en zona 2 por debajo de 150 ppm aún.</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        _z2_labels = _df_z2["week_number"].tolist()
+        _z2_week_labels = _df_z2["week_label"].tolist()
+        _z2_speed = _df_z2["velocidad_media_kmh"].round(2).tolist()
+        _z2_sessions = _df_z2["sesiones_z2"].tolist()
+
+        fig_z2 = go.Figure()
+        fig_z2.add_trace(go.Scatter(
+            x=_z2_labels,
+            y=_z2_speed,
+            mode="lines+markers",
+            line=dict(color="#00D4FF", width=2.8),
+            marker=dict(color="#C9FF00", size=8, line=dict(color="#0E1117", width=1.5)),
+            hovertemplate="<b>Semana %{x}</b><br>Fecha: %{customdata}<br>Velocidad media: %{y:.2f} km/h<extra></extra>",
+            customdata=_z2_week_labels,
+            showlegend=False,
+        ))
+        fig_z2.update_layout(
+            height=260,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=0, r=0, t=16, b=0),
+            xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(color="#8B949E", size=10), showline=False),
+            yaxis=dict(showgrid=True, gridcolor="rgba(48,54,61,0.5)", zeroline=False, tickfont=dict(color="#8B949E", size=10), showline=False, title="km/h"),
+            xaxis_title="Semana",
+            font=dict(family="Inter, sans-serif"),
+        )
+        st.markdown(
+            "<div style='background:#161B22;border:1px solid rgba(0,212,255,0.18);border-radius:12px;padding:1rem 1rem 0.75rem;min-height:220px;'>"
+            "<div style='display:flex;justify-content:space-between;align-items:flex-start;gap:0.75rem;margin-bottom:0.5rem;'>"
+            "<div>"
+            "<div style='color:#00D4FF;font-size:0.95rem;font-weight:800;'>Zona 2</div>"
+            "<div style='color:white;font-size:0.95rem;font-weight:700;margin-top:2px;'>Velocidad media en sesiones &lt; 150 ppm</div>"
+            "</div>"
+            f"<div style='color:#8B949E;font-size:0.8rem;text-align:right;'>Sesiones: {int(sum(_z2_sessions))}</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        st.plotly_chart(fig_z2, use_container_width=True, config={"displayModeBar": False})
+        st.markdown(
+            f"<div style='display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:-0.2rem;'>"
+            f"<span style='background:rgba(0,212,255,0.12);color:#7dd3fc;border:1px solid rgba(0,212,255,0.2);border-radius:999px;padding:4px 10px;font-size:0.72rem;font-weight:700;'>Última semana: {_z2_speed[-1]:.2f} km/h</span>"
+            f"<span style='background:rgba(201,255,0,0.12);color:#C9FF00;border:1px solid rgba(201,255,0,0.22);border-radius:999px;padding:4px 10px;font-size:0.72rem;font-weight:700;'>Sesiones Z2: {len(_z2_speed)}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+with _z2_cols[1]:
+    st.markdown(
+        "<div style='background:#161B22;border:1px dashed rgba(139,148,158,0.35);border-radius:12px;padding:1.25rem;min-height:220px;display:flex;align-items:center;justify-content:center;text-align:center;color:#8B949E;'>"
+        "Bloque reservado para métricas de zona 2 por definir</div>",
+        unsafe_allow_html=True,
+    )
+
+with _z2_cols[2]:
+    st.markdown(
+        "<div style='background:#161B22;border:1px dashed rgba(139,148,158,0.35);border-radius:12px;padding:1.25rem;min-height:220px;display:flex;align-items:center;justify-content:center;text-align:center;color:#8B949E;'>"
+        "Bloque reservado para insights complementarios</div>",
+        unsafe_allow_html=True,
+    )
 
 # ---------------------------------------------------------------------------
 # 7. Progresión de Pesos

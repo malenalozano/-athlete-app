@@ -94,7 +94,7 @@ export function Home() {
 
   const checkpoints: Checkpoint[] = [
     { distance: "5K", time: "Sub 22:30", description: "Velocidad máxima necesaria", status: "completed", bestMark: "21:45" },
-    { distance: "10K", time: "Sub 46:30", description: "Umbral y capacidad de sostener ritmo", status: "pending", bestMark: "47:12" },
+    { distance: "10K", time: "Sub 44:30", description: "Umbral y capacidad de sostener ritmo", status: "pending", bestMark: "47:12" },
     { distance: "Media Maratón", time: "Sub 1h42", description: "Checkpoint definitivo para el ritmo de maratón", status: "pending", bestMark: "1:45:30" },
   ];
 

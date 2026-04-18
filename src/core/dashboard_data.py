@@ -6,9 +6,31 @@ Módulo refactorizado desde el código monolítico original.
 
 import pandas as pd
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 from src.db.db_manager import get_db_connection
+
+
+FECHA_MARATON = date(2027, 2, 21)
+FECHA_CHECKPOINT_10K = FECHA_MARATON - timedelta(weeks=12)
+
+
+def _fmt_fecha_es(fecha: date) -> str:
+    meses = {
+        1: "ene",
+        2: "feb",
+        3: "mar",
+        4: "abr",
+        5: "may",
+        6: "jun",
+        7: "jul",
+        8: "ago",
+        9: "sep",
+        10: "oct",
+        11: "nov",
+        12: "dic",
+    }
+    return f"{fecha.day:02d} {meses[fecha.month]} {fecha.year}"
 
 
 def inicio_semana(dt):
@@ -82,7 +104,7 @@ def construir_checkpoints_objetivo(perfil, df_act):
     if "marat" in objetivo:
         checkpoints = [
             {"nombre": "5K en Sub 22:30", "dist_min": 4.6, "dist_max": 5.4, "ritmo_max": 4.5, "detalle": "Demuestra la velocidad máxima necesaria."},
-            {"nombre": "10K en Sub 46:30", "dist_min": 9.2, "dist_max": 10.8, "ritmo_max": 4.65, "detalle": "Confirma umbral y capacidad de sostener el ritmo."},
+            {"nombre": f"10K · {_fmt_fecha_es(FECHA_CHECKPOINT_10K)}", "dist_min": 9.2, "dist_max": 10.8, "ritmo_max": 4.45, "detalle": "Objetivo de control 12 semanas antes de la maratón. Ritmo meta: sub 44:30."},
             {"nombre": "Media Maratón en Sub 1h42", "dist_min": 20.0, "dist_max": 22.2, "ritmo_max": 4.84, "detalle": "Checkpoint definitivo de preparación."},
         ]
     elif "media" in objetivo:
@@ -153,11 +175,11 @@ def checkpoints_objetivo_dashboard(usuario_id, objetivo_tipo=None):
         },
         {
             "titulo": "10K",
-            "meta_seg": 46 * 60 + 30,
-            "meta_txt": "Sub 46:30",
+            "meta_seg": 44 * 60 + 30,
+            "meta_txt": _fmt_fecha_es(FECHA_CHECKPOINT_10K),
             "dist_min_km": 9.2,
             "dist_max_km": 10.8,
-            "detalle": "Confirma umbral y capacidad de sostener el ritmo",
+            "detalle": "Objetivo de control 12 semanas antes de la maratón. Ritmo meta: sub 44:30",
             "accent": "#1ec8ff",
         },
         {
@@ -531,5 +553,62 @@ def cargar_km_por_semana(usuario_id: int, semanas: int = 8) -> pd.DataFrame:
         return agg[["week_label", "km_semana", "sesiones"]]
     except Exception:
         return pd.DataFrame(columns=["week_label", "km_semana", "sesiones"])
+    finally:
+        conn.close()
+
+
+@st.cache_data(ttl=1800)
+def cargar_zona2_por_semana(usuario_id: int, semanas: int = 8) -> pd.DataFrame:
+    """
+    Devuelve DataFrame con [week_number, week_label, velocidad_media_kmh, sesiones_z2, km_z2]
+    para las últimas N semanas, filtrando carreras con FC media < 150 bpm.
+    """
+    conn = get_db_connection()
+    try:
+        df = pd.read_sql_query(
+            """SELECT fecha, distancia_m, tiempo_seg, ritmo_medio, fc_media FROM actividades_garmin
+               WHERE usuario_id=?
+               AND tipo_deporte IN ('running','trail_running','treadmill_running','track_running')
+               AND fecha >= date('now', '-' || ? || ' days')
+               ORDER BY fecha ASC""",
+            conn, params=(usuario_id, semanas * 7))
+        if df.empty:
+            return pd.DataFrame(columns=["week_number", "week_label", "velocidad_media_kmh", "sesiones_z2", "km_z2"])
+
+        df["fecha_dt"] = pd.to_datetime(df["fecha"]).dt.tz_localize(None)
+        df["distancia_km"] = pd.to_numeric(df["distancia_m"], errors="coerce").fillna(0) / 1000.0
+        df["tiempo_seg"] = pd.to_numeric(df["tiempo_seg"], errors="coerce")
+        df["ritmo_medio"] = pd.to_numeric(df["ritmo_medio"], errors="coerce")
+        df["fc_media"] = pd.to_numeric(df["fc_media"], errors="coerce")
+        df["week"] = df["fecha_dt"].dt.to_period("W-MON").dt.start_time
+
+        sin_tiempo = df["tiempo_seg"].isna() | (df["tiempo_seg"] <= 0)
+        tiene_ritmo = df["ritmo_medio"].notna() & (df["ritmo_medio"] > 0)
+        tiene_km = df["distancia_km"].notna() & (df["distancia_km"] > 0)
+        df.loc[sin_tiempo & tiene_ritmo & tiene_km, "tiempo_seg"] = (
+            df.loc[sin_tiempo & tiene_ritmo & tiene_km, "ritmo_medio"]
+            * 60.0
+            * df.loc[sin_tiempo & tiene_ritmo & tiene_km, "distancia_km"]
+        )
+
+        z2 = df[(df["fc_media"].notna()) & (df["fc_media"] < 150) & (df["tiempo_seg"].notna()) & (df["tiempo_seg"] > 0)].copy()
+        if z2.empty:
+            return pd.DataFrame(columns=["week_number", "week_label", "velocidad_media_kmh", "sesiones_z2", "km_z2"])
+
+        z2["velocidad_kmh"] = (z2["distancia_km"] / z2["tiempo_seg"].replace(0, pd.NA)) * 3600.0
+        z2 = z2[z2["velocidad_kmh"].notna() & (z2["velocidad_kmh"] > 0)]
+        if z2.empty:
+            return pd.DataFrame(columns=["week_number", "week_label", "velocidad_media_kmh", "sesiones_z2", "km_z2"])
+
+        agg = z2.groupby("week", as_index=False).agg(
+            velocidad_media_kmh=("velocidad_kmh", "mean"),
+            sesiones_z2=("velocidad_kmh", "size"),
+            km_z2=("distancia_km", "sum"),
+        ).sort_values("week")
+        agg["week_number"] = pd.to_datetime(agg["week"]).dt.isocalendar().week.astype(int)
+        agg["week_label"] = agg["week"].dt.strftime("%-d/%m")
+        return agg[["week_number", "week_label", "velocidad_media_kmh", "sesiones_z2", "km_z2"]]
+    except Exception:
+        return pd.DataFrame(columns=["week_number", "week_label", "velocidad_media_kmh", "sesiones_z2", "km_z2"])
     finally:
         conn.close()

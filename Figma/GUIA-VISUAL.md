@@ -75,7 +75,7 @@ ESPECIALES:
 │                                                               │
 │ ┌──────────┐ ┌──────────┐ ┌──────────┐                     │
 │ │   5K     │ │   10K    │ │  MEDIA   │                     │
-│ │Sub 22:30 │ │Sub 46:30 │ │ Sub 1h42 │                     │
+│ │Sub 22:30 │ │Sub 44:30 │ │ Sub 1h42 │                     │
 │ │ PENDIENTE│ │ PENDIENTE│ │ PENDIENTE│ ← Badge dorado      │
 │ └──────────┘ └──────────┘ └──────────┘                     │
 │                                                               │
