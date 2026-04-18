@@ -266,15 +266,25 @@ def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
         semana_str = lunes.strftime("%Y-%m-%d")
         rows = conn.execute(
             "SELECT fecha, tipo, sesion, duracion_min, intensidad FROM plan_entrenamiento "
-            "WHERE usuario_id=? AND semana_inicio=? ORDER BY fecha",
+            "WHERE usuario_id=? AND semana_inicio=? ORDER BY fecha, rowid",
             (usuario_id, semana_str)).fetchall()
         if not rows:
             return None
-        dias = [{
-            "fecha": r[0], "dia": datetime.fromisoformat(r[0]).strftime("%a").upper()[:3],
-            "tipo": r[1], "descripcion_ia": r[2] or "", "duracion_min": r[3] or 0,
-            "intensidad": r[4] or "Z1-Z2", "km": 0, "alerta": "",
-        } for r in rows]
+        # Agrupar por fecha: primera fila = principal, resto = sesiones_extra
+        from collections import OrderedDict as _OD
+        _por_fecha = _OD()
+        for r in rows:
+            _f = r[0]
+            _entry = {
+                "fecha": _f, "dia": datetime.fromisoformat(_f).strftime("%a").upper()[:3],
+                "tipo": r[1], "descripcion_ia": r[2] or "", "duracion_min": r[3] or 0,
+                "intensidad": r[4] or "Z1-Z2", "km": 0, "alerta": "",
+            }
+            if _f not in _por_fecha:
+                _por_fecha[_f] = {**_entry, "sesiones_extra": []}
+            else:
+                _por_fecha[_f]["sesiones_extra"].append(_entry)
+        dias = list(_por_fecha.values())
         try:
             from src.plan.motor import generar_plan_semana
             base = generar_plan_semana(usuario_id, lunes)
@@ -362,14 +372,25 @@ def _auto_guardar(usuario_id, lunes, plan_nuevo):
     try:
         conn.execute("DELETE FROM plan_entrenamiento WHERE usuario_id=? AND semana_inicio=?",
                      (usuario_id, semana_str))
+        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for d in plan_nuevo.get("dias", []):
+            # Sesión principal
             desc = d.get("descripcion_ia") or d.get("alerta", "")
             conn.execute(
                 "INSERT INTO plan_entrenamiento "
                 "(usuario_id,semana_inicio,fecha,tipo,sesion,duracion_min,intensidad,creado_en) "
                 "VALUES (?,?,?,?,?,?,?,?)",
                 (usuario_id, semana_str, d["fecha"], d["tipo"], desc,
-                 d["duracion_min"], d["intensidad"], datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                 d["duracion_min"], d["intensidad"], ahora))
+            # Sesiones extra del mismo día (múltiples sesiones por día)
+            for _extra in d.get("sesiones_extra", []):
+                _desc_e = _extra.get("descripcion_ia") or _extra.get("alerta", "")
+                conn.execute(
+                    "INSERT INTO plan_entrenamiento "
+                    "(usuario_id,semana_inicio,fecha,tipo,sesion,duracion_min,intensidad,creado_en) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    (usuario_id, semana_str, d["fecha"], _extra.get("tipo", "Descanso"),
+                     _desc_e, _extra.get("duracion_min", 0), _extra.get("intensidad", "—"), ahora))
         conn.commit(); st.cache_data.clear()
     except Exception:
         pass
@@ -849,28 +870,57 @@ if active_tab == "generar":
         week_key = lunes.strftime("%Y%m%d")
         board_key = f"plan_session_board_{week_key}"
 
+        import json as _json
+
+        def _board_to_dias(brd: list) -> list:
+            """Convierte el board (7 listas de sesiones) a plan["dias"] guardable en BD."""
+            resultado = []
+            for _idx in range(7):
+                _fecha = (lunes + timedelta(days=_idx)).strftime("%Y-%m-%d")
+                _sesiones = brd[_idx] if _idx < len(brd) else []
+                if _sesiones:
+                    _p = dict(_sesiones[0])
+                    _p["fecha"]  = _fecha
+                    _p["dia"]    = _DIA_CORTO[_idx]
+                    _p["sesiones_extra"] = [dict(s) for s in _sesiones[1:]]
+                    resultado.append(_p)
+                else:
+                    resultado.append({
+                        "fecha": _fecha, "dia": _DIA_CORTO[_idx],
+                        "tipo": "Descanso", "km": 0, "duracion_min": 0,
+                        "intensidad": "—", "descripcion_ia": "", "alerta": "",
+                        "sesiones_extra": [],
+                    })
+            return resultado
+
         # Inicializa tablero: 7 columnas (una por día), cada columna admite varias sesiones.
         if board_key not in st.session_state:
-            board_saved = plan.get("board_sesiones") if isinstance(plan.get("board_sesiones"), list) else None
-            if board_saved and len(board_saved) == 7:
-                st.session_state[board_key] = board_saved
-            else:
-                board_init = []
-                for d in dias_plan:
-                    board_init.append([{
-                        "tipo": d.get("tipo", "Descanso"),
-                        "km": float(d.get("km") or 0),
-                        "duracion_min": float(d.get("duracion_min") or 0),
-                        "intensidad": d.get("intensidad", "—"),
-                        "descripcion_ia": d.get("descripcion_ia", ""),
-                        "alerta": d.get("alerta", ""),
-                    }])
-                st.session_state[board_key] = board_init
+            board_init = []
+            for d in dias_plan:
+                col_sesiones = [{
+                    "tipo": d.get("tipo", "Descanso"),
+                    "km": float(d.get("km") or 0),
+                    "duracion_min": float(d.get("duracion_min") or 0),
+                    "intensidad": d.get("intensidad", "—"),
+                    "descripcion_ia": d.get("descripcion_ia", ""),
+                    "alerta": d.get("alerta", ""),
+                }]
+                # Restaurar sesiones extra guardadas en BD
+                for _extra in d.get("sesiones_extra", []):
+                    col_sesiones.append({
+                        "tipo": _extra.get("tipo", "Descanso"),
+                        "km": float(_extra.get("km") or 0),
+                        "duracion_min": float(_extra.get("duracion_min") or 0),
+                        "intensidad": _extra.get("intensidad", "—"),
+                        "descripcion_ia": _extra.get("descripcion_ia", ""),
+                        "alerta": _extra.get("alerta", ""),
+                    })
+                board_init.append(col_sesiones)
+            st.session_state[board_key] = board_init
 
         board = st.session_state[board_key]
 
         # ── Procesar drop de DnD recibido vía query param ────────────────────
-        import json as _json
         _dnd_param = st.query_params.get("dnd_move", "")
         if _dnd_param:
             _move_applied = False
@@ -885,7 +935,8 @@ if active_tab == "generar":
             except Exception:
                 pass
             if _move_applied:
-                # Persistir board_sesiones en BD para sobrevivir recargas de página
+                # Sincronizar plan["dias"] DESDE el board (no al revés) y guardar en BD
+                plan["dias"] = _board_to_dias(board)
                 plan["board_sesiones"] = board
                 st.session_state.plan_data = plan
                 _auto_guardar(user_actual, lunes, plan)
