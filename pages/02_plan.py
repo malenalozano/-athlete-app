@@ -2,6 +2,7 @@
 pages/2_plan.py — Plan semanal rediseñado.
 Sub-tabs: Generar Plan (cards de días) | Datos (análisis completo del entrenador).
 """
+import os
 import pandas as pd
 import streamlit as st
 import re
@@ -20,6 +21,10 @@ try:
 except Exception as e:
     sort_items = None
     _SORTABLES_IMPORT_ERROR = str(e)
+
+# ── DnD board component (declare_component para retorno nativo a Python) ──────
+_DND_COMPONENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "streamlit_dnd")
+_dnd_board = st.components.v1.declare_component("dnd_board", path=_DND_COMPONENT_DIR)
 
 render_navbar("plan")
 
@@ -921,27 +926,7 @@ if active_tab == "generar":
         board = st.session_state[board_key]
 
         # ── Procesar drop de DnD recibido vía query param ────────────────────
-        _dnd_param = st.query_params.get("dnd_move", "")
-        if _dnd_param:
-            _move_applied = False
-            try:
-                _mv = _json.loads(_dnd_param)
-                _fd, _fi, _td = int(_mv["from_day"]), int(_mv["from_idx"]), int(_mv["to_day"])
-                if _fd != _td and 0 <= _fd < 7 and 0 <= _td < 7 and 0 <= _fi < len(board[_fd]):
-                    _ses_mv = board[_fd].pop(_fi)
-                    board[_td].append(_ses_mv)
-                    st.session_state[board_key] = board
-                    _move_applied = True
-            except Exception:
-                pass
-            if _move_applied:
-                # Sincronizar plan["dias"] DESDE el board (no al revés) y guardar en BD
-                plan["dias"] = _board_to_dias(board)
-                plan["board_sesiones"] = board
-                st.session_state.plan_data = plan
-                _auto_guardar(user_actual, lunes, plan)
-            st.query_params.clear()
-            st.rerun()
+        # (DnD move handled via declare_component below — no query_params needed)
 
         def _sync_plan_from_board(persist: bool = True) -> None:
             nuevas = []
@@ -1015,10 +1000,25 @@ if active_tab == "generar":
             })
             _max_items = max(_max_items, len(_items_js))
 
-        _bj      = _json.dumps(_board_js, ensure_ascii=False)
-        _comp_h  = max(120, _max_items * 68 + 80)
+        _bj = _json.dumps(_board_js, ensure_ascii=False)
 
-        _dnd_html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+        # ── DnD board vía declare_component (retorno nativo a Python) ─────────
+        _dnd_move = _dnd_board(board=_bj, key="dnd_board_v1")
+        if _dnd_move and isinstance(_dnd_move, dict):
+            _fd = int(_dnd_move.get("from_day", -1))
+            _fi = int(_dnd_move.get("from_idx", -1))
+            _td = int(_dnd_move.get("to_day", -1))
+            if _fd != _td and 0 <= _fd < 7 and 0 <= _td < 7 and 0 <= _fi < len(board[_fd]):
+                _ses_mv = board[_fd].pop(_fi)
+                board[_td].append(_ses_mv)
+                st.session_state[board_key] = board
+                plan["dias"] = _board_to_dias(board)
+                plan["board_sesiones"] = board
+                st.session_state.plan_data = plan
+                _auto_guardar(user_actual, lunes, plan)
+                st.rerun()
+
+        _DEAD_CODE_DND_HTML = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{background:transparent;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}}
@@ -1167,8 +1167,6 @@ function build(){{
 }}
 build();
 </script></body></html>"""
-
-        st.components.v1.html(_dnd_html, height=_comp_h, scrolling=False)
 
         # ── Fila de botones por día (compacta, bajo el tablero) ───────────────
         btn_cols = st.columns(7, gap="small")
