@@ -1027,17 +1027,27 @@ function build(){{
     const dt=document.createElement('div');dt.className='day-date';dt.textContent=day.date;
     hdr.appendChild(nm);hdr.appendChild(dt);col.appendChild(hdr);
 
-    // Body (drop zone)
-    const body=document.createElement('div');body.className='day-body';body.dataset.di=di;
-    body.addEventListener('dragover',e=>{{e.preventDefault();col.classList.add('over')}});
-    body.addEventListener('dragleave',e=>{{if(!col.contains(e.relatedTarget))col.classList.remove('over')}});
-    body.addEventListener('drop',e=>{{
+    // Columna entera = zona de drop (eventos en col, no en body)
+    col.addEventListener('dragover',e=>{{
+      e.preventDefault();
+      e.dataTransfer.dropEffect='move';
+      col.classList.add('over');
+    }});
+    col.addEventListener('dragleave',e=>{{
+      if(!col.contains(e.relatedTarget))col.classList.remove('over');
+    }});
+    col.addEventListener('drop',e=>{{
       e.preventDefault();col.classList.remove('over');
       if(!src||src.di===di)return;
       const mv=JSON.stringify({{from_day:src.di,from_idx:src.ii,to_day:di}});
-      window.parent.location.search='?dnd_move='+encodeURIComponent(mv);
+      try{{
+        window.parent.location.search='?dnd_move='+encodeURIComponent(mv);
+      }}catch(err){{
+        window.parent.location.href=window.parent.location.pathname+'?dnd_move='+encodeURIComponent(mv);
+      }}
     }});
 
+    const body=document.createElement('div');body.className='day-body';
     if(day.items.length===0){{
       const empty=document.createElement('div');
       empty.className='empty-day';empty.textContent='descanso';
@@ -1046,14 +1056,18 @@ function build(){{
 
     day.items.forEach((item,ii)=>{{
       const s=document.createElement('div');s.className='ses';s.draggable=true;
+      // Los hijos no deben interceptar eventos de arrastre
+      s.style.pointerEvents='auto';
       // Top row: dot + name
       const top=document.createElement('div');top.className='ses-top';
+      top.style.pointerEvents='none';
       const dot=document.createElement('span');dot.className='ses-dot';dot.style.background=item.color;
       const name=document.createElement('span');name.className='ses-name';
       name.style.color=item.color;name.textContent=item.emoji+' '+item.label;
       top.appendChild(dot);top.appendChild(name);s.appendChild(top);
       // Sub row: carga
       const sub=document.createElement('div');sub.className='ses-sub';
+      sub.style.pointerEvents='none';
       sub.textContent=item.carga;
       if(item.int&&item.int!=='—'){{
         const badge=document.createElement('span');badge.className='ses-int';
@@ -1062,8 +1076,11 @@ function build(){{
       }}
       s.appendChild(sub);
       s.addEventListener('dragstart',e=>{{
-        src={{di,ii}};s.classList.add('dragging');
+        src={{di,ii}};
         e.dataTransfer.effectAllowed='move';
+        e.dataTransfer.setData('text/plain',JSON.stringify({{di,ii}}));
+        // Defer class add so ghost image captures normal state
+        setTimeout(()=>s.classList.add('dragging'),0);
       }});
       s.addEventListener('dragend',()=>{{
         s.classList.remove('dragging');src=null;
