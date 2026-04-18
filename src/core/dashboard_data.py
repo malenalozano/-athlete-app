@@ -561,7 +561,7 @@ def cargar_km_por_semana(usuario_id: int, semanas: int = 8) -> pd.DataFrame:
 @st.cache_data(ttl=1800)
 def cargar_zona2_por_semana(usuario_id: int, semanas: int = 8) -> pd.DataFrame:
     """
-    Devuelve DataFrame con [week_number, week_label, velocidad_media_kmh, sesiones_z2, km_z2]
+    Devuelve DataFrame con [week_number, week_label, ritmo_medio_min_km, sesiones_z2, km_z2]
     para las últimas N semanas, filtrando carreras con FC media < 150 bpm.
     """
     conn = get_db_connection()
@@ -574,7 +574,7 @@ def cargar_zona2_por_semana(usuario_id: int, semanas: int = 8) -> pd.DataFrame:
                ORDER BY fecha ASC""",
             conn, params=(usuario_id, semanas * 7))
         if df.empty:
-            return pd.DataFrame(columns=["week_number", "week_label", "velocidad_media_kmh", "sesiones_z2", "km_z2"])
+            return pd.DataFrame(columns=["week_number", "week_label", "ritmo_medio_min_km", "sesiones_z2", "km_z2"])
 
         df["fecha_dt"] = pd.to_datetime(df["fecha"]).dt.tz_localize(None)
         df["distancia_km"] = pd.to_numeric(df["distancia_m"], errors="coerce").fillna(0) / 1000.0
@@ -594,22 +594,22 @@ def cargar_zona2_por_semana(usuario_id: int, semanas: int = 8) -> pd.DataFrame:
 
         z2 = df[(df["fc_media"].notna()) & (df["fc_media"] < 150) & (df["tiempo_seg"].notna()) & (df["tiempo_seg"] > 0)].copy()
         if z2.empty:
-            return pd.DataFrame(columns=["week_number", "week_label", "velocidad_media_kmh", "sesiones_z2", "km_z2"])
+            return pd.DataFrame(columns=["week_number", "week_label", "ritmo_medio_min_km", "sesiones_z2", "km_z2"])
 
-        z2["velocidad_kmh"] = (z2["distancia_km"] / z2["tiempo_seg"].replace(0, pd.NA)) * 3600.0
-        z2 = z2[z2["velocidad_kmh"].notna() & (z2["velocidad_kmh"] > 0)]
+        z2["ritmo_min_km"] = (z2["tiempo_seg"] / z2["distancia_km"].replace(0, pd.NA)) / 60.0
+        z2 = z2[z2["ritmo_min_km"].notna() & (z2["ritmo_min_km"] > 0)]
         if z2.empty:
-            return pd.DataFrame(columns=["week_number", "week_label", "velocidad_media_kmh", "sesiones_z2", "km_z2"])
+            return pd.DataFrame(columns=["week_number", "week_label", "ritmo_medio_min_km", "sesiones_z2", "km_z2"])
 
         agg = z2.groupby("week", as_index=False).agg(
-            velocidad_media_kmh=("velocidad_kmh", "mean"),
-            sesiones_z2=("velocidad_kmh", "size"),
+            ritmo_medio_min_km=("ritmo_min_km", "mean"),
+            sesiones_z2=("ritmo_min_km", "size"),
             km_z2=("distancia_km", "sum"),
         ).sort_values("week")
         agg["week_number"] = pd.to_datetime(agg["week"]).dt.isocalendar().week.astype(int)
         agg["week_label"] = agg["week"].dt.strftime("%-d/%m")
-        return agg[["week_number", "week_label", "velocidad_media_kmh", "sesiones_z2", "km_z2"]]
+        return agg[["week_number", "week_label", "ritmo_medio_min_km", "sesiones_z2", "km_z2"]]
     except Exception:
-        return pd.DataFrame(columns=["week_number", "week_label", "velocidad_media_kmh", "sesiones_z2", "km_z2"])
+        return pd.DataFrame(columns=["week_number", "week_label", "ritmo_medio_min_km", "sesiones_z2", "km_z2"])
     finally:
         conn.close()

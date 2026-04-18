@@ -60,6 +60,23 @@ _DIAS_ES  = {"Monday":"Lunes","Tuesday":"Martes","Wednesday":"Miércoles",
 _MESES_ES = {"January":"enero","February":"febrero","March":"marzo","April":"abril",
              "May":"mayo","June":"junio","July":"julio","August":"agosto",
              "September":"septiembre","October":"octubre","November":"noviembre","December":"diciembre"}
+
+
+def _fmt_min_km(valor_min_km) -> str:
+    try:
+        valor = float(valor_min_km)
+    except Exception:
+        return "-"
+    if valor <= 0:
+        return "-"
+    minutos = int(valor)
+    segundos = int(round((valor - minutos) * 60))
+    if segundos == 60:
+        minutos += 1
+        segundos = 0
+    return f"{minutos}:{segundos:02d} min/km"
+
+
 hora = datetime.now().hour
 saludo = "Buenos días" if hora < 13 else ("Buenas tardes" if hora < 20 else "Buenas noches")
 saludo_nombre = f"{saludo}, {nombre} 👋"
@@ -547,41 +564,42 @@ if _df_z2.empty:
 else:
     _z2_labels = _df_z2["week_number"].tolist()
     _z2_week_labels = _df_z2["week_label"].tolist()
-    _z2_speed = _df_z2["velocidad_media_kmh"].round(2).tolist()
+    _z2_pace = _df_z2["ritmo_medio_min_km"].round(2).tolist()
     _z2_sessions = _df_z2["sesiones_z2"].tolist()
 
     _z2_cols = st.columns(3, gap="small")
 
-    # Gráfico 1: Velocidad media
+    # Gráfico 1: Ritmo medio
     with _z2_cols[0]:
-        fig_z2_speed = go.Figure()
-        fig_z2_speed.add_trace(go.Scatter(
+        fig_z2_pace = go.Figure()
+        fig_z2_pace.add_trace(go.Scatter(
             x=[str(w) for w in _z2_labels],
-            y=_z2_speed,
+            y=_z2_pace,
             mode="lines+markers",
             line=dict(color="#00D4FF", width=2.5),
             marker=dict(color="#C9FF00", size=7, line=dict(color="#0E1117", width=1.5)),
-            hovertemplate="<b>Semana %{x}</b><br>%{y:.2f} km/h<extra></extra>",
+            customdata=[_z2_week_labels],
+            hovertemplate="<b>Semana %{x}</b><br>%{customdata[0]}<br>%{y:.2f} min/km<extra></extra>",
             fill="tozeroy",
             fillcolor="rgba(0,212,255,0.08)",
             showlegend=False,
         ))
-        fig_z2_speed.update_layout(
+        fig_z2_pace.update_layout(
             height=260,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             margin=dict(l=35, r=15, t=30, b=35),
             xaxis=dict(type="category", showgrid=False, zeroline=False, tickfont=dict(color="#8B949E", size=9)),
-            yaxis=dict(showgrid=True, gridcolor="rgba(48,54,61,0.4)", zeroline=False, tickfont=dict(color="#8B949E", size=9), ticksuffix=" km/h"),
+            yaxis=dict(showgrid=True, gridcolor="rgba(48,54,61,0.4)", zeroline=False, tickfont=dict(color="#8B949E", size=9), ticksuffix=" min/km"),
             font=dict(family="Inter, sans-serif"),
         )
         st.markdown(
-            "<div style='color:#00D4FF;font-size:0.85rem;font-weight:700;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;'>Velocidad Media</div>",
+            "<div style='color:#00D4FF;font-size:0.85rem;font-weight:700;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;'>Ritmo Medio</div>",
             unsafe_allow_html=True,
         )
-        st.plotly_chart(fig_z2_speed, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_z2_pace, use_container_width=True, config={"displayModeBar": False})
         st.markdown(
-            f"<div style='color:#7dd3fc;font-size:0.75rem;font-weight:600;text-align:center;margin-top:-0.3rem;'>{_z2_speed[-1]:.2f} km/h</div>",
+            f"<div style='color:#7dd3fc;font-size:0.75rem;font-weight:600;text-align:center;margin-top:-0.3rem;'>{_fmt_min_km(_z2_pace[-1])}</div>",
             unsafe_allow_html=True,
         )
 
@@ -616,9 +634,9 @@ else:
 
     # Gráfico 3: Estadísticas resumen
     with _z2_cols[2]:
-        _z2_avg_speed = sum(_z2_speed) / len(_z2_speed) if _z2_speed else 0
-        _z2_max_speed = max(_z2_speed) if _z2_speed else 0
-        _z2_min_speed = min(_z2_speed) if _z2_speed else 0
+        _z2_avg_pace = sum(_z2_pace) / len(_z2_pace) if _z2_pace else 0
+        _z2_best_pace = min(_z2_pace) if _z2_pace else 0
+        _z2_worst_pace = max(_z2_pace) if _z2_pace else 0
         _z2_avg_sessions = sum(_z2_sessions) / len(_z2_sessions) if _z2_sessions else 0
 
         st.markdown(
@@ -628,12 +646,16 @@ else:
         st.markdown(
             f"<div style='background:linear-gradient(135deg,#0f1724,#101928);border-radius:12px;padding:1rem;space-y:0.5rem;'>"
             f"<div style='margin-bottom:0.75rem;'>"
-            f"<div style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;font-weight:600;margin-bottom:2px;'>Velocidad Promedio</div>"
-            f"<div style='color:#22c55e;font-size:1.15rem;font-weight:800;'>{_z2_avg_speed:.2f} <span style=\"font-size:0.8rem;color:#8B949E;\">km/h</span></div>"
+            f"<div style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;font-weight:600;margin-bottom:2px;'>Ritmo Promedio</div>"
+            f"<div style='color:#22c55e;font-size:1.15rem;font-weight:800;'>{_fmt_min_km(_z2_avg_pace)}</div>"
             f"</div>"
             f"<div style='margin-bottom:0.75rem;'>"
-            f"<div style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;font-weight:600;margin-bottom:2px;'>Velocidad Máx</div>"
-            f"<div style='color:#00D4FF;font-size:1.15rem;font-weight:800;'>{_z2_max_speed:.2f} <span style=\"font-size:0.8rem;color:#8B949E;\">km/h</span></div>"
+            f"<div style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;font-weight:600;margin-bottom:2px;'>Mejor Ritmo</div>"
+            f"<div style='color:#00D4FF;font-size:1.15rem;font-weight:800;'>{_fmt_min_km(_z2_best_pace)}</div>"
+            f"</div>"
+            f"<div style='margin-bottom:0.75rem;'>"
+            f"<div style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;font-weight:600;margin-bottom:2px;'>Ritmo Más Lento</div>"
+            f"<div style='color:#f97316;font-size:1.15rem;font-weight:800;'>{_fmt_min_km(_z2_worst_pace)}</div>"
             f"</div>"
             f"<div style='margin-bottom:0.75rem;'>"
             f"<div style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;font-weight:600;margin-bottom:2px;'>Sesiones Prom</div>"
