@@ -191,18 +191,17 @@ if forced_uid in (1, 2):
     if st.session_state.get("usuario_id") != forced_uid:
         st.session_state["usuario_id"] = forced_uid
 elif "usuario_id" not in st.session_state:
-    # Sin auth requerida: intentar cookie (con validación), luego default=1
-    uid = 1  # Default seguro
+    # Establecer default seguro ANTES de cualquier llamada a cookies
+    # (cm.get puede lanzar StopException/RerunException que extiende BaseException,
+    # no Exception — si no ponemos el default primero, usuario_id nunca se establece)
+    st.session_state["usuario_id"] = 1
     if _cm is not None:
         try:
             cookie_uid = _cm.get("athlete_uid")
-            # ✅ VALIDACIÓN: Solo aceptar cookies con UID válidos
             if cookie_uid and str(cookie_uid).strip() in ("1", "2"):
-                uid = int(str(cookie_uid).strip())
-        except (ValueError, TypeError, AttributeError):
-            # Cookie corrupta o tipo inválido — usar default
-            uid = 1
-    st.session_state["usuario_id"] = uid
+                st.session_state["usuario_id"] = int(str(cookie_uid).strip())
+        except Exception:
+            pass  # Mantiene el default 1 ya establecido
 
 # Init ejercicios del usuario — pero solo una vez por sesión
 _uid = st.session_state["usuario_id"]

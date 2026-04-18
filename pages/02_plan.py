@@ -24,8 +24,9 @@ except Exception as e:
 render_navbar("plan")
 
 if "usuario_id" not in st.session_state:
-    st.warning("Selecciona tu perfil en la página de inicio.")
-    st.stop()
+    # Fallback: si el session state se perdió (reinicio servidor), usar uid=1 por defecto.
+    # app.py normalmente establece usuario_id antes de llegar aquí; esto es una red de seguridad.
+    st.session_state["usuario_id"] = 1
 user_actual = st.session_state.usuario_id
 
 # ---------------------------------------------------------------------------
@@ -872,6 +873,7 @@ if active_tab == "generar":
         import json as _json
         _dnd_param = st.query_params.get("dnd_move", "")
         if _dnd_param:
+            _move_applied = False
             try:
                 _mv = _json.loads(_dnd_param)
                 _fd, _fi, _td = int(_mv["from_day"]), int(_mv["from_idx"]), int(_mv["to_day"])
@@ -879,8 +881,14 @@ if active_tab == "generar":
                     _ses_mv = board[_fd].pop(_fi)
                     board[_td].append(_ses_mv)
                     st.session_state[board_key] = board
+                    _move_applied = True
             except Exception:
                 pass
+            if _move_applied:
+                # Persistir board_sesiones en BD para sobrevivir recargas de página
+                plan["board_sesiones"] = board
+                st.session_state.plan_data = plan
+                _auto_guardar(user_actual, lunes, plan)
             st.query_params.clear()
             st.rerun()
 

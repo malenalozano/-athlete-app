@@ -353,6 +353,18 @@ def render_navbar(pagina_activa: str):
             _new_uid = _perfiles_dict[_sel]
             if _new_uid != _current_uid:
                 st.session_state["usuario_id"] = _new_uid
+                # Persistir en cookie para sobrevivir reinicios del servidor
+                _nav_cm = st.session_state.get("_cm")
+                if _nav_cm is not None:
+                    try:
+                        from datetime import datetime, timedelta
+                        _nav_cm.set(
+                            "athlete_uid",
+                            str(_new_uid),
+                            expires_at=datetime.now() + timedelta(days=90),
+                        )
+                    except Exception:
+                        pass
                 for _k in ("plan_data", "plan_cursor", "plan_ia", "diario_data",
                            "ejercicios_data", "gc", "gc_failed", "gc_error",
                            "dashboard_last_user", "diario_last_user", "navbar_popover_open"):
