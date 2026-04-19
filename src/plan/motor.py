@@ -16,6 +16,10 @@ from src.plan.reglas import (
     recomendar_drills_especificos, detectar_conflictos_48h,
 )
 from src.plan.helpers import cargar_datos_plan, distribuir_semana
+from src.plan.plan_integrator import generar_plan_integrado, generar_alertas_integrales
+from src.plan.gas_progression import calcular_dias_desde_estimulo
+from src.plan.nutrition_recommendations import generar_alerta_nutricional_sesion
+from src.plan.interferencia_detector import evaluar_interferencia_48h
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +69,12 @@ def crear_regenerativo(distancia_km, fcmax_pct=70, duracion_min=None):
 # Motor del plan semanal
 # ---------------------------------------------------------------------------
 
-def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
+def generar_plan_semana(
+    usuario_id: int,
+    fecha_inicio_lunes,
+    protocolo_seleccionado: str | None = None,
+    slider_volumen_pct: float = 100,
+) -> dict:
     """
     Genera el plan de 7 días adaptado a datos reales de la BD.
 
@@ -109,6 +118,24 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
     es_hombre = str(genero).lower() in ("hombre", "male", "m")
     ciclo_ajuste = ajustar_por_ciclo(None if es_hombre else datos.get("fase_ciclo"))
 
+    # ---- INTEGRACIÓN DE MEJORAS (GAS + Protocolo A/B + Ciclo+Slider) ----
+    # Parámetros protocolo_seleccionado y slider_volumen_pct vienen desde UI
+    # Si no se pasan, usan defaults: None y 100
+
+    plan_integrado = generar_plan_integrado(
+        usuario_id=usuario_id,
+        datos=datos,
+        fase=fase,
+        protocolo_seleccionado=protocolo_seleccionado,
+        slider_volumen_pct=slider_volumen_pct,
+        distribuir_fn=distribuir_semana,
+    )
+
+    protocolo_final = plan_integrado["protocolo"]
+    gas_info = plan_integrado["contexto"]["gas_info"]
+    ciclo_gas_sinergia = plan_integrado["contexto"]["ciclo_gas_sinergia"]
+    volumen_con_slider = plan_integrado["volumen_info"]["km_final_con_slider"]
+
     restricciones = aplicar_restricciones_lesion(datos["lesiones_activas"])
     cadencia_eval = evaluar_cadencia(datos["cadencia_media"])
 
@@ -140,11 +167,33 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
     # Se mantienen como señales informativas para decisión manual.
     km_objetivo = round(km_objetivo, 1)
 
+    # Aplicar ajuste de Ciclo + GAS con slider (solo mujeres)
+    if not es_hombre and volumen_con_slider:
+        km_objetivo = volumen_con_slider
+
     dias = distribuir_semana(fase, km_objetivo, semaforo, restricciones, fecha_inicio_lunes, cadencia_eval,
                             datos.get("sleep_breakdown"), objetivo_tipo=objetivo_tipo)
 
     # Recoger alertas
     alertas = list(restricciones["alertas"])
+
+    # ---- ALERTAS GAS + PROTOCOLO + CICLO+GAS ----
+    if gas_info["fase"] == "alarma":
+        alertas.append(f"🚨 {gas_info['recomendacion']}")
+    elif gas_info["fase"] == "agotamiento":
+        alertas.append(f"⚠️ {gas_info['recomendacion']}")
+
+    # Protocolo recomendado
+    alertas.append(f"🔄 Protocolo {protocolo_final}: {plan_integrado['protocolo_validado']['advertencia'] if plan_integrado['protocolo_validado']['advertencia'] else 'Protocolo aplicado'}")
+
+    # Alertas ciclo + GAS (solo mujeres)
+    if not es_hombre:
+        alertas.extend(plan_integrado["alertas_ciclo_gas"])
+
+    # Validación slider seguridad
+    if plan_integrado["slider_validacion"]["advertencia"]:
+        alertas.append(plan_integrado["slider_validacion"]["advertencia"])
+
     if semaforo["color"] != "verde":
         alertas.append(semaforo["mensaje"])
     # Alertas ciclo menstrual solo para mujeres
@@ -193,6 +242,12 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
     if mrun.get("oscilacion_vertical_cm") and mrun["oscilacion_vertical_cm"] > 9:
         alertas.append(f"⬆️ Oscilación vertical alta ({mrun['oscilacion_vertical_cm']:.1f} cm) — foco en cadera y core.")
 
+    # ---- VALIDAR INTERFERENCIA 48-72h ----
+    for i in range(len(dias) - 1):
+        eval_48h = evaluar_interferencia_48h(dias[i + 1], dias[i])
+        if eval_48h["recomendacion"]:
+            alertas.append(eval_48h["recomendacion"])
+
     for dia in dias:
         val = validar_orden_sesiones({
             "fuerza_piernas": "Fuerza" in dia["tipo"] and "Superior" not in dia["tipo"],
@@ -233,6 +288,11 @@ def generar_plan_semana(usuario_id: int, fecha_inicio_lunes) -> dict:
         "objetivo_tipo": objetivo_tipo,
         "nombre_atleta": datos.get("nombre", "Atleta"),
         "es_hombre": es_hombre,
+        # ---- NUEVAS MEJORAS ----
+        "gas_info": gas_info,
+        "protocolo": protocolo_final,
+        "ciclo_gas_sinergia": ciclo_gas_sinergia,
+        "volumen_info": plan_integrado["volumen_info"],
     }
 
 

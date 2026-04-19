@@ -255,7 +255,7 @@ def _rango_semana_es(lunes: datetime) -> str:
         return f"{lunes.day}-{fin.day} {meses[fin.month]}"
     return f"{lunes.day} {meses[lunes.month]}-{fin.day} {meses[fin.month]}"
 
-def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
+def _cargar_plan_de_bd(usuario_id: int, lunes: datetime, protocolo_seleccionado: str | None = None, slider_volumen_pct: float = 100) -> dict | None:
     def _extraer_km_texto(txt: str) -> float:
         m = re.search(r"(\d+(?:[\.,]\d+)?)\s*km\b", str(txt or ""), flags=re.IGNORECASE)
         if not m:
@@ -291,7 +291,7 @@ def _cargar_plan_de_bd(usuario_id: int, lunes: datetime) -> dict | None:
         dias = list(_por_fecha.values())
         try:
             from src.plan.motor import generar_plan_semana
-            base = generar_plan_semana(usuario_id, lunes)
+            base = generar_plan_semana(usuario_id, lunes, protocolo_seleccionado=protocolo_seleccionado, slider_volumen_pct=slider_volumen_pct)
             if isinstance(base, dict):
                 base_dias = base.get("dias", []) if isinstance(base.get("dias", []), list) else []
                 km_por_fecha_tipo = {
@@ -724,7 +724,9 @@ if active_tab == "generar":
                     with st.spinner("Generando plan..."):
                         try:
                             from src.plan.entrenador import generar_entrenamiento_semana
-                            plan_nuevo = generar_entrenamiento_semana(user_actual, lunes)
+                            protocolo_sel = st.session_state.get("protocolo_seleccionado")
+                            slider_pct = st.session_state.get("slider_volumen_pct", 100)
+                            plan_nuevo = generar_entrenamiento_semana(user_actual, lunes, protocolo_seleccionado=protocolo_sel, slider_volumen_pct=slider_pct)
 
                             # DEBUG: mostrar tipos generados
                             tipos_gen = [d.get("tipo", "?") for d in plan_nuevo.get("dias", [])]
@@ -751,13 +753,104 @@ if active_tab == "generar":
         unsafe_allow_html=True,
     )
 
+    # ============================================================================
+    # ⚙️ SECCIÓN: PERSONALIZACIÓN DEL PLAN (Protocolo + Slider)
+    # ============================================================================
+    # Inicializar variables si no existen
+    if "protocolo_seleccionado" not in st.session_state:
+        st.session_state["protocolo_seleccionado"] = None
+    if "slider_volumen_pct" not in st.session_state:
+        st.session_state["slider_volumen_pct"] = 100
+    if "contexto_ciclo_gas" not in st.session_state:
+        st.session_state["contexto_ciclo_gas"] = {}
+
+    st.markdown("---")
+    st.subheader("⚙️ Personalización del Plan")
+
+    col_proto, col_slider = st.columns([1, 2])
+
+    # ---- PROTOCOLO SELECTOR ----
+    with col_proto:
+        protocolo_recomendado = st.session_state.get("protocolo_recomendado", "B")
+
+        protocolo_sel = st.radio(
+            "🔄 Protocolo de Entrenamiento",
+            options=["Automático", "A (Fuerza Prioridad)", "B (Rendimiento Carrera)"],
+            value=st.session_state.get("protocolo_seleccionado_display", "Automático"),
+            help=(
+                "**A (Fuerza Prioridad)**: Para Acondicionamiento y Prep. General. "
+                "Fuerza 2-3 días/semana @ 70-95% 1RM. Carrera ≤2 días Z2.\n\n"
+                "**B (Rendimiento Carrera)**: Para Prep. Específica, Pico, Tapering. "
+                "Fuerza 1-2 días @ 80% 1RM. Carrera 3-5 días con regla 80/20.\n\n"
+                "**Automático**: Sistema elige según fase."
+            )
+        )
+
+        # Procesar selección
+        if protocolo_sel == "Automático":
+            st.session_state["protocolo_seleccionado"] = None
+            st.session_state["protocolo_seleccionado_display"] = "Automático"
+        else:
+            protocolo_char = protocolo_sel.split()[0]
+            st.session_state["protocolo_seleccionado"] = protocolo_char
+            st.session_state["protocolo_seleccionado_display"] = protocolo_sel
+
+    # ---- SLIDER VOLUMEN (CICLO + GAS) ----
+    with col_slider:
+        st.markdown("### 🎚️ Ajuste de Volumen (Ciclo + GAS)")
+
+        # Obtener información de contexto
+        contexto_ciclo_gas = st.session_state.get("contexto_ciclo_gas", {})
+        recomendacion_slider = contexto_ciclo_gas.get(
+            "recomendacion_slider",
+            "Sin datos de ciclo/GAS. Volumen: 100%"
+        )
+
+        st.caption(recomendacion_slider)
+
+        # El slider
+        slider_val = st.slider(
+            "Selecciona volumen (%)",
+            min_value=0,
+            max_value=150,
+            value=st.session_state.get("slider_volumen_pct", 100),
+            step=5,
+            format="%d%%",
+            help=(
+                "🟢 **80-100%**: Plan seguro (recomendado)\n\n"
+                "🟡 **50-79%**: Reducción por recuperación (menstruación, GAS bajo)\n\n"
+                "🔴 **0-49%**: Descanso activo (máxima restricción)\n\n"
+                "🔵 **101-150%**: Aumento si recuperado + ovulación (solo si te sientes 100%)"
+            )
+        )
+
+        # Guardar en session
+        st.session_state["slider_volumen_pct"] = slider_val
+
+        # Mostrar volumen final estimado (aproximado)
+        volumen_base_estimado = 50  # Placeholder, en versión final viene de datos
+        volumen_final = volumen_base_estimado * (slider_val / 100)
+
+        st.info(f"📊 **Volumen final estimado**: {volumen_final:.1f} km (de {volumen_base_estimado} km base)")
+
+    # Mostrar advertencia si slider muy bajo
+    if st.session_state.get("slider_volumen_pct", 100) < 60:
+        st.warning(
+            "⚠️ **Volumen muy bajo** (<60%). Si estás en ciclo menstrual + GAS severo, considera descanso completo.",
+            icon="⚠️"
+        )
+
+    st.markdown("---")
+
     if st.session_state.plan_data is None:
         st.info("Pulsa **⚡ Regenerar** para generar el plan de esta semana con IA personalizada.")
         st.stop()
 
     plan = st.session_state.plan_data
     if not isinstance(plan, dict) or "fase" not in plan:
-        plan_bd = _cargar_plan_de_bd(user_actual, lunes)
+        protocolo_sel = st.session_state.get("protocolo_seleccionado")
+        slider_pct = st.session_state.get("slider_volumen_pct", 100)
+        plan_bd = _cargar_plan_de_bd(user_actual, lunes, protocolo_seleccionado=protocolo_sel, slider_volumen_pct=slider_pct)
         if plan_bd and isinstance(plan_bd, dict) and "fase" in plan_bd:
             st.session_state.plan_data = plan_bd
             st.rerun()

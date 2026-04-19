@@ -31,6 +31,120 @@ Esta página muestra **TODO** lo que el sistema analiza para generar tu plan sem
 Datos en tiempo real, decisiones del código y próximas acciones.
 """)
 
+# ============================================================================
+# NUEVO: KPI PANEL EJECUTIVO (Mejoras)
+# ============================================================================
+
+st.markdown("---")
+st.header("🚀 KPI PANEL EJECUTIVO")
+
+try:
+    from src.plan.plan_integrator import preparar_contexto_plan
+    from src.plan.reglas import obtener_fase_macrociclo
+    from src.db.db_manager import get_db_connection as _get_db
+    from src.plan.helpers import cargar_datos_plan as _cargar_datos_plan
+
+    # Cargar datos básicos
+    _conn_temp = _get_db()
+    _datos_temp = _cargar_datos_plan(None)  # Will get filled below
+
+    # Obtener datos del usuario (necesario para contexto)
+    usuario_id_temp = st.session_state.get("usuario_id", 1)
+    _datos_kpi = _cargar_datos_plan(usuario_id_temp)
+
+    # Obtener fase del macrociclo
+    from datetime import datetime
+    hoy = datetime.now()
+    lunes = hoy - __import__("datetime").timedelta(days=hoy.weekday())
+
+    from src.plan.reglas import obtener_fase_macrociclo
+    _fase_kpi = obtener_fase_macrociclo(lunes)
+
+    # Preparar contexto con GAS, Protocolo, Ciclo+GAS
+    contexto = preparar_contexto_plan(_datos_kpi, _fase_kpi)
+    gas_info = contexto.get("gas_info", {})
+    ciclo_sinergia = contexto.get("ciclo_gas_sinergia", {})
+    protocolo_info = contexto.get("protocolo_recomendado", {})
+
+    # Grid de 5 KPIs
+    col_gas, col_proto, col_vol, col_ciclo, col_estado = st.columns(5)
+
+    # KPI 1: GAS
+    with col_gas:
+        color_gas = {"alarma": "🔴", "resistencia": "🟢", "agotamiento": "🔴"}.get(gas_info.get("fase", ""), "⚪")
+        st.metric(
+            f"{color_gas} GAS",
+            gas_info.get("fase", "?").upper(),
+            f"Severidad {gas_info.get('severidad', 0)}/10"
+        )
+
+    # KPI 2: Protocolo Recomendado
+    with col_proto:
+        st.metric(
+            "🔄 Protocolo",
+            f"Protocolo {protocolo_info.get('protocolo', '?')}",
+            "Dinámico"
+        )
+
+    # KPI 3: Volumen Objetivo
+    with col_vol:
+        vol_obj = _datos_kpi.get("km_objetivo", _datos_kpi.get("km_semana_anterior", 50))
+        st.metric("📏 Volumen Base", f"{vol_obj:.0f} km")
+
+    # KPI 4: Ciclo Menstrual (solo mujeres)
+    _genero_kpi = str(_datos_kpi.get("genero", "")).strip().lower()
+    _es_mujer_kpi = _genero_kpi in ("mujer", "female", "f", "w", "femenino")
+    with col_ciclo:
+        if _es_mujer_kpi:
+            ciclo_fase = _datos_kpi.get("fase_ciclo", {})
+            if isinstance(ciclo_fase, dict):
+                ciclo_nombre = ciclo_fase.get("fase", "—")
+            else:
+                ciclo_nombre = str(ciclo_fase) if ciclo_fase else "—"
+            st.metric("🩸 Ciclo", ciclo_nombre if ciclo_nombre else "—")
+        else:
+            st.metric("🩸 Ciclo", "N/A")
+
+    # KPI 5: Estado General
+    with col_estado:
+        sev = gas_info.get("severidad", 0)
+        if sev <= 3:
+            estado = "✅ Óptimo"
+        elif sev <= 6:
+            estado = "⚠️ Cuidado"
+        else:
+            estado = "🚨 Crítico"
+        st.metric("Estado", estado)
+
+    # Mensaje principal de GAS
+    st.info(f"📊 {gas_info.get('recomendacion', 'Sin datos')}")
+
+    # Sinergia Ciclo + GAS (solo mujeres)
+    if _es_mujer_kpi and ciclo_sinergia:
+        st.markdown("---")
+        st.subheader("🎚️ Ajuste de Volumen (Ciclo + GAS)")
+
+        # Mostrar sinergia
+        if ciclo_sinergia.get("doble_estres"):
+            st.warning(
+                f"🩸 **DOBLE ESTRÉS DETECTADO**\n\n"
+                f"{ciclo_sinergia.get('mensaje_educativo', '')}",
+                icon="⚠️"
+            )
+        else:
+            st.info(f"💡 {ciclo_sinergia.get('mensaje_educativo', '')}")
+
+        # Mostrar recomendación de slider
+        st.caption(f"💬 {ciclo_sinergia.get('recomendacion_slider', '')}")
+
+        # Guardar en session para pages/02_plan.py
+        st.session_state["contexto_ciclo_gas"] = ciclo_sinergia
+
+except Exception as e:
+    st.error(f"Error cargando KPI Panel: {str(e)}")
+
+st.markdown("---")
+
 # Verificar autenticación
 if "usuario_id" not in st.session_state:
     st.warning("Selecciona tu perfil en la página de inicio.")
