@@ -772,11 +772,25 @@ if active_tab == "generar":
     # ---- PROTOCOLO SELECTOR ----
     with col_proto:
         protocolo_recomendado = st.session_state.get("protocolo_recomendado", "B")
+        opciones_protocolo = ["Automático", "A (Fuerza Prioridad)", "B (Rendimiento Carrera)"]
+
+        # Streamlit radio usa `index` (no `value` en algunas versiones de Cloud).
+        # Calculamos un valor inicial robusto según estado previo o recomendación IA.
+        protocolo_display = st.session_state.get("protocolo_seleccionado_display")
+        if protocolo_display not in opciones_protocolo:
+            if protocolo_recomendado == "A":
+                protocolo_display = "A (Fuerza Prioridad)"
+            elif protocolo_recomendado == "B":
+                protocolo_display = "B (Rendimiento Carrera)"
+            else:
+                protocolo_display = "Automático"
+
+        protocolo_index = opciones_protocolo.index(protocolo_display)
 
         protocolo_sel = st.radio(
             "🔄 Protocolo de Entrenamiento",
-            options=["Automático", "A (Fuerza Prioridad)", "B (Rendimiento Carrera)"],
-            value=st.session_state.get("protocolo_seleccionado_display", "Automático"),
+            options=opciones_protocolo,
+            index=protocolo_index,
             help=(
                 "**A (Fuerza Prioridad)**: Para Acondicionamiento y Prep. General. "
                 "Fuerza 2-3 días/semana @ 70-95% 1RM. Carrera ≤2 días Z2.\n\n"
