@@ -241,11 +241,11 @@ def _last_number(obj, keys):
 def _safe_api_call(fn, *args, **kwargs):
     """
     Ejecuta una llamada API de Garmin de forma segura, registrando errores.
-    Incluye timeout de 15 segundos para evitar cuelgues.
+    Incluye timeout de 45 segundos para permitir conexiones lentas.
     Retorna None si la llamada falla, pero registra qué pasó.
     """
     fn_name = getattr(fn, '__name__', str(fn))
-    timeout_sec = 15
+    timeout_sec = 45
     result_container = [None]
     exception_container = [None]
     
@@ -1149,13 +1149,13 @@ def iniciar_sesion_garmin(email, password, usuario_id: int | None = None, force_
         
         thread = Thread(target=_login, daemon=True)
         thread.start()
-        thread.join(timeout=20)  # 20 segundos para login
-        
+        thread.join(timeout=60)  # 60 segundos para login (permitir conexiones lentas)
+
         if not login_container[0]:
             if exception_container[0]:
                 raise exception_container[0]
             else:
-                raise TimeoutError("Login en Garmin expiró (timeout)")
+                raise TimeoutError("Login en Garmin expiró (timeout de 60s)")
         
         logger.info("✅ Login exitoso en Garmin")
         
