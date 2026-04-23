@@ -24,6 +24,8 @@ logger.setLevel(logging.DEBUG)
 
 # Archivo de bloqueo 429
 _BLOCKADE_FILE = os.path.expanduser("~/.garth_athlete/.blockade.json")
+_GARMIN_LOGIN_TIMEOUT_SECONDS = int(os.getenv("GARMIN_LOGIN_TIMEOUT_SECONDS", "120"))
+_GARMIN_LOGIN_MAX_ATTEMPTS = int(os.getenv("GARMIN_LOGIN_MAX_ATTEMPTS", "2"))
 
 
 def check_garmin_blockade():
@@ -1134,28 +1136,54 @@ def iniciar_sesion_garmin(email, password, usuario_id: int | None = None, force_
     
     # 3. Login fresco con credenciales (solo si es necesario)
     logger.info(f"🔑 Iniciando login fresco para {email}...")
-    client = Garmin(email=email, password=password)
     try:
-        # Login con timeout
-        login_container = [False]
-        exception_container = [None]
-        
-        def _login():
-            try:
-                client.login()
-                login_container[0] = True
-            except Exception as e:
-                exception_container[0] = e
-        
-        thread = Thread(target=_login, daemon=True)
-        thread.start()
-        thread.join(timeout=60)  # 60 segundos para login (permitir conexiones lentas)
+        timeout_sec = max(30, _GARMIN_LOGIN_TIMEOUT_SECONDS)
+        max_attempts = max(1, _GARMIN_LOGIN_MAX_ATTEMPTS)
+        client = None
 
-        if not login_container[0]:
-            if exception_container[0]:
-                raise exception_container[0]
-            else:
-                raise TimeoutError("Login en Garmin expiró (timeout de 60s)")
+        def _login_with_timeout(_client, _timeout_sec):
+            login_ok = [False]
+            login_exc = [None]
+
+            def _login():
+                try:
+                    _client.login()
+                    login_ok[0] = True
+                except Exception as e:
+                    login_exc[0] = e
+
+            thread = Thread(target=_login, daemon=True)
+            thread.start()
+            thread.join(timeout=_timeout_sec)
+
+            if login_ok[0]:
+                return
+            if login_exc[0] is not None:
+                raise login_exc[0]
+            raise TimeoutError(f"Login en Garmin expiró (timeout de {_timeout_sec}s)")
+
+        last_timeout_error = None
+        for attempt in range(1, max_attempts + 1):
+            attempt_client = Garmin(email=email, password=password)
+            try:
+                logger.info(f"Intento de login Garmin {attempt}/{max_attempts} (timeout={timeout_sec}s)")
+                _login_with_timeout(attempt_client, timeout_sec)
+                client = attempt_client
+                break
+            except TimeoutError as e:
+                last_timeout_error = e
+                logger.warning(f"Timeout en login Garmin (intento {attempt}/{max_attempts}): {e}")
+                if attempt >= max_attempts:
+                    raise TimeoutError(
+                        f"Login en Garmin expiró tras {max_attempts} intentos (timeout de {timeout_sec}s por intento)"
+                    ) from e
+            except GarminConnectConnectionError as e:
+                logger.warning(f"Error de conexión en login Garmin (intento {attempt}/{max_attempts}): {e}")
+                if attempt >= max_attempts:
+                    raise
+
+        if client is None:
+            raise TimeoutError(str(last_timeout_error or "Login en Garmin expiró"))
         
         logger.info("✅ Login exitoso en Garmin")
         
@@ -1208,7 +1236,11 @@ def iniciar_sesion_garmin(email, password, usuario_id: int | None = None, force_
         raise RuntimeError(f"Error de conexión con Garmin: {e}") from e
     except TimeoutError as e:
         logger.error(f"❌ Timeout en login: {e}")
-        raise RuntimeError(f"El login tardó demasiado. Intenta más tarde: {e}") from e
+        raise RuntimeError(
+            "El login de Garmin tardó demasiado. "
+            f"{e}. Si estás en Cloud, prueba login local con `python scripts/garmin_login_once.py` "
+            "y reintenta en unos minutos."
+        ) from e
     except Exception as e:
         logger.error(f"❌ Error inesperado: {type(e).__name__}: {e}")
         

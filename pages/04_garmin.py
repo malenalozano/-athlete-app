@@ -428,7 +428,7 @@ Para detalles: Ver `GARMIN_BLOCKED_FIX.md` en el repositorio.""")
                         finally:
                             conn.close()
                         # Only here do we trigger SSO — explicit user action
-                        with st.spinner("Conectando con Garmin (puede tardar 15-30 seg)..."):
+                        with st.spinner("Conectando con Garmin (puede tardar 30-90 seg)..."):
                             try:
                                 pw = pass_g.strip() or _get_saved_password(cred)
                                 if not pw:
