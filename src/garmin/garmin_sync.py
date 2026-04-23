@@ -279,6 +279,28 @@ def _safe_api_call(fn, *args, **kwargs):
     return result_container[0]
 
 
+def _extract_vo2max_metric(client, fecha_iso):
+    """Intenta recuperar VO2max desde los distintos endpoints Garmin disponibles."""
+    sources = [
+        ("get_max_metrics", ["vo2Max", "vo2MaxValue", "genericVO2MaxValue", "vo2max"]),
+        ("get_fitnessage_data", ["vo2Max", "vo2MaxValue", "vo2max"]),
+        ("get_user_summary", ["vo2Max", "vo2MaxValue", "vo2max"]),
+    ]
+
+    for method_name, keys in sources:
+        payload = _safe_api_call(getattr(client, method_name, lambda x: None), fecha_iso) or {}
+        if not payload:
+            continue
+
+        vo2max = _to_float(_first_number(payload, keys))
+        if vo2max is not None:
+            logger.info(f"  ✓ VO2max ({method_name}): {vo2max}")
+            return vo2max
+
+    logger.info("  ✗ VO2max: No encontrado")
+    return None
+
+
 def _extract_activity_metrics(activity, summary, details):
     merged = {}
     for block in (activity or {}, summary or {}, details or {}):
@@ -542,15 +564,7 @@ def _extract_daily_metrics(client, fecha_iso):
     logger.info(f"  ✓ Body Battery: {body_battery_min}→{body_battery_max}" if body_battery_max else "  ✗ Body Battery: No encontrado")
 
     # VO2max
-    vo2max = None
-    max_metrics = _safe_api_call(getattr(client, 'get_max_metrics', lambda x: None), fecha_iso)
-    if max_metrics:
-        vo2max = _to_float(_first_number(max_metrics, ["vo2MaxValue", "vo2Max", "genericVO2MaxValue"]))
-    if vo2max is None:
-        # Fallback: buscar en user stats
-        user_stats = _safe_api_call(getattr(client, 'get_user_summary', lambda x: None), fecha_iso) or {}
-        vo2max = _to_float(_first_number(user_stats, ["vo2Max", "vo2MaxValue"]))
-    logger.info(f"  ✓ VO2max: {vo2max}" if vo2max else "  ✗ VO2max: No encontrado")
+    vo2max = _extract_vo2max_metric(client, fecha_iso)
 
     # Training Status
     training_status = None
