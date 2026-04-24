@@ -67,30 +67,41 @@ def _tipo_es_suave(tipo: str) -> bool:
 
 
 def _dia_fue_dia_duro_completado(dia: Dict[str, Any]) -> bool:
-    """Un día pasado marcado como 'realizado' y con sesión dura."""
+    """Un día pasado realizado completamente con sesión dura."""
     if not dia.get("realizado"):
         return False
-    return _tipo_es_dura(str(dia.get("tipo", "")))
+    if dia.get("_estado") in ("parcial", "no_realizado"):
+        return False
+    tipo_ref = str(dia.get("_tipo_original") or dia.get("tipo", ""))
+    return _tipo_es_dura(tipo_ref)
 
 
 def _cuenta_dias_perdidos_seguidos(dias_pasados: List[Dict[str, Any]]) -> int:
-    """Cuenta días consecutivos SIN entrenamiento al final del tramo pasado."""
+    """Cuenta días consecutivos SIN entrenamiento completo al final del tramo pasado."""
     seguidos = 0
     for d in reversed(dias_pasados):
-        if d.get("realizado"):
+        tipo_orig = str(d.get("_tipo_original") or d.get("tipo", ""))
+        if tipo_orig in ("Descanso", "Movilidad"):
             break
-        # Si el plan era descanso, no cuenta como "perdido"
-        if str(d.get("tipo", "")) in ("Descanso", "Movilidad"):
+        if d.get("realizado") and d.get("_estado") not in ("parcial", "no_realizado"):
             break
         seguidos += 1
     return seguidos
 
 
 def _tirada_larga_se_perdio(dias_pasados: List[Dict[str, Any]]) -> bool:
-    """¿El plan original tenía TL en días pasados y no se realizó?"""
+    """TL perdida totalmente o parcial (km < 60% del plan)."""
     for d in dias_pasados:
         tipo_original = str(d.get("_tipo_original") or d.get("tipo", ""))
-        if tipo_original == "Tirada Larga" and not d.get("realizado"):
+        if tipo_original != "Tirada Larga":
+            continue
+        if not d.get("realizado"):
+            return True
+        if d.get("_estado") == "parcial":
+            return True
+        km_real = float(d.get("km") or 0)
+        km_plan = float(d.get("_km_plan") or 0)
+        if km_plan > 0 and km_real > 0 and (km_real / km_plan) < 0.60:
             return True
     return False
 
@@ -98,7 +109,7 @@ def _tirada_larga_se_perdio(dias_pasados: List[Dict[str, Any]]) -> bool:
 def _calidad_se_perdio(dias_pasados: List[Dict[str, Any]]) -> bool:
     for d in dias_pasados:
         tipo_original = str(d.get("_tipo_original") or d.get("tipo", ""))
-        if _tipo_es_calidad(tipo_original) and not d.get("realizado"):
+        if _tipo_es_calidad(tipo_original) and (not d.get("realizado") or d.get("_estado") == "parcial"):
             return True
     return False
 
@@ -178,12 +189,21 @@ def adaptar_plan_restante(
             idx_tl = candidatos_tl[-1]
             # Buscar los km originales de la TL en días pasados
             km_tl_orig = 0.0
+            km_ya_hecho = 0.0
             for d in dias_pasados:
                 if str(d.get("_tipo_original") or d.get("tipo", "")) == "Tirada Larga":
-                    km_tl_orig = float(d.get("km") or 0)
+                    km_tl_orig = float(d.get("_km_plan") or d.get("km") or 0)
+                    if d.get("realizado"):
+                        km_ya_hecho = float(d.get("km") or 0)
                     break
-            # Reducir 15% por retraso
-            km_tl = round(km_tl_orig * 0.85, 1) if km_tl_orig > 0 else 14
+            # Si ya hizo parte, reubicar sólo el faltante con margen
+            if km_ya_hecho > 0:
+                km_faltante = max(km_tl_orig - km_ya_hecho, 0)
+                km_tl = round(min(km_faltante, km_tl_orig * 0.85), 1) if km_faltante > 0 else round(km_tl_orig * 0.50, 1)
+            else:
+                km_tl = round(km_tl_orig * 0.85, 1) if km_tl_orig > 0 else 14
+            if km_tl <= 0:
+                km_tl = round(max(km_tl_orig * 0.5, 8), 1)
             dia_tl = futuros[idx_tl]
             dia_tl["_tipo_original"] = str(dia_tl.get("tipo", ""))
             dia_tl["tipo"] = "Tirada Larga"

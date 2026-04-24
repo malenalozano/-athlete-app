@@ -346,15 +346,8 @@ def _es_fuerza_deporte(tipo_deporte: str) -> bool:
     return any(k in t for k in ("strength", "fuerza", "weight", "gym", "training"))
 
 
-def _etiqueta_inteligente_dia_pasado(dia_plan: dict, actividad_garmin: tuple, sesiones_fuerza: list) -> tuple[str, str]:
-    """
-    Compara la actividad real con lo que decía el plan para ese día.
-    Si el tipo + características (km, duración, grupo muscular) coinciden, devuelve la etiqueta del plan.
-    Si no, devuelve 'Realizado: <tipo>'.
-
-    actividad_garmin: (fecha, tipo_deporte, duracion_min, km)
-    sesiones_fuerza: lista de dicts con {grupo_muscular, musculo_principal, ejercicio}
-    """
+def _etiqueta_inteligente_dia_pasado(dia_plan: dict, actividad_garmin: tuple, sesiones_fuerza: list) -> tuple[str, str, str]:
+    """Compara lo hecho vs el plan. Devuelve (etiqueta, alerta, estado)."""
     tipo_plan = str(dia_plan.get("tipo", "")).strip()
     km_plan = float(dia_plan.get("km") or 0)
     dur_plan = float(dia_plan.get("duracion_min") or 0)
@@ -363,60 +356,56 @@ def _etiqueta_inteligente_dia_pasado(dia_plan: dict, actividad_garmin: tuple, se
     dur_act = float(actividad_garmin[2] or 0) if actividad_garmin else 0
     km_act = float(actividad_garmin[3] or 0) if actividad_garmin else 0
 
-    # ¿La actividad es carrera o fuerza?
     es_carrera_real = _es_carrera_deporte(tipo_act_raw) or km_act > 0.5
-    es_fuerza_real = _es_fuerza_deporte(tipo_act_raw) or bool(sesiones_fuerza)
+    es_fuerza_real = (_es_fuerza_deporte(tipo_act_raw) and not es_carrera_real) or bool(sesiones_fuerza)
 
     plan_es_carrera = tipo_plan in _TIPOS_CARRERA
     plan_es_fuerza = tipo_plan in _TIPOS_FUERZA or "Fuerza" in tipo_plan
     plan_es_descanso = tipo_plan in ("Descanso", "Regenerativo", "Movilidad")
 
-    # Caso 1: carrera real vs plan carrera → comparar km/duración
+    # 1) carrera vs plan carrera
     if plan_es_carrera and es_carrera_real:
-        # Tolerancia: ±25% en km/duración
-        km_match = (km_plan <= 0) or (km_act <= 0) or (abs(km_act - km_plan) / max(km_plan, 1) <= 0.30)
-        dur_match = (dur_plan <= 0) or (dur_act <= 0) or (abs(dur_act - dur_plan) / max(dur_plan, 1) <= 0.35)
-        if km_match and dur_match:
-            return tipo_plan, "✓ Completado (plan)"
-        else:
-            return f"Realizado: Carrera", f"⚠️ Diferente al plan ({km_act:.1f}km vs {km_plan:.1f}km)"
+        ratio = (km_act / km_plan) if km_plan > 0 else ((dur_act / dur_plan) if dur_plan > 0 else 1.0)
+        if km_plan <= 0 and dur_plan <= 0:
+            return tipo_plan, f"✓ {km_act:.1f}km · {dur_act:.0f}min", "completo"
+        if 0.75 <= ratio <= 1.25:
+            return tipo_plan, f"✓ {km_act:.1f}km · {dur_act:.0f}min", "completo"
+        if 0.40 <= ratio < 0.75:
+            return tipo_plan, f"⚠️ Parcial: {km_act:.1f}km de {km_plan:.0f}", "parcial"
+        if 1.25 < ratio <= 1.60:
+            return tipo_plan, f"↑ Pasado: {km_act:.1f}km (plan: {km_plan:.0f})", "completo"
+        return tipo_plan, f"⚠️ Muy corto: {km_act:.1f}km vs {km_plan:.0f}", "parcial"
 
-    # Caso 2: fuerza real vs plan fuerza → comparar grupo muscular
+    # 2) fuerza vs plan fuerza
     if plan_es_fuerza and es_fuerza_real:
         grupo_dia = _grupo_fuerza_desde_tipo(tipo_plan) or ""
-        # Revisa sesiones_fuerza: ¿hay ejercicios del grupo esperado?
         if grupo_dia and sesiones_fuerza:
-            match = any(
-                _ejercicio_en_grupo_fuerza(
-                    grupo_dia,
-                    str(s.get("ejercicio", "")),
-                    str(s.get("grupo_muscular", "")),
-                    str(s.get("musculo_principal", "")),
-                )
-                for s in sesiones_fuerza
-            )
+            match = any(_ejercicio_en_grupo_fuerza(grupo_dia, str(s.get("ejercicio", "")), str(s.get("grupo_muscular", "")), str(s.get("musculo_principal", ""))) for s in sesiones_fuerza)
             if match:
-                return tipo_plan, "✓ Completado (plan)"
-        # Fuerza genérica pero match tipo
+                return tipo_plan, f"✓ {len(sesiones_fuerza)} ejercicios", "completo"
+            return tipo_plan, f"⚠️ Otro grupo: {len(sesiones_fuerza)} ej.", "parcial"
         if not grupo_dia:
-            return tipo_plan, "✓ Completado (plan)"
-        return "Realizado: Fuerza", "⚠️ Fuerza diferente al plan"
+            return tipo_plan, f"✓ {len(sesiones_fuerza)} ejercicios" if sesiones_fuerza else "✓ Hecho", "completo"
+        return tipo_plan, "⚠️ Fuerza sin detalle", "parcial"
 
-    # Caso 3: no hizo nada y plan era descanso → etiqueta del plan
+    # 3) plan descanso, no hizo nada
     if plan_es_descanso and not actividad_garmin and not sesiones_fuerza:
-        return tipo_plan, "✓ Descanso planificado"
+        return tipo_plan, "✓ Descanso", "completo"
 
-    # Caso 4: hizo algo pero no coincide con el plan
-    if actividad_garmin:
+    # 4) hizo algo distinto al plan
+    if (plan_es_carrera and es_fuerza_real) or (plan_es_fuerza and es_carrera_real):
         if es_carrera_real:
-            return "Realizado: Carrera", f"🔄 No estaba en el plan ({km_act:.1f}km · {dur_act:.0f}min)"
-        return f"Realizado: {tipo_act_raw or 'Actividad'}", f"🔄 {dur_act:.0f}min"
+            return f"{tipo_plan} → Carrera", f"↔ Sustituido: {km_act:.1f}km", "distinto"
+        return f"{tipo_plan} → Fuerza", f"↔ Sustituido: fuerza ({len(sesiones_fuerza)} ej.)", "distinto"
 
-    if sesiones_fuerza:
-        return "Realizado: Fuerza", f"🔄 {len(sesiones_fuerza)} ejercicios (no estaba planificado)"
+    # 5) extra en descanso
+    if plan_es_descanso and (actividad_garmin or sesiones_fuerza):
+        if es_carrera_real:
+            return "Carrera extra", f"➕ {km_act:.1f}km · {dur_act:.0f}min", "extra"
+        return "Fuerza extra", f"➕ {len(sesiones_fuerza)} ejercicios", "extra"
 
-    # Caso 5: sin actividad y el plan pedía algo → perdido
-    return tipo_plan, "✗ No realizado"
+    # 6) perdido
+    return tipo_plan, "✗ No realizado", "no_realizado"
 
 
 def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datetime) -> dict:
@@ -461,43 +450,48 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
 
                 tipo_plan_original = str(dia_plan.get("tipo", ""))
                 if a or sfs:
-                    # Etiqueta inteligente comparando con el plan
-                    etiqueta, alerta_msg = _etiqueta_inteligente_dia_pasado(dia_plan, a, sfs)
+                    etiqueta, alerta_msg, estado = _etiqueta_inteligente_dia_pasado(dia_plan, a, sfs)
                     km_real = float(a[3] or 0) if a else 0
                     dur_real = float(a[2] or 0) if a else 0
-                    # Si no había carrera pero hubo fuerza, duración = len * ~12 min estimada (solo informativa)
                     if not a and sfs:
                         dur_real = 45
                     dias_adaptados.append({
                         "fecha": fd_str, "dia": fd.strftime("%a").upper()[:3],
                         "tipo": etiqueta,
                         "km": km_real, "duracion_min": dur_real,
-                        "intensidad": dia_plan.get("intensidad", "Histórico") if "Realizado" not in etiqueta else "Histórico",
+                        "intensidad": dia_plan.get("intensidad", "Histórico"),
                         "descripcion_ia": dia_plan.get("descripcion_ia", "") or "[Historial]",
                         "alerta": alerta_msg,
                         "realizado": True,
                         "_tipo_original": tipo_plan_original,
+                        "_estado": estado,
+                        "_km_plan": float(dia_plan.get("km") or 0),
                     })
                 else:
-                    # Día pasado sin actividad: mostrar el plan con alerta
                     d_copy = dict(dia_plan)
                     if d_copy.get("tipo") not in ("Descanso", "Regenerativo", "Movilidad"):
                         d_copy["alerta"] = "✗ No realizado"
                     d_copy["realizado"] = False
                     d_copy["_tipo_original"] = tipo_plan_original
+                    d_copy["_estado"] = "no_realizado" if d_copy.get("tipo") not in ("Descanso", "Regenerativo", "Movilidad") else "completo"
+                    d_copy["_km_plan"] = float(dia_plan.get("km") or 0)
                     dias_adaptados.append(d_copy)
         finally:
             conn.close()
     for dia in plan.get("dias", []):
         if datetime.fromisoformat(dia["fecha"]).date() >= hoy_date:
-            dias_adaptados.append(dia)
+            d_fut = dict(dia)
+            d_fut.setdefault("_tipo_original", str(dia.get("tipo", "")))
+            d_fut.setdefault("_estado", "futuro")
+            dias_adaptados.append(d_fut)
 
     # Adaptación inteligente: redistribuir días futuros según lo realizado/perdido
+    from src.plan.adaptador_semanal import adaptar_plan_restante
     try:
-        from src.plan.adaptador_semanal import adaptar_plan_restante
         dias_adaptados = adaptar_plan_restante(dias_adaptados, hoy)
-    except Exception:
-        pass
+    except Exception as _e:
+        import traceback as _tb
+        print(f"[adaptador_semanal] error: {_e}\n{_tb.format_exc()}")
 
     plan["dias"] = dias_adaptados
     return plan
