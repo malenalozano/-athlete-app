@@ -336,6 +336,89 @@ def _cargar_plan_de_bd(usuario_id: int, lunes: datetime, protocolo_seleccionado:
     finally:
         conn.close()
 
+def _es_carrera_deporte(tipo_deporte: str) -> bool:
+    t = str(tipo_deporte or "").lower()
+    return any(k in t for k in ("running", "run", "treadmill", "trail", "track", "road"))
+
+
+def _es_fuerza_deporte(tipo_deporte: str) -> bool:
+    t = str(tipo_deporte or "").lower()
+    return any(k in t for k in ("strength", "fuerza", "weight", "gym", "training"))
+
+
+def _etiqueta_inteligente_dia_pasado(dia_plan: dict, actividad_garmin: tuple, sesiones_fuerza: list) -> tuple[str, str]:
+    """
+    Compara la actividad real con lo que decía el plan para ese día.
+    Si el tipo + características (km, duración, grupo muscular) coinciden, devuelve la etiqueta del plan.
+    Si no, devuelve 'Realizado: <tipo>'.
+
+    actividad_garmin: (fecha, tipo_deporte, duracion_min, km)
+    sesiones_fuerza: lista de dicts con {grupo_muscular, musculo_principal, ejercicio}
+    """
+    tipo_plan = str(dia_plan.get("tipo", "")).strip()
+    km_plan = float(dia_plan.get("km") or 0)
+    dur_plan = float(dia_plan.get("duracion_min") or 0)
+
+    tipo_act_raw = (actividad_garmin[1] if actividad_garmin else None) or ""
+    dur_act = float(actividad_garmin[2] or 0) if actividad_garmin else 0
+    km_act = float(actividad_garmin[3] or 0) if actividad_garmin else 0
+
+    # ¿La actividad es carrera o fuerza?
+    es_carrera_real = _es_carrera_deporte(tipo_act_raw) or km_act > 0.5
+    es_fuerza_real = _es_fuerza_deporte(tipo_act_raw) or bool(sesiones_fuerza)
+
+    plan_es_carrera = tipo_plan in _TIPOS_CARRERA
+    plan_es_fuerza = tipo_plan in _TIPOS_FUERZA or "Fuerza" in tipo_plan
+    plan_es_descanso = tipo_plan in ("Descanso", "Regenerativo", "Movilidad")
+
+    # Caso 1: carrera real vs plan carrera → comparar km/duración
+    if plan_es_carrera and es_carrera_real:
+        # Tolerancia: ±25% en km/duración
+        km_match = (km_plan <= 0) or (km_act <= 0) or (abs(km_act - km_plan) / max(km_plan, 1) <= 0.30)
+        dur_match = (dur_plan <= 0) or (dur_act <= 0) or (abs(dur_act - dur_plan) / max(dur_plan, 1) <= 0.35)
+        if km_match and dur_match:
+            return tipo_plan, "✓ Completado (plan)"
+        else:
+            return f"Realizado: Carrera", f"⚠️ Diferente al plan ({km_act:.1f}km vs {km_plan:.1f}km)"
+
+    # Caso 2: fuerza real vs plan fuerza → comparar grupo muscular
+    if plan_es_fuerza and es_fuerza_real:
+        grupo_dia = _grupo_fuerza_desde_tipo(tipo_plan) or ""
+        # Revisa sesiones_fuerza: ¿hay ejercicios del grupo esperado?
+        if grupo_dia and sesiones_fuerza:
+            match = any(
+                _ejercicio_en_grupo_fuerza(
+                    grupo_dia,
+                    str(s.get("ejercicio", "")),
+                    str(s.get("grupo_muscular", "")),
+                    str(s.get("musculo_principal", "")),
+                )
+                for s in sesiones_fuerza
+            )
+            if match:
+                return tipo_plan, "✓ Completado (plan)"
+        # Fuerza genérica pero match tipo
+        if not grupo_dia:
+            return tipo_plan, "✓ Completado (plan)"
+        return "Realizado: Fuerza", "⚠️ Fuerza diferente al plan"
+
+    # Caso 3: no hizo nada y plan era descanso → etiqueta del plan
+    if plan_es_descanso and not actividad_garmin and not sesiones_fuerza:
+        return tipo_plan, "✓ Descanso planificado"
+
+    # Caso 4: hizo algo pero no coincide con el plan
+    if actividad_garmin:
+        if es_carrera_real:
+            return "Realizado: Carrera", f"🔄 No estaba en el plan ({km_act:.1f}km · {dur_act:.0f}min)"
+        return f"Realizado: {tipo_act_raw or 'Actividad'}", f"🔄 {dur_act:.0f}min"
+
+    if sesiones_fuerza:
+        return "Realizado: Fuerza", f"🔄 {len(sesiones_fuerza)} ejercicios (no estaba planificado)"
+
+    # Caso 5: sin actividad y el plan pedía algo → perdido
+    return tipo_plan, "✗ No realizado"
+
+
 def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datetime) -> dict:
     hoy_date = hoy.date()
     dias_adaptados = []
@@ -343,30 +426,79 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
     if dias_pasados > 0:
         conn = get_db_connection()
         try:
+            lunes_str = lunes.strftime("%Y-%m-%d")
+            hoy_str = hoy_date.strftime("%Y-%m-%d")
             actvs = conn.execute(
                 "SELECT fecha, tipo_deporte, ROUND(CAST(tiempo_seg AS REAL)/60, 1) as duracion_min, distancia_m/1000.0 FROM actividades_garmin "
                 "WHERE usuario_id=? AND fecha >= ? AND fecha < ? ORDER BY fecha",
-                (usuario_id, lunes.strftime("%Y-%m-%d"), hoy_date)).fetchall()
+                (usuario_id, lunes_str, hoy_str)).fetchall()
+            # Sesiones de fuerza realizadas en esos días
+            try:
+                sesiones_fza = conn.execute(
+                    """SELECT s.fecha, e.ejercicio, e.grupo_muscular, e.musculo_principal
+                       FROM ejercicios_fuerza e JOIN sesiones_fuerza s ON s.id=e.sesion_id
+                       WHERE s.usuario_id=? AND s.fecha >= ? AND s.fecha < ?""",
+                    (usuario_id, lunes_str, hoy_str)).fetchall()
+            except Exception:
+                sesiones_fza = []
+
+            def _sesiones_fuerza_del_dia(fecha_str: str) -> list:
+                return [
+                    {"ejercicio": s[1], "grupo_muscular": s[2], "musculo_principal": s[3]}
+                    for s in sesiones_fza if str(s[0])[:10] == fecha_str
+                ]
+
             for i in range(dias_pasados):
                 fd = lunes + timedelta(days=i)
-                a = next((x for x in actvs if x[0][:10] == fd.strftime("%Y-%m-%d")), None)
+                fd_str = fd.strftime("%Y-%m-%d")
+                a = next((x for x in actvs if x[0][:10] == fd_str), None)
+                sfs = _sesiones_fuerza_del_dia(fd_str)
+
                 if i < len(plan.get("dias", [])):
                     dia_plan = plan["dias"][i]
-                    if a:
-                        # Día pasado con actividad realizada
-                        dias_adaptados.append({"fecha": a[0][:10], "dia": fd.strftime("%a").upper()[:3],
-                                               "tipo": "Realizado: " + (a[1] or "Actividad"),
-                                               "km": a[3] or 0, "duracion_min": a[2] or 0,
-                                               "intensidad": "Histórico", "descripcion_ia": "[Historial Garmin]",
-                                               "alerta": "✓ Completado"})
-                    else:
-                        # Día pasado SIN actividad — mostrar lo que se planificó
-                        dias_adaptados.append(dia_plan)
+                else:
+                    dia_plan = {"tipo": "Descanso", "km": 0, "duracion_min": 0}
+
+                tipo_plan_original = str(dia_plan.get("tipo", ""))
+                if a or sfs:
+                    # Etiqueta inteligente comparando con el plan
+                    etiqueta, alerta_msg = _etiqueta_inteligente_dia_pasado(dia_plan, a, sfs)
+                    km_real = float(a[3] or 0) if a else 0
+                    dur_real = float(a[2] or 0) if a else 0
+                    # Si no había carrera pero hubo fuerza, duración = len * ~12 min estimada (solo informativa)
+                    if not a and sfs:
+                        dur_real = 45
+                    dias_adaptados.append({
+                        "fecha": fd_str, "dia": fd.strftime("%a").upper()[:3],
+                        "tipo": etiqueta,
+                        "km": km_real, "duracion_min": dur_real,
+                        "intensidad": dia_plan.get("intensidad", "Histórico") if "Realizado" not in etiqueta else "Histórico",
+                        "descripcion_ia": dia_plan.get("descripcion_ia", "") or "[Historial]",
+                        "alerta": alerta_msg,
+                        "realizado": True,
+                        "_tipo_original": tipo_plan_original,
+                    })
+                else:
+                    # Día pasado sin actividad: mostrar el plan con alerta
+                    d_copy = dict(dia_plan)
+                    if d_copy.get("tipo") not in ("Descanso", "Regenerativo", "Movilidad"):
+                        d_copy["alerta"] = "✗ No realizado"
+                    d_copy["realizado"] = False
+                    d_copy["_tipo_original"] = tipo_plan_original
+                    dias_adaptados.append(d_copy)
         finally:
             conn.close()
     for dia in plan.get("dias", []):
         if datetime.fromisoformat(dia["fecha"]).date() >= hoy_date:
             dias_adaptados.append(dia)
+
+    # Adaptación inteligente: redistribuir días futuros según lo realizado/perdido
+    try:
+        from src.plan.adaptador_semanal import adaptar_plan_restante
+        dias_adaptados = adaptar_plan_restante(dias_adaptados, hoy)
+    except Exception:
+        pass
+
     plan["dias"] = dias_adaptados
     return plan
 
@@ -754,9 +886,8 @@ if active_tab == "generar":
     )
 
     # ============================================================================
-    # ⚙️ SECCIÓN: PERSONALIZACIÓN DEL PLAN (Protocolo + Slider)
+    # ⚙️ SECCIÓN: PERSONALIZACIÓN DEL PLAN (desplegable, defaults: Automático + 100%)
     # ============================================================================
-    # Inicializar variables si no existen
     if "protocolo_seleccionado" not in st.session_state:
         st.session_state["protocolo_seleccionado"] = None
     if "slider_volumen_pct" not in st.session_state:
@@ -764,97 +895,65 @@ if active_tab == "generar":
     if "contexto_ciclo_gas" not in st.session_state:
         st.session_state["contexto_ciclo_gas"] = {}
 
-    st.markdown("---")
-    st.subheader("⚙️ Personalización del Plan")
+    # Pill resumen del estado actual (muestra valores por defecto: Automático · 100%)
+    _proto_act = st.session_state.get("protocolo_seleccionado_display", "Automático")
+    _vol_act = int(st.session_state.get("slider_volumen_pct", 100))
+    _personaliz_label = f"⚙️ Personalización del Plan — {_proto_act} · {_vol_act}%"
 
-    col_proto, col_slider = st.columns([1, 2])
+    with st.expander(_personaliz_label, expanded=False):
+        col_proto, col_slider = st.columns([1, 2])
 
-    # ---- PROTOCOLO SELECTOR ----
-    with col_proto:
-        protocolo_recomendado = st.session_state.get("protocolo_recomendado", "B")
-        opciones_protocolo = ["Automático", "A (Fuerza Prioridad)", "B (Rendimiento Carrera)"]
-
-        # Streamlit radio usa `index` (no `value` en algunas versiones de Cloud).
-        # Calculamos un valor inicial robusto según estado previo o recomendación IA.
-        protocolo_display = st.session_state.get("protocolo_seleccionado_display")
-        if protocolo_display not in opciones_protocolo:
-            if protocolo_recomendado == "A":
-                protocolo_display = "A (Fuerza Prioridad)"
-            elif protocolo_recomendado == "B":
-                protocolo_display = "B (Rendimiento Carrera)"
-            else:
+        with col_proto:
+            opciones_protocolo = ["Automático", "A (Fuerza Prioridad)", "B (Rendimiento Carrera)"]
+            protocolo_display = st.session_state.get("protocolo_seleccionado_display", "Automático")
+            if protocolo_display not in opciones_protocolo:
                 protocolo_display = "Automático"
+            protocolo_index = opciones_protocolo.index(protocolo_display)
 
-        protocolo_index = opciones_protocolo.index(protocolo_display)
-
-        protocolo_sel = st.radio(
-            "🔄 Protocolo de Entrenamiento",
-            options=opciones_protocolo,
-            index=protocolo_index,
-            help=(
-                "**A (Fuerza Prioridad)**: Para Acondicionamiento y Prep. General. "
-                "Fuerza 2-3 días/semana @ 70-95% 1RM. Carrera ≤2 días Z2.\n\n"
-                "**B (Rendimiento Carrera)**: Para Prep. Específica, Pico, Tapering. "
-                "Fuerza 1-2 días @ 80% 1RM. Carrera 3-5 días con regla 80/20.\n\n"
-                "**Automático**: Sistema elige según fase."
+            protocolo_sel = st.radio(
+                "🔄 Protocolo de Entrenamiento",
+                options=opciones_protocolo,
+                index=protocolo_index,
+                help=(
+                    "**A (Fuerza Prioridad)**: Fuerza 2-3 días @ 70-95% 1RM, carrera ≤2 días Z2.\n\n"
+                    "**B (Rendimiento Carrera)**: Fuerza 1-2 días @ 80% 1RM, carrera 3-5 días (80/20).\n\n"
+                    "**Automático**: Sistema elige según fase del macrociclo."
+                ),
+                key="radio_protocolo",
             )
-        )
 
-        # Procesar selección
-        if protocolo_sel == "Automático":
-            st.session_state["protocolo_seleccionado"] = None
-            st.session_state["protocolo_seleccionado_display"] = "Automático"
-        else:
-            protocolo_char = protocolo_sel.split()[0]
-            st.session_state["protocolo_seleccionado"] = protocolo_char
-            st.session_state["protocolo_seleccionado_display"] = protocolo_sel
+            if protocolo_sel == "Automático":
+                st.session_state["protocolo_seleccionado"] = None
+                st.session_state["protocolo_seleccionado_display"] = "Automático"
+            else:
+                st.session_state["protocolo_seleccionado"] = protocolo_sel.split()[0]
+                st.session_state["protocolo_seleccionado_display"] = protocolo_sel
 
-    # ---- SLIDER VOLUMEN (CICLO + GAS) ----
-    with col_slider:
-        st.markdown("### 🎚️ Ajuste de Volumen (Ciclo + GAS)")
-
-        # Obtener información de contexto
-        contexto_ciclo_gas = st.session_state.get("contexto_ciclo_gas", {})
-        recomendacion_slider = contexto_ciclo_gas.get(
-            "recomendacion_slider",
-            "Sin datos de ciclo/GAS. Volumen: 100%"
-        )
-
-        st.caption(recomendacion_slider)
-
-        # El slider
-        slider_val = st.slider(
-            "Selecciona volumen (%)",
-            min_value=0,
-            max_value=150,
-            value=st.session_state.get("slider_volumen_pct", 100),
-            step=5,
-            format="%d%%",
-            help=(
-                "🟢 **80-100%**: Plan seguro (recomendado)\n\n"
-                "🟡 **50-79%**: Reducción por recuperación (menstruación, GAS bajo)\n\n"
-                "🔴 **0-49%**: Descanso activo (máxima restricción)\n\n"
-                "🔵 **101-150%**: Aumento si recuperado + ovulación (solo si te sientes 100%)"
+        with col_slider:
+            st.markdown("**🎚️ Ajuste de Volumen (Ciclo + GAS)**")
+            contexto_ciclo_gas = st.session_state.get("contexto_ciclo_gas", {})
+            recomendacion_slider = contexto_ciclo_gas.get(
+                "recomendacion_slider", "Sin datos de ciclo/GAS. Volumen: 100%"
             )
-        )
+            st.caption(recomendacion_slider)
 
-        # Guardar en session
-        st.session_state["slider_volumen_pct"] = slider_val
+            slider_val = st.slider(
+                "Volumen (%)",
+                min_value=0, max_value=150,
+                value=st.session_state.get("slider_volumen_pct", 100),
+                step=5, format="%d%%",
+                help=(
+                    "🟢 80-100%: Plan seguro (recomendado)\n\n"
+                    "🟡 50-79%: Reducción por recuperación\n\n"
+                    "🔴 0-49%: Descanso activo\n\n"
+                    "🔵 101-150%: Aumento (solo si 100% recuperada)"
+                ),
+                key="slider_volumen",
+            )
+            st.session_state["slider_volumen_pct"] = slider_val
 
-        # Mostrar volumen final estimado (aproximado)
-        volumen_base_estimado = 50  # Placeholder, en versión final viene de datos
-        volumen_final = volumen_base_estimado * (slider_val / 100)
-
-        st.info(f"📊 **Volumen final estimado**: {volumen_final:.1f} km (de {volumen_base_estimado} km base)")
-
-    # Mostrar advertencia si slider muy bajo
-    if st.session_state.get("slider_volumen_pct", 100) < 60:
-        st.warning(
-            "⚠️ **Volumen muy bajo** (<60%). Si estás en ciclo menstrual + GAS severo, considera descanso completo.",
-            icon="⚠️"
-        )
-
-    st.markdown("---")
+            if slider_val < 60:
+                st.warning("⚠️ Volumen muy bajo (<60%). Considera descanso si hay fatiga.", icon="⚠️")
 
     if st.session_state.plan_data is None:
         st.info("Pulsa **⚡ Regenerar** para generar el plan de esta semana con IA personalizada.")
@@ -1834,4 +1933,5 @@ border:1px solid rgba(74,222,128,0.25);border-radius:16px;padding:1.5rem 2rem;ma
         try:
             _conn_dat.close()
         except Exception:
+
             pass

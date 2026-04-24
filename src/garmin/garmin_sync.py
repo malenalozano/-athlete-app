@@ -1584,14 +1584,43 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
     latest_running = latest_running_list[0] if latest_running_list else None
 
     target_bio_days = max(1, int(dias))
-    max_scan_days = min(60, max(14, target_bio_days * 4))  # Scannea hasta 4x más días si faltan con datos
+    # Scan reducido: solo los días pedidos + margen pequeño (antes: 4x). Big speedup.
+    max_scan_days = min(21, max(target_bio_days + 3, 8))
+
+    # Cache de fechas ya en BD para saltarnos llamadas redundantes a Garmin
+    fechas_bio_existentes = set()
+    fechas_sueno_existentes = set()
+    try:
+        _conn_cache = get_db_connection()
+        _fecha_min = (datetime.now() - timedelta(days=max_scan_days)).strftime("%Y-%m-%d")
+        try:
+            fechas_bio_existentes = {
+                row[0] for row in _conn_cache.execute(
+                    "SELECT fecha FROM metricas_garmin_premium WHERE usuario_id=? AND fecha>=?",
+                    (usuario_id, _fecha_min)
+                ).fetchall()
+            }
+        except Exception:
+            pass
+        try:
+            fechas_sueno_existentes = {
+                row[0] for row in _conn_cache.execute(
+                    "SELECT fecha FROM sueno_garmin WHERE usuario_id=? AND fecha>=?",
+                    (usuario_id, _fecha_min)
+                ).fetchall()
+            }
+        except Exception:
+            pass
+        _conn_cache.close()
+    except Exception:
+        pass
 
     dias_bio = 0
     dias_sueno = 0
     dias_vacios = 0
     biometricos_importados = []
     sueno_importado = []
-    
+
     for i in range(max_scan_days):
         if dias_bio >= target_bio_days:
             break  # Ya obtuvimos bastantes días con biométricos
@@ -1599,29 +1628,42 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
         fecha = (datetime.now() - timedelta(days=i)).date()
         fecha_iso = fecha.strftime("%Y-%m-%d")
 
-        # Sueño
-        try:
-            sleep_metrics = obtener_datos_sueno(gc, fecha)
-            if sleep_metrics:
-                guardar_sueno_db(usuario_id, sleep_metrics)
-                dias_sueno += 1
-                sueno_importado.append({
-                    "fecha": fecha_iso,
-                    "horas_totales": sleep_metrics.get("horas_totales"),
-                    "score": sleep_metrics.get("score"),
-                    "sleep_profundo_horas": sleep_metrics.get("sleep_profundo_horas"),
-                    "sleep_rem_horas": sleep_metrics.get("sleep_rem_horas"),
-                })
-        except GarminConnectAuthenticationError:
-            logger.warning(f"Token expiró al obtener sueño para {fecha_iso}")
-            raise RuntimeError(
-                "🔑 Token expirado durante la sincronización. "
-                "Desconecta y vuelve a conectar tu cuenta."
-            )
-        except Exception:
-            sleep_metrics = None
+        # Si ya tenemos bio Y sueño en BD para este día, saltamos (ahorra 2 llamadas API)
+        if fecha_iso in fechas_bio_existentes and fecha_iso in fechas_sueno_existentes:
+            dias_bio += 1
+            dias_sueno += 1
+            continue
 
-        # Métricas diarias
+        # Sueño (saltar si ya está en BD)
+        sleep_metrics = None
+        if fecha_iso in fechas_sueno_existentes:
+            dias_sueno += 1
+        else:
+            try:
+                sleep_metrics = obtener_datos_sueno(gc, fecha)
+                if sleep_metrics:
+                    guardar_sueno_db(usuario_id, sleep_metrics)
+                    dias_sueno += 1
+                    sueno_importado.append({
+                        "fecha": fecha_iso,
+                        "horas_totales": sleep_metrics.get("horas_totales"),
+                        "score": sleep_metrics.get("score"),
+                        "sleep_profundo_horas": sleep_metrics.get("sleep_profundo_horas"),
+                        "sleep_rem_horas": sleep_metrics.get("sleep_rem_horas"),
+                    })
+            except GarminConnectAuthenticationError:
+                logger.warning(f"Token expiró al obtener sueño para {fecha_iso}")
+                raise RuntimeError(
+                    "🔑 Token expirado durante la sincronización. "
+                    "Desconecta y vuelve a conectar tu cuenta."
+                )
+            except Exception:
+                sleep_metrics = None
+
+        # Métricas diarias (saltar si ya está en BD)
+        if fecha_iso in fechas_bio_existentes:
+            dias_bio += 1
+            continue
         try:
             daily_metrics = _extract_daily_metrics(gc, fecha_iso)
             if sleep_metrics:
