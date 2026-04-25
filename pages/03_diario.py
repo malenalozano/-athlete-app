@@ -244,25 +244,37 @@ if _es_mujer and active_tab == "ciclo":
                 hoy = datetime.now().date()
                 if "mes_ciclo_cursor" not in st.session_state:
                     st.session_state.mes_ciclo_cursor = hoy.replace(day=1)
+                
+                # Navegar entre meses
                 nav_l, nav_c, nav_r = st.columns([0.15, 0.70, 0.15])
                 with nav_l:
                     if st.button("◀", key="mes_prev"):
-                        m = st.session_state.mes_ciclo_cursor.month - 1
-                        y = st.session_state.mes_ciclo_cursor.year
-                        if m < 1: m, y = 12, y-1
-                        st.session_state.mes_ciclo_cursor = st.session_state.mes_ciclo_cursor.replace(year=y,month=m,day=1)
-                with nav_c:
-                    mn = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto",
-                          "Septiembre","Octubre","Noviembre","Diciembre"][st.session_state.mes_ciclo_cursor.month-1]
-                    st.markdown(f"<div style='text-align:center;font-weight:700;color:#c9d1d9;padding:4px 0;'>{mn} {st.session_state.mes_ciclo_cursor.year}</div>", unsafe_allow_html=True)
+                        mes_actual = st.session_state.mes_ciclo_cursor
+                        if mes_actual.month == 1:
+                            st.session_state.mes_ciclo_cursor = mes_actual.replace(year=mes_actual.year-1, month=12)
+                        else:
+                            st.session_state.mes_ciclo_cursor = mes_actual.replace(month=mes_actual.month-1)
+                
                 with nav_r:
                     if st.button("▶", key="mes_next"):
-                        m = st.session_state.mes_ciclo_cursor.month + 1
-                        y = st.session_state.mes_ciclo_cursor.year
-                        if m > 12: m, y = 1, y+1
-                        st.session_state.mes_ciclo_cursor = st.session_state.mes_ciclo_cursor.replace(year=y,month=m,day=1)
-                render_calendario_ciclo(ciclo_df, st.session_state.mes_ciclo_cursor.year,
-                                        st.session_state.mes_ciclo_cursor.month, df_registros=df_fisio, ciclo_dias=ciclo_dias)
+                        mes_actual = st.session_state.mes_ciclo_cursor
+                        if mes_actual.month == 12:
+                            st.session_state.mes_ciclo_cursor = mes_actual.replace(year=mes_actual.year+1, month=1)
+                        else:
+                            st.session_state.mes_ciclo_cursor = mes_actual.replace(month=mes_actual.month+1)
+                
+                # Obtener mes y año actual para mostrar
+                mes_actual = st.session_state.mes_ciclo_cursor
+                mes_num = mes_actual.month
+                anio_num = mes_actual.year
+                nombres_meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto",
+                                 "Septiembre","Octubre","Noviembre","Diciembre"]
+                nombre_mes = nombres_meses[mes_num - 1]
+                
+                with nav_c:
+                    st.markdown(f"<div style='text-align:center;font-weight:700;color:#c9d1d9;padding:4px 0;'>{nombre_mes} {anio_num}</div>", unsafe_allow_html=True)
+                
+                render_calendario_ciclo(ciclo_df, anio_num, mes_num, df_registros=df_fisio, ciclo_dias=ciclo_dias)
             else:
                 st.info("Registra al menos una menstruación para ver el calendario.")
         else:
