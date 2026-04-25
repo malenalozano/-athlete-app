@@ -237,7 +237,7 @@ if _es_mujer and active_tab == "ciclo":
             finally:
                 conn_ciclo.close()
 
-            ciclo_df, _ = predecir_fases_ciclo(df_fisio[["fecha", "fase_ciclo", "sangre"]].copy(),
+            ciclo_df, ciclo_dias = predecir_fases_ciclo(df_fisio[["fecha", "fase_ciclo", "sangre"]].copy(),
                                               horizonte_dias=120,
                                               ciclo_dias_personalizado=ciclo_dias_override)
             if not ciclo_df.empty:
@@ -262,7 +262,7 @@ if _es_mujer and active_tab == "ciclo":
                         if m > 12: m, y = 1, y+1
                         st.session_state.mes_ciclo_cursor = st.session_state.mes_ciclo_cursor.replace(year=y,month=m,day=1)
                 render_calendario_ciclo(ciclo_df, st.session_state.mes_ciclo_cursor.year,
-                                        st.session_state.mes_ciclo_cursor.month, df_registros=df_fisio)
+                                        st.session_state.mes_ciclo_cursor.month, df_registros=df_fisio, ciclo_dias=ciclo_dias)
             else:
                 st.info("Registra al menos una menstruación para ver el calendario.")
         else:

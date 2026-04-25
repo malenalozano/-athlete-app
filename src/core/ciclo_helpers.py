@@ -155,8 +155,16 @@ def predecir_fases_ciclo(df_fisio, horizonte_dias=90, ciclo_dias_personalizado=N
     return combinado, ciclo_dias
 
 
-def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
-    """Renderiza el calendario mensual coloreado por fase del ciclo."""
+def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None, ciclo_dias=28):
+    """Renderiza el calendario mensual coloreado por fase del ciclo.
+    
+    Args:
+        df_ciclo: DataFrame con predicciones de fases
+        anio: Año a mostrar
+        mes: Mes a mostrar
+        df_registros: DataFrame con registros reales (sangre, síntomas, etc)
+        ciclo_dias: Duración del ciclo en días (para recálculos)
+    """
     hoy = date.today()
     mes_matrix = calendar.monthcalendar(anio, mes)
     prev_month = 12 if mes == 1 else mes - 1
@@ -206,6 +214,25 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
             if d.month == mes and d.year == anio and d.day not in reg_por_dia:
                 reg_por_dia[d.day] = row
 
+    # Obtener inicio de última regla para recálculos de fase
+    inicio_ultima_regla = None
+    if df_registros is not None and not df_registros.empty:
+        sangres = df_registros[df_registros["sangre"].isin(["Ligero", "Medio", "Fuerte"])]["fecha"].dropna()
+        if not sangres.empty:
+            fechas_sangrado = sorted(pd.to_datetime(sangres).dt.date.unique().tolist())
+            if fechas_sangrado:
+                bloques = []
+                bloque = [fechas_sangrado[0]]
+                for f in fechas_sangrado[1:]:
+                    if (f - bloque[-1]).days <= 1:
+                        bloque.append(f)
+                    else:
+                        bloques.append(bloque)
+                        bloque = [f]
+                bloques.append(bloque)
+                if bloques:
+                    inicio_ultima_regla = bloques[-1][0]
+
     sangre_emoji = {"Sin sangre": "⚪", "Ligero": "🩸", "Medio": "🩸🩸", "Fuerte": "🩸🩸🩸", "Flujo": "🟤"}
     sintomas_emoji = {"Dolor de ovarios": "🥚", "Dolor de senos": "🍒", "Antojos": "🍫", "Dolor de cabeza": "💢", "Hinchazón": "🎈"}
     animo_emoji = {"Ansiedad/Estrés": "😰", "Triste": "😭", "Enfadada": "😡", "Feliz": "😄", "Cansada": "🪫", "Energética": "⚡"}
@@ -234,6 +261,19 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
                 else:
                     fase = fases.get(day)
                     org = origen_map.get(day, "")
+                    
+                    # Si hay registro real sin sangrado en un día predicho como menstruación,
+                    # recalcular la fase del ciclo
+                    if day in reg_por_dia and tipo == "curr":
+                        r = reg_por_dia[day]
+                        sangre = str(r.get("sangre") or "Sin sangre").strip()
+                        if sangre in ("Sin sangre", "Flujo") and fase == "Menstruación" and inicio_ultima_regla:
+                            # Recalcular fase del ciclo para este día
+                            fecha_actual = date(anio, mes, day)
+                            dias_desde_inicio = (fecha_actual - inicio_ultima_regla).days
+                            pos_ciclo = (dias_desde_inicio % ciclo_dias) + 1
+                            fase = _fase_por_dia(pos_ciclo)
+                    
                     estilo_fase = colores.get(fase, {"bg": "rgba(22, 27, 34, 0.96)", "border": "rgba(139, 149, 158, 0.22)", "txt": "#e6edf3"})
                     bg = estilo_fase["bg"]
                     txt_color = estilo_fase["txt"]
