@@ -194,7 +194,7 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
             if d.month == mes and d.year == anio and d.day not in reg_por_dia:
                 reg_por_dia[d.day] = row
 
-    sangre_emoji = {"Sin sangre": "⚪", "Ligero": "🩸", "Medio": "🩸🩸", "Fuerte": "🩸🩸🩸"}
+    sangre_emoji = {"Sin sangre": "⚪", "Ligero": "🩸", "Medio": "🩸🩸", "Fuerte": "🩸🩸🩸", "Flujo": "🟤"}
     sintomas_emoji = {"Dolor de ovarios": "🥚", "Dolor de senos": "🍒", "Antojos": "🍫", "Dolor de cabeza": "💢", "Hinchazón": "🎈"}
     animo_emoji = {"Ansiedad/Estrés": "😰", "Triste": "😭", "Enfadada": "😡", "Feliz": "😄", "Cansada": "🪫", "Energética": "⚡"}
     feedback_emoji = {"A tope": "🚀", "Regulero": "🗿", "Bajito": "⛈️", "No completo": "⛔"}

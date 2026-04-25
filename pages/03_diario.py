@@ -129,12 +129,13 @@ if _es_mujer and active_tab == "ciclo":
 
     with _col_form:
         st.markdown(label_upper("Registro diario"), unsafe_allow_html=True)
-        sangre_opts = ["⚪ Sin sangre","🩸 Ligero","🩸🩸 Medio","🩸🩸🩸 Fuerte"]
+        sangre_opts = ["⚪ Sin sangre","🩸 Ligero","🩸🩸 Medio","🩸🩸🩸 Fuerte","🟤 Flujo"]
         sangre_map  = {
             "⚪ Sin sangre": "Sin sangre",
             "🩸 Ligero": "Ligero",
             "🩸🩸 Medio": "Medio",
             "🩸🩸🩸 Fuerte": "Fuerte",
+            "🟤 Flujo": "Flujo",
         }
         sint_opts   = ["🥚 Dolor de ovarios","🍒 Dolor de senos","🍫 Antojos","💢 Dolor de cabeza","🎈 Hinchazón"]
         sint_map    = {o: o.split(" ",1)[1] for o in sint_opts}
