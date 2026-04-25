@@ -39,6 +39,14 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,'Segoe 
 .ses-name{font-size:10px;font-weight:700;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ses-sub{font-size:9px;color:#6b7280;line-height:1.2;padding-left:12px}
 .ses-int{display:inline-block;font-size:8px;font-weight:700;padding:1px 5px;border-radius:10px;color:inherit;border:1px solid currentColor;opacity:.75;margin-top:3px}
+.ses-alert{font-size:8px;font-weight:600;line-height:1.2;padding-left:12px;margin-top:2px;letter-spacing:.01em;color:#ffd166}
+.ses-alert.ok{color:#7CFC9E}
+.ses-alert.warn{color:#ffb86b}
+.ses-alert.bad{color:#ff7d8a}
+.ses-alert.info{color:#7CD0FF}
+.day-header{cursor:pointer;transition:background .15s}
+.day-header:hover{background:rgba(201,255,0,0.06)}
+.adapt-pill{display:inline-block;font-size:7px;font-weight:800;color:#0E1117;background:#7CD0FF;padding:1px 5px;border-radius:8px;margin-left:4px;vertical-align:middle;letter-spacing:.04em}
 #dbg{font-size:9px;color:#6b7280;padding:2px 6px;min-height:14px}
 </style>
 </head>
@@ -95,6 +103,12 @@ function renderBoard(B) {
         dt.textContent = day.date;
         hdr.appendChild(nm);
         hdr.appendChild(dt);
+        hdr.addEventListener('click', (function(targetDi){return function(e){
+            e.stopPropagation();
+            if (_valueSent) return;
+            _valueSent = true;
+            sendValue({action:'open_day', day: targetDi});
+        };})(di));
         col.appendChild(hdr);
 
         col.addEventListener('dragover', function(e) {
@@ -158,6 +172,27 @@ function renderBoard(B) {
                 sub.appendChild(badge);
             }
             s.appendChild(sub);
+
+            if (item.alerta && item.alerta.length > 0) {
+                var al = document.createElement('div');
+                al.className = 'ses-alert';
+                al.style.pointerEvents = 'none';
+                var fc = item.alerta.charCodeAt(0);
+                // 0x2713 check, 0x2191 up arrow -> ok
+                if (fc === 0x2713 || fc === 0x2191) al.classList.add('ok');
+                else if (fc === 0x26A0) al.classList.add('warn');
+                else if (fc === 0x2717) al.classList.add('bad');
+                else al.classList.add('info');
+                al.textContent = item.alerta;
+                s.appendChild(al);
+                // Brain emoji 0xD83E + 0xDDE0 (surrogate pair) means adapter changed it
+                if (fc === 0xD83E) {
+                    var pill = document.createElement('span');
+                    pill.className = 'adapt-pill';
+                    pill.textContent = 'ADAPTADO';
+                    name.parentNode.appendChild(pill);
+                }
+            }
 
             s.addEventListener('dragstart', (function(di2, ii2) { return function(e) {
                 src = { di: di2, ii: ii2 };

@@ -114,16 +114,28 @@ def predecir_fases_ciclo(df_fisio, horizonte_dias=90, ciclo_dias_personalizado=N
         sangre = row.get("sangre", "")
         fase_real = row.get("fase_norm", "")
 
+        # Solo marcar como Menstruación si hay sangrado real
         if sangre in _SANGRADO_REGLA:
             fase_real = "Menstruación"
-        elif starts:
-            # Si hay anclas de regla, priorizar cálculo por día de ciclo para evitar
-            # que fases guardadas antiguas/desfasadas deformen el calendario.
+        elif starts and not sangre:
+            # Si NO hay sangrado pero sí hay ciclos detectados, usar predicción
+            # pero SIN asumir que es menstruación (evitar colorear días sin sangre)
             ini = max((s for s in starts if s <= fecha), default=starts[0])
             pos = ((fecha - ini).days % ciclo_dias) + 1
-            fase_real = _fase_por_dia(pos)
-        elif not fase_real:
-            # Sin anclas ni fase explícita: no forzar dato.
+            # No devolver Menstruación si no hay sangrado real
+            if pos <= 5:
+                fase_real = "Folicular"  # Primeros días sin sangre = Folicular
+            elif pos <= 11:
+                fase_real = "Folicular"
+            elif pos <= 16:
+                fase_real = "Ovulación"
+            else:
+                fase_real = "Lútea"
+        elif not sangre and fase_real:
+            # Días sin sangre pero con fase guardada: mantener
+            pass
+        elif not sangre:
+            # Día sin sangre y sin fase guardada: no asignar fase
             fase_real = ""
 
         if fase_real:

@@ -17,7 +17,12 @@ from src.db.db_manager import get_db_connection
 # Público
 # ---------------------------------------------------------------------------
 
-def generar_entrenamiento_semana(usuario_id: int, fecha_inicio=None) -> dict:
+def generar_entrenamiento_semana(
+    usuario_id: int,
+    fecha_inicio=None,
+    protocolo_seleccionado: str | None = None,
+    slider_volumen_pct: float = 100,
+) -> dict:
     """
     Motor principal. Combina:
     1. Python puro: decide estructura (tipo de sesión, volumen, intensidad)
@@ -30,7 +35,12 @@ def generar_entrenamiento_semana(usuario_id: int, fecha_inicio=None) -> dict:
 
     try:
         # PARTE 1 — Python genera la estructura completa
-        plan = generar_plan_semana(usuario_id, fecha_inicio)
+        plan = generar_plan_semana(
+            usuario_id,
+            fecha_inicio,
+            protocolo_seleccionado=protocolo_seleccionado,
+            slider_volumen_pct=slider_volumen_pct,
+        )
         
         # DEBUG: verificar que tipos de sesión se generaron
         tipos_generados = [dia.get("tipo", "?") for dia in plan.get("dias", [])]

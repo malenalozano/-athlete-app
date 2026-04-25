@@ -496,6 +496,182 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
     plan["dias"] = dias_adaptados
     return plan
 
+def _renderizar_detalle_dia(plan: dict, idx: int, lunes: datetime, usuario_id: int) -> None:
+    """Panel de detalle del día seleccionado: plan vs realizado + sesiones libres."""
+    fecha_dt = lunes + timedelta(days=idx)
+    fecha_iso = fecha_dt.strftime("%Y-%m-%d")
+    es_hoy = fecha_iso == datetime.now().strftime("%Y-%m-%d")
+    es_pasado = fecha_dt.date() < datetime.now().date()
+
+    dia_plan = next((d for d in plan.get("dias", []) if str(d.get("fecha", ""))[:10] == fecha_iso), None)
+    if dia_plan is None:
+        return
+
+    # Datos del plan (preservados en _tipo_original / _km_plan)
+    tipo_actual = str(dia_plan.get("tipo", ""))
+    tipo_orig = str(dia_plan.get("_tipo_original") or tipo_actual)
+    estado = str(dia_plan.get("_estado") or "")
+    km_plan = float(dia_plan.get("_km_plan") or dia_plan.get("km") or 0)
+    km_real = float(dia_plan.get("km") or 0) if estado in ("completo", "parcial", "distinto", "extra") else 0
+    dur_real = float(dia_plan.get("duracion_min") or 0)
+    alerta = str(dia_plan.get("alerta") or "")
+
+    # Sesiones de fuerza ese día
+    conn = get_db_connection()
+    try:
+        sf = conn.execute(
+            """SELECT e.ejercicio, e.series, e.repeticiones, e.peso, e.sensaciones,
+                      e.grupo_muscular, e.musculo_principal
+               FROM ejercicios_fuerza e JOIN sesiones_fuerza s ON s.id=e.sesion_id
+               WHERE s.usuario_id=? AND s.fecha=? ORDER BY e.id""",
+            (usuario_id, fecha_iso)).fetchall()
+    except Exception:
+        sf = []
+    try:
+        actv = conn.execute(
+            "SELECT tipo_deporte, ROUND(CAST(tiempo_seg AS REAL)/60, 1), distancia_m/1000.0, fc_media, calorias "
+            "FROM actividades_garmin WHERE usuario_id=? AND fecha LIKE ? ORDER BY fecha",
+            (usuario_id, f"{fecha_iso}%")).fetchall()
+    except Exception:
+        actv = []
+    finally:
+        conn.close()
+
+    # Header bonito
+    _dia_nombre = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"][idx]
+    _bg_today = "linear-gradient(135deg,#1a2332 0%,#0f1724 100%)" if es_hoy else "#0f1724"
+    _badge = ""
+    if es_hoy:
+        _badge = "<span style=\"background:#C9FF00;color:#0E1117;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:800;letter-spacing:.06em;\">HOY</span>"
+    elif es_pasado:
+        _color_estado = {"completo": "#7CFC9E", "parcial": "#ffb86b", "distinto": "#7CD0FF", "extra": "#7CD0FF", "no_realizado": "#ff7d8a"}.get(estado, "#8B949E")
+        _txt_estado = {"completo": "✓ COMPLETADO", "parcial": "⚠ PARCIAL", "distinto": "↔ SUSTITUIDO", "extra": "+ EXTRA", "no_realizado": "✗ NO REALIZADO"}.get(estado, "PASADO")
+        _badge = f"<span style=\"background:{_color_estado};color:#0E1117;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:800;letter-spacing:.06em;\">{_txt_estado}</span>"
+    else:
+        _badge = "<span style=\"background:rgba(124,208,255,0.15);color:#7CD0FF;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;letter-spacing:.06em;border:1px solid rgba(124,208,255,0.3);\">PRÓXIMO</span>"
+
+    st.markdown(f"""
+<div style="background:{_bg_today};border:1px solid rgba(201,255,0,0.15);border-radius:14px;padding:18px 22px;margin-top:10px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+    <div>
+      <div style="color:#8B949E;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;">{_dia_nombre} · {fecha_dt.day} {fecha_dt.strftime('%b').upper()}</div>
+      <div style="color:#e5e7eb;font-size:22px;font-weight:800;margin-top:4px;">{tipo_actual}</div>
+    </div>
+    <div>{_badge}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+    # Cierra detalle
+    _c_btn = st.columns([6, 1])[1]
+    if _c_btn.button("✕ Cerrar", key=f"cerrar_det_{idx}", use_container_width=True):
+        st.session_state.pop("plan_dia_detalle", None)
+        st.rerun()
+
+    # Comparativa plan vs realizado
+    cA, cB = st.columns(2, gap="medium")
+    with cA:
+        st.markdown(f"""
+<div style="background:rgba(34,40,55,0.6);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;">
+  <div style="color:#8B949E;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">📋 Plan original</div>
+  <div style="color:#e5e7eb;font-size:15px;font-weight:700;">{tipo_orig}</div>
+  <div style="color:#c8d1d9;font-size:12px;margin-top:4px;">{km_plan:.1f} km · {int(dia_plan.get('duracion_min', 0)) if not km_real else int(km_plan*6.5)} min objetivo</div>
+</div>
+""", unsafe_allow_html=True)
+
+    with cB:
+        if km_real > 0 or sf or actv:
+            st.markdown(f"""
+<div style="background:rgba(34,40,55,0.6);border:1px solid rgba(124,252,158,0.2);border-radius:10px;padding:12px;">
+  <div style="color:#8B949E;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">✓ Realizado</div>
+  <div style="color:#7CFC9E;font-size:15px;font-weight:700;">{km_real:.1f} km · {int(dur_real)} min</div>
+  <div style="color:#c8d1d9;font-size:11px;margin-top:4px;">{len(sf)} ejercicios fuerza · {len(actv)} actividades</div>
+</div>
+""", unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+<div style="background:rgba(34,40,55,0.6);border:1px dashed rgba(255,255,255,0.08);border-radius:10px;padding:12px;">
+  <div style="color:#8B949E;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">⏳ Pendiente</div>
+  <div style="color:#8B949E;font-size:13px;">Sin entrenamiento registrado</div>
+</div>
+""", unsafe_allow_html=True)
+
+    if alerta:
+        _color_alerta = "#ffb86b" if alerta.startswith("⚠") else ("#7CFC9E" if alerta.startswith("✓") else ("#7CD0FF" if alerta.startswith(("🧠", "↔", "➕", "↑")) else "#8B949E"))
+        st.markdown(f"<div style=\"margin-top:10px;padding:8px 14px;background:rgba(34,40,55,0.4);border-left:3px solid {_color_alerta};border-radius:6px;color:{_color_alerta};font-size:13px;font-weight:600;\">{alerta}</div>", unsafe_allow_html=True)
+
+    # Descripción IA
+    desc = str(dia_plan.get("descripcion_ia") or "").strip()
+    if desc and desc != "[Historial]":
+        with st.expander("📖 Descripción del entrenamiento", expanded=not es_pasado):
+            st.markdown(desc)
+
+    # Actividades Garmin
+    if actv:
+        st.markdown("##### 🏃 Actividades Garmin")
+        for _i, _a in enumerate(actv):
+            _t, _dur_a, _km_a, _fc, _cal = _a
+            st.markdown(f"""
+<div style="background:rgba(34,40,55,0.5);border-left:3px solid #22d3ee;padding:10px 14px;border-radius:8px;margin-bottom:6px;">
+  <div style="color:#22d3ee;font-size:13px;font-weight:700;">{_t or 'Carrera'}</div>
+  <div style="color:#c8d1d9;font-size:11px;margin-top:2px;">{_km_a or 0:.2f} km · {_dur_a or 0:.0f} min · FC {_fc or '—'} · {_cal or '—'} kcal</div>
+</div>
+""", unsafe_allow_html=True)
+
+    # Sesiones de fuerza
+    if sf:
+        st.markdown("##### 💪 Ejercicios de fuerza")
+        _grupos = {}
+        for _e in sf:
+            _g = str(_e[5] or "Otros")
+            _grupos.setdefault(_g, []).append(_e)
+        for _g, _ejs in _grupos.items():
+            st.markdown(f"<div style=\"color:#c084fc;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:8px 0 4px 0;\">{_g}</div>", unsafe_allow_html=True)
+            for _e in _ejs:
+                _ej, _ser, _rep, _peso, _sen, _gm, _mp = _e
+                _peso_str = f"{_peso} kg" if _peso else "—"
+                st.markdown(f"<div style=\"background:rgba(34,40,55,0.5);border-left:2px solid #c084fc;padding:6px 12px;border-radius:6px;margin-bottom:3px;color:#c8d1d9;font-size:12px;\"><b>{_ej}</b> · {_ser}×{_rep} · {_peso_str}{(' · '+ _sen) if _sen else ''}</div>", unsafe_allow_html=True)
+
+    # Entreno libre — añadir actividad manual
+    with st.expander("➕ Añadir entreno libre" + (" (modificar día)" if es_hoy or es_pasado else ""), expanded=False):
+        _tipo_libre = st.selectbox("Tipo", ["Carrera Z2", "Tirada Larga", "Tempo (umbral)", "Intervalos VO2max", "Progresiva", "Rodaje Corto", "Fuerza Pierna", "Fuerza Push", "Fuerza Pull", "Movilidad"], key=f"libre_tipo_{idx}")
+        _c1, _c2 = st.columns(2)
+        _km_libre = _c1.number_input("km", min_value=0.0, max_value=50.0, step=0.5, key=f"libre_km_{idx}")
+        _dur_libre = _c2.number_input("min", min_value=0, max_value=300, step=5, key=f"libre_dur_{idx}")
+        _notas = st.text_input("Notas (opcional)", key=f"libre_notas_{idx}")
+        if st.button("Guardar entreno libre", key=f"libre_save_{idx}", type="primary"):
+            # Añadir como sesión extra a este día en el board
+            board_key = f"plan_board_{lunes.strftime('%Y-%m-%d')}_{usuario_id}"
+            board = st.session_state.get(board_key)
+            if board and 0 <= idx < len(board):
+                board[idx].append({
+                    "tipo": _tipo_libre,
+                    "km": float(_km_libre or 0),
+                    "duracion_min": float(_dur_libre or 0),
+                    "intensidad": "Libre",
+                    "descripcion_ia": _notas or "[Entreno libre añadido manualmente]",
+                    "alerta": "➕ Libre",
+                })
+                st.session_state[board_key] = board
+                # Persistir
+                nuevas = []
+                for _bi in range(7):
+                    _f = (lunes + timedelta(days=_bi)).strftime("%Y-%m-%d")
+                    _ses_lst = board[_bi] if _bi < len(board) else []
+                    if _ses_lst:
+                        _p = dict(_ses_lst[0])
+                        _p["fecha"] = _f
+                        _p["sesiones_extra"] = [dict(x) for x in _ses_lst[1:]]
+                        nuevas.append(_p)
+                    else:
+                        nuevas.append({"fecha": _f, "tipo": "Descanso", "km": 0, "duracion_min": 0, "intensidad": "—", "descripcion_ia": "", "alerta": "", "sesiones_extra": []})
+                plan["dias"] = nuevas
+                st.session_state.plan_data = plan
+                _auto_guardar(usuario_id, lunes, plan)
+                st.success(f"✓ Entreno libre añadido al {_dia_nombre}")
+                st.rerun()
+
+
 def _auto_guardar(usuario_id, lunes, plan_nuevo):
     semana_str = lunes.strftime("%Y-%m-%d")
     conn = get_db_connection()
@@ -1187,9 +1363,12 @@ if active_tab == "generar":
                     _carga = f"{int(_dur)} min"
                 else:
                     _carga = "—"
+                _alerta = str(_ses.get("alerta") or "").strip()
+                _estado = str(_ses.get("_estado") or "").strip()
                 _items_js.append({
                     "label": _tipo, "emoji": _emoji, "carga": _carga,
-                    "int": _int, "color": _col, "day": _bi, "idx": _si
+                    "int": _int, "color": _col, "day": _bi, "idx": _si,
+                    "alerta": _alerta, "estado": _estado
                 })
             _board_js.append({
                 "header": _DIA_CORTO[_bi],
@@ -1204,18 +1383,31 @@ if active_tab == "generar":
         # ── DnD board vía declare_component (retorno nativo a Python) ─────────
         _dnd_move = _dnd_board(board=_bj, key="dnd_board_v1")
         if _dnd_move and isinstance(_dnd_move, dict):
-            _fd = int(_dnd_move.get("from_day", -1))
-            _fi = int(_dnd_move.get("from_idx", -1))
-            _td = int(_dnd_move.get("to_day", -1))
-            if _fd != _td and 0 <= _fd < 7 and 0 <= _td < 7 and 0 <= _fi < len(board[_fd]):
-                _ses_mv = board[_fd].pop(_fi)
-                board[_td].append(_ses_mv)
-                st.session_state[board_key] = board
-                plan["dias"] = _board_to_dias(board)
-                plan["board_sesiones"] = board
-                st.session_state.plan_data = plan
-                _auto_guardar(user_actual, lunes, plan)
-                st.rerun()
+            # Click sobre el header del día → abrir detalle
+            if _dnd_move.get("action") == "open_day":
+                _idx_open = int(_dnd_move.get("day", -1))
+                if 0 <= _idx_open < 7:
+                    st.session_state["plan_dia_detalle"] = _idx_open
+                    st.rerun()
+            else:
+                _fd = int(_dnd_move.get("from_day", -1))
+                _fi = int(_dnd_move.get("from_idx", -1))
+                _td = int(_dnd_move.get("to_day", -1))
+                if _fd != _td and 0 <= _fd < 7 and 0 <= _td < 7 and 0 <= _fi < len(board[_fd]):
+                    _ses_mv = board[_fd].pop(_fi)
+                    board[_td].append(_ses_mv)
+                    st.session_state[board_key] = board
+                    plan["dias"] = _board_to_dias(board)
+                    plan["board_sesiones"] = board
+                    st.session_state.plan_data = plan
+                    _auto_guardar(user_actual, lunes, plan)
+                    st.rerun()
+
+        # ── Detalle del día seleccionado (entreno libre + sesiones) ─────────
+        _idx_det = st.session_state.get("plan_dia_detalle", None)
+        if _idx_det is not None and 0 <= int(_idx_det) < 7:
+            _idx_det = int(_idx_det)
+            _renderizar_detalle_dia(plan, _idx_det, lunes, user_actual)
 
         _DEAD_CODE_DND_HTML = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
