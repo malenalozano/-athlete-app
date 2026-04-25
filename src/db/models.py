@@ -200,6 +200,20 @@ CREATE TABLE IF NOT EXISTS historial_ejercicio (
 )
 """
 
+CREATE_HISTORIAL_CICLOS_MENSTRUALES = """
+CREATE TABLE IF NOT EXISTS historial_ciclos_menstruales (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER,
+    fecha_inicio_regla TEXT NOT NULL,
+    fecha_fin_regla TEXT NOT NULL,
+    duracion_menstruacion_dias INTEGER,
+    fecha_siguiente_regla TEXT,
+    duracion_ciclo_dias INTEGER,
+    registrado_en TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(usuario_id, fecha_inicio_regla)
+)
+"""
+
 # Índices de lectura frecuente
 INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_act_usuario_fecha ON actividades_garmin(usuario_id, fecha)",
@@ -207,4 +221,5 @@ INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_fisio_usuario_fecha ON diario_fisiologia(usuario_id, fecha)",
     "CREATE INDEX IF NOT EXISTS idx_fuerza_usuario_fecha ON sesiones_fuerza(usuario_id, fecha)",
     "CREATE INDEX IF NOT EXISTS idx_plan_usuario_semana ON plan_entrenamiento(usuario_id, semana_inicio)",
+    "CREATE INDEX IF NOT EXISTS idx_ciclo_usuario_fecha ON historial_ciclos_menstruales(usuario_id, fecha_inicio_regla)",
 ]

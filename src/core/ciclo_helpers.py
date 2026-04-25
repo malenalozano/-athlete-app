@@ -194,7 +194,7 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
             if d.month == mes and d.year == anio and d.day not in reg_por_dia:
                 reg_por_dia[d.day] = row
 
-    sangre_emoji = {"Sin sangre": "⚪", "Manchado": "🩸", "Flujo": "🟤", "Ligero": "🩸", "Medio": "🩸🩸", "Fuerte": "🩸🩸🩸"}
+    sangre_emoji = {"Sin sangre": "⚪", "Ligero": "🩸", "Medio": "🩸🩸", "Fuerte": "🩸🩸🩸"}
     sintomas_emoji = {"Dolor de ovarios": "🥚", "Dolor de senos": "🍒", "Antojos": "🍫", "Dolor de cabeza": "💢", "Hinchazón": "🎈"}
     animo_emoji = {"Ansiedad/Estrés": "😰", "Triste": "😭", "Enfadada": "😡", "Feliz": "😄", "Cansada": "🪫", "Energética": "⚡"}
     feedback_emoji = {"A tope": "🚀", "Regulero": "🗿", "Bajito": "⛈️", "No completo": "⛔"}
@@ -270,3 +270,138 @@ def render_calendario_ciclo(df_ciclo, anio, mes, df_registros=None):
                     f"</div>",
                     unsafe_allow_html=True,
                 )
+
+
+def calcular_ciclos_desde_registros(usuario_id, conn):
+    """
+    Calcula todos los ciclos menstruales basados en registros de sangrado.
+    Solo cuenta como sangrado: Ligero, Medio, Fuerte.
+    
+    Returns:
+        List of dicts con: fecha_inicio, fecha_fin, duracion_menstruacion, duracion_ciclo
+    """
+    query = (
+        "SELECT fecha, sangre FROM diario_fisiologia "
+        "WHERE usuario_id=? AND sangre IN ('Ligero','Medio','Fuerte') "
+        "ORDER BY fecha ASC"
+    )
+    df = pd.read_sql_query(query, conn, params=(usuario_id,))
+    if df.empty:
+        return []
+    
+    df["fecha_dt"] = pd.to_datetime(df["fecha"]).dt.date
+    fechas_sangrado = sorted(df["fecha_dt"].unique().tolist())
+    
+    ciclos = []
+    bloques = []  # Bloques de días consecutivos con sangrado
+    
+    if fechas_sangrado:
+        bloque = [fechas_sangrado[0]]
+        for f in fechas_sangrado[1:]:
+            if (f - bloque[-1]).days <= 1:
+                bloque.append(f)
+            else:
+                bloques.append(bloque)
+                bloque = [f]
+        bloques.append(bloque)
+    
+    # Procesar bloques para crear ciclos
+    for i, bloque in enumerate(bloques):
+        inicio = bloque[0]
+        fin = bloque[-1]
+        duracion_menstruacion = len(bloque)
+        
+        ciclo_info = {
+            "fecha_inicio_regla": inicio,
+            "fecha_fin_regla": fin,
+            "duracion_menstruacion_dias": duracion_menstruacion,
+            "duracion_ciclo_dias": None,
+            "fecha_siguiente_regla": None,
+        }
+        
+        # Si hay un ciclo siguiente, calcular duración del ciclo
+        if i + 1 < len(bloques):
+            siguiente_inicio = bloques[i + 1][0]
+            duracion_ciclo = (siguiente_inicio - inicio).days
+            # Validar que sea un ciclo realista (20-40 días)
+            if 20 <= duracion_ciclo <= 40:
+                ciclo_info["duracion_ciclo_dias"] = duracion_ciclo
+                ciclo_info["fecha_siguiente_regla"] = siguiente_inicio
+        
+        ciclos.append(ciclo_info)
+    
+    return ciclos
+
+
+def obtener_estadisticas_ciclo(usuario_id, conn):
+    """
+    Calcula estadísticas del ciclo menstrual.
+    
+    Returns:
+        dict con: duracion_promedio_ciclo, duracion_promedio_menstruacion, 
+                  ciclos_registrados, proxima_regla_predicha, duracion_proxima_predicha
+    """
+    ciclos = calcular_ciclos_desde_registros(usuario_id, conn)
+    
+    if not ciclos:
+        return {
+            "duracion_promedio_ciclo": 28,
+            "duracion_promedio_menstruacion": 5,
+            "ciclos_registrados": 0,
+            "proxima_regla_predicha": None,
+            "duracion_proxima_predicha": None,
+        }
+    
+    # Calcular duraciones de ciclos válidos (solo los que tienen siguiente)
+    duraciones_ciclo = [c["duracion_ciclo_dias"] for c in ciclos if c["duracion_ciclo_dias"] is not None]
+    duraciones_menstruacion = [c["duracion_menstruacion_dias"] for c in ciclos]
+    
+    duracion_promedio_ciclo = int(round(sum(duraciones_ciclo) / len(duraciones_ciclo))) if duraciones_ciclo else 28
+    duracion_promedio_menstruacion = int(round(sum(duraciones_menstruacion) / len(duraciones_menstruacion))) if duraciones_menstruacion else 5
+    
+    # Predecir próxima regla basada en el último ciclo
+    ultimo_ciclo = ciclos[-1]
+    proxima_regla_predicha = None
+    duracion_proxima_predicha = duracion_promedio_menstruacion
+    
+    if ultimo_ciclo["fecha_siguiente_regla"]:
+        # Ya conocemos la siguiente, no hay que predecir
+        proxima_regla_predicha = ultimo_ciclo["fecha_siguiente_regla"]
+    else:
+        # Predecir: última regla + duración promedio del ciclo
+        ultima_regla_inicio = ultimo_ciclo["fecha_inicio_regla"]
+        proxima_regla_predicha = ultima_regla_inicio + timedelta(days=duracion_promedio_ciclo)
+    
+    return {
+        "duracion_promedio_ciclo": duracion_promedio_ciclo,
+        "duracion_promedio_menstruacion": duracion_promedio_menstruacion,
+        "ciclos_registrados": len(ciclos),
+        "proxima_regla_predicha": proxima_regla_predicha,
+        "duracion_proxima_predicha": duracion_proxima_predicha,
+    }
+
+
+def guardar_ciclo_en_historial(usuario_id, conn, ciclo_info):
+    """
+    Guarda un ciclo menstrual en la tabla de historial.
+    """
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO historial_ciclos_menstruales "
+            "(usuario_id, fecha_inicio_regla, fecha_fin_regla, duracion_menstruacion_dias, "
+            "duracion_ciclo_dias, fecha_siguiente_regla) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                usuario_id,
+                str(ciclo_info.get("fecha_inicio_regla")),
+                str(ciclo_info.get("fecha_fin_regla")),
+                ciclo_info.get("duracion_menstruacion_dias"),
+                ciclo_info.get("duracion_ciclo_dias"),
+                str(ciclo_info.get("fecha_siguiente_regla")) if ciclo_info.get("fecha_siguiente_regla") else None,
+            ),
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error guardando ciclo: {e}")
+        return False

@@ -9,7 +9,7 @@ from datetime import datetime
 from src.core.navbar import render_navbar
 from src.core.styles import ACCENT, CARD, BORDER, TXT2, TXT3, FASE_COLORS, label_upper, badge, card
 from src.db.db_manager import get_db_connection
-from src.core.ciclo_helpers import predecir_fases_ciclo, render_calendario_ciclo
+from src.core.ciclo_helpers import predecir_fases_ciclo, render_calendario_ciclo, obtener_estadisticas_ciclo, calcular_ciclos_desde_registros
 from src.core.ui_helpers_a import (
     _dividir_nota_por_fechas, _clasificar_segmento_diario, _extraer_nota_estado,
     _inferir_tipo_carrera, _buscar_actividad_running_fecha,
@@ -129,11 +129,9 @@ if _es_mujer and active_tab == "ciclo":
 
     with _col_form:
         st.markdown(label_upper("Registro diario"), unsafe_allow_html=True)
-        sangre_opts = ["⚪ Sin sangre","🩸 Manchado","🟤 Flujo","🩸 Ligero","🩸🩸 Medio","🩸🩸🩸 Fuerte"]
+        sangre_opts = ["⚪ Sin sangre","🩸 Ligero","🩸🩸 Medio","🩸🩸🩸 Fuerte"]
         sangre_map  = {
             "⚪ Sin sangre": "Sin sangre",
-            "🩸 Manchado": "Manchado",
-            "🟤 Flujo": "Flujo",
             "🩸 Ligero": "Ligero",
             "🩸🩸 Medio": "Medio",
             "🩸🩸🩸 Fuerte": "Fuerte",
@@ -181,6 +179,31 @@ if _es_mujer and active_tab == "ciclo":
                     conn.close()
                 st.cache_data.clear()
                 st.success("Registro guardado.")
+        
+        # ── Estadísticas del ciclo ────────────────────────────────────────────
+        st.markdown(label_upper("📊 Estadísticas"), unsafe_allow_html=True)
+        conn_stats = get_db_connection()
+        try:
+            stats = obtener_estadisticas_ciclo(user_actual, conn_stats)
+            ciclos_data = calcular_ciclos_desde_registros(user_actual, conn_stats)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Ciclos registrados", stats["ciclos_registrados"])
+                st.metric("Duración promedio (días)", stats["duracion_promedio_ciclo"])
+            
+            with col2:
+                st.metric("Menstruación promedio (días)", stats["duracion_promedio_menstruacion"])
+                if stats["proxima_regla_predicha"]:
+                    proxima = stats["proxima_regla_predicha"]
+                    dias_falta = (proxima - datetime.now().date()).days
+                    duracion_predicha = stats["duracion_proxima_predicha"]
+                    st.metric("Próxima regla en", f"{dias_falta} días" if dias_falta >= 0 else "¡Hoy!")
+                    st.text(f"Predicción: {proxima.strftime('%d/%m/%Y')} ({duracion_predicha} días)")
+        except Exception as e:
+            st.warning(f"No hay datos suficientes para mostrar estadísticas. {str(e)}")
+        finally:
+            conn_stats.close()
 
     # ── Calendar in right column ──────────────────────────────────────────────
     with _col_cal:

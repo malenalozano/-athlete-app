@@ -313,6 +313,13 @@ _ALL_SCHEMA_SQL = [
         usuario_id INTEGER, fecha TEXT, peso REAL, series INTEGER,
         repeticiones INTEGER, rpe INTEGER, notas TEXT
     )""",
+    """CREATE TABLE IF NOT EXISTS historial_ciclos_menstruales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER,
+        fecha_inicio_regla TEXT NOT NULL, fecha_fin_regla TEXT NOT NULL,
+        duracion_menstruacion_dias INTEGER, fecha_siguiente_regla TEXT,
+        duracion_ciclo_dias INTEGER, registrado_en TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(usuario_id, fecha_inicio_regla)
+    )""",
     """CREATE TABLE IF NOT EXISTS ejercicios_catalogo (
         id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER,
         nombre TEXT NOT NULL, grupo_muscular TEXT, musculo_principal TEXT,
