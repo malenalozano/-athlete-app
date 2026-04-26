@@ -348,8 +348,8 @@ def _es_fuerza_deporte(tipo_deporte: str) -> bool:
 
 def _etiqueta_inteligente_dia_pasado(dia_plan: dict, actividad_garmin: tuple, sesiones_fuerza: list) -> tuple[str, str, str]:
     """Compara lo hecho vs el plan. Devuelve (etiqueta, alerta, estado)."""
-    tipo_plan = str(dia_plan.get("tipo", "")).strip()
-    km_plan = float(dia_plan.get("km") or 0)
+    tipo_plan = str(dia_plan.get("_tipo_original") or dia_plan.get("tipo", "")).strip()
+    km_plan = float(dia_plan.get("_km_plan") or dia_plan.get("km") or 0)
     dur_plan = float(dia_plan.get("duracion_min") or 0)
 
     tipo_act_raw = (actividad_garmin[1] if actividad_garmin else None) or ""
@@ -970,6 +970,11 @@ lunes = st.session_state.plan_cursor
 if st.session_state.plan_data is None:
     plan_bd = _cargar_plan_de_bd(user_actual, lunes)
     if plan_bd:
+        # Aplica adaptación inteligente a partir de actividades reales y plan futuro
+        try:
+            plan_bd = _adaptar_plan_a_hoy(plan_bd, user_actual, lunes, datetime.now())
+        except Exception as _e:
+            import traceback as _tb; print(f"[plan] adaptar load err: {_e}\n{_tb.format_exc()}")
         st.session_state.plan_data = plan_bd
         st.session_state.plan_ia = False
 
@@ -1142,7 +1147,16 @@ if active_tab == "generar":
 
     # Normalizamos por fecha para evitar inflar KPIs cuando hay sesiones duplicadas en BD.
     plan["dias"] = _normalizar_dias_semana(plan.get("dias", []))
+    # Adaptación en cada render (idempotente): refresca etiquetas pasadas + adaptador futuro
+    try:
+        plan = _adaptar_plan_a_hoy(plan, user_actual, lunes, datetime.now())
+    except Exception as _e:
+        import traceback as _tb; print(f"[plan] adaptar render err: {_e}\n{_tb.format_exc()}")
     st.session_state.plan_data = plan
+    # Invalida cache del board para que reconstruya con las etiquetas/alertas adaptadas
+    _bk_inv = f"plan_session_board_{lunes.strftime('%Y%m%d')}"
+    if _bk_inv in st.session_state:
+        del st.session_state[_bk_inv]
 
     fase = plan["fase"]
     semaforo = plan["semaforo"]
