@@ -496,3 +496,243 @@ def render_grafico_sueno(usuario_id: int):
                     f"{comentario}</div>",
                     unsafe_allow_html=True,
                 )
+
+
+# ===========================================================================
+# Análisis de hoy — sección dashboard (Sueño · Readiness · Entreno)
+# ===========================================================================
+
+_TIPO_PLAN_COLOR = {
+    "fuerza": "#a855f7", "fuerza push": "#a855f7", "fuerza pull": "#a855f7",
+    "fuerza pierna": "#a855f7", "fuerza activ.": "#a855f7",
+    "tirada larga": "#C9FF00", "progresiva": "#C9FF00",
+    "carrera z2": "#22c55e", "rodaje corto": "#22c55e",
+    "tempo (umbral)": "#f97316", "intervalos vo2max": "#ef4444",
+    "regenerativo": "#00D4FF", "movilidad": "#3a4150", "descanso": "#3a4150",
+}
+
+
+def _semaforo_palette(semaforo: str) -> dict:
+    if semaforo == "verde":
+        return {"bg": "#1a3a1a", "border": "rgba(163,230,53,0.3)",
+                "fg": "#a3e635", "txt": "Lista para entrenar"}
+    if semaforo == "amarillo":
+        return {"bg": "#2a2a0a", "border": "rgba(245,158,11,0.3)",
+                "fg": "#f59e0b", "txt": "Entrena con precaución"}
+    if semaforo == "rojo":
+        return {"bg": "#2a0a0a", "border": "rgba(239,68,68,0.3)",
+                "fg": "#ef4444", "txt": "Descansa hoy"}
+    return {"bg": "#161B22", "border": "#21262d",
+            "fg": "#8B949E", "txt": "Datos insuficientes"}
+
+
+def _bar_html(valor, maximo, color, label_left, label_right):
+    pct = 0
+    try:
+        if maximo and float(maximo) > 0:
+            pct = max(0, min(100, float(valor) / float(maximo) * 100))
+    except Exception:
+        pct = 0
+    return (
+        f"<div style='display:flex;justify-content:space-between;font-size:0.7rem;"
+        f"color:#8B949E;margin-bottom:3px;'><span>{label_left}</span><span>{label_right}</span></div>"
+        f"<div style='height:6px;background:rgba(48,54,61,0.6);border-radius:99px;overflow:hidden;margin-bottom:8px;'>"
+        f"<div style='height:100%;width:{pct:.0f}%;background:{color};border-radius:99px;'></div></div>"
+    )
+
+
+def _render_col_sueno(sueno):
+    if not sueno:
+        return (
+            "<div style='background:#161B22;border:1px solid #21262d;border-radius:12px;"
+            "padding:1rem;min-height:280px;display:flex;flex-direction:column;justify-content:center;"
+            "text-align:center;'>"
+            "<div style='font-size:1.5rem;margin-bottom:6px;'>🌙</div>"
+            "<div style='color:#e6edf3;font-size:0.95rem;font-weight:700;margin-bottom:4px;'>Sin datos de sueño</div>"
+            "<div style='color:#8B949E;font-size:0.78rem;'>Sincroniza Garmin para verlos</div>"
+            "</div>"
+        )
+    horas = sueno.get("horas_totales") or 0
+    score = sueno.get("score")
+    sc_color = "#a3e635" if (score or 0) >= 75 else ("#f59e0b" if (score or 0) >= 50 else "#ef4444")
+    sc_txt = f"{int(score)}/100" if score is not None else "—"
+    prof = float(sueno.get("sleep_profundo_horas") or 0)
+    rem = float(sueno.get("sleep_rem_horas") or 0)
+    lig = float(sueno.get("sleep_ligero_horas") or 0)
+    vig = float(sueno.get("sleep_vigilia_horas") or 0)
+    desp = sueno.get("despertares")
+    spo2 = sueno.get("spo2_media")
+    desp_txt = f"{int(desp)}" if desp is not None else "—"
+    spo2_txt = f"{float(spo2):.0f}%" if spo2 is not None else "—"
+    barras = (
+        _bar_html(prof, horas, "#7c3aed", "Profundo", f"{prof:.1f}h") +
+        _bar_html(rem,  horas, "#a855f7", "REM",      f"{rem:.1f}h") +
+        _bar_html(lig,  horas, "#60a5fa", "Ligero",   f"{lig:.1f}h") +
+        _bar_html(vig,  horas, "#6b7280", "Vigilia",  f"{vig:.1f}h")
+    )
+    return (
+        "<div style='background:#161B22;border:1px solid #21262d;border-radius:12px;"
+        "padding:1rem;min-height:280px;'>"
+        "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;'>"
+        "<div style='color:#8B949E;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;'>"
+        "🌙 Sueño anoche</div>"
+        f"<div style='color:{sc_color};font-size:0.78rem;font-weight:700;background:rgba(255,255,255,0.04);"
+        f"padding:2px 8px;border-radius:99px;'>{sc_txt}</div>"
+        "</div>"
+        "<div style='display:flex;align-items:baseline;gap:6px;margin-bottom:14px;'>"
+        f"<span style='color:#60a5fa;font-size:2.1rem;font-weight:800;line-height:1;'>{horas:.1f}</span>"
+        "<span style='color:#8B949E;font-size:0.85rem;'>horas</span></div>"
+        f"{barras}"
+        "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;'>"
+        "<div style='background:rgba(255,255,255,0.03);border-radius:8px;padding:8px;text-align:center;'>"
+        "<div style='color:#8B949E;font-size:0.62rem;text-transform:uppercase;font-weight:700;'>Despertares</div>"
+        f"<div style='color:#e6edf3;font-size:1.1rem;font-weight:800;margin-top:2px;'>{desp_txt}</div></div>"
+        "<div style='background:rgba(255,255,255,0.03);border-radius:8px;padding:8px;text-align:center;'>"
+        "<div style='color:#8B949E;font-size:0.62rem;text-transform:uppercase;font-weight:700;'>SpO₂</div>"
+        f"<div style='color:#e6edf3;font-size:1.1rem;font-weight:800;margin-top:2px;'>{spo2_txt}</div></div>"
+        "</div></div>"
+    )
+
+
+def _metric_row(icon, nombre, valor, unidad, raw, max_v, color):
+    val_txt = f"{valor}{unidad}" if valor not in (None, "") else "—"
+    bar = _bar_html(raw or 0, max_v, color, "", "") if raw is not None else ""
+    return (
+        "<div style='margin-bottom:10px;'>"
+        "<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;'>"
+        f"<span style='color:#c9d1d9;font-size:0.78rem;font-weight:600;'>{icon} {nombre}</span>"
+        f"<span style='color:#e6edf3;font-size:0.9rem;font-weight:800;'>{val_txt}</span></div>"
+        f"{bar}</div>"
+    )
+
+
+def _render_col_readiness(data):
+    bio = data.get("bio")
+    readiness = data.get("readiness")
+    sem = _semaforo_palette(data.get("semaforo", "gris"))
+    if not bio and readiness is None:
+        return (
+            "<div style='background:#161B22;border:1px solid #21262d;border-radius:12px;"
+            "padding:1rem;min-height:280px;display:flex;flex-direction:column;justify-content:center;"
+            "text-align:center;'>"
+            "<div style='font-size:1.5rem;margin-bottom:6px;'>♡</div>"
+            "<div style='color:#e6edf3;font-size:0.95rem;font-weight:700;margin-bottom:4px;'>Sin datos biométricos</div>"
+            "<div style='color:#8B949E;font-size:0.78rem;'>Sincroniza Garmin para readiness</div>"
+            "</div>"
+        )
+    bio = bio or {}
+    score_html = (
+        f"<div style='text-align:center;background:{sem['bg']};border:1px solid {sem['border']};"
+        f"border-radius:12px;padding:10px;margin-bottom:12px;'>"
+        f"<div style='color:{sem['fg']};font-size:2.2rem;font-weight:900;line-height:1;'>"
+        f"{readiness if readiness is not None else '—'}</div>"
+        f"<div style='color:{sem['fg']};font-size:0.72rem;font-weight:700;text-transform:uppercase;"
+        f"letter-spacing:.06em;margin-top:4px;'>{sem['txt']}</div></div>"
+    )
+    sem_color = sem["fg"] if data.get("semaforo") != "gris" else "#60a5fa"
+    hrv = bio.get("hrv_ms")
+    fc_r = bio.get("fc_reposo")
+    bb = data.get("body_battery")
+    estres = data.get("estres")
+    tr = data.get("training_readiness")
+    metrics = (
+        _metric_row("♡", "HRV", f"{hrv:.0f}" if hrv else "—", " ms", hrv, 90, sem_color) +
+        _metric_row("❤", "FC reposo", f"{fc_r:.0f}" if fc_r else "—", " bpm",
+                    (80 - fc_r) if fc_r else None, 40, sem_color) +
+        _metric_row("⚡", "Body Battery", f"{bb:.0f}" if bb else "—", "/100", bb, 100, sem_color) +
+        _metric_row("⚠", "Estrés", f"{estres:.0f}" if estres else "—", "/100",
+                    (100 - estres) if estres is not None else None, 100, sem_color)
+    )
+    if tr is not None:
+        metrics += _metric_row("✓", "Training Readiness", f"{int(tr)}", "/100", tr, 100, sem_color)
+    return (
+        "<div style='background:#161B22;border:1px solid #21262d;border-radius:12px;"
+        "padding:1rem;min-height:280px;'>"
+        "<div style='color:#8B949E;font-size:0.7rem;font-weight:700;text-transform:uppercase;"
+        "letter-spacing:.06em;margin-bottom:10px;'>♡ Readiness</div>"
+        f"{score_html}{metrics}</div>"
+    )
+
+
+def _render_col_entreno(plan_rows, semaforo):
+    if not plan_rows:
+        return (
+            "<div style='background:#161B22;border:1px solid #21262d;border-radius:12px;"
+            "padding:1rem;min-height:280px;display:flex;flex-direction:column;justify-content:center;"
+            "text-align:center;'>"
+            "<div style='font-size:1.5rem;margin-bottom:6px;'>📋</div>"
+            "<div style='color:#e6edf3;font-size:0.95rem;font-weight:700;margin-bottom:4px;'>"
+            "No hay entreno planificado para hoy</div>"
+            "<div style='color:#8B949E;font-size:0.78rem;'>Genera plan en pestaña Plan</div>"
+            "</div>"
+        )
+    sesiones_html = ""
+    intensidad_alta = False
+    for p in plan_rows:
+        tipo = str(p.get("tipo") or "").strip()
+        sesion = str(p.get("sesion") or "").strip()
+        detalles = str(p.get("detalles") or "").strip()
+        dur = p.get("duracion_min")
+        intensidad = str(p.get("intensidad") or "").strip()
+        if intensidad.lower() in ("alta", "high", "muy alta"):
+            intensidad_alta = True
+        color = _TIPO_PLAN_COLOR.get(tipo.lower(), "#C9FF00")
+        dur_txt = f"{int(dur)}'" if dur else "—"
+        int_badge = ""
+        if intensidad:
+            int_badge = (f"<span style='background:rgba(255,255,255,0.05);color:#c9d1d9;"
+                         f"font-size:0.65rem;font-weight:700;padding:2px 7px;border-radius:99px;"
+                         f"margin-left:6px;'>{intensidad}</span>")
+        sesiones_html += (
+            "<div style='background:rgba(255,255,255,0.02);border-left:3px solid " + color + ";"
+            "border-radius:6px;padding:8px 10px;margin-bottom:8px;'>"
+            f"<div style='display:flex;align-items:center;justify-content:space-between;gap:6px;'>"
+            f"<span style='color:{color};font-size:0.85rem;font-weight:800;'>{tipo or 'Sesión'}</span>"
+            f"<span style='color:#8B949E;font-size:0.72rem;font-weight:600;'>{dur_txt}{int_badge}</span></div>"
+            f"<div style='color:#e6edf3;font-size:0.78rem;margin-top:3px;'>{sesion}</div>"
+            + (f"<div style='color:#8B949E;font-size:0.7rem;margin-top:2px;line-height:1.35;'>{detalles}</div>" if detalles else "")
+            + "</div>"
+        )
+
+    if semaforo == "verde":
+        rec_bg, rec_fg, rec_msg = "#1a3a1a", "#a3e635", "✅ Todo en verde. Ejecuta el plan tal cual."
+    elif semaforo == "amarillo":
+        rec_bg, rec_fg, rec_msg = "#2a2a0a", "#f59e0b", "⚠️ Readiness medio. Reduce intensidad si no te sientes bien."
+    elif semaforo == "rojo":
+        if intensidad_alta:
+            rec_msg = "🔴 Semáforo rojo + sesión alta intensidad. Cambia a regenerativo o descanso."
+        else:
+            rec_msg = "🔴 Semáforo rojo. Considera regenerativo o descanso."
+        rec_bg, rec_fg = "#2a0a0a", "#ef4444"
+    else:
+        rec_bg, rec_fg, rec_msg = "rgba(255,255,255,0.03)", "#8B949E", "Sin readiness — ejecuta según sensaciones."
+
+    return (
+        "<div style='background:#161B22;border:1px solid #21262d;border-radius:12px;"
+        "padding:1rem;min-height:280px;'>"
+        "<div style='color:#8B949E;font-size:0.7rem;font-weight:700;text-transform:uppercase;"
+        "letter-spacing:.06em;margin-bottom:10px;'>📋 Entreno de hoy</div>"
+        f"{sesiones_html}"
+        f"<div style='background:{rec_bg};color:{rec_fg};border-radius:8px;padding:8px 10px;"
+        f"font-size:0.75rem;font-weight:600;margin-top:8px;line-height:1.4;'>{rec_msg}</div>"
+        "</div>"
+    )
+
+
+def render_analisis_hoy(data: dict):
+    """Sección Análisis de Hoy — 3 columnas: Sueño · Readiness · Entreno."""
+    if not data:
+        return
+    st.markdown(
+        "<div style=\"display:flex;align-items:center;gap:0.5rem;margin:1rem 0 1.15rem;\">"
+        "<span style=\"color:#a3e635;font-size:1.1rem;\">◐</span>"
+        "<span style=\"font-size:1.08rem;font-weight:800;color:white;text-transform:uppercase;"
+        "letter-spacing:0.07em;\">Análisis de Hoy</span>"
+        "<div style=\"flex:1;height:1px;background:linear-gradient(90deg,rgba(163,230,53,0.35),transparent);"
+        "margin-left:0.5rem;\"></div></div>",
+        unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3, gap="small")
+    c1.markdown(_render_col_sueno(data.get("sueno")), unsafe_allow_html=True)
+    c2.markdown(_render_col_readiness(data), unsafe_allow_html=True)
+    c3.markdown(_render_col_entreno(data.get("plan") or [], data.get("semaforo", "gris")),
+                unsafe_allow_html=True)

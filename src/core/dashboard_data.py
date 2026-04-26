@@ -529,6 +529,155 @@ def construir_calendario_semanal_actividades(df_act, df_fuerza, semana_inicio):
 
 
 @st.cache_data(ttl=300)
+def analisis_hoy(usuario_id: int) -> dict:
+    """
+    Datos para la sección 'Análisis de hoy' del dashboard.
+    3 lecturas: sueño (preferencia hoy, fallback ayer porque Garmin
+    lo escribe al despertar), biométricos hoy, plan hoy.
+    Defensivo ante columnas faltantes (sleep_ligero, spo2, training_readiness…).
+    """
+    hoy = date.today()
+    hoy_str = hoy.isoformat()
+    ayer_str = (hoy - timedelta(days=1)).isoformat()
+
+    sueno = None
+    bio = None
+    plan_rows: list = []
+    spo2_val = None
+    training_readiness_val = None
+
+    conn = get_db_connection()
+    try:
+        # ── Sueño (anoche) ────────────────────────────────────────────
+        try:
+            cur = conn.execute(
+                "SELECT horas_totales, score, sleep_profundo_horas, sleep_rem_horas, "
+                "sleep_vigilia_horas, despertares "
+                "FROM datos_sueno WHERE usuario_id=? AND fecha IN (?, ?) "
+                "ORDER BY fecha DESC LIMIT 1",
+                (usuario_id, hoy_str, ayer_str))
+            cols = [c[0] for c in cur.description] if cur.description else []
+            row = cur.fetchone()
+            if row:
+                sueno = dict(zip(cols, row))
+        except Exception:
+            sueno = None
+
+        # ── Biométricos hoy ───────────────────────────────────────────
+        try:
+            cur = conn.execute(
+                "SELECT hrv_ms, fc_reposo, body_battery_max, body_battery_min, "
+                "estres_vital, estres_medio, sleep_score "
+                "FROM datos_biometricos_premium WHERE usuario_id=? AND fecha=? LIMIT 1",
+                (usuario_id, hoy_str))
+            cols = [c[0] for c in cur.description] if cur.description else []
+            row = cur.fetchone()
+            if row:
+                bio = dict(zip(cols, row))
+        except Exception:
+            bio = None
+
+        # SpO2 — columna opcional en biométricos
+        try:
+            r = conn.execute(
+                "SELECT spo2 FROM datos_biometricos_premium WHERE usuario_id=? AND fecha=? LIMIT 1",
+                (usuario_id, hoy_str)).fetchone()
+            spo2_val = r[0] if r else None
+        except Exception:
+            spo2_val = None
+
+        # Training readiness — columna opcional
+        try:
+            r = conn.execute(
+                "SELECT training_readiness FROM datos_biometricos_premium "
+                "WHERE usuario_id=? AND fecha=? LIMIT 1",
+                (usuario_id, hoy_str)).fetchone()
+            training_readiness_val = r[0] if r else None
+        except Exception:
+            training_readiness_val = None
+
+        # ── Plan hoy (puede haber varias filas: run + fuerza) ─────────
+        try:
+            cur = conn.execute(
+                "SELECT tipo, sesion, detalles, duracion_min, intensidad "
+                "FROM plan_entrenamiento WHERE usuario_id=? AND fecha=?",
+                (usuario_id, hoy_str))
+            cols = [c[0] for c in cur.description] if cur.description else []
+            plan_rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        except Exception:
+            plan_rows = []
+    finally:
+        conn.close()
+
+    # Sleep ligero = total - profundo - REM - vigilia (Garmin no lo da explícito)
+    if sueno:
+        try:
+            sl_t = float(sueno.get("horas_totales") or 0)
+            sl_p = float(sueno.get("sleep_profundo_horas") or 0)
+            sl_r = float(sueno.get("sleep_rem_horas") or 0)
+            sl_v = float(sueno.get("sleep_vigilia_horas") or 0)
+            sueno["sleep_ligero_horas"] = max(0.0, sl_t - sl_p - sl_r - sl_v)
+        except Exception:
+            sueno["sleep_ligero_horas"] = None
+        sueno["spo2_media"] = spo2_val
+
+    # Body Battery: preferimos el max al despertar
+    body_battery = None
+    if bio:
+        body_battery = bio.get("body_battery_max") or bio.get("body_battery_min")
+
+    estres = None
+    if bio:
+        estres = bio.get("estres_vital") or bio.get("estres_medio")
+
+    sleep_score = None
+    if sueno and sueno.get("score") is not None:
+        sleep_score = sueno.get("score")
+    elif bio and bio.get("sleep_score") is not None:
+        sleep_score = bio.get("sleep_score")
+
+    # Readiness 0-100 ponderado por componentes disponibles
+    readiness = None
+    peso_acc = 0.0
+    score_acc = 0.0
+    if bio and bio.get("hrv_ms") is not None:
+        hrv = float(bio["hrv_ms"])
+        hrv_score = max(0.0, min(100.0, (hrv - 30.0) / 60.0 * 100.0))  # 30→0, 90→100
+        score_acc += hrv_score * 0.45
+        peso_acc += 0.45
+    if sleep_score is not None:
+        score_acc += float(sleep_score) * 0.30
+        peso_acc += 0.30
+    if body_battery is not None:
+        score_acc += float(body_battery) * 0.25
+        peso_acc += 0.25
+    if peso_acc > 0:
+        readiness = int(round(score_acc / peso_acc))
+
+    if readiness is None:
+        semaforo = "gris"
+    elif readiness >= 65:
+        semaforo = "verde"
+    elif readiness >= 40:
+        semaforo = "amarillo"
+    else:
+        semaforo = "rojo"
+
+    return {
+        "sueno": sueno,
+        "bio": bio,
+        "plan": plan_rows,
+        "body_battery": body_battery,
+        "estres": estres,
+        "sleep_score": sleep_score,
+        "training_readiness": training_readiness_val,
+        "readiness": readiness,
+        "semaforo": semaforo,
+        "tiene_datos": (sueno is not None) or (bio is not None) or bool(plan_rows),
+    }
+
+
+@st.cache_data(ttl=300)
 @st.cache_data(ttl=600)
 def cargar_plan_semana_cache(usuario_id: int, lunes_str: str) -> dict:
     """Carga el plan semanal con cache de 10 min para el dashboard."""

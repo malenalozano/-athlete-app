@@ -10,7 +10,7 @@ from src.core.navbar import render_navbar
 from src.core.dashboard_data import (
     resumen_semana_con_delta, metricas_garmin, progresion_pesos_ejercicios,
     inicio_semana, cargar_plan_semana_cache, checkpoints_objetivo_dashboard,
-    cargar_km_por_semana, cargar_zona2_por_semana,
+    cargar_km_por_semana, cargar_zona2_por_semana, analisis_hoy,
 )
 from src.core.dashboard_ui import (
     obtener_estado_ciclo_malena,
@@ -18,6 +18,7 @@ from src.core.dashboard_ui import (
     render_grafico_sueno,
     obtener_titulo_macrociclo,
     render_objetivos_rendimiento_cards,
+    render_analisis_hoy,
 )
 from src.core.dashboard_visuals import (
     render_strain_recovery_donuts, render_rhr_card,
@@ -198,6 +199,17 @@ _hero_html = (
 )
 
 st.markdown(_hero_html, unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# 1.5. Análisis de Hoy (Sueño · Readiness · Entreno)
+# ---------------------------------------------------------------------------
+try:
+    _data_hoy = analisis_hoy(user_actual)
+    if _data_hoy.get("tiene_datos"):
+        render_analisis_hoy(_data_hoy)
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+except Exception as _e_ah:
+    st.caption(f"Análisis de hoy no disponible: {_e_ah}")
 
 # ---------------------------------------------------------------------------
 # 2. KPI Cards
