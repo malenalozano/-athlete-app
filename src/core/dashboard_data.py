@@ -776,4 +776,4 @@ def cargar_zona2_por_semana(usuario_id: int, semanas: int = 8) -> pd.DataFrame:
         return pd.DataFrame(columns=["week_number", "week_label", "ritmo_medio_min_km", "sesiones_z2", "km_z2"])
     finally:
         conn.close()
-                         
+

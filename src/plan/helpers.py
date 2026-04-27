@@ -395,6 +395,22 @@ def cargar_datos_plan(usuario_id: int) -> dict:
         # df_act_28d ahora cubre 28d completos; calcular promedio semanal (4 semanas)
         km_anterior = float(df_act_28d["distancia_m"].fillna(0).sum() / 1000 / 4)
 
+    # Mediana y máximo semanal de las últimas 4 semanas (para anti-pico-raro)
+    km_4w_mediana = None
+    km_4w_max = None
+    if not df_act_28d.empty:
+        try:
+            _df = df_act_28d.copy()
+            _df["fecha_dt"] = pd.to_datetime(_df["fecha"], errors="coerce")
+            _df = _df.dropna(subset=["fecha_dt"])
+            _df["week"] = _df["fecha_dt"].dt.to_period("W-MON").dt.start_time
+            _wk = _df.groupby("week")["distancia_m"].sum() / 1000.0
+            if len(_wk) > 0:
+                km_4w_mediana = float(_wk.median())
+                km_4w_max = float(_wk.max())
+        except Exception:
+            pass
+
     # --- Cadencia ---
     cadencia = None
     if not df_act.empty and "cadencia_media" in df_act.columns:
@@ -501,6 +517,8 @@ def cargar_datos_plan(usuario_id: int) -> dict:
         "sleep_breakdown": sleep_breakdown,
         "lesiones_activas": lesiones,
         "km_semana_anterior": km_anterior,
+        "km_4w_mediana": km_4w_mediana,
+        "km_4w_max": km_4w_max,
         "cadencia_media": cadencia,
         "acwr": acwr,
         "actividades_z2": z2_list,
@@ -540,9 +558,27 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
     if cadencia_eval is None:
         cadencia_eval = {"necesita_drills": False}
 
-    km_base_total = sum(t["km_base"] for t in template)
-    km_tl = max(round(km_objetivo - km_base_total, 1), 6.0)
-    km_regen = round(km_tl / 3, 1)
+    km_base_total_template = sum(t["km_base"] for t in template)
+    # FIX baseline: si el objetivo es bajo respecto al template (principiante), escalar
+    # proporcionalmente todos los km_base para no clavarle 32 km a quien hace 15.
+    if km_base_total_template > 0 and km_objetivo < km_base_total_template + 6:
+        factor_escala = max(0.30, km_objetivo / (km_base_total_template + 8.0))
+    else:
+        factor_escala = 1.0
+    km_base_total = round(sum(t["km_base"] * factor_escala for t in template), 1)
+    # FIX matemático: total = base + tl + regen, con regen = tl/3 → tl = (objetivo-base)*3/4
+    # FIX seguridad: TL no puede superar el 30% del volumen semanal (JOSPT 2014, BJSM 2024).
+    km_disponible = max(km_objetivo - km_base_total, 6.0)
+    km_tl_natural = max(km_disponible * 0.75, 5.0)
+    km_tl_max_30pct = max(km_objetivo * 0.30, 5.0)
+    km_tl = round(min(km_tl_natural, km_tl_max_30pct), 1)
+    km_regen = round(km_tl * 0.35, 1)  # ~35% del TL (Daniels: easy = 30-40% del long)
+    # Si la TL fue capada por la regla del 30%, redistribuir el excedente entre los Z2 base.
+    total_estimado = km_base_total + km_tl + km_regen
+    excedente = max(0.0, km_objetivo - total_estimado)
+    z2_extra_idx = [i for i, t in enumerate(template)
+                    if t.get("km_base", 0) > 0 and not t.get("tl") and not t.get("regen")]
+    extra_por_z2 = round(excedente / len(z2_extra_idx), 1) if z2_extra_idx and excedente > 0.5 else 0.0
     split_fuerza = _plan_split_fuerza(template, fecha_inicio)
 
     dias = []
@@ -561,11 +597,13 @@ def distribuir_semana(fase: dict, km_objetivo: float, semaforo: dict,
                     f"🧠 {rec_f['protocolo']} · {rec_f['carga']} · {rec_f['nota']}"
                 )
 
-        km = tpl["km_base"]
+        km = round(tpl["km_base"] * factor_escala, 1)
         if tpl.get("tl"):
             km = km_tl
         elif tpl.get("regen"):
             km = km_regen
+        elif i in z2_extra_idx and extra_por_z2 > 0:
+            km = round(km + extra_por_z2, 1)
 
         # FIX: ritmo estimado según intensidad de sesión (min/km), no fijo a 7
         _RITMO_MIN_KM = {"Muy baja": 7.5, "Baja": 6.5, "Media": 6.0,

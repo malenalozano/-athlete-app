@@ -157,9 +157,19 @@ def generar_plan_semana(
     # Detector de conflictos 48-72h (últimas actividades)
     conflictos_48h = detectar_conflictos_48h(datos.get("ultimas_3_actividades", []))
 
-    km_objetivo = calcular_volumen_semana(
+    # Step-back week cada 4 (3 cargas + 1 descarga) — Pfitzinger / Daniels
+    es_step_back = (fecha_inicio_lunes.isocalendar()[1] % 4 == 0)
+
+    _vol_res = calcular_volumen_semana(
         datos["km_semana_anterior"], datos["acwr"],
-        datos["lesiones_activas"], fase["km_semanales_max"])
+        datos["lesiones_activas"], fase["km_semanales_max"],
+        km_4w_mediana=datos.get("km_4w_mediana"),
+        km_4w_max=datos.get("km_4w_max"),
+        es_step_back=es_step_back,
+    )
+    km_objetivo = _vol_res["km"]
+    _vol_motivo = _vol_res.get("motivo")
+    _vol_modo = _vol_res.get("modo", "normal")
 
     eficiencia = evaluar_eficiencia_aerobica(datos["actividades_z2"])
 
@@ -176,6 +186,11 @@ def generar_plan_semana(
 
     # Recoger alertas
     alertas = list(restricciones["alertas"])
+
+    # Motivo del volumen semanal — clave para no recomendar locuras
+    if _vol_motivo:
+        prefix = "🌱" if _vol_modo == "base_building" else ("🔄" if _vol_modo == "step_back" else "📏")
+        alertas.append(f"{prefix} Volumen {km_objetivo}km — {_vol_motivo}")
 
     # ---- ALERTAS GAS + PROTOCOLO + CICLO+GAS ----
     if gas_info["fase"] == "alarma":

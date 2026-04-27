@@ -529,21 +529,74 @@ def recomendar_drills_especificos(gct_ms: float | None, oscilacion_cm: float | N
 
 
 def calcular_volumen_semana(km_anterior: float, acwr: float,
-                             lesiones_activas: list, km_max_fase: float) -> float:
+                             lesiones_activas: list, km_max_fase: float,
+                             km_4w_mediana: float = None,
+                             km_4w_max: float = None,
+                             es_step_back: bool = False) -> dict:
     """
-    Lesión o ACWR > 1.5 → descarga 50%. ACWR > 1.3 → mantener. Normal → +10%.
-    Sin historial: parte de 15 km como base.
+    Devuelve {km, motivo, cap_aplicado, modo}.
+    Reglas (basadas en JOSPT 2014, BJSM 2024 y Pfitzinger):
+      • Lesión / ACWR > 1.5 → -50%.
+      • ACWR > 1.3          → mantener.
+      • Step-back week      → -25% sobre km_anterior.
+      • BASE BUILDING (km_anterior < 20 km/sem o sin histórico):
+            cap absoluto 25 km/sem ignorando macrociclo. Subir solo +10%.
+      • Modo normal:
+            objetivo = min(km_anterior * 1.10,
+                           mediana_4sem * 1.30,    ← evita usar un pico raro como base
+                           km_max_4sem * 1.20,     ← nunca > 20% sobre el máximo reciente
+                           km_max_fase)            ← cap del macrociclo
+    Sin histórico real (km_anterior < 1) arranca con 5 km, no 15.
     """
-    if not km_anterior:
-        km_anterior = 15.0
-    tiene_lesion = bool(lesiones_activas)
-    if tiene_lesion or acwr > 1.5:
-        km = km_anterior * 0.5
-    elif acwr > 1.3:
-        km = km_anterior
+    msg = []
+    sin_historial = (not km_anterior) or km_anterior < 1.0
+    if sin_historial:
+        km_anterior = 5.0
+        msg.append("Sin histórico — arranque seguro 5 km/sem")
+
+    base_ref = float(km_4w_mediana) if (km_4w_mediana and km_4w_mediana > 0) else float(km_anterior)
+    es_principiante = base_ref < 20.0
+
+    # BASE BUILDING — un principiante NO va a 75 km porque toque "Pico de Forma"
+    if es_principiante:
+        cap_personal = max(round(base_ref * 1.10, 1), 8.0)
+        cap_personal = min(cap_personal, 25.0)
+        km_max_efectivo = min(km_max_fase, cap_personal)
+        msg.append(f"Modo Base Building (mediana 4 sem: {base_ref:.0f} km, cap {km_max_efectivo:.0f})")
     else:
-        km = km_anterior * 1.10
-    return min(round(km, 1), km_max_fase)
+        km_max_efectivo = km_max_fase
+
+    tiene_lesion = bool(lesiones_activas)
+    acwr_v = float(acwr or 0)
+
+    if tiene_lesion or acwr_v > 1.5:
+        km = km_anterior * 0.5
+        msg.append("Descarga 50% (lesión / ACWR > 1.5)")
+    elif acwr_v > 1.3:
+        km = km_anterior
+        msg.append("Mantener volumen (ACWR > 1.3)")
+    elif es_step_back:
+        km = km_anterior * 0.75
+        msg.append("Step-back week (-25%)")
+    else:
+        # Subida controlada cruzando 3 referencias
+        km_subida = km_anterior * 1.10
+        topes = [km_subida]
+        if km_4w_mediana and km_4w_mediana > 0:
+            topes.append(km_4w_mediana * 1.30)
+        if km_4w_max and km_4w_max > 0:
+            topes.append(km_4w_max * 1.20)
+        km = min(topes)
+        if km < km_subida:
+            msg.append("Subida limitada por mediana/máximo 4 sem")
+
+    km_final = min(round(km, 1), km_max_efectivo)
+    return {
+        "km": km_final,
+        "motivo": " · ".join(msg) if msg else "Subida normal +10%",
+        "cap_aplicado": km_max_efectivo,
+        "modo": "base_building" if es_principiante else ("step_back" if es_step_back else "normal"),
+    }
 
 
 # ---------------------------------------------------------------------------
