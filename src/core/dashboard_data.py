@@ -445,8 +445,21 @@ def metricas_garmin(usuario_id) -> dict:
             acwr = round(float(ag.iloc[0]) / float(cr.iloc[0]), 2)
 
     cad = _m(df_c, "cadencia_media") if not df_c.empty else _m(df_b, "cadencia_media")
+    
+    # Body Battery: usar el máximo disponible (preferentemente body_battery_max)
+    body_battery = None
+    if not df_b.empty:
+        if "body_battery_max" in df_b.columns:
+            bb_max = pd.to_numeric(df_b["body_battery_max"], errors="coerce").dropna()
+            if not bb_max.empty:
+                body_battery = round(float(bb_max.iloc[0]), 1)
+        if body_battery is None and "body_battery_min" in df_b.columns:
+            bb_min = pd.to_numeric(df_b["body_battery_min"], errors="coerce").dropna()
+            if not bb_min.empty:
+                body_battery = round(float(bb_min.iloc[0]), 1)
+    
     return {"hrv": _m(df_b, "hrv_ms"), "sueno_h": _f(df_s, "horas_totales"),
-            "sueno_score": _f(df_s, "score"), "body_battery": None,
+            "sueno_score": _f(df_s, "score"), "body_battery": body_battery,
             "cadencia": cad, "acwr": acwr, "fc_reposo": _m(df_b, "fc_reposo"),
             "estres": _m(df_b, "estres_medio")}
 
@@ -621,20 +634,81 @@ def analisis_hoy(usuario_id: int) -> dict:
             sueno["sleep_ligero_horas"] = None
         sueno["spo2_media"] = spo2_val
 
-    # Body Battery: preferimos el max al despertar
+    # Body Battery: preferimos el max al despertar (con fallback a biometricos_garmin)
     body_battery = None
     if bio:
         body_battery = bio.get("body_battery_max") or bio.get("body_battery_min")
+    
+    # Fallback: si no hay en datos_biometricos_premium, buscar en biometricos_garmin
+    if body_battery is None:
+        try:
+            conn_fb = get_db_connection()
+            r = conn_fb.execute(
+                "SELECT valor FROM biometricos_garmin WHERE usuario_id=? AND tipo='body_battery' "
+                "AND fecha IN (?, ?) ORDER BY fecha DESC, id DESC LIMIT 1",
+                (usuario_id, hoy_str, ayer_str)).fetchone()
+            conn_fb.close()
+            if r:
+                body_battery = float(r[0])
+        except Exception:
+            pass
 
+    # Estres: preferimos estres_vital o estres_medio de datos_biometricos_premium (con fallback)
     estres = None
     if bio:
         estres = bio.get("estres_vital") or bio.get("estres_medio")
+    
+    # Fallback: si no hay en datos_biometricos_premium, buscar en biometricos_garmin
+    if estres is None:
+        try:
+            conn_fb = get_db_connection()
+            r = conn_fb.execute(
+                "SELECT valor FROM biometricos_garmin WHERE usuario_id=? AND tipo='stress' "
+                "AND fecha IN (?, ?) ORDER BY fecha DESC, id DESC LIMIT 1",
+                (usuario_id, hoy_str, ayer_str)).fetchone()
+            conn_fb.close()
+            if r:
+                estres = float(r[0])
+        except Exception:
+            pass
 
     sleep_score = None
     if sueno and sueno.get("score") is not None:
         sleep_score = sueno.get("score")
     elif bio and bio.get("sleep_score") is not None:
         sleep_score = bio.get("sleep_score")
+
+    # Completar bio con fallbacks de biometricos_garmin si faltan campos clave
+    if bio is None:
+        bio = {}
+    
+    # Fallback para HRV
+    if bio.get("hrv_ms") is None:
+        try:
+            conn_fb = get_db_connection()
+            r = conn_fb.execute(
+                "SELECT valor FROM biometricos_garmin WHERE usuario_id=? AND tipo='hrv' "
+                "AND fecha IN (?, ?) ORDER BY fecha DESC, id DESC LIMIT 1",
+                (usuario_id, hoy_str, ayer_str)).fetchone()
+            conn_fb.close()
+            if r:
+                bio["hrv_ms"] = float(r[0])
+        except Exception:
+            pass
+    
+    # Fallback para FC reposo
+    if bio.get("fc_reposo") is None:
+        try:
+            conn_fb = get_db_connection()
+            r = conn_fb.execute(
+                "SELECT valor FROM biometricos_garmin WHERE usuario_id=? AND tipo='resting_heart_rate' "
+                "AND fecha IN (?, ?) ORDER BY fecha DESC, id DESC LIMIT 1",
+                (usuario_id, hoy_str, ayer_str)).fetchone()
+            conn_fb.close()
+            if r:
+                bio["fc_reposo"] = float(r[0])
+        except Exception:
+            pass
 
     # Readiness 0-100 ponderado por componentes disponibles
     readiness = None

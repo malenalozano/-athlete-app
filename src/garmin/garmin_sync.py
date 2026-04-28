@@ -608,10 +608,12 @@ def _has_useful_daily_metrics(metrics):
     useful_keys = [
         "hrv_ms",
         "training_readiness",
-        "body_battery",
+        "body_battery_max",
+        "body_battery_min",
         "recovery_hours",
         "fc_reposo",
         "fc_maxima",
+        "estres_medio",
         "estres_vital",
         "spo2",
         "sleep_score",
