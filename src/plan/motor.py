@@ -118,6 +118,25 @@ def generar_plan_semana(
     es_hombre = str(genero).lower() in ("hombre", "male", "m")
     ciclo_ajuste = ajustar_por_ciclo(None if es_hombre else datos.get("fase_ciclo"))
 
+    restricciones = aplicar_restricciones_lesion(datos["lesiones_activas"])
+    cadencia_eval = evaluar_cadencia(datos["cadencia_media"])
+
+    # ---- VOLUMEN BASE (PRIMERO, con todas las salvaguardas anti-lesión) ----
+    # Se calcula ANTES del integrator para que el slider no use el default 50 km.
+    es_step_back = (fecha_inicio_lunes.isocalendar()[1] % 4 == 0)
+    _vol_res = calcular_volumen_semana(
+        datos["km_semana_anterior"], datos["acwr"],
+        datos["lesiones_activas"], fase["km_semanales_max"],
+        km_4w_mediana=datos.get("km_4w_mediana"),
+        km_4w_max=datos.get("km_4w_max"),
+        es_step_back=es_step_back,
+    )
+    km_objetivo = round(_vol_res["km"], 1)
+    _vol_motivo = _vol_res.get("motivo")
+    _vol_modo = _vol_res.get("modo", "normal")
+    # Inyectar km_objetivo seguro en datos para que el integrator use ESTE como base
+    datos["km_objetivo"] = km_objetivo
+
     # ---- INTEGRACIÓN DE MEJORAS (GAS + Protocolo A/B + Ciclo+Slider) ----
     # Parámetros protocolo_seleccionado y slider_volumen_pct vienen desde UI
     # Si no se pasan, usan defaults: None y 100
@@ -135,9 +154,6 @@ def generar_plan_semana(
     gas_info = plan_integrado["contexto"]["gas_info"]
     ciclo_gas_sinergia = plan_integrado["contexto"]["ciclo_gas_sinergia"]
     volumen_con_slider = plan_integrado["volumen_info"]["km_final_con_slider"]
-
-    restricciones = aplicar_restricciones_lesion(datos["lesiones_activas"])
-    cadencia_eval = evaluar_cadencia(datos["cadencia_media"])
 
     # Evaluación VO2max: capacidad cardíaca (umbrales por género)
     vo2_eval = evaluar_vo2max(datos.get("vo2max"), genero=genero)
@@ -157,29 +173,13 @@ def generar_plan_semana(
     # Detector de conflictos 48-72h (últimas actividades)
     conflictos_48h = detectar_conflictos_48h(datos.get("ultimas_3_actividades", []))
 
-    # Step-back week cada 4 (3 cargas + 1 descarga) — Pfitzinger / Daniels
-    es_step_back = (fecha_inicio_lunes.isocalendar()[1] % 4 == 0)
-
-    _vol_res = calcular_volumen_semana(
-        datos["km_semana_anterior"], datos["acwr"],
-        datos["lesiones_activas"], fase["km_semanales_max"],
-        km_4w_mediana=datos.get("km_4w_mediana"),
-        km_4w_max=datos.get("km_4w_max"),
-        es_step_back=es_step_back,
-    )
-    km_objetivo = _vol_res["km"]
-    _vol_motivo = _vol_res.get("motivo")
-    _vol_modo = _vol_res.get("modo", "normal")
-
     eficiencia = evaluar_eficiencia_aerobica(datos["actividades_z2"])
 
-    # HRV y ciclo menstrual no modifican automáticamente la generación del plan.
-    # Se mantienen como señales informativas para decisión manual.
-    km_objetivo = round(km_objetivo, 1)
-
-    # Aplicar ajuste de Ciclo + GAS con slider (solo mujeres)
+    # Aplicar ajuste de Ciclo + GAS con slider (solo mujeres). Como ya inyectamos
+    # km_objetivo seguro en datos antes del integrator, volumen_con_slider ya está
+    # acotado por nuestro cap (no se va a 50 km por default).
     if not es_hombre and volumen_con_slider:
-        km_objetivo = volumen_con_slider
+        km_objetivo = round(min(volumen_con_slider, _vol_res.get("cap_aplicado", km_objetivo)), 1)
 
     dias = distribuir_semana(fase, km_objetivo, semaforo, restricciones, fecha_inicio_lunes, cadencia_eval,
                             datos.get("sleep_breakdown"), objetivo_tipo=objetivo_tipo)

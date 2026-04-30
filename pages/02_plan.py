@@ -507,6 +507,14 @@ def _renderizar_detalle_dia(plan: dict, idx: int, lunes: datetime, usuario_id: i
     if dia_plan is None:
         return
 
+    # ── Sesiones del día (principal + extras) — corrige bug de mostrar solo una ──
+    _todas_sesiones = [dia_plan] + list(dia_plan.get("sesiones_extra", []) or [])
+    # Filtrar Descansos duplicados cuando hay sesiones reales
+    _hay_real = any(str(s.get("tipo", "")).lower() != "descanso" for s in _todas_sesiones)
+    if _hay_real:
+        _todas_sesiones = [s for s in _todas_sesiones if str(s.get("tipo", "")).lower() != "descanso"]
+    n_ses = len(_todas_sesiones)
+
     # Datos del plan (preservados en _tipo_original / _km_plan)
     tipo_actual = str(dia_plan.get("tipo", ""))
     tipo_orig = str(dia_plan.get("_tipo_original") or tipo_actual)
@@ -515,6 +523,11 @@ def _renderizar_detalle_dia(plan: dict, idx: int, lunes: datetime, usuario_id: i
     km_real = float(dia_plan.get("km") or 0) if estado in ("completo", "parcial", "distinto", "extra") else 0
     dur_real = float(dia_plan.get("duracion_min") or 0)
     alerta = str(dia_plan.get("alerta") or "")
+    # Si hay varias sesiones, suma kms y duración para el total del día
+    if n_ses > 1:
+        km_plan = sum(float(s.get("_km_plan") or s.get("km") or 0) for s in _todas_sesiones)
+        dur_real = sum(float(s.get("duracion_min") or 0) for s in _todas_sesiones)
+        tipo_actual = " · ".join(str(s.get("tipo", "")) for s in _todas_sesiones)
 
     # Sesiones de fuerza ese día
     conn = get_db_connection()
@@ -599,6 +612,39 @@ def _renderizar_detalle_dia(plan: dict, idx: int, lunes: datetime, usuario_id: i
     if alerta:
         _color_alerta = "#ffb86b" if alerta.startswith("⚠") else ("#7CFC9E" if alerta.startswith("✓") else ("#7CD0FF" if alerta.startswith(("🧠", "↔", "➕", "↑")) else "#8B949E"))
         st.markdown(f"<div style=\"margin-top:10px;padding:8px 14px;background:rgba(34,40,55,0.4);border-left:3px solid {_color_alerta};border-radius:6px;color:{_color_alerta};font-size:13px;font-weight:600;\">{alerta}</div>", unsafe_allow_html=True)
+
+    # ── Si hay varias sesiones planificadas ese día, mostrarlas todas ──
+    if n_ses > 1:
+        st.markdown(
+            "<div style='color:#8B949E;font-size:11px;font-weight:700;text-transform:uppercase;"
+            "letter-spacing:.06em;margin:14px 0 6px;'>"
+            f"📋 {n_ses} sesiones planificadas</div>",
+            unsafe_allow_html=True)
+        for _i, _ses in enumerate(_todas_sesiones, 1):
+            _t = str(_ses.get("tipo", "—"))
+            _km_s = float(_ses.get("km") or 0)
+            _dur_s = float(_ses.get("duracion_min") or 0)
+            _int_s = str(_ses.get("intensidad") or "—")
+            _desc_s = str(_ses.get("descripcion_ia") or "").strip()
+            _act = _get_activity_type(_t)
+            _color_s = {"running": "#22d3ee", "strength": "#c084fc",
+                        "rest": "#4ade80"}.get(_act, "#C9FF00")
+            _emoji_s = _EMOJIS.get(_t, "📅")
+            _resumen = (f"{_km_s:.1f} km · {int(_dur_s)} min" if _km_s > 0
+                        else (f"{int(_dur_s)} min" if _dur_s > 0 else "—"))
+            st.markdown(
+                f"<div style='background:rgba(34,40,55,0.5);border-left:3px solid {_color_s};"
+                f"padding:10px 14px;border-radius:8px;margin-bottom:6px;'>"
+                f"<div style='display:flex;align-items:center;justify-content:space-between;gap:8px;'>"
+                f"<div><span style='color:{_color_s};font-size:13px;font-weight:700;'>"
+                f"{_emoji_s} {_t}</span>"
+                f"<span style='color:#8B949E;font-size:10px;margin-left:8px;'>{_int_s}</span></div>"
+                f"<span style='color:#c8d1d9;font-size:11px;font-weight:600;'>{_resumen}</span>"
+                f"</div>"
+                + (f"<div style='color:#8B949E;font-size:11px;margin-top:4px;line-height:1.4;'>{_desc_s}</div>"
+                   if _desc_s and _desc_s != "[Historial]" else "")
+                + "</div>",
+                unsafe_allow_html=True)
 
     # Descripción IA
     desc = str(dia_plan.get("descripcion_ia") or "").strip()
@@ -1266,12 +1312,21 @@ if active_tab == "generar":
 
         import json as _json
 
+        def _limpiar_descansos(col: list) -> list:
+            """Si la columna tiene sesiones reales, eliminar Descansos. Si todo Descanso, dejar uno solo."""
+            if not col:
+                return []
+            reales = [s for s in col if str(s.get("tipo", "")).lower() != "descanso"]
+            if reales:
+                return reales
+            return [col[0]] if col else []
+
         def _board_to_dias(brd: list) -> list:
             """Convierte el board (7 listas de sesiones) a plan["dias"] guardable en BD."""
             resultado = []
             for _idx in range(7):
                 _fecha = (lunes + timedelta(days=_idx)).strftime("%Y-%m-%d")
-                _sesiones = brd[_idx] if _idx < len(brd) else []
+                _sesiones = _limpiar_descansos(brd[_idx] if _idx < len(brd) else [])
                 if _sesiones:
                     _p = dict(_sesiones[0])
                     _p["fecha"]  = _fecha
@@ -1309,7 +1364,8 @@ if active_tab == "generar":
                         "descripcion_ia": _extra.get("descripcion_ia", ""),
                         "alerta": _extra.get("alerta", ""),
                     })
-                board_init.append(col_sesiones)
+                # Aplicar limpieza de Descansos duplicados antes de inicializar
+                board_init.append(_limpiar_descansos(col_sesiones))
             st.session_state[board_key] = board_init
 
         board = st.session_state[board_key]
@@ -1409,7 +1465,17 @@ if active_tab == "generar":
                 _td = int(_dnd_move.get("to_day", -1))
                 if _fd != _td and 0 <= _fd < 7 and 0 <= _td < 7 and 0 <= _fi < len(board[_fd]):
                     _ses_mv = board[_fd].pop(_fi)
-                    board[_td].append(_ses_mv)
+                    # FIX: si el destino solo tiene "Descanso" placeholder, reemplazarlo
+                    # en lugar de acumular (evita "Descanso + Fuerza Pierna" en mismo día).
+                    _es_real = str(_ses_mv.get("tipo", "")).lower() != "descanso"
+                    if _es_real and board[_td] and all(
+                        str(s.get("tipo", "")).lower() == "descanso" for s in board[_td]
+                    ):
+                        board[_td] = [_ses_mv]
+                    else:
+                        board[_td].append(_ses_mv)
+                    # FIX: si el origen quedó vacío, NO añadir Descanso aquí (lo hace
+                    # _sync_plan_from_board al persistir). Mantener vacío en board.
                     st.session_state[board_key] = board
                     plan["dias"] = _board_to_dias(board)
                     plan["board_sesiones"] = board
