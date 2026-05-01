@@ -1759,4 +1759,65 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
                 raise
             except Exception as e:
                 logger.warning(f"Error métricas {fecha_iso}: {e}")
-    
+                daily = None
+        return fecha_iso, sleep_metrics, daily
+
+    # Paralelizar: 3 días simultáneos (3 días × 9 calls = 27 calls concurrentes, manejable)
+    if dias_pendientes:
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            futs = {ex.submit(_fetch_dia, dp): dp for dp in dias_pendientes}
+            for f in as_completed(futs):
+                try:
+                    fecha_iso, sleep_metrics, daily = f.result(timeout=60)
+                except GarminConnectAuthenticationError:
+                    raise RuntimeError(
+                        "🔑 Token expirado durante la sincronización. "
+                        "Desconecta y vuelve a conectar tu cuenta."
+                    )
+                except Exception as e:
+                    logger.warning(f"Error fetch día: {e}")
+                    continue
+
+                # Persistencia secuencial (BD podría no ser thread-safe)
+                if sleep_metrics:
+                    try:
+                        guardar_sueno_db(usuario_id, sleep_metrics)
+                        dias_sueno += 1
+                        sueno_importado.append({
+                            "fecha": fecha_iso,
+                            "horas_totales": sleep_metrics.get("horas_totales"),
+                            "score": sleep_metrics.get("score"),
+                            "sleep_profundo_horas": sleep_metrics.get("sleep_profundo_horas"),
+                            "sleep_rem_horas": sleep_metrics.get("sleep_rem_horas"),
+                        })
+                    except Exception as e:
+                        logger.warning(f"Error guardar sueño {fecha_iso}: {e}")
+
+                if daily and _has_useful_daily_metrics(daily):
+                    try:
+                        guardar_metricas_premium_db(usuario_id, daily)
+                        dias_bio += 1
+                        biometricos_importados.append(daily)
+                    except Exception as e:
+                        logger.warning(f"Error guardar bio {fecha_iso}: {e}")
+                elif daily is not None:
+                    dias_vacios += 1
+
+    logger.info(f"✅ Sincronización completa: {act_guardadas} actividades, {dias_bio} días bio, {dias_sueno} días sueño")
+    return {
+        "actividades": act_guardadas,
+        "dias_bio": dias_bio,
+        "dias_sueno": dias_sueno,
+        "actividades_importadas": actividades_importadas,
+        "biometricos_importados": biometricos_importados,
+        "sueno_importado": sueno_importado,
+    }
+
+
+if __name__ == "__main__":
+    # Ejemplo de uso
+    email = input("Introduce tu correo de Garmin: ")
+    password = input("Introduce tu contraseña de Garmin: ")
+    usuario_id = int(input("Introduce tu ID de usuario (ej. 1): "))
+    resultado = sincronizar_actividades(email, password, usuario_id)
+    print(resultado)
