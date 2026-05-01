@@ -545,66 +545,75 @@ def construir_calendario_semanal_actividades(df_act, df_fuerza, semana_inicio):
 def analisis_hoy(usuario_id: int) -> dict:
     """
     Datos para la sección 'Análisis de hoy' del dashboard.
-    3 lecturas: sueño (preferencia hoy, fallback ayer porque Garmin
-    lo escribe al despertar), biométricos hoy, plan hoy.
-    Defensivo ante columnas faltantes (sleep_ligero, spo2, training_readiness…).
+    Estrategia: para cada métrica busca el ÚLTIMO valor disponible en los
+    últimos 7 días (con marca de antigüedad si > 1 día), no exige fecha=hoy.
+    Reusa una sola conexión para minimizar latencia.
     """
     hoy = date.today()
     hoy_str = hoy.isoformat()
-    ayer_str = (hoy - timedelta(days=1)).isoformat()
+    fecha_min = (hoy - timedelta(days=7)).isoformat()
 
     sueno = None
     bio = None
     plan_rows: list = []
     spo2_val = None
     training_readiness_val = None
+    sueno_fecha = None
+    bio_fecha = None
 
     conn = get_db_connection()
     try:
-        # ── Sueño (anoche) ────────────────────────────────────────────
+        # ── Sueño: el más reciente en últimos 7 días ──────────────────
         try:
             cur = conn.execute(
-                "SELECT horas_totales, score, sleep_profundo_horas, sleep_rem_horas, "
+                "SELECT fecha, horas_totales, score, sleep_profundo_horas, sleep_rem_horas, "
                 "sleep_vigilia_horas, despertares "
-                "FROM datos_sueno WHERE usuario_id=? AND fecha IN (?, ?) "
+                "FROM datos_sueno WHERE usuario_id=? AND fecha>=? "
                 "ORDER BY fecha DESC LIMIT 1",
-                (usuario_id, hoy_str, ayer_str))
+                (usuario_id, fecha_min))
             cols = [c[0] for c in cur.description] if cur.description else []
             row = cur.fetchone()
             if row:
-                sueno = dict(zip(cols, row))
+                d = dict(zip(cols, row))
+                sueno_fecha = d.pop("fecha", None)
+                sueno = d
         except Exception:
             sueno = None
 
-        # ── Biométricos hoy ───────────────────────────────────────────
+        # ── Biométricos: el más reciente en últimos 7 días ─────────────
         try:
             cur = conn.execute(
-                "SELECT hrv_ms, fc_reposo, body_battery_max, body_battery_min, "
+                "SELECT fecha, hrv_ms, fc_reposo, body_battery_max, body_battery_min, "
                 "estres_vital, estres_medio, sleep_score "
-                "FROM datos_biometricos_premium WHERE usuario_id=? AND fecha=? LIMIT 1",
-                (usuario_id, hoy_str))
+                "FROM datos_biometricos_premium WHERE usuario_id=? AND fecha>=? "
+                "ORDER BY fecha DESC LIMIT 1",
+                (usuario_id, fecha_min))
             cols = [c[0] for c in cur.description] if cur.description else []
             row = cur.fetchone()
             if row:
-                bio = dict(zip(cols, row))
+                d = dict(zip(cols, row))
+                bio_fecha = d.pop("fecha", None)
+                bio = d
         except Exception:
             bio = None
 
-        # SpO2 — columna opcional en biométricos
+        # SpO2 — columna opcional en biométricos (último valor en 7d)
         try:
             r = conn.execute(
-                "SELECT spo2 FROM datos_biometricos_premium WHERE usuario_id=? AND fecha=? LIMIT 1",
-                (usuario_id, hoy_str)).fetchone()
+                "SELECT spo2 FROM datos_biometricos_premium WHERE usuario_id=? "
+                "AND spo2 IS NOT NULL AND fecha>=? ORDER BY fecha DESC LIMIT 1",
+                (usuario_id, fecha_min)).fetchone()
             spo2_val = r[0] if r else None
         except Exception:
             spo2_val = None
 
-        # Training readiness — columna opcional
+        # Training readiness — columna opcional (último valor en 7d)
         try:
             r = conn.execute(
                 "SELECT training_readiness FROM datos_biometricos_premium "
-                "WHERE usuario_id=? AND fecha=? LIMIT 1",
-                (usuario_id, hoy_str)).fetchone()
+                "WHERE usuario_id=? AND training_readiness IS NOT NULL AND fecha>=? "
+                "ORDER BY fecha DESC LIMIT 1",
+                (usuario_id, fecha_min)).fetchone()
             training_readiness_val = r[0] if r else None
         except Exception:
             training_readiness_val = None
@@ -619,6 +628,34 @@ def analisis_hoy(usuario_id: int) -> dict:
             plan_rows = [dict(zip(cols, r)) for r in cur.fetchall()]
         except Exception:
             plan_rows = []
+
+        # ── Fallbacks consolidados a biometricos_garmin (UNA sola conexión) ──
+        def _fb(tipo: str):
+            try:
+                r = conn.execute(
+                    "SELECT valor FROM biometricos_garmin WHERE usuario_id=? AND tipo=? "
+                    "AND fecha>=? ORDER BY fecha DESC, id DESC LIMIT 1",
+                    (usuario_id, tipo, fecha_min)).fetchone()
+                return float(r[0]) if r and r[0] is not None else None
+            except Exception:
+                return None
+
+        if bio is None:
+            bio = {}
+        if bio.get("hrv_ms") is None:
+            bio["hrv_ms"] = _fb("hrv")
+        if bio.get("fc_reposo") is None:
+            bio["fc_reposo"] = _fb("resting_heart_rate") or _fb("rhr")
+        if (bio.get("body_battery_max") or bio.get("body_battery_min")) is None:
+            v = _fb("body_battery")
+            if v is not None:
+                bio["body_battery_max"] = v
+        if (bio.get("estres_vital") or bio.get("estres_medio")) is None:
+            v = _fb("stress") or _fb("estres")
+            if v is not None:
+                bio["estres_medio"] = v
+        if spo2_val is None:
+            spo2_val = _fb("spo2")
     finally:
         conn.close()
 
@@ -640,75 +677,14 @@ def analisis_hoy(usuario_id: int) -> dict:
         body_battery = bio.get("body_battery_max") or bio.get("body_battery_min")
     
     # Fallback: si no hay en datos_biometricos_premium, buscar en biometricos_garmin
-    if body_battery is None:
-        try:
-            conn_fb = get_db_connection()
-            r = conn_fb.execute(
-                "SELECT valor FROM biometricos_garmin WHERE usuario_id=? AND tipo='body_battery' "
-                "AND fecha IN (?, ?) ORDER BY fecha DESC, id DESC LIMIT 1",
-                (usuario_id, hoy_str, ayer_str)).fetchone()
-            conn_fb.close()
-            if r:
-                body_battery = float(r[0])
-        except Exception:
-            pass
-
-    # Estres: preferimos estres_vital o estres_medio de datos_biometricos_premium (con fallback)
-    estres = None
-    if bio:
-        estres = bio.get("estres_vital") or bio.get("estres_medio")
-    
-    # Fallback: si no hay en datos_biometricos_premium, buscar en biometricos_garmin
-    if estres is None:
-        try:
-            conn_fb = get_db_connection()
-            r = conn_fb.execute(
-                "SELECT valor FROM biometricos_garmin WHERE usuario_id=? AND tipo='stress' "
-                "AND fecha IN (?, ?) ORDER BY fecha DESC, id DESC LIMIT 1",
-                (usuario_id, hoy_str, ayer_str)).fetchone()
-            conn_fb.close()
-            if r:
-                estres = float(r[0])
-        except Exception:
-            pass
-
+    # Re-extraer body_battery / estres / sleep_score tras los fallbacks
+    body_battery = bio.get("body_battery_max") or bio.get("body_battery_min") if bio else None
+    estres = (bio.get("estres_vital") or bio.get("estres_medio")) if bio else None
     sleep_score = None
     if sueno and sueno.get("score") is not None:
         sleep_score = sueno.get("score")
     elif bio and bio.get("sleep_score") is not None:
         sleep_score = bio.get("sleep_score")
-
-    # Completar bio con fallbacks de biometricos_garmin si faltan campos clave
-    if bio is None:
-        bio = {}
-    
-    # Fallback para HRV
-    if bio.get("hrv_ms") is None:
-        try:
-            conn_fb = get_db_connection()
-            r = conn_fb.execute(
-                "SELECT valor FROM biometricos_garmin WHERE usuario_id=? AND tipo='hrv' "
-                "AND fecha IN (?, ?) ORDER BY fecha DESC, id DESC LIMIT 1",
-                (usuario_id, hoy_str, ayer_str)).fetchone()
-            conn_fb.close()
-            if r:
-                bio["hrv_ms"] = float(r[0])
-        except Exception:
-            pass
-    
-    # Fallback para FC reposo
-    if bio.get("fc_reposo") is None:
-        try:
-            conn_fb = get_db_connection()
-            r = conn_fb.execute(
-                "SELECT valor FROM biometricos_garmin WHERE usuario_id=? AND tipo='resting_heart_rate' "
-                "AND fecha IN (?, ?) ORDER BY fecha DESC, id DESC LIMIT 1",
-                (usuario_id, hoy_str, ayer_str)).fetchone()
-            conn_fb.close()
-            if r:
-                bio["fc_reposo"] = float(r[0])
-        except Exception:
-            pass
 
     # Readiness 0-100 ponderado por componentes disponibles
     readiness = None
@@ -737,6 +713,17 @@ def analisis_hoy(usuario_id: int) -> dict:
     else:
         semaforo = "rojo"
 
+    # Marca de antigüedad si los datos no son de hoy
+    sueno_dias_atras = None
+    bio_dias_atras = None
+    try:
+        if sueno_fecha:
+            sueno_dias_atras = (hoy - date.fromisoformat(str(sueno_fecha)[:10])).days
+        if bio_fecha:
+            bio_dias_atras = (hoy - date.fromisoformat(str(bio_fecha)[:10])).days
+    except Exception:
+        pass
+
     return {
         "sueno": sueno,
         "bio": bio,
@@ -747,6 +734,10 @@ def analisis_hoy(usuario_id: int) -> dict:
         "training_readiness": training_readiness_val,
         "readiness": readiness,
         "semaforo": semaforo,
+        "sueno_fecha": sueno_fecha,
+        "bio_fecha": bio_fecha,
+        "sueno_dias_atras": sueno_dias_atras,
+        "bio_dias_atras": bio_dias_atras,
         "tiene_datos": (sueno is not None) or (bio is not None) or bool(plan_rows),
     }
 

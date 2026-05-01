@@ -719,6 +719,16 @@ def _render_col_entreno(plan_rows, semaforo):
     )
 
 
+def _badge_antiguedad(dias_atras):
+    """Devuelve un badge HTML con la antigüedad del dato si es > 0 días."""
+    if dias_atras is None or dias_atras <= 0:
+        return ""
+    txt = "ayer" if dias_atras == 1 else f"hace {dias_atras}d"
+    return (f"<span style='background:rgba(245,158,11,0.15);color:#f59e0b;"
+            f"font-size:0.62rem;font-weight:700;padding:1px 6px;border-radius:99px;"
+            f"margin-left:6px;'>{txt}</span>")
+
+
 def render_analisis_hoy(data: dict):
     """Sección Análisis de Hoy — 3 columnas: Sueño · Readiness · Entreno."""
     if not data:
@@ -732,7 +742,16 @@ def render_analisis_hoy(data: dict):
         "margin-left:0.5rem;\"></div></div>",
         unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3, gap="small")
-    c1.markdown(_render_col_sueno(data.get("sueno")), unsafe_allow_html=True)
-    c2.markdown(_render_col_readiness(data), unsafe_allow_html=True)
+    sueno_html = _render_col_sueno(data.get("sueno"))
+    bio_html = _render_col_readiness(data)
+    # Inyectar badge de antigüedad en el header de cada columna
+    if data.get("sueno_dias_atras"):
+        sueno_html = sueno_html.replace(
+            "🌙 Sueño anoche", f"🌙 Sueño{_badge_antiguedad(data['sueno_dias_atras'])}", 1)
+    if data.get("bio_dias_atras"):
+        bio_html = bio_html.replace(
+            "♡ Readiness", f"♡ Readiness{_badge_antiguedad(data['bio_dias_atras'])}", 1)
+    c1.markdown(sueno_html, unsafe_allow_html=True)
+    c2.markdown(bio_html, unsafe_allow_html=True)
     c3.markdown(_render_col_entreno(data.get("plan") or [], data.get("semaforo", "gris")),
                 unsafe_allow_html=True)

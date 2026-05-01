@@ -4,6 +4,7 @@ import re
 import json
 from datetime import datetime, timedelta
 from threading import Thread
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 try:
@@ -520,82 +521,99 @@ def _extract_sleep_metrics(data, fecha_iso):
 def _extract_daily_metrics(client, fecha_iso):
     """
     Extrae métricas diarias de Garmin para una fecha específica.
-    Incluye: HRV, FC, SpO2, Stress, Body Battery, VO2max, Training Status.
+    Incluye: HRV, FC, SpO2, Stress, Body Battery, VO2max, Training Status, Training Load.
+    PARALELIZA las 8 llamadas API independientes (8x speedup en latencia).
     """
-    logger.info(f"\n{'='*70}")
-    logger.info(f"EXTRAYENDO MÉTRICAS PARA {fecha_iso}")
-    logger.info(f"{'='*70}")
+    # Cada tarea es (key, callable) — se ejecuta en thread pool
+    def _t_hrv():
+        d = _safe_api_call(client.get_hrv_data, fecha_iso) or {}
+        return _first_number(d, ["lastNightAverage", "averageHrv", "weeklyAverage", "hrvValue"])
 
-    # HRV
-    hrv_data = _safe_api_call(client.get_hrv_data, fecha_iso) or {}
-    hrv_ms = _first_number(hrv_data, ["lastNightAverage", "averageHrv", "weeklyAverage", "hrvValue"])
-    logger.info(f"  ✓ HRV: {hrv_ms} ms" if hrv_ms else "  ✗ HRV: No encontrado")
+    def _t_hr():
+        d = _safe_api_call(client.get_heart_rates, fecha_iso) or {}
+        return (
+            _to_int(_first_number(d, ["restingHeartRate", "restHeartRate", "restingHR"])),
+            _to_int(_first_number(d, ["maxHeartRate", "maxHeartRateInBeatsPerMinute"])),
+        )
 
-    # Heart Rates
-    heart_rates = _safe_api_call(client.get_heart_rates, fecha_iso) or {}
-    fc_reposo = _to_int(_first_number(heart_rates, ["restingHeartRate", "restHeartRate", "restingHR"]))
-    fc_maxima = _to_int(_first_number(heart_rates, ["maxHeartRate", "maxHeartRateInBeatsPerMinute"]))
-    logger.info(f"  ✓ FC Reposo: {fc_reposo}, FC Máxima: {fc_maxima}" if fc_reposo or fc_maxima else "  ✗ Heart Rates: No encontrado")
+    def _t_spo2():
+        d = _safe_api_call(client.get_spo2_data, fecha_iso) or {}
+        return _first_number(d, ["averageSpo2", "avgSpo2", "spo2"])
 
-    # SpO2
-    spo2_data = _safe_api_call(client.get_spo2_data, fecha_iso) or {}
-    spo2 = _first_number(spo2_data, ["averageSpo2", "avgSpo2", "spo2"])
-    logger.info(f"  ✓ SpO2: {spo2}" if spo2 else "  ✗ SpO2: No encontrado")
+    def _t_stress():
+        d = _safe_api_call(client.get_stress_data, fecha_iso) or {}
+        if not d:
+            d = _safe_api_call(getattr(client, "get_all_day_stress", lambda x: None), fecha_iso) or {}
+        return _to_int(_first_number(d, ["averageStressLevel", "avgStressLevel", "overallStressLevel"]))
 
-    # Stress
-    stress_data = _safe_api_call(client.get_stress_data, fecha_iso) or {}
-    if not stress_data:
-        stress_data = _safe_api_call(getattr(client, 'get_all_day_stress', lambda x: None), fecha_iso) or {}
-    estres_medio = _to_int(_first_number(stress_data, ["averageStressLevel", "avgStressLevel", "overallStressLevel"]))
-    logger.info(f"  ✓ Estrés medio: {estres_medio}" if estres_medio else "  ✗ Estrés: No encontrado")
+    def _t_bb():
+        bb = _safe_api_call(getattr(client, "get_body_battery", lambda x: None), fecha_iso)
+        bb_max = bb_min = None
+        if bb:
+            if isinstance(bb, list):
+                valores = [
+                    _to_int(v)
+                    for item in bb
+                    for v in (_search_values(item, ["bodyBatteryLevel", "value"]) or [])
+                    if v is not None
+                ]
+                if valores:
+                    bb_max, bb_min = max(valores), min(valores)
+            elif isinstance(bb, dict):
+                bb_max = _to_int(_first_number(bb, ["maxBodyBattery", "endOfDayBodyBattery"]))
+                bb_min = _to_int(_first_number(bb, ["minBodyBattery"]))
+        return bb_max, bb_min
 
-    # Body Battery
-    body_battery_max = body_battery_min = None
-    bb_data = _safe_api_call(getattr(client, 'get_body_battery', lambda x: None), fecha_iso)
-    if bb_data:
-        if isinstance(bb_data, list):
-            valores = [_to_int(v) for item in bb_data for v in (_search_values(item, ["bodyBatteryLevel", "value"]) or []) if v is not None]
-            if valores:
-                body_battery_max = max(valores)
-                body_battery_min = min(valores)
-        elif isinstance(bb_data, dict):
-            body_battery_max = _to_int(_first_number(bb_data, ["maxBodyBattery", "endOfDayBodyBattery"]))
-            body_battery_min = _to_int(_first_number(bb_data, ["minBodyBattery"]))
-    logger.info(f"  ✓ Body Battery: {body_battery_min}→{body_battery_max}" if body_battery_max else "  ✗ Body Battery: No encontrado")
+    def _t_vo2():
+        return _extract_vo2max_metric(client, fecha_iso)
 
-    # VO2max
-    vo2max = _extract_vo2max_metric(client, fecha_iso)
+    def _t_ts():
+        d = _safe_api_call(getattr(client, "get_training_status", lambda x: None), fecha_iso) or {}
+        if not d:
+            return None
+        ts_raw = _search_values(d, ["trainingStatusPhrase", "latestTrainingStatusPhrase", "trainingStatus"])
+        return str(ts_raw[0]).lower() if ts_raw else None
 
-    # Training Status
-    training_status = None
-    ts_data = _safe_api_call(getattr(client, 'get_training_status', lambda x: None), fecha_iso) or {}
-    if ts_data:
-        ts_raw = _search_values(ts_data, ["trainingStatusPhrase", "latestTrainingStatusPhrase", "trainingStatus"])
-        if ts_raw:
-            training_status = str(ts_raw[0]).lower()
-    logger.info(f"  ✓ Training Status: {training_status}" if training_status else "  ✗ Training Status: No encontrado")
+    def _t_tl():
+        d = _safe_api_call(getattr(client, "get_training_load_balance", lambda x: None), fecha_iso) or {}
+        if not d:
+            return None, None
+        return (
+            _to_float(_first_number(d, ["acuteLoadValue", "acute", "acuteLoad"])),
+            _to_float(_first_number(d, ["chronicLoadValue", "chronic", "chronicLoad"])),
+        )
 
-    # Training Load (ACWR - Acute/Chronic Workload)
-    carga_aguda = carga_cronica = None
-    tl_data = _safe_api_call(getattr(client, 'get_training_load_balance', lambda x: None), fecha_iso) or {}
-    if tl_data:
-        carga_aguda = _to_float(_first_number(tl_data, ["acuteLoadValue", "acute", "acuteLoad"]))
-        carga_cronica = _to_float(_first_number(tl_data, ["chronicLoadValue", "chronic", "chronicLoad"]))
-    logger.info(f"  ✓ Training Load: Acute={carga_aguda}, Chronic={carga_cronica}" if carga_aguda or carga_cronica else "  ✗ Training Load: No encontrado")
+    tareas = {
+        "hrv": _t_hrv, "hr": _t_hr, "spo2": _t_spo2, "stress": _t_stress,
+        "bb": _t_bb, "vo2": _t_vo2, "ts": _t_ts, "tl": _t_tl,
+    }
+    resultados = {}
+    # 8 workers porque son 8 llamadas I/O-bound independientes
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futs = {ex.submit(fn): k for k, fn in tareas.items()}
+        for f in as_completed(futs):
+            k = futs[f]
+            try:
+                resultados[k] = f.result(timeout=25)
+            except Exception as e:
+                logger.warning(f"  ✗ {k} para {fecha_iso}: {type(e).__name__}: {e}")
+                resultados[k] = None
 
-    logger.info(f"{'='*70}\n")
+    fc_reposo, fc_maxima = (resultados.get("hr") or (None, None))
+    bb_max, bb_min = (resultados.get("bb") or (None, None))
+    carga_aguda, carga_cronica = (resultados.get("tl") or (None, None))
 
     return {
         "fecha": fecha_iso,
-        "hrv_ms": hrv_ms,
+        "hrv_ms": resultados.get("hrv"),
         "fc_reposo": fc_reposo,
         "fc_maxima": fc_maxima,
-        "spo2": spo2,
-        "estres_medio": estres_medio,
-        "body_battery_max": body_battery_max,
-        "body_battery_min": body_battery_min,
-        "vo2max": vo2max,
-        "training_status": training_status,
+        "spo2": resultados.get("spo2"),
+        "estres_medio": resultados.get("stress"),
+        "body_battery_max": bb_max,
+        "body_battery_min": bb_min,
+        "vo2max": resultados.get("vo2"),
+        "training_status": resultados.get("ts"),
         "carga_aguda": carga_aguda,
         "carga_cronica": carga_cronica,
     }
@@ -1491,8 +1509,10 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
     finally:
         conn_check.close()
 
+    # Limitar nº de actividades a buscar (antes 50, ahora proporcional a dias)
+    _max_act = max(20, min(50, dias * 3))
     try:
-        todas = gc.get_activities(0, 50) or []
+        todas = gc.get_activities(0, _max_act) or []
     except GarminConnectAuthenticationError as e:
         logger.error(f"❌ Error de autenticación: {e}")
         raise RuntimeError(
@@ -1581,13 +1601,13 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
             conexion.close()
 
     # ── 2. Biométricos y sueño de los últimos `dias` días ───────────────
-    # Scannea más días para asegurar que obtiene al menos `dias` días con métricas útiles
-    latest_running_list = _safe_api_call(_latest_running_metrics, gc, 12) or []
+    # _latest_running_metrics: solo los días pedidos (antes: 12 fijo)
+    latest_running_list = _safe_api_call(_latest_running_metrics, gc, max(dias, 5)) or []
     latest_running = latest_running_list[0] if latest_running_list else None
 
     target_bio_days = max(1, int(dias))
-    # Scan reducido: solo los días pedidos + margen pequeño (antes: 4x). Big speedup.
-    max_scan_days = min(21, max(target_bio_days + 3, 8))
+    # Scan ajustado: días pedidos + 2 de margen (antes hasta 21). Más rápido.
+    max_scan_days = min(14, max(target_bio_days + 2, 7))
 
     # Cache de fechas ya en BD para saltarnos llamadas redundantes a Garmin
     fechas_bio_existentes = set()
@@ -1623,76 +1643,94 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
     biometricos_importados = []
     sueno_importado = []
 
+    # Identificar días que necesitan llamada API (no están en BD)
+    dias_pendientes = []
     for i in range(max_scan_days):
-        if dias_bio >= target_bio_days:
-            break  # Ya obtuvimos bastantes días con biométricos
-
         fecha = (datetime.now() - timedelta(days=i)).date()
         fecha_iso = fecha.strftime("%Y-%m-%d")
-
-        # Si ya tenemos bio Y sueño en BD para este día, saltamos (ahorra 2 llamadas API)
         if fecha_iso in fechas_bio_existentes and fecha_iso in fechas_sueno_existentes:
             dias_bio += 1
             dias_sueno += 1
+            if dias_bio >= target_bio_days:
+                break
             continue
+        dias_pendientes.append((fecha, fecha_iso))
+        if dias_bio + len(dias_pendientes) >= target_bio_days + 2:
+            break  # +2 margen por si algunos días vienen vacíos
 
-        # Sueño (saltar si ya está en BD)
+    def _fetch_dia(args):
+        """Para un día: obtiene sueño + métricas. Devuelve dict listo para guardar."""
+        fecha, fecha_iso = args
         sleep_metrics = None
-        if fecha_iso in fechas_sueno_existentes:
-            dias_sueno += 1
-        else:
+        if fecha_iso not in fechas_sueno_existentes:
             try:
                 sleep_metrics = obtener_datos_sueno(gc, fecha)
-                if sleep_metrics:
-                    guardar_sueno_db(usuario_id, sleep_metrics)
-                    dias_sueno += 1
-                    sueno_importado.append({
-                        "fecha": fecha_iso,
-                        "horas_totales": sleep_metrics.get("horas_totales"),
-                        "score": sleep_metrics.get("score"),
-                        "sleep_profundo_horas": sleep_metrics.get("sleep_profundo_horas"),
-                        "sleep_rem_horas": sleep_metrics.get("sleep_rem_horas"),
-                    })
             except GarminConnectAuthenticationError:
-                logger.warning(f"Token expiró al obtener sueño para {fecha_iso}")
-                raise RuntimeError(
-                    "🔑 Token expirado durante la sincronización. "
-                    "Desconecta y vuelve a conectar tu cuenta."
-                )
+                raise
             except Exception:
                 sleep_metrics = None
 
-        # Métricas diarias (saltar si ya está en BD)
-        if fecha_iso in fechas_bio_existentes:
-            dias_bio += 1
-            continue
-        try:
-            daily_metrics = _extract_daily_metrics(gc, fecha_iso)
-            if sleep_metrics:
-                daily_metrics["sleep_score"] = sleep_metrics.get("score")
-            if latest_running and latest_running.get("fecha") == fecha_iso:
-                daily_metrics.update({
-                    "potencia_media_w": latest_running.get("potencia_media_w"),
-                    "cadencia_media": latest_running.get("cadencia_media"),
-                    "longitud_zancada_m": latest_running.get("longitud_zancada_m"),
-                    "tiempo_contacto_ms": latest_running.get("tiempo_contacto_ms"),
-                    "oscilacion_vertical_cm": latest_running.get("oscilacion_vertical_cm"),
-                })
-            
-            if _has_useful_daily_metrics(daily_metrics):
-                guardar_metricas_premium_db(usuario_id, daily_metrics)
-                dias_bio += 1
-                biometricos_importados.append(daily_metrics)
-            else:
-                dias_vacios += 1  # Día sin métricas útiles, seguir buscando
-        except GarminConnectAuthenticationError:
-            logger.warning(f"Token expiró al obtener métricas para {fecha_iso}")
-            raise RuntimeError(
-                "🔑 Token expirado durante la sincronización. "
-                "Desconecta y vuelve a conectar tu cuenta."
-            )
-        except Exception as e:
-            logger.warning(f"Error al obtener métricas para {fecha_iso}: {e}")
+        daily = None
+        if fecha_iso not in fechas_bio_existentes:
+            try:
+                daily = _extract_daily_metrics(gc, fecha_iso)
+                if sleep_metrics:
+                    daily["sleep_score"] = sleep_metrics.get("score")
+                if latest_running and latest_running.get("fecha") == fecha_iso:
+                    daily.update({
+                        "potencia_media_w": latest_running.get("potencia_media_w"),
+                        "cadencia_media": latest_running.get("cadencia_media"),
+                        "longitud_zancada_m": latest_running.get("longitud_zancada_m"),
+                        "tiempo_contacto_ms": latest_running.get("tiempo_contacto_ms"),
+                        "oscilacion_vertical_cm": latest_running.get("oscilacion_vertical_cm"),
+                    })
+            except GarminConnectAuthenticationError:
+                raise
+            except Exception as e:
+                logger.warning(f"Error métricas {fecha_iso}: {e}")
+                daily = None
+        return fecha_iso, sleep_metrics, daily
+
+    # Paralelizar: 3 días simultáneos (3 días × 9 calls = 27 calls concurrentes, manejable)
+    if dias_pendientes:
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            futs = {ex.submit(_fetch_dia, dp): dp for dp in dias_pendientes}
+            for f in as_completed(futs):
+                try:
+                    fecha_iso, sleep_metrics, daily = f.result(timeout=60)
+                except GarminConnectAuthenticationError:
+                    raise RuntimeError(
+                        "🔑 Token expirado durante la sincronización. "
+                        "Desconecta y vuelve a conectar tu cuenta."
+                    )
+                except Exception as e:
+                    logger.warning(f"Error fetch día: {e}")
+                    continue
+
+                # Persistencia secuencial (BD podría no ser thread-safe)
+                if sleep_metrics:
+                    try:
+                        guardar_sueno_db(usuario_id, sleep_metrics)
+                        dias_sueno += 1
+                        sueno_importado.append({
+                            "fecha": fecha_iso,
+                            "horas_totales": sleep_metrics.get("horas_totales"),
+                            "score": sleep_metrics.get("score"),
+                            "sleep_profundo_horas": sleep_metrics.get("sleep_profundo_horas"),
+                            "sleep_rem_horas": sleep_metrics.get("sleep_rem_horas"),
+                        })
+                    except Exception as e:
+                        logger.warning(f"Error guardar sueño {fecha_iso}: {e}")
+
+                if daily and _has_useful_daily_metrics(daily):
+                    try:
+                        guardar_metricas_premium_db(usuario_id, daily)
+                        dias_bio += 1
+                        biometricos_importados.append(daily)
+                    except Exception as e:
+                        logger.warning(f"Error guardar bio {fecha_iso}: {e}")
+                elif daily is not None:
+                    dias_vacios += 1
 
     logger.info(f"✅ Sincronización completa: {act_guardadas} actividades, {dias_bio} días bio, {dias_sueno} días sueño")
     return {

@@ -394,9 +394,11 @@ def _etiqueta_inteligente_dia_pasado(dia_plan: dict, actividad_garmin: tuple, se
 
     # 4) hizo algo distinto al plan
     if (plan_es_carrera and es_fuerza_real) or (plan_es_fuerza and es_carrera_real):
+        # FIX: limpiar sufijos "→ X" previos para evitar acumulación recursiva.
+        _tipo_base = str(tipo_plan).split(" → ")[0].strip() if tipo_plan else tipo_plan
         if es_carrera_real:
-            return f"{tipo_plan} → Carrera", f"↔ Sustituido: {km_act:.1f}km", "distinto"
-        return f"{tipo_plan} → Fuerza", f"↔ Sustituido: fuerza ({len(sesiones_fuerza)} ej.)", "distinto"
+            return f"{_tipo_base} → Carrera", f"↔ Sustituido: {km_act:.1f}km", "distinto"
+        return f"{_tipo_base} → Fuerza", f"↔ Sustituido: fuerza ({len(sesiones_fuerza)} ej.)", "distinto"
 
     # 5) extra en descanso
     if plan_es_descanso and (actividad_garmin or sesiones_fuerza):
