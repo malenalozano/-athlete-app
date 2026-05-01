@@ -468,6 +468,8 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
                         "_tipo_original": tipo_plan_original,
                         "_estado": estado,
                         "_km_plan": float(dia_plan.get("km") or 0),
+                        # FIX: preservar sesiones_extra del día pasado (antes se perdían)
+                        "sesiones_extra": list(dia_plan.get("sesiones_extra", []) or []),
                     })
                 else:
                     d_copy = dict(dia_plan)
@@ -521,6 +523,9 @@ def _renderizar_detalle_dia(plan: dict, idx: int, lunes: datetime, usuario_id: i
     tipo_actual = str(dia_plan.get("tipo", ""))
     tipo_orig = str(dia_plan.get("_tipo_original") or tipo_actual)
     estado = str(dia_plan.get("_estado") or "")
+    # FIX: si el día NO es pasado, ignorar estado heredado (puede venir stale tras drag-drop)
+    if not es_pasado and estado in ("no_realizado", "completo", "parcial", "distinto", "extra"):
+        estado = "futuro"
     km_plan = float(dia_plan.get("_km_plan") or dia_plan.get("km") or 0)
     km_real = float(dia_plan.get("km") or 0) if estado in ("completo", "parcial", "distinto", "extra") else 0
     dur_real = float(dia_plan.get("duracion_min") or 0)
@@ -611,7 +616,8 @@ def _renderizar_detalle_dia(plan: dict, idx: int, lunes: datetime, usuario_id: i
 </div>
 """, unsafe_allow_html=True)
 
-    if alerta:
+    # No mostrar alertas de estado pasado ("✗ No realizado", "↔ Sustituido") en días futuros
+    if alerta and (es_pasado or not alerta.startswith(("✗", "↔"))):
         _color_alerta = "#ffb86b" if alerta.startswith("⚠") else ("#7CFC9E" if alerta.startswith("✓") else ("#7CD0FF" if alerta.startswith(("🧠", "↔", "➕", "↑")) else "#8B949E"))
         st.markdown(f"<div style=\"margin-top:10px;padding:8px 14px;background:rgba(34,40,55,0.4);border-left:3px solid {_color_alerta};border-radius:6px;color:{_color_alerta};font-size:13px;font-weight:600;\">{alerta}</div>", unsafe_allow_html=True)
 
@@ -1467,6 +1473,18 @@ if active_tab == "generar":
                 _td = int(_dnd_move.get("to_day", -1))
                 if _fd != _td and 0 <= _fd < 7 and 0 <= _td < 7 and 0 <= _fi < len(board[_fd]):
                     _ses_mv = board[_fd].pop(_fi)
+                    # FIX: limpiar metadatos de estado heredados de la fecha anterior
+                    # (evita que una sesion movida desde ayer siga marcada "no_realizado").
+                    for _k in ("_estado", "_tipo_original", "_km_plan", "realizado"):
+                        _ses_mv.pop(_k, None)
+                    # Limpiar alertas legacy de "no realizado" / "sustituido" que ya no aplican
+                    _alt = str(_ses_mv.get("alerta") or "")
+                    if _alt.startswith(("✗", "↔", "⚠ No", "✓")):
+                        _ses_mv["alerta"] = ""
+                    # Quitar sufijos "→ Carrera/Fuerza" del tipo (acumulación recursiva)
+                    _t_mv = str(_ses_mv.get("tipo", ""))
+                    if " → " in _t_mv:
+                        _ses_mv["tipo"] = _t_mv.split(" → ")[0].strip()
                     # FIX: si el destino solo tiene "Descanso" placeholder, reemplazarlo
                     # en lugar de acumular (evita "Descanso + Fuerza Pierna" en mismo día).
                     _es_real = str(_ses_mv.get("tipo", "")).lower() != "descanso"
@@ -2176,13 +2194,12 @@ border:1px solid rgba(74,222,128,0.25);border-radius:16px;padding:1.5rem 2rem;ma
         st.markdown(f"""
 <div style="background:#0f1724;border:1px solid rgba(0,212,255,0.15);border-radius:12px;padding:1rem;">
   <div style="color:#8B949E;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Estado de Entrenamiento</div>
-  <div style="font-size:0.8rem;color:#C9E1FF;line-height:2;">
-    Recuperación: <b style="color:{_sc};">{_sem_dat['color'].upper()}</b><br>
-    Volumen objetivo: <b style="color:#C9FF00;">{_km_tot_dat:.1f} km</b><br>
-    Calidad permitida: <b>{'Sí' if _sem_dat['permitir_calidad'] else 'No — Solo Z1/Z2'}</b><br>
-    ACWR: <b>{datos.get('acwr',0):.2f}</b>
-  </div>
-</div>""", unsafe_allow_html=True)
+    <div style="font-size:0.8rem;color:#C9E1FF;line-height:2;">
+      Volumen objetivo: <b style="color:#C9FF00;">{_km_tot_dat:.1f} km</b><br>
+      Calidad permitida: <b>{'Sí' if _sem_dat['permitir_calidad'] else 'No — Solo Z1/Z2'}</b><br>
+      ACWR: <b>{datos.get('acwr',0):.2f}</b>
+    </div>
+  </div>""".replace("{_km_tot_dat:.1f}", f"{_km_tot_dat:.1f}").replace("{'Sí' if _sem_dat['permitir_calidad'] else 'No — Solo Z1/Z2'}", "Sí" if _sem_dat['permitir_calidad'] else "No — Solo Z1/Z2").replace("{datos.get('acwr',0):.2f}", f"{datos.get('acwr',0):.2f}"), unsafe_allow_html=True)
     with _rx2:
         st.markdown(f"""
 <div style="background:#0f1724;border:1px solid rgba(0,212,255,0.15);border-radius:12px;padding:1rem;">
@@ -2201,5 +2218,4 @@ border:1px solid rgba(74,222,128,0.25);border-radius:16px;padding:1.5rem 2rem;ma
         try:
             _conn_dat.close()
         except Exception:
-
             pass
