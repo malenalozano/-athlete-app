@@ -1002,29 +1002,40 @@ def sincronizar_actividades_con_sesion(gc, usuario_id: int, num_actividades: int
     if gc is None:
         raise RuntimeError("⚠️  Cliente Garmin no autenticado. Conecta tu cuenta nuevamente.")
     
-    # Parchear garth para evitar refresh_oauth2 automático (previene 429 en cloud)
-    gc = _parchar_garth_sin_refresh(gc)
-    
-    # Validar que el token sea fresco antes de empezar
-    if not _check_token_freshness(gc):
+    # Auto-refresh si el access_token expiró
+    if not _refresh_token_if_needed(gc, usuario_id=usuario_id):
         raise RuntimeError(
-            "🔑 Token expirado o inválido. La sesión ha caducado. "
-            "Desconecta y vuelve a conectar tu cuenta Garmin para refrescar los tokens."
+            "🔑 Token expirado y no se pudo renovar automáticamente. "
+            "Desconecta y vuelve a conectar tu cuenta Garmin."
         )
-    
+
+    gc = _parchar_garth_sin_refresh(gc)
     _ensure_garmin_schema()
     conn_pre = get_db_connection()
     _ensure_column(conn_pre, "actividades_garmin", "calorias", "REAL")
     conn_pre.commit(); conn_pre.close()
 
+    def _try_get_activities():
+        return gc.get_activities(0, num_actividades)
+
     try:
-        actividades = gc.get_activities(0, num_actividades)
+        actividades = _try_get_activities()
     except GarminConnectAuthenticationError as e:
-        logger.error(f"❌ Error de autenticación en get_activities: {e}")
-        raise RuntimeError(
-            "🔑 Error de autenticación con Garmin. Tu sesión ha expirado. "
-            "Desconecta y vuelve a conectar tu cuenta."
-        ) from e
+        # Reintento con refresh tras 401 (puede haber expirado durante la sesión)
+        logger.warning(f"401 en get_activities, intentando refresh: {e}")
+        if _refresh_token_if_needed(gc, usuario_id=usuario_id):
+            try:
+                actividades = _try_get_activities()
+            except Exception as e2:
+                raise RuntimeError(
+                    "🔑 Error de autenticación con Garmin tras refresh. "
+                    "Desconecta y vuelve a conectar tu cuenta."
+                ) from e2
+        else:
+            raise RuntimeError(
+                "🔑 Error de autenticación con Garmin. Tu sesión ha expirado. "
+                "Desconecta y vuelve a conectar tu cuenta."
+            ) from e
     except GarminConnectConnectionError as e:
         logger.error(f"❌ Error de conexión en get_activities: {e}")
         raise RuntimeError(f"❌ Error de conexión con Garmin: {e}") from e
@@ -1125,6 +1136,59 @@ def _check_token_freshness(gc):
         return tiempo_restante > 300  # Más de 5 minutos
     except Exception as e:
         logger.debug(f"Error verificando token: {e}")
+        return False
+
+
+def _refresh_token_if_needed(gc, usuario_id: int | None = None) -> bool:
+    """
+    Si el access_token expiró pero el refresh_token sigue vigente, lo renueva
+    automáticamente (garth.refresh_oauth2 o equivalente) y persiste los tokens.
+    Devuelve True si el cliente queda con token válido, False si hay que
+    reconectar de cero (refresh_token también expirado).
+    """
+    if gc is None:
+        return False
+    # Si ya está fresco, no hacer nada
+    if _check_token_freshness(gc):
+        return True
+    try:
+        store = _token_store(gc)
+        if store is None:
+            return False
+        # Intentar refresh — el método varía según versión de garth
+        refreshed = False
+        for method_name in ("refresh_oauth2", "refresh", "refresh_oauth2_token"):
+            fn = getattr(store, method_name, None)
+            if callable(fn):
+                try:
+                    fn()
+                    refreshed = True
+                    logger.info(f"✅ Token Garmin renovado vía {method_name}()")
+                    break
+                except Exception as e:
+                    logger.debug(f"  refresh {method_name} falló: {type(e).__name__}: {e}")
+                    continue
+        if not refreshed:
+            return False
+        # Persistir tokens renovados (disco + BD)
+        try:
+            for home in _token_homes(None):
+                try:
+                    Path(home).expanduser().mkdir(parents=True, exist_ok=True)
+                    store.dump(str(Path(home).expanduser()))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        if usuario_id is not None:
+            try:
+                token_json = store.dumps()
+                _guardar_tokens_db(usuario_id, token_json)
+            except Exception as e:
+                logger.warning(f"No se pudieron persistir tokens renovados en BD: {e}")
+        return _check_token_freshness(gc)
+    except Exception as e:
+        logger.warning(f"Auto-refresh falló: {type(e).__name__}: {e}")
         return False
 
 
@@ -1480,15 +1544,14 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
     """
     if gc is None:
         raise RuntimeError("⚠️  Cliente Garmin no autenticado. Conecta tu cuenta nuevamente.")
-    
-    # Validar que el token sea fresco antes de empezar
-    if not _check_token_freshness(gc):
+
+    # Auto-refresh si el access_token expiró (usa refresh_token, no SSO)
+    if not _refresh_token_if_needed(gc, usuario_id=usuario_id):
         raise RuntimeError(
-            "🔑 Token expirado o inválido. La sesión ha caducado. "
-            "Desconecta y vuelve a conectar tu cuenta Garmin para refrescar los tokens."
+            "🔑 Token expirado y no se pudo renovar automáticamente. "
+            "Desconecta y vuelve a conectar tu cuenta Garmin."
         )
-    
-    # Parchear garth para evitar refresh_oauth2 automático (previene 429 en cloud)
+
     gc = _parchar_garth_sin_refresh(gc)
     _ensure_garmin_schema()
     conn_pre = get_db_connection()
@@ -1514,11 +1577,19 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
     try:
         todas = gc.get_activities(0, _max_act) or []
     except GarminConnectAuthenticationError as e:
-        logger.error(f"❌ Error de autenticación: {e}")
-        raise RuntimeError(
-            "🔑 Error de autenticación con Garmin. Tu sesión ha expirado. "
-            "Desconecta y vuelve a conectar tu cuenta."
-        ) from e
+        logger.warning(f"401 en get_activities, intentando refresh: {e}")
+        if _refresh_token_if_needed(gc, usuario_id=usuario_id):
+            try:
+                todas = gc.get_activities(0, _max_act) or []
+            except Exception as e2:
+                raise RuntimeError(
+                    "🔑 Auth Garmin falló incluso tras refresh. Desconecta y reconecta."
+                ) from e2
+        else:
+            raise RuntimeError(
+                "🔑 Error de autenticación con Garmin. Tu sesión ha expirado. "
+                "Desconecta y vuelve a conectar tu cuenta."
+            ) from e
     except GarminConnectConnectionError as e:
         logger.error(f"❌ Error de conexión: {e}")
         raise RuntimeError(f"❌ Error de conexión con Garmin: {e}") from e
@@ -1688,65 +1759,4 @@ def sincronizar_todo_con_sesion(gc, usuario_id: int, dias: int = 7) -> dict:
                 raise
             except Exception as e:
                 logger.warning(f"Error métricas {fecha_iso}: {e}")
-                daily = None
-        return fecha_iso, sleep_metrics, daily
-
-    # Paralelizar: 3 días simultáneos (3 días × 9 calls = 27 calls concurrentes, manejable)
-    if dias_pendientes:
-        with ThreadPoolExecutor(max_workers=3) as ex:
-            futs = {ex.submit(_fetch_dia, dp): dp for dp in dias_pendientes}
-            for f in as_completed(futs):
-                try:
-                    fecha_iso, sleep_metrics, daily = f.result(timeout=60)
-                except GarminConnectAuthenticationError:
-                    raise RuntimeError(
-                        "🔑 Token expirado durante la sincronización. "
-                        "Desconecta y vuelve a conectar tu cuenta."
-                    )
-                except Exception as e:
-                    logger.warning(f"Error fetch día: {e}")
-                    continue
-
-                # Persistencia secuencial (BD podría no ser thread-safe)
-                if sleep_metrics:
-                    try:
-                        guardar_sueno_db(usuario_id, sleep_metrics)
-                        dias_sueno += 1
-                        sueno_importado.append({
-                            "fecha": fecha_iso,
-                            "horas_totales": sleep_metrics.get("horas_totales"),
-                            "score": sleep_metrics.get("score"),
-                            "sleep_profundo_horas": sleep_metrics.get("sleep_profundo_horas"),
-                            "sleep_rem_horas": sleep_metrics.get("sleep_rem_horas"),
-                        })
-                    except Exception as e:
-                        logger.warning(f"Error guardar sueño {fecha_iso}: {e}")
-
-                if daily and _has_useful_daily_metrics(daily):
-                    try:
-                        guardar_metricas_premium_db(usuario_id, daily)
-                        dias_bio += 1
-                        biometricos_importados.append(daily)
-                    except Exception as e:
-                        logger.warning(f"Error guardar bio {fecha_iso}: {e}")
-                elif daily is not None:
-                    dias_vacios += 1
-
-    logger.info(f"✅ Sincronización completa: {act_guardadas} actividades, {dias_bio} días bio, {dias_sueno} días sueño")
-    return {
-        "actividades": act_guardadas,
-        "dias_bio": dias_bio,
-        "dias_sueno": dias_sueno,
-        "actividades_importadas": actividades_importadas,
-        "biometricos_importados": biometricos_importados,
-        "sueno_importado": sueno_importado,
-    }
-
-
-if __name__ == "__main__":
-    # Ejemplo de uso
-    email = input("Introduce tu correo de Garmin: ")
-    password = input("Introduce tu contraseña de Garmin: ")
-    usuario_id = int(input("Introduce tu ID de usuario (ej. 1): "))
-    resultado = sincronizar_actividades(email, password, usuario_id)
-    print(resultado)
+    
