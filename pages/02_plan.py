@@ -346,8 +346,99 @@ def _es_fuerza_deporte(tipo_deporte: str) -> bool:
     return any(k in t for k in ("strength", "fuerza", "weight", "gym", "training"))
 
 
+def _evaluar_una_sesion(ses_plan: dict, actividades: list, sesiones_fza: list, historial: list) -> tuple[dict, int | None, bool]:
+    """
+    Evalúa UNA sesión planificada vs lo realizado ese día.
+    Devuelve (sesion_evaluada, idx_actividad_consumida, fuerza_consumida).
+    Cada sesión mantiene su propio tipo, km, duracion, _estado, alerta.
+    """
+    tipo_plan = str(ses_plan.get("tipo", "")).strip()
+    km_plan = float(ses_plan.get("km") or 0)
+    dur_plan = float(ses_plan.get("duracion_min") or 0)
+    intensidad_plan = str(ses_plan.get("intensidad", "") or "").lower()
+    base = dict(ses_plan)
+    base["_tipo_original"] = tipo_plan
+    base["_km_plan"] = km_plan
+    base.pop("sesiones_extra", None)  # se maneja a nivel de día, no de sesión
+
+    plan_es_fuerza = tipo_plan in _TIPOS_FUERZA or "Fuerza" in tipo_plan
+    plan_es_carrera = (tipo_plan in _TIPOS_CARRERA) or any(
+        k in tipo_plan.lower() for k in ("carrera", "tirada", "progres", "tempo", "interval", "rodaje", "fart"))
+    plan_es_descanso = tipo_plan in ("Descanso", "Regenerativo", "Movilidad")
+
+    # ── FUERZA: cualquier sesión de fuerza cuenta como realizado ──────────
+    if plan_es_fuerza:
+        if sesiones_fza:
+            n = len(sesiones_fza)
+            return {**base, "_estado": "completo", "alerta": f"✓ Realizado · {n} ejercicio{'s' if n!=1 else ''}"}, None, True
+        return {**base, "_estado": "no_realizado", "alerta": "✗ No realizado"}, None, False
+
+    # ── CARRERA: emparejar con la actividad running más afín ──────────────
+    if plan_es_carrera:
+        idx_m = None
+        for i, a in enumerate(actividades):
+            if a is None:
+                continue
+            tipo_a = str(a.get("tipo_deporte") or "").lower()
+            if any(k in tipo_a for k in ("running", "run", "trail", "tread")) or float(a.get("km") or 0) > 0.5:
+                idx_m = i
+                break
+        if idx_m is None:
+            return {**base, "_estado": "no_realizado", "alerta": "✗ No realizado"}, None, False
+
+        a = actividades[idx_m]
+        km_act = float(a.get("km") or 0)
+        dur_act = float(a.get("duracion_min") or 0)
+        fc_act = a.get("fc_media")
+        ritmo_act = (dur_act / km_act) if km_act > 0 else 0  # min/km
+
+        # Zona objetivo (Z2 ≈ FC 100-150, baja/muy baja intensidad)
+        es_z2_plan = ("z2" in tipo_plan.lower() or "regen" in tipo_plan.lower()
+                      or intensidad_plan in ("baja", "muy baja"))
+        es_z2_real = fc_act is not None and 100 < float(fc_act) < 150
+        zona_ok = (not es_z2_plan) or es_z2_real
+
+        # Mejora vs carreras anteriores del mismo tipo
+        delta_msg = ""
+        if historial and ritmo_act > 0:
+            similares = [h for h in historial if h.get("ritmo") and h["ritmo"] > 0
+                         and (h.get("tipo_planeado") == tipo_plan
+                              or (es_z2_plan and h.get("es_z2")))]
+            if similares:
+                avg_r = sum(h["ritmo"] for h in similares) / len(similares)
+                delta_seg = (avg_r - ritmo_act) * 60  # +ve = más rápido (mejor)
+                if delta_seg > 8:
+                    delta_msg = f" · ↑ {delta_seg:.0f}s/km mejor"
+                elif delta_seg < -8:
+                    delta_msg = f" · ↓ {-delta_seg:.0f}s/km peor"
+
+        # Cantidad / proporción
+        ratio = (km_act / km_plan) if km_plan > 0 else ((dur_act / dur_plan) if dur_plan > 0 else 1.0)
+        km_msg = f"{km_act:.1f}km" + (f" / {km_plan:.0f}" if km_plan > 0 else "")
+
+        base["km"] = km_act
+        base["duracion_min"] = dur_act
+
+        if 0.75 <= ratio <= 1.30 and zona_ok:
+            return {**base, "_estado": "completo", "alerta": f"✓ {km_msg} · {dur_act:.0f}min{delta_msg}"}, idx_m, False
+        if 0.40 <= ratio < 0.75:
+            return {**base, "_estado": "parcial", "alerta": f"⚠ Parcial: {km_msg}{delta_msg}"}, idx_m, False
+        if ratio > 1.30:
+            return {**base, "_estado": "completo", "alerta": f"↑ Pasado: {km_msg}{delta_msg}"}, idx_m, False
+        if not zona_ok:
+            return {**base, "_estado": "parcial", "alerta": f"⚠ Zona distinta · FC {float(fc_act):.0f}{delta_msg}"}, idx_m, False
+        return {**base, "_estado": "parcial", "alerta": f"⚠ {km_msg}{delta_msg}"}, idx_m, False
+
+    # ── DESCANSO ──────────────────────────────────────────────────────────
+    if plan_es_descanso:
+        return {**base, "_estado": "completo", "alerta": "✓ Descanso"}, None, False
+
+    # ── Default: no clasificable ──────────────────────────────────────────
+    return {**base, "_estado": "no_realizado", "alerta": "✗ No realizado"}, None, False
+
+
 def _etiqueta_inteligente_dia_pasado(dia_plan: dict, actividad_garmin: tuple, sesiones_fuerza: list) -> tuple[str, str, str]:
-    """Compara lo hecho vs el plan. Devuelve (etiqueta, alerta, estado)."""
+    """Compara lo hecho vs el plan. Devuelve (etiqueta, alerta, estado). Legacy — ahora usa _evaluar_una_sesion."""
     tipo_plan = str(dia_plan.get("_tipo_original") or dia_plan.get("tipo", "")).strip()
     km_plan = float(dia_plan.get("_km_plan") or dia_plan.get("km") or 0)
     dur_plan = float(dia_plan.get("duracion_min") or 0)
@@ -419,11 +510,14 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
         try:
             lunes_str = lunes.strftime("%Y-%m-%d")
             hoy_str = hoy_date.strftime("%Y-%m-%d")
-            actvs = conn.execute(
-                "SELECT fecha, tipo_deporte, ROUND(CAST(tiempo_seg AS REAL)/60, 1) as duracion_min, distancia_m/1000.0 FROM actividades_garmin "
+            # Actividades Garmin de esta semana
+            actvs_raw = conn.execute(
+                "SELECT fecha, tipo_deporte, ROUND(CAST(tiempo_seg AS REAL)/60, 1), "
+                "distancia_m/1000.0, fc_media, ritmo_medio "
+                "FROM actividades_garmin "
                 "WHERE usuario_id=? AND fecha >= ? AND fecha < ? ORDER BY fecha",
                 (usuario_id, lunes_str, hoy_str)).fetchall()
-            # Sesiones de fuerza realizadas en esos días
+            # Sesiones de fuerza realizadas
             try:
                 sesiones_fza = conn.execute(
                     """SELECT s.fecha, e.ejercicio, e.grupo_muscular, e.musculo_principal
@@ -432,6 +526,32 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
                     (usuario_id, lunes_str, hoy_str)).fetchall()
             except Exception:
                 sesiones_fza = []
+
+            # Historial de carreras de los últimos 90 días para análisis de mejora
+            historial_carreras = []
+            try:
+                hist_rows = conn.execute(
+                    "SELECT fecha, tipo_deporte, distancia_m/1000.0 as km, "
+                    "ROUND(CAST(tiempo_seg AS REAL)/60, 1) as dm, ritmo_medio, fc_media "
+                    "FROM actividades_garmin WHERE usuario_id=? "
+                    "AND fecha >= date('now','-90 days') AND fecha < ? "
+                    "AND tipo_deporte LIKE '%running%'", (usuario_id, lunes_str)).fetchall()
+                for r in hist_rows:
+                    if r[2] and r[3]:
+                        ritmo = r[4] or (r[3] / r[2] if r[2] > 0 else 0)
+                        historial_carreras.append({
+                            "ritmo": ritmo, "fc": r[5],
+                            "es_z2": (r[5] is not None and 100 < float(r[5]) < 150),
+                            "tipo_planeado": None,  # no tenemos clasificación retro
+                        })
+            except Exception:
+                pass
+
+            def _actividades_del_dia(fecha_str: str) -> list:
+                return [
+                    {"tipo_deporte": x[1], "duracion_min": x[2], "km": x[3], "fc_media": x[4], "ritmo": x[5]}
+                    for x in actvs_raw if str(x[0])[:10] == fecha_str
+                ]
 
             def _sesiones_fuerza_del_dia(fecha_str: str) -> list:
                 return [
@@ -442,7 +562,7 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
             for i in range(dias_pasados):
                 fd = lunes + timedelta(days=i)
                 fd_str = fd.strftime("%Y-%m-%d")
-                a = next((x for x in actvs if x[0][:10] == fd_str), None)
+                acts = _actividades_del_dia(fd_str)
                 sfs = _sesiones_fuerza_del_dia(fd_str)
 
                 if i < len(plan.get("dias", [])):
@@ -450,36 +570,70 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
                 else:
                     dia_plan = {"tipo": "Descanso", "km": 0, "duracion_min": 0}
 
-                tipo_plan_original = str(dia_plan.get("tipo", ""))
-                if a or sfs:
-                    etiqueta, alerta_msg, estado = _etiqueta_inteligente_dia_pasado(dia_plan, a, sfs)
-                    km_real = float(a[3] or 0) if a else 0
-                    dur_real = float(a[2] or 0) if a else 0
-                    if not a and sfs:
-                        dur_real = 45
-                    dias_adaptados.append({
-                        "fecha": fd_str, "dia": fd.strftime("%a").upper()[:3],
-                        "tipo": etiqueta,
-                        "km": km_real, "duracion_min": dur_real,
-                        "intensidad": dia_plan.get("intensidad", "Histórico"),
-                        "descripcion_ia": dia_plan.get("descripcion_ia", "") or "[Historial]",
-                        "alerta": alerta_msg,
-                        "realizado": True,
-                        "_tipo_original": tipo_plan_original,
-                        "_estado": estado,
-                        "_km_plan": float(dia_plan.get("km") or 0),
-                        # FIX: preservar sesiones_extra del día pasado (antes se perdían)
-                        "sesiones_extra": list(dia_plan.get("sesiones_extra", []) or []),
+                # Lista de sesiones planificadas (principal + extras), evaluamos UNA A UNA
+                sesiones_planif = [dia_plan] + list(dia_plan.get("sesiones_extra", []) or [])
+                # Filtrar Descansos si hay sesiones reales planificadas
+                _hay_real = any(str(s.get("tipo", "")).lower() != "descanso" for s in sesiones_planif)
+                if _hay_real:
+                    sesiones_planif = [s for s in sesiones_planif if str(s.get("tipo", "")).lower() != "descanso"]
+
+                acts_disp = list(acts)  # copia mutable
+                fuerza_consumida = False
+                evaluadas = []
+                for ses in sesiones_planif:
+                    ses_eval, idx_act, fz = _evaluar_una_sesion(
+                        ses, acts_disp, sfs if not fuerza_consumida else [],
+                        historial_carreras)
+                    evaluadas.append(ses_eval)
+                    if idx_act is not None:
+                        acts_disp[idx_act] = None
+                    if fz:
+                        fuerza_consumida = True
+
+                # Actividades Garmin sobrantes → Carrera extra
+                for a in acts_disp:
+                    if a is None:
+                        continue
+                    tipo_a = str(a.get("tipo_deporte") or "").lower()
+                    if any(k in tipo_a for k in ("running", "run", "trail", "tread")) or float(a.get("km") or 0) > 0.5:
+                        evaluadas.append({
+                            "tipo": "Carrera extra",
+                            "km": float(a.get("km") or 0),
+                            "duracion_min": float(a.get("duracion_min") or 0),
+                            "intensidad": "Libre",
+                            "descripcion_ia": "[Extra Garmin]",
+                            "alerta": f"➕ {float(a.get('km') or 0):.1f}km · {float(a.get('duracion_min') or 0):.0f}min",
+                            "_tipo_original": "Carrera extra",
+                            "_estado": "extra",
+                            "_km_plan": 0,
+                        })
+
+                # Fuerza extra si hubo sesiones de fuerza pero ninguna planificada
+                plan_tenia_fuerza = any("Fuerza" in str(s.get("tipo", "")) for s in sesiones_planif)
+                if sfs and not plan_tenia_fuerza:
+                    evaluadas.append({
+                        "tipo": "Fuerza extra",
+                        "km": 0, "duracion_min": 45, "intensidad": "Libre",
+                        "descripcion_ia": "[Extra]",
+                        "alerta": f"➕ {len(sfs)} ejercicios",
+                        "_tipo_original": "Fuerza extra",
+                        "_estado": "extra", "_km_plan": 0,
                     })
-                else:
+
+                if not evaluadas:
+                    # Día sin nada planificado ni hecho
                     d_copy = dict(dia_plan)
-                    if d_copy.get("tipo") not in ("Descanso", "Regenerativo", "Movilidad"):
-                        d_copy["alerta"] = "✗ No realizado"
-                    d_copy["realizado"] = False
-                    d_copy["_tipo_original"] = tipo_plan_original
-                    d_copy["_estado"] = "no_realizado" if d_copy.get("tipo") not in ("Descanso", "Regenerativo", "Movilidad") else "completo"
-                    d_copy["_km_plan"] = float(dia_plan.get("km") or 0)
+                    d_copy["fecha"] = fd_str
+                    d_copy["_tipo_original"] = str(dia_plan.get("tipo", ""))
+                    d_copy["_estado"] = "completo" if str(d_copy.get("tipo", "")).lower() in ("descanso", "regenerativo", "movilidad") else "no_realizado"
                     dias_adaptados.append(d_copy)
+                else:
+                    # Día con 1+ sesiones evaluadas: principal + extras (cada una con su estado)
+                    principal = evaluadas[0]
+                    principal["fecha"] = fd_str
+                    principal["dia"] = fd.strftime("%a").upper()[:3]
+                    principal["sesiones_extra"] = evaluadas[1:]
+                    dias_adaptados.append(principal)
         finally:
             conn.close()
     for dia in plan.get("dias", []):
