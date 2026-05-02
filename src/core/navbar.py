@@ -3,7 +3,7 @@ src/core/navbar.py — Navbar inspirada en el diseño Figma (glassmorphism, íco
 """
 
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 from src.core.styles import BORDER
 from src.db.db_manager import obtener_credenciales_garmin
 
@@ -357,7 +357,8 @@ def render_navbar(pagina_activa: str):
                 _nav_cm = st.session_state.get("_cm")
                 if _nav_cm is not None:
                     try:
-                        from datetime import datetime, timedelta
+                        # FIX: datetime/timedelta ya están importados arriba (línea 6).
+                        # Importarlos aquí los volvía locales y rompía datetime.now() en la rama del sync.
                         _nav_cm.set(
                             "athlete_uid",
                             str(_new_uid),
