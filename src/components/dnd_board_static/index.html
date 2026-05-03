@@ -20,32 +20,45 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,'Segoe 
   background:rgba(15,28,15,0.98)!important;
   box-shadow:0 0 0 1px rgba(201,255,0,0.2),0 4px 20px rgba(201,255,0,0.08)!important
 }
-.day-header{padding:8px 10px 6px;border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0}
+.day-header{padding:8px 10px 6px;border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0;cursor:pointer;transition:background .15s}
+.day-header:hover{background:rgba(201,255,0,0.06)}
 .day-name{font-size:9px;color:#6b7280;font-weight:800;text-transform:uppercase;letter-spacing:.08em;line-height:1}
 .day-date{font-size:11px;color:#c8d1d9;font-weight:700;margin-top:2px;line-height:1}
 .today-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#C9FF00;margin-left:4px;vertical-align:middle}
 .day-body{padding:6px;flex:1;min-height:32px}
 .empty-day{text-align:center;padding:10px 4px;color:#374151;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
 .ses{
-  border:1px solid rgba(255,255,255,0.06);
-  border-radius:9px;padding:6px 8px;margin-bottom:4px;cursor:grab;
-  background:rgba(22,27,34,0.95);user-select:none;
+  border:1.5px solid rgba(255,255,255,0.08);
+  border-radius:10px;padding:7px 8px 6px;
+  margin-bottom:5px;cursor:grab;
+  background:rgba(22,27,34,0.95);user-select:none;position:relative;
   transition:opacity .12s,border-color .15s,background .15s,transform .1s
 }
-.ses:hover{border-color:rgba(201,255,0,0.3);background:rgba(30,40,55,0.98);transform:translateY(-1px)}
+.ses:hover{transform:translateY(-1px);filter:brightness(1.08)}
 .ses.dragging{opacity:.2;cursor:grabbing;transform:scale(.97)}
-.ses-top{display:flex;align-items:center;gap:5px;margin-bottom:2px}
-.ses-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.ses-name{font-size:10px;font-weight:700;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ses-sub{font-size:9px;color:#6b7280;line-height:1.2;padding-left:12px}
-.ses-int{display:inline-block;font-size:8px;font-weight:700;padding:1px 5px;border-radius:10px;color:inherit;border:1px solid currentColor;opacity:.75;margin-top:3px}
-.ses-alert{font-size:8px;font-weight:600;line-height:1.2;padding-left:12px;margin-top:2px;letter-spacing:.01em;color:#ffd166}
-.ses-alert.ok{color:#7CFC9E}
-.ses-alert.warn{color:#ffb86b}
-.ses-alert.bad{color:#ff7d8a}
-.ses-alert.info{color:#7CD0FF}
-.day-header{cursor:pointer;transition:background .15s}
-.day-header:hover{background:rgba(201,255,0,0.06)}
+/* Píldora del tipo (ocupa la parte superior del card) */
+.pill-type{
+  display:inline-block;font-size:10px;font-weight:800;
+  padding:3px 8px;border-radius:14px;
+  letter-spacing:.01em;line-height:1.15;
+  border:1px solid currentColor;max-width:100%;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.carga-plan{font-size:9.5px;color:#c8d1d9;font-weight:700;margin-top:5px;line-height:1.25}
+.ses-int{
+  display:inline-block;font-size:8px;font-weight:700;
+  padding:1px 6px;border-radius:10px;color:inherit;
+  border:1px solid currentColor;opacity:.85;margin-top:4px
+}
+.carga-real{font-size:9px;color:#86efac;font-weight:700;margin-top:3px;line-height:1.25}
+.calidad-pill{
+  position:absolute;top:6px;right:6px;
+  font-size:7.5px;font-weight:800;
+  padding:2px 6px;border-radius:10px;letter-spacing:.04em;text-transform:uppercase
+}
+.cal-bueno{background:#22c55e;color:#0E1117}
+.cal-normal{background:#7CD0FF;color:#0E1117}
+.cal-malo{background:#ef4444;color:#fff}
 .adapt-pill{display:inline-block;font-size:7px;font-weight:800;color:#0E1117;background:#7CD0FF;padding:1px 5px;border-radius:8px;margin-left:4px;vertical-align:middle;letter-spacing:.04em}
 #dbg{font-size:9px;color:#6b7280;padding:2px 6px;min-height:14px}
 </style>
@@ -54,7 +67,6 @@ body{background:transparent;font-family:-apple-system,BlinkMacSystemFont,'Segoe 
 <div class="board" id="board"></div>
 <div id="dbg"></div>
 <script>
-// ── Streamlit component protocol via raw postMessage (no external CDN needed) ──
 var src = null;
 var _valueSent = false;
 
@@ -143,54 +155,65 @@ function renderBoard(B) {
             var s = document.createElement('div');
             s.className = 'ses';
             s.draggable = true;
+            // Color de borde y fondo según estado
+            s.style.borderColor = item.color;
+            if (item.estado_bg) s.style.background = item.estado_bg;
 
-            var top = document.createElement('div');
-            top.className = 'ses-top';
-            top.style.pointerEvents = 'none';
-            var sdot = document.createElement('span');
-            sdot.className = 'ses-dot';
-            sdot.style.background = item.color;
-            var name = document.createElement('span');
-            name.className = 'ses-name';
-            name.style.color = item.color;
-            name.textContent = item.emoji + ' ' + item.label;
-            top.appendChild(sdot);
-            top.appendChild(name);
-            s.appendChild(top);
+            // Píldora del tipo de entrenamiento (sólo el nombre)
+            var pill = document.createElement('div');
+            pill.className = 'pill-type';
+            pill.style.color = item.color;
+            pill.style.borderColor = item.color;
+            pill.style.pointerEvents = 'none';
+            pill.textContent = item.emoji + ' ' + item.label;
+            s.appendChild(pill);
 
-            var sub = document.createElement('div');
-            sub.className = 'ses-sub';
-            sub.style.pointerEvents = 'none';
-            sub.textContent = item.carga;
-            if (item.int && item.int !== '—') {
+            // Carga PLANIFICADA (km · min) — sólo en carreras
+            if (item.carga && item.carga !== '') {
+                var cargaP = document.createElement('div');
+                cargaP.className = 'carga-plan';
+                cargaP.style.pointerEvents = 'none';
+                cargaP.textContent = item.carga;
+                s.appendChild(cargaP);
+            }
+
+            // Píldora de intensidad (alto/bajo) — debajo de la carga
+            if (item.int && item.int !== '—' && item.int !== '') {
                 var badge = document.createElement('span');
                 badge.className = 'ses-int';
                 badge.style.color = item.color;
                 badge.style.borderColor = item.color;
+                badge.style.pointerEvents = 'none';
                 badge.textContent = item.int;
-                sub.appendChild(document.createElement('br'));
-                sub.appendChild(badge);
+                s.appendChild(badge);
             }
-            s.appendChild(sub);
 
+            // Carga REAL (sólo si la sesión se hizo) — debajo de la intensidad
+            if (item.carga_real && item.carga_real !== '') {
+                var cargaR = document.createElement('div');
+                cargaR.className = 'carga-real';
+                cargaR.style.pointerEvents = 'none';
+                cargaR.textContent = '✓ ' + item.carga_real;
+                s.appendChild(cargaR);
+            }
+
+            // Píldora de calidad en esquina derecha (bueno/normal/malo)
+            if (item.calidad === 'bueno' || item.calidad === 'normal' || item.calidad === 'malo') {
+                var cal = document.createElement('span');
+                cal.className = 'calidad-pill cal-' + item.calidad;
+                cal.style.pointerEvents = 'none';
+                cal.textContent = item.calidad;
+                s.appendChild(cal);
+            }
+
+            // ADAPTADO badge si la alerta empieza con emoji cerebro
             if (item.alerta && item.alerta.length > 0) {
-                var al = document.createElement('div');
-                al.className = 'ses-alert';
-                al.style.pointerEvents = 'none';
                 var fc = item.alerta.charCodeAt(0);
-                // 0x2713 check, 0x2191 up arrow -> ok
-                if (fc === 0x2713 || fc === 0x2191) al.classList.add('ok');
-                else if (fc === 0x26A0) al.classList.add('warn');
-                else if (fc === 0x2717) al.classList.add('bad');
-                else al.classList.add('info');
-                al.textContent = item.alerta;
-                s.appendChild(al);
-                // Brain emoji 0xD83E + 0xDDE0 (surrogate pair) means adapter changed it
                 if (fc === 0xD83E) {
-                    var pill = document.createElement('span');
-                    pill.className = 'adapt-pill';
-                    pill.textContent = 'ADAPTADO';
-                    name.parentNode.appendChild(pill);
+                    var adapt = document.createElement('span');
+                    adapt.className = 'adapt-pill';
+                    adapt.textContent = 'ADAPTADO';
+                    pill.appendChild(adapt);
                 }
             }
 

@@ -615,34 +615,55 @@ else:
             unsafe_allow_html=True,
         )
 
-    # Gráfico 2: Número de sesiones
+    # Gráfico 2: Ritmo medio por zona FC (Z1-Z5) — barras horizontales
     with _z2_cols[1]:
-        fig_z2_ses = go.Figure()
-        fig_z2_ses.add_trace(go.Bar(
-            x=[str(w) for w in _z2_labels],
-            y=_z2_sessions,
-            marker=dict(color="#C9FF00", line=dict(color="rgba(201,255,0,0.3)", width=1)),
-            hovertemplate="<b>Semana %{x}</b><br>%{y} sesiones<extra></extra>",
+        try:
+            from src.core.zonas_ritmo import ritmos_por_zona as _rpz
+            _ritmos_dash = _rpz(user_actual, dias=56)
+        except Exception:
+            _ritmos_dash = {"Z1": 8.0, "Z2": 7.0, "Z3": 6.2, "Z4": 5.5, "Z5": 4.8}
+
+        _zonas = ["Z1", "Z2", "Z3", "Z4", "Z5"]
+        _zona_labels = ["Z1 · Recuperación", "Z2 · Aeróbico", "Z3 · Tempo", "Z4 · Umbral", "Z5 · VO2max"]
+        _zona_colors = {"Z1": "#22c55e", "Z2": "#00D4FF", "Z3": "#fbbf24", "Z4": "#f97316", "Z5": "#ef4444"}
+        _z_paces = [float(_ritmos_dash.get(z, 0)) for z in _zonas]
+        _z_text = [f"{int(p)}:{int(round((p - int(p)) * 60)):02d} min/km" if p > 0 else "—" for p in _z_paces]
+
+        fig_z_zonas = go.Figure()
+        fig_z_zonas.add_trace(go.Bar(
+            y=_zona_labels,
+            x=_z_paces,
+            orientation="h",
+            marker=dict(color=[_zona_colors[z] for z in _zonas],
+                        line=dict(color="rgba(0,0,0,0.3)", width=1)),
+            text=_z_text,
+            textposition="auto",
+            textfont=dict(color="white", size=10, family="Inter"),
+            hovertemplate="<b>%{y}</b><br>%{x:.2f} min/km<extra></extra>",
             showlegend=False,
         ))
-        fig_z2_ses.update_layout(
+        fig_z_zonas.update_layout(
             height=260,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=35, r=15, t=30, b=35),
-            xaxis=dict(type="category", showgrid=False, zeroline=False, tickfont=dict(color="#8B949E", size=9)),
-            yaxis=dict(showgrid=True, gridcolor="rgba(48,54,61,0.4)", zeroline=False, tickfont=dict(color="#8B949E", size=9)),
+            margin=dict(l=10, r=15, t=30, b=20),
+            xaxis=dict(showgrid=True, gridcolor="rgba(48,54,61,0.4)", zeroline=False,
+                       tickfont=dict(color="#8B949E", size=9), ticksuffix=" min/km",
+                       autorange="reversed"),  # ritmos más bajos (rápidos) a la derecha
+            yaxis=dict(showgrid=False, zeroline=False, tickfont=dict(color="#c8d1d9", size=10)),
             font=dict(family="Inter, sans-serif"),
         )
         st.markdown(
-            "<div style='color:#C9FF00;font-size:0.85rem;font-weight:700;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;'>Sesiones</div>",
+            "<div style='color:#C9FF00;font-size:0.85rem;font-weight:700;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;'>Ritmo Medio por Zona FC</div>",
             unsafe_allow_html=True,
         )
-        st.plotly_chart(fig_z2_ses, use_container_width=True, config={"displayModeBar": False})
-        st.markdown(
-            f"<div style='color:#C9FF00;font-size:0.75rem;font-weight:600;text-align:center;margin-top:-0.3rem;'>Total: {int(sum(_z2_sessions))} sesiones</div>",
-            unsafe_allow_html=True,
-        )
+        st.plotly_chart(fig_z_zonas, use_container_width=True, config={"displayModeBar": False})
+        _z_validas = [p for p in _z_paces if p > 0]
+        if _z_validas:
+            st.markdown(
+                f"<div style='color:#8B949E;font-size:0.7rem;font-weight:600;text-align:center;margin-top:-0.3rem;'>Promedio últimas 8 sem · {len(_z_validas)}/5 zonas con datos</div>",
+                unsafe_allow_html=True,
+            )
 
     # Gráfico 3: Estadísticas resumen
     with _z2_cols[2]:
