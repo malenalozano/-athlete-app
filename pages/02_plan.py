@@ -34,73 +34,26 @@ if "usuario_id" not in st.session_state:
 user_actual = st.session_state.usuario_id
 
 # ---------------------------------------------------------------------------
-# Constantes — 7 tipos canónicos de carrera + tipo "Libre" (entreno no programado)
+# Constantes
 # ---------------------------------------------------------------------------
-_TIPOS_CARRERA_CANON = {
-    "Tirada Larga", "Tempo", "Progresivas", "Cambios de Ritmo",
-    "Intervalos", "Regenerativo", "Libre",
-}
-# Aliases legacy → canónico
-_ALIAS_TIPO = {
-    "Carrera Z2": "Tirada Larga",
-    "Rodaje Corto": "Tirada Larga",
-    "Tempo (umbral)": "Tempo",
-    "Tempo Umbral": "Tempo",
-    "Progresiva": "Progresivas",
-    "Cambios de ritmo": "Cambios de Ritmo",
-    "Fartlek": "Cambios de Ritmo",
-    "Intervalos VO2max": "Intervalos",
-    "Calidad": "Intervalos",
-    "Sustitución": "Libre",
-    "Carrera extra": "Libre",
-}
-def _normaliza_tipo(t: str) -> str:
-    s = str(t or "").strip()
-    if not s:
-        return s
-    if s in _TIPOS_CARRERA_CANON:
-        return s
-    if s in _ALIAS_TIPO:
-        return _ALIAS_TIPO[s]
-    return s
-
-_TIPOS_CARRERA = _TIPOS_CARRERA_CANON | set(_ALIAS_TIPO.keys())
+_TIPOS_CARRERA = {"Tirada Larga", "Progresiva", "Carrera Z2", "Regenerativo",
+                  "Tempo (umbral)", "Intervalos VO2max", "Rodaje Corto",
+                  "Fartlek", "Sustitución", "Calidad"}
 _TIPOS_FUERZA  = {
     "Fuerza", "Fuerza Activ.", "Fuerza Tren Superior",
     "Fuerza Push", "Fuerza Pull", "Fuerza Pierna", "Movilidad"
 }
-_EMOJIS = {"Tirada Larga":"🏃","Progresivas":"📈","Tempo":"⚡","Intervalos":"🔥",
-           "Cambios de Ritmo":"🌀","Regenerativo":"💧","Libre":"🆓",
-           "Progresiva":"📈","Tempo (umbral)":"⚡","Intervalos VO2max":"🔥","Carrera Z2":"🚶",
+_EMOJIS = {"Tirada Larga":"🏃","Progresiva":"📈","Tempo (umbral)":"⚡",
+           "Intervalos VO2max":"🔥","Carrera Z2":"🚶","Regenerativo":"💧",
            "Fuerza":"💪","Fuerza Activ.":"💪","Fuerza Tren Superior":"💪",
            "Fuerza Push":"💪","Fuerza Pull":"💪","Fuerza Pierna":"💪",
            "Descanso":"🛌","Movilidad":"🧘","Sustitución":"🔄","Rodaje Corto":"🏃"}
-_BADGE = {"Fuerza":"#a855f7","Tirada Larga":"#C9FF00","Progresivas":"#C9FF00","Progresiva":"#C9FF00",
-          "Carrera Z2":"#22c55e","Tempo":"#f97316","Tempo (umbral)":"#f97316","Regenerativo":"#00D4FF",
-          "Cambios de Ritmo":"#fbbf24","Intervalos":"#ef4444","Intervalos VO2max":"#ef4444",
-          "Libre":"#a3a3a3","Fuerza Push":"#a855f7","Fuerza Pull":"#a855f7",
+_BADGE = {"Fuerza":"#a855f7","Tirada Larga":"#C9FF00","Progresiva":"#C9FF00",
+          "Carrera Z2":"#22c55e","Tempo (umbral)":"#f97316","Regenerativo":"#00D4FF",
+          "Intervalos VO2max":"#ef4444","Fuerza Push":"#a855f7","Fuerza Pull":"#a855f7",
           "Fuerza Pierna":"#a855f7","Descanso":"#3a4150","Movilidad":"#3a4150"}
 _TYPE_COLORS = {"running":"#22d3ee", "strength":"#c084fc", "rest":"#4ade80", "default":"#C9FF00"}
 _DIA_CORTO = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"]
-
-# ── Colores por estado del entrenamiento (acordes al estilo web) ─────────
-# completo = hecho/objetivo cumplido | parcial = hecho a medias |
-# distinto = hecho cosa distinta | extra = añadido sobre plan |
-# no_realizado = no se hizo | futuro = aún por hacer
-_ESTADO_COLOR = {
-    "completo":     {"border": "#22c55e", "bg": "rgba(34,197,94,0.14)",  "text": "#86efac"},
-    "parcial":      {"border": "#f59e0b", "bg": "rgba(245,158,11,0.14)", "text": "#fcd34d"},
-    "distinto":     {"border": "#7CD0FF", "bg": "rgba(124,208,255,0.14)","text": "#7CD0FF"},
-    "extra":        {"border": "#a855f7", "bg": "rgba(168,85,247,0.14)", "text": "#d8b4fe"},
-    "no_realizado": {"border": "#ef4444", "bg": "rgba(239,68,68,0.14)",  "text": "#fca5a5"},
-    "futuro":       {"border": "rgba(255,255,255,0.10)", "bg": "rgba(22,27,34,0.95)", "text": "#c8d1d9"},
-}
-# Calidad (post-sesión) — píldora que va en la esquina derecha
-_CALIDAD_COLOR = {
-    "bueno":  {"bg": "#22c55e", "text": "#0E1117"},
-    "normal": {"bg": "#7CD0FF", "text": "#0E1117"},
-    "malo":   {"bg": "#ef4444", "text": "#ffffff"},
-}
 
 # ---------------------------------------------------------------------------
 # CSS global: radio como tarjeta clickable vertical
@@ -393,28 +346,25 @@ def _es_fuerza_deporte(tipo_deporte: str) -> bool:
     return any(k in t for k in ("strength", "fuerza", "weight", "gym", "training"))
 
 
-def _evaluar_una_sesion(ses_plan: dict, actividades: list, sesiones_fza: list, historial: list,
-                        ritmos_zona: dict | None = None, fc_max_user: int = 0) -> tuple[dict, int | None, bool]:
+def _evaluar_una_sesion(ses_plan: dict, actividades: list, sesiones_fza: list, historial: list) -> tuple[dict, int | None, bool]:
     """
     Evalúa UNA sesión planificada vs lo realizado ese día.
     Devuelve (sesion_evaluada, idx_actividad_consumida, fuerza_consumida).
-    Cada sesión mantiene su propio tipo, km, duracion, _estado, alerta, _calidad.
+    Cada sesión mantiene su propio tipo, km, duracion, _estado, alerta.
     """
-    tipo_plan = _normaliza_tipo(ses_plan.get("tipo", ""))
+    tipo_plan = str(ses_plan.get("tipo", "")).strip()
     km_plan = float(ses_plan.get("km") or 0)
     dur_plan = float(ses_plan.get("duracion_min") or 0)
     intensidad_plan = str(ses_plan.get("intensidad", "") or "").lower()
     base = dict(ses_plan)
-    base["tipo"] = tipo_plan
     base["_tipo_original"] = tipo_plan
     base["_km_plan"] = km_plan
-    base["_dur_plan"] = dur_plan
     base.pop("sesiones_extra", None)  # se maneja a nivel de día, no de sesión
 
     plan_es_fuerza = tipo_plan in _TIPOS_FUERZA or "Fuerza" in tipo_plan
     plan_es_carrera = (tipo_plan in _TIPOS_CARRERA) or any(
-        k in tipo_plan.lower() for k in ("carrera", "tirada", "progres", "tempo", "interval", "rodaje", "fart", "cambios", "regen"))
-    plan_es_descanso = tipo_plan in ("Descanso", "Movilidad")
+        k in tipo_plan.lower() for k in ("carrera", "tirada", "progres", "tempo", "interval", "rodaje", "fart"))
+    plan_es_descanso = tipo_plan in ("Descanso", "Regenerativo", "Movilidad")
 
     # ── FUERZA: cualquier sesión de fuerza cuenta como realizado ──────────
     if plan_es_fuerza:
@@ -440,6 +390,27 @@ def _evaluar_una_sesion(ses_plan: dict, actividades: list, sesiones_fza: list, h
         km_act = float(a.get("km") or 0)
         dur_act = float(a.get("duracion_min") or 0)
         fc_act = a.get("fc_media")
+        ritmo_act = (dur_act / km_act) if km_act > 0 else 0  # min/km
+
+        # Zona objetivo (Z2 ≈ FC 100-150, baja/muy baja intensidad)
+        es_z2_plan = ("z2" in tipo_plan.lower() or "regen" in tipo_plan.lower()
+                      or intensidad_plan in ("baja", "muy baja"))
+        es_z2_real = fc_act is not None and 100 < float(fc_act) < 150
+        zona_ok = (not es_z2_plan) or es_z2_real
+
+        # Mejora vs carreras anteriores del mismo tipo
+        delta_msg = ""
+        if historial and ritmo_act > 0:
+            similares = [h for h in historial if h.get("ritmo") and h["ritmo"] > 0
+                         and (h.get("tipo_planeado") == tipo_plan
+                              or (es_z2_plan and h.get("es_z2")))]
+            if similares:
+                avg_r = sum(h["ritmo"] for h in similares) / len(similares)
+                delta_seg = (avg_r - ritmo_act) * 60  # +ve = más rápido (mejor)
+                if delta_seg > 8:
+                    delta_msg = f" · ↑ {delta_seg:.0f}s/km mejor"
+                elif delta_seg < -8:
+                    delta_msg = f" · ↓ {-delta_seg:.0f}s/km peor"
 
         # Cantidad / proporción
         ratio = (km_act / km_plan) if km_plan > 0 else ((dur_act / dur_plan) if dur_plan > 0 else 1.0)
@@ -447,29 +418,16 @@ def _evaluar_una_sesion(ses_plan: dict, actividades: list, sesiones_fza: list, h
 
         base["km"] = km_act
         base["duracion_min"] = dur_act
-        base["_km_real"] = km_act
-        base["_dur_real"] = dur_act
-        base["_fc_real"] = float(fc_act) if fc_act else None
 
-        # Calidad: bueno/normal/malo según km, ritmo vs media zona, FC
-        try:
-            from src.core.zonas_ritmo import calidad_sesion
-            base["_calidad"] = calidad_sesion(
-                km_act, dur_act, float(fc_act) if fc_act else None,
-                tipo_plan, km_plan, dur_plan,
-                ritmos_zona or {}, fc_max_user)
-        except Exception:
-            base["_calidad"] = "normal"
-
-        # Si el ratio es razonable, mantenemos el tipo programado.
-        if 0.75 <= ratio <= 1.30:
-            return {**base, "_estado": "completo", "alerta": f"✓ {km_msg} · {dur_act:.0f}min"}, idx_m, False
+        if 0.75 <= ratio <= 1.30 and zona_ok:
+            return {**base, "_estado": "completo", "alerta": f"✓ {km_msg} · {dur_act:.0f}min{delta_msg}"}, idx_m, False
         if 0.40 <= ratio < 0.75:
-            return {**base, "_estado": "parcial", "alerta": f"⚠ Parcial: {km_msg}"}, idx_m, False
+            return {**base, "_estado": "parcial", "alerta": f"⚠ Parcial: {km_msg}{delta_msg}"}, idx_m, False
         if ratio > 1.30:
-            return {**base, "_estado": "completo", "alerta": f"↑ Pasado: {km_msg}"}, idx_m, False
-        # Muy poco hecho → parcial
-        return {**base, "_estado": "parcial", "alerta": f"⚠ {km_msg}"}, idx_m, False
+            return {**base, "_estado": "completo", "alerta": f"↑ Pasado: {km_msg}{delta_msg}"}, idx_m, False
+        if not zona_ok:
+            return {**base, "_estado": "parcial", "alerta": f"⚠ Zona distinta · FC {float(fc_act):.0f}{delta_msg}"}, idx_m, False
+        return {**base, "_estado": "parcial", "alerta": f"⚠ {km_msg}{delta_msg}"}, idx_m, False
 
     # ── DESCANSO ──────────────────────────────────────────────────────────
     if plan_es_descanso:
@@ -546,36 +504,26 @@ def _etiqueta_inteligente_dia_pasado(dia_plan: dict, actividad_garmin: tuple, se
 def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datetime) -> dict:
     hoy_date = hoy.date()
     dias_adaptados = []
-    # FIX: incluir HOY en la evaluación → si la fuerza/carrera se ha hecho hoy,
-    # debe aparecer como realizada inmediatamente.
-    dias_a_evaluar = (hoy_date - lunes.date()).days + 1  # incluye hoy
-    if dias_a_evaluar > 0:
-        # Precargar ritmos por zona y FCmax del usuario para clasificar calidad
-        try:
-            from src.core.zonas_ritmo import ritmos_por_zona, _fc_max_usuario
-            _ritmos_z = ritmos_por_zona(usuario_id)
-            _fcmax_u = _fc_max_usuario(usuario_id)
-        except Exception:
-            _ritmos_z, _fcmax_u = {}, 0
+    dias_pasados = (hoy_date - lunes.date()).days
+    if dias_pasados > 0:
         conn = get_db_connection()
         try:
             lunes_str = lunes.strftime("%Y-%m-%d")
-            # Cota inferior exclusiva para incluir hoy (fecha_dia = lunes + dias_a_evaluar)
-            cota_str = (lunes + timedelta(days=dias_a_evaluar)).strftime("%Y-%m-%d")
-            # Actividades Garmin de esta semana (hasta hoy incluido)
+            hoy_str = hoy_date.strftime("%Y-%m-%d")
+            # Actividades Garmin de esta semana
             actvs_raw = conn.execute(
                 "SELECT fecha, tipo_deporte, ROUND(CAST(tiempo_seg AS REAL)/60, 1), "
                 "distancia_m/1000.0, fc_media, ritmo_medio "
                 "FROM actividades_garmin "
                 "WHERE usuario_id=? AND fecha >= ? AND fecha < ? ORDER BY fecha",
-                (usuario_id, lunes_str, cota_str)).fetchall()
-            # Sesiones de fuerza realizadas (hasta hoy incluido)
+                (usuario_id, lunes_str, hoy_str)).fetchall()
+            # Sesiones de fuerza realizadas
             try:
                 sesiones_fza = conn.execute(
                     """SELECT s.fecha, e.ejercicio, e.grupo_muscular, e.musculo_principal
                        FROM ejercicios_fuerza e JOIN sesiones_fuerza s ON s.id=e.sesion_id
                        WHERE s.usuario_id=? AND s.fecha >= ? AND s.fecha < ?""",
-                    (usuario_id, lunes_str, cota_str)).fetchall()
+                    (usuario_id, lunes_str, hoy_str)).fetchall()
             except Exception:
                 sesiones_fza = []
 
@@ -611,7 +559,7 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
                     for s in sesiones_fza if str(s[0])[:10] == fecha_str
                 ]
 
-            for i in range(dias_a_evaluar):
+            for i in range(dias_pasados):
                 fd = lunes + timedelta(days=i)
                 fd_str = fd.strftime("%Y-%m-%d")
                 acts = _actividades_del_dia(fd_str)
@@ -635,42 +583,29 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
                 for ses in sesiones_planif:
                     ses_eval, idx_act, fz = _evaluar_una_sesion(
                         ses, acts_disp, sfs if not fuerza_consumida else [],
-                        historial_carreras, _ritmos_z, _fcmax_u)
+                        historial_carreras)
                     evaluadas.append(ses_eval)
                     if idx_act is not None:
                         acts_disp[idx_act] = None
                     if fz:
                         fuerza_consumida = True
 
-                # Actividades Garmin sobrantes → Tipo "Libre" (carrera no planificada)
+                # Actividades Garmin sobrantes → Carrera extra
                 for a in acts_disp:
                     if a is None:
                         continue
                     tipo_a = str(a.get("tipo_deporte") or "").lower()
                     if any(k in tipo_a for k in ("running", "run", "trail", "tread")) or float(a.get("km") or 0) > 0.5:
-                        _km_a = float(a.get("km") or 0)
-                        _dur_a = float(a.get("duracion_min") or 0)
-                        _fc_a = a.get("fc_media")
-                        try:
-                            from src.core.zonas_ritmo import calidad_sesion as _cal_s
-                            _cal = _cal_s(_km_a, _dur_a, float(_fc_a) if _fc_a else None,
-                                          "Libre", 0, 0, _ritmos_z or {}, _fcmax_u)
-                        except Exception:
-                            _cal = "normal"
                         evaluadas.append({
-                            "tipo": "Libre",
-                            "km": _km_a,
-                            "duracion_min": _dur_a,
+                            "tipo": "Carrera extra",
+                            "km": float(a.get("km") or 0),
+                            "duracion_min": float(a.get("duracion_min") or 0),
                             "intensidad": "Libre",
-                            "descripcion_ia": "[Entreno no programado]",
-                            "alerta": f"➕ {_km_a:.1f}km · {_dur_a:.0f}min",
-                            "_tipo_original": "Libre",
+                            "descripcion_ia": "[Extra Garmin]",
+                            "alerta": f"➕ {float(a.get('km') or 0):.1f}km · {float(a.get('duracion_min') or 0):.0f}min",
+                            "_tipo_original": "Carrera extra",
                             "_estado": "extra",
                             "_km_plan": 0,
-                            "_km_real": _km_a,
-                            "_dur_real": _dur_a,
-                            "_fc_real": float(_fc_a) if _fc_a else None,
-                            "_calidad": _cal,
                         })
 
                 # Fuerza extra si hubo sesiones de fuerza pero ninguna planificada
@@ -702,11 +637,9 @@ def _adaptar_plan_a_hoy(plan: dict, usuario_id: int, lunes: datetime, hoy: datet
         finally:
             conn.close()
     for dia in plan.get("dias", []):
-        # FIX: estrictamente > hoy_date — hoy ya se evaluó arriba con datos reales
-        if datetime.fromisoformat(dia["fecha"]).date() > hoy_date:
+        if datetime.fromisoformat(dia["fecha"]).date() >= hoy_date:
             d_fut = dict(dia)
-            d_fut["tipo"] = _normaliza_tipo(d_fut.get("tipo", ""))
-            d_fut.setdefault("_tipo_original", str(d_fut.get("tipo", "")))
+            d_fut.setdefault("_tipo_original", str(dia.get("tipo", "")))
             d_fut.setdefault("_estado", "futuro")
             dias_adaptados.append(d_fut)
 
@@ -1639,19 +1572,6 @@ if active_tab == "generar":
             "default":  "#C9FF00",
         }
 
-        # ── Precargar ritmos por zona (para estimar km/dur planificados) ──────
-        try:
-            from src.core.zonas_ritmo import (
-                ritmos_por_zona as _rpz, estimar_km_desde_min as _est_km,
-                estimar_min_desde_km as _est_min, zona_de_tipo as _zonatipo,
-            )
-            _ritmos_user = _rpz(user_actual)
-        except Exception:
-            _ritmos_user = {}
-            def _est_km(d, t, r=None, u=None): return 0.0
-            def _est_min(k, t, r=None, u=None): return 0.0
-            def _zonatipo(t): return "Z2"
-
         # ── Construir JSON del tablero para el componente HTML ────────────────
         _board_js = []
         _max_items = 0
@@ -1660,68 +1580,27 @@ if active_tab == "generar":
             _is_today = _fecha_dt.strftime("%Y-%m-%d") == datetime.now().strftime("%Y-%m-%d")
             _items_js = []
             for _si, _ses in enumerate(board[_bi]):
-                _tipo  = _normaliza_tipo(_ses.get("tipo") or "Descanso")
+                _tipo  = str(_ses.get("tipo") or "Descanso")
                 _emoji = _EMOJIS.get(_tipo, "📅")
                 _km    = float(_ses.get("km") or 0)
                 _dur   = float(_ses.get("duracion_min") or 0)
                 _int   = str(_ses.get("intensidad") or "").strip()
                 _act   = _get_activity_type(_tipo)
-                _estado = str(_ses.get("_estado") or "").strip()
-                _es_carrera = _act == "running"
-                _es_fuerza = _act == "strength"
-
-                # Color según ESTADO (no solo tipo) — diferenciamos hecho/pendiente/no realizado
-                _est_col = _ESTADO_COLOR.get(_estado, _ESTADO_COLOR["futuro"])
-                _border_col = _est_col["border"] if _estado in ("completo", "parcial", "no_realizado", "extra") else _BORDER_COLOR.get(_act, _BORDER_COLOR["default"])
-
-                # Cálculo de km/min PLANIFICADOS si faltan (carrera) usando ritmos por zona
-                _km_plan_disp = float(_ses.get("_km_plan") or 0) or _km
-                _dur_plan_disp = float(_ses.get("_dur_plan") or 0) or _dur
-                if _es_carrera and _estado in ("", "futuro"):
-                    if _km_plan_disp > 0 and _dur_plan_disp <= 0:
-                        _dur_plan_disp = _est_min(_km_plan_disp, _tipo, _ritmos_user)
-                    elif _dur_plan_disp > 0 and _km_plan_disp <= 0:
-                        _km_plan_disp = _est_km(_dur_plan_disp, _tipo, _ritmos_user)
-                    elif _km_plan_disp <= 0 and _dur_plan_disp <= 0:
-                        # ningún dato → estimar km típicos según tipo
-                        _km_plan_disp = _km if _km > 0 else 5.0
-                        _dur_plan_disp = _est_min(_km_plan_disp, _tipo, _ritmos_user)
-
-                # Carga visible
-                if _es_carrera and _km_plan_disp > 0 and _dur_plan_disp > 0:
-                    _carga = f"{_km_plan_disp:.1f} km · {int(_dur_plan_disp)} min"
-                elif _es_fuerza:
-                    _carga = ""  # fuerza: sin km/min en la pildora
-                elif _km > 0 and _dur > 0:
+                _col   = _BORDER_COLOR.get(_act, _BORDER_COLOR["default"])
+                if _act == "running" and _km > 0 and _dur > 0:
                     _carga = f"{_km:.1f} km · {int(_dur)} min"
                 elif _km > 0:
                     _carga = f"{_km:.1f} km"
                 elif _dur > 0:
                     _carga = f"{int(_dur)} min"
                 else:
-                    _carga = ""
-
-                # Reales (post-sesión)
-                _km_real = float(_ses.get("_km_real") or 0)
-                _dur_real = float(_ses.get("_dur_real") or 0)
-                if _es_carrera and _estado in ("completo", "parcial", "extra") and _km_real > 0 and _dur_real > 0:
-                    _carga_real = f"{_km_real:.1f} km · {int(_dur_real)} min"
-                else:
-                    _carga_real = ""
-
-                _calidad = str(_ses.get("_calidad") or "").lower() if _es_carrera else ""
-
+                    _carga = "—"
                 _alerta = str(_ses.get("alerta") or "").strip()
+                _estado = str(_ses.get("_estado") or "").strip()
                 _items_js.append({
                     "label": _tipo, "emoji": _emoji, "carga": _carga,
-                    "carga_real": _carga_real,
-                    "int": _int, "color": _border_col, "day": _bi, "idx": _si,
-                    "alerta": _alerta, "estado": _estado,
-                    "estado_bg": _est_col["bg"],
-                    "estado_text": _est_col["text"],
-                    "calidad": _calidad,
-                    "es_carrera": _es_carrera,
-                    "es_fuerza": _es_fuerza,
+                    "int": _int, "color": _col, "day": _bi, "idx": _si,
+                    "alerta": _alerta, "estado": _estado
                 })
             _board_js.append({
                 "header": _DIA_CORTO[_bi],
