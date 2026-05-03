@@ -328,6 +328,13 @@ def _render_subtabs(pagina_activa: str):
 
 
 def render_navbar(pagina_activa: str):
+    # Cargar CSS global (ancho completo, responsive móvil/iPad).
+    # Necesario aquí porque app.py no se re-ejecuta en cada cambio de página.
+    try:
+        from src.core.styles import GLOBAL_CSS as _GCSS
+        st.markdown(_GCSS, unsafe_allow_html=True)
+    except Exception:
+        pass
     st.markdown(_CSS, unsafe_allow_html=True)
 
     auth_user = str(st.session_state.get("auth_user", "")).strip()
