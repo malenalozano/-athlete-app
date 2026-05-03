@@ -47,10 +47,20 @@ GLOBAL_CSS = f"""<style>
 .stApp, [data-testid="stAppViewContainer"] {{
     background: {BG} !important;
 }}
-.main .block-container {{
+.main .block-container,
+[data-testid="stMain"] .block-container,
+[data-testid="stMainBlockContainer"],
+section.main > .block-container,
+.block-container {{
     padding-top: 0 !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
     max-width: 100% !important;
+    width: 100% !important;
     background: {BG} !important;
+}}
+[data-testid="stAppViewContainer"] > .main {{
+    max-width: 100% !important;
 }}
 
 /* ── Inputs / Textareas ── */
