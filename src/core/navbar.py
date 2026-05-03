@@ -150,6 +150,61 @@ header {{ display: none !important; }}
     min-height: 44px !important;
     height: 44px !important;
 }}
+
+/* ============================================================
+   RESPONSIVE — iPad / móvil
+   ============================================================ */
+@media (max-width: 1024px) {{
+    {_NAV} {{
+        padding: 6px 14px !important;
+        margin: 0 -1.5rem !important;
+        min-height: 80px !important;
+    }}
+    {_NAV} [data-testid="stPageLink"] p {{
+        font-size: 13px !important;
+        padding: 8px 12px !important;
+    }}
+    {_NAV} .nav-logo-text p {{ font-size: 14px !important; }}
+}}
+@media (max-width: 768px) {{
+    {_NAV} {{
+        padding: 6px 10px !important;
+        margin: 0 -1rem !important;
+        min-height: 72px !important;
+    }}
+    {_NAV} > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+        min-height: 64px !important;
+    }}
+    {_NAV} [data-testid="stPageLink"] {{ height: 64px !important; }}
+    {_NAV} [data-testid="stPageLink"] p {{
+        font-size: 0 !important;        /* ocultar texto, sólo iconos */
+        padding: 8px 10px !important;
+        gap: 0 !important;
+    }}
+    {_NAV} [data-testid="stPageLink"] p::before {{
+        font-size: 18px !important;     /* el emoji vuelve a ser visible */
+    }}
+    /* Ocultar el texto "Proyecto Athlete" en móvil, dejar el icono */
+    {_NAV} .nav-logo-text {{ display: none !important; }}
+    {_NAV} .nav-logo-icon {{ width: 40px !important; height: 40px !important; font-size: 20px !important; }}
+    {_NAV} .nav-logo-wrap {{ height: 64px !important; padding-right: 8px !important; }}
+
+    /* Botón sync más pequeño */
+    {_NAV} .st-key-navbar_sync button {{
+        width: 42px !important; height: 42px !important; font-size: 18px !important;
+    }}
+    /* Selectbox de usuario más estrecho */
+    {_NAV} .st-key-navbar_user_select [data-testid="stSelectbox"] > div > div {{
+        font-size: 11px !important;
+        padding: 0 8px !important;
+        min-height: 38px !important;
+        height: 38px !important;
+    }}
+}}
+@media (max-width: 480px) {{
+    {_NAV} {{ padding: 4px 6px !important; margin: 0 -0.5rem !important; }}
+    {_NAV} [data-testid="stPageLink"] p {{ padding: 6px 6px !important; }}
+}}
 </style>"""
 
 _SUBTAB_CSS = """<style>
@@ -174,17 +229,19 @@ div[data-testid="stHorizontalBlock"].subtab-row button:hover {
 
 
 def _logo_html(auth_user: str) -> str:
+    # FIX: comillas simples mal cerradas en versión anterior rompían el style.
+    # Texto del logo no debe partirse: usamos white-space:nowrap.
     return (
-        "<div style='display:flex;align-items:center;gap:12px;height:86px;'"
-        "padding-right:16px;border-right:1px solid rgba(255,255,255,0.06);'>"
-        "<div style='width:48px;height:48px;border-radius:13px;flex-shrink:0;'"
-        "display:flex;align-items:center;justify-content:center;font-size:24px;'"
+        "<div class='nav-logo-wrap' style=\"display:flex;align-items:center;gap:12px;height:86px;"
+        "padding-right:16px;border-right:1px solid rgba(255,255,255,0.06);\">"
+        "<div class='nav-logo-icon' style=\"width:48px;height:48px;border-radius:13px;flex-shrink:0;"
+        "display:flex;align-items:center;justify-content:center;font-size:24px;"
         "background:linear-gradient(135deg,#C9FF00 0%,#00D4FF 50%,#A855F7 100%);"
-        "box-shadow:0 0 20px rgba(201,255,0,0.4);'>⚡</div>"
-        "<div style='line-height:1;'>"
-        "<p style='font-size:16px;font-weight:700;margin:0;line-height:1;'"
+        "box-shadow:0 0 20px rgba(201,255,0,0.4);\">⚡</div>"
+        "<div class='nav-logo-text' style=\"line-height:1;min-width:0;\">"
+        "<p style=\"font-size:16px;font-weight:700;margin:0;line-height:1;white-space:nowrap;"
         "background:linear-gradient(90deg,#C9FF00,#00D4FF);"
-        "-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>"
+        "-webkit-background-clip:text;-webkit-text-fill-color:transparent;\">"
         "Proyecto Athlete</p>"
         "</div></div>"
     )

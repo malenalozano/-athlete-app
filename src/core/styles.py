@@ -160,6 +160,68 @@ hr {{ border-color: {BORDER} !important; }}
     padding: 0 !important;
 }}
 [data-testid="stPageLink"] {{ background: transparent !important; border: none !important; }}
+
+/* ============================================================
+   RESPONSIVE GLOBAL — móvil / iPad
+   ============================================================ */
+@media (max-width: 1024px) {{
+    .main .block-container {{
+        padding-left: 1.5rem !important;
+        padding-right: 1.5rem !important;
+    }}
+    [data-testid="stMetric"] [data-testid="stMetricValue"] {{
+        font-size: 1.15rem !important;
+    }}
+    /* KPI cards: 2 columnas en lugar de 4 cuando hay <=1024 */
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] {{
+        flex-wrap: wrap !important;
+    }}
+}}
+@media (max-width: 768px) {{
+    .main .block-container {{
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+        padding-top: 0.5rem !important;
+    }}
+    /* Reducir títulos y texto */
+    h1 {{ font-size: 1.4rem !important; line-height: 1.2 !important; }}
+    h2 {{ font-size: 1.2rem !important; }}
+    h3 {{ font-size: 1.05rem !important; }}
+    /* Métricas más compactas */
+    [data-testid="stMetric"] {{ padding: 8px 10px !important; }}
+    [data-testid="stMetric"] [data-testid="stMetricValue"] {{ font-size: 1rem !important; }}
+    [data-testid="stMetric"] label {{ font-size: 9px !important; }}
+    /* Tablas con scroll horizontal nativo */
+    [data-testid="stDataFrame"] {{ overflow-x: auto !important; }}
+    /* Forzar que columnas Streamlit pasen a 1 columna en móvil cuando son muchas */
+    [data-testid="stHorizontalBlock"]:has([data-testid="column"]:nth-child(4)) {{
+        flex-wrap: wrap !important;
+    }}
+    [data-testid="stHorizontalBlock"]:has([data-testid="column"]:nth-child(4)) > [data-testid="column"] {{
+        flex: 1 1 48% !important;
+        min-width: 48% !important;
+    }}
+    /* Plotly charts: limitar altura */
+    .js-plotly-plot, .plotly {{ max-height: 360px !important; }}
+    /* Botones más toqueables */
+    [data-testid="stBaseButton-primary"] > button,
+    [data-testid="stBaseButton-secondary"] > button {{
+        min-height: 40px !important;
+        font-size: 13px !important;
+    }}
+}}
+@media (max-width: 480px) {{
+    .main .block-container {{
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }}
+    h1 {{ font-size: 1.2rem !important; }}
+    /* En móvil pequeño: KPI cards a 1 columna */
+    [data-testid="stHorizontalBlock"]:has([data-testid="column"]:nth-child(4)) > [data-testid="column"] {{
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }}
+}}
 </style>"""
 
 
