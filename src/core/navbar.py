@@ -58,7 +58,8 @@ header {{ display: none !important; }}
     -webkit-backdrop-filter: blur(20px) !important;
     border-bottom: 1px solid rgba(255,255,255,0.06) !important;
     padding: 8px 24px !important;
-    margin: 0 -4rem 0 -4rem !important;
+    /* Margen negativo igual al padding del contenedor (1rem) — evita overflow del logo */
+    margin: 0 -1rem 0 -1rem !important;
     align-items: center !important;
     min-height: 94px !important;
     gap: 4px !important;
@@ -157,7 +158,7 @@ header {{ display: none !important; }}
 @media (max-width: 1024px) {{
     {_NAV} {{
         padding: 6px 14px !important;
-        margin: 0 -1.5rem !important;
+        margin: 0 -1.5rem !important;  /* iPad container padding también baja a 1.5rem */
         min-height: 80px !important;
     }}
     {_NAV} [data-testid="stPageLink"] p {{
@@ -261,7 +262,7 @@ def _active_item_html(label: str, icon: str, color: str, bg: str, border: str, g
 
 def _gradient_line_html() -> str:
     return (
-        "<div style='height:2px;margin:0 -4rem;"
+        "<div style='height:2px;margin:0 -1rem;"
         "background:linear-gradient(90deg,#C9FF00 0%,#00D4FF 25%,#A855F7 50%,#F97316 75%,#3B82F6 100%);"
         "opacity:0.5;margin-bottom:2rem;'></div>"
     )

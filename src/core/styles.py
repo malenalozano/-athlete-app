@@ -53,8 +53,8 @@ GLOBAL_CSS = f"""<style>
 section.main > .block-container,
 .block-container {{
     padding-top: 0 !important;
-    padding-left: 2rem !important;
-    padding-right: 2rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
     max-width: 100% !important;
     width: 100% !important;
     background: {BG} !important;
@@ -175,7 +175,9 @@ hr {{ border-color: {BORDER} !important; }}
    RESPONSIVE GLOBAL — móvil / iPad
    ============================================================ */
 @media (max-width: 1024px) {{
-    .main .block-container {{
+    .main .block-container,
+    [data-testid="stMain"] .block-container,
+    [data-testid="stMainBlockContainer"] {{
         padding-left: 1.5rem !important;
         padding-right: 1.5rem !important;
     }}
@@ -188,7 +190,9 @@ hr {{ border-color: {BORDER} !important; }}
     }}
 }}
 @media (max-width: 768px) {{
-    .main .block-container {{
+    .main .block-container,
+    [data-testid="stMain"] .block-container,
+    [data-testid="stMainBlockContainer"] {{
         padding-left: 0.75rem !important;
         padding-right: 0.75rem !important;
         padding-top: 0.5rem !important;
