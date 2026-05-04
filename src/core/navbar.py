@@ -351,8 +351,8 @@ def render_navbar(pagina_activa: str):
     nav_container = st.container(key="main_navbar")
     with nav_container:
         # ── Main nav row: logo | 4 pages | spacer | sync | user ─────────────
-        # Pesos ajustados: más espacio a links de navegación, spacer menor
-        cols = st.columns([2.2, 1.3, 1.6, 1.2, 1.2, 3.0, 0.7, 1.4])
+        # Pesos ajustados: links anchos para que no se corten textos
+        cols = st.columns([2.0, 1.4, 1.8, 1.4, 1.4, 2.0, 0.7, 1.4])
 
         with cols[0]:
             st.markdown(_logo_html(auth_user), unsafe_allow_html=True)
