@@ -41,9 +41,12 @@ _TIPOS_CARRERA_CANON = {
     "Intervalos", "Regenerativo", "Libre",
 }
 # Aliases legacy → canónico
+# IMPORTANTE: solo el "Tirada Larga" CANÓNICO (template con tl=True) se mantiene como TL.
+# Carreras cortas Z2 / rodajes pequeños se mapean a "Regenerativo" (baja intensidad).
+# Esto evita que aparezcan 2 TL en la misma semana.
 _ALIAS_TIPO = {
-    "Carrera Z2": "Tirada Larga",
-    "Rodaje Corto": "Tirada Larga",
+    "Carrera Z2": "Regenerativo",
+    "Rodaje Corto": "Regenerativo",
     "Tempo (umbral)": "Tempo",
     "Tempo Umbral": "Tempo",
     "Progresiva": "Progresivas",
@@ -80,8 +83,11 @@ def _normaliza_tipo(t: str) -> str:
         return "Cambios de Ritmo"
     if "progres" in sl:
         return "Progresivas"
-    if "carrera z2" in sl or "rodaje" in sl or "tirada" in sl or "carrera continua" in sl:
+    # Solo "Tirada Larga" canónica (template tl=True) se queda. Las Z2 cortas son Regenerativo.
+    if "tirada" in sl:
         return "Tirada Larga"
+    if "carrera z2" in sl or "rodaje" in sl or "carrera continua" in sl:
+        return "Regenerativo"
     if "carrera extra" in sl or "sustitu" in sl or "libre" in sl:
         return "Libre"
     return s
@@ -109,13 +115,14 @@ _DIA_CORTO = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"]
 # completo = hecho/objetivo cumplido | parcial = hecho a medias |
 # distinto = hecho cosa distinta | extra = añadido sobre plan |
 # no_realizado = no se hizo | futuro = aún por hacer
+# Colores con MUCHO MÁS contraste — para que se distingan hecho/pendiente/no realizado a primera vista
 _ESTADO_COLOR = {
-    "completo":     {"border": "#22c55e", "bg": "rgba(34,197,94,0.14)",  "text": "#86efac"},
-    "parcial":      {"border": "#f59e0b", "bg": "rgba(245,158,11,0.14)", "text": "#fcd34d"},
-    "distinto":     {"border": "#7CD0FF", "bg": "rgba(124,208,255,0.14)","text": "#7CD0FF"},
-    "extra":        {"border": "#a855f7", "bg": "rgba(168,85,247,0.14)", "text": "#d8b4fe"},
-    "no_realizado": {"border": "#ef4444", "bg": "rgba(239,68,68,0.14)",  "text": "#fca5a5"},
-    "futuro":       {"border": "rgba(255,255,255,0.10)", "bg": "rgba(22,27,34,0.95)", "text": "#c8d1d9"},
+    "completo":     {"border": "#22c55e", "bg": "rgba(34,197,94,0.30)",  "text": "#bbf7d0"},
+    "parcial":      {"border": "#f59e0b", "bg": "rgba(245,158,11,0.28)", "text": "#fde68a"},
+    "distinto":     {"border": "#7CD0FF", "bg": "rgba(124,208,255,0.25)","text": "#bae6fd"},
+    "extra":        {"border": "#a855f7", "bg": "rgba(168,85,247,0.25)", "text": "#e9d5ff"},
+    "no_realizado": {"border": "#ef4444", "bg": "rgba(239,68,68,0.32)",  "text": "#fecaca"},
+    "futuro":       {"border": "rgba(180,180,180,0.18)", "bg": "rgba(22,27,34,0.4)", "text": "#9ca3af"},
 }
 # Calidad (post-sesión) — píldora que va en la esquina derecha
 _CALIDAD_COLOR = {
@@ -1723,11 +1730,12 @@ if active_tab == "generar":
                 else:
                     _carga = ""
 
-                # Reales (post-sesión)
+                # Reales (post-sesión) — mostramos km_hechos / km_planificados
                 _km_real = float(_ses.get("_km_real") or 0)
                 _dur_real = float(_ses.get("_dur_real") or 0)
-                if _es_carrera and _estado in ("completo", "parcial", "extra") and _km_real > 0 and _dur_real > 0:
-                    _carga_real = f"{_km_real:.1f} km · {int(_dur_real)} min"
+                if _es_carrera and _estado in ("completo", "parcial", "extra") and _km_real > 0:
+                    _km_plan_str = f" / {_km_plan_disp:.1f}" if _km_plan_disp > 0 else ""
+                    _carga_real = f"{_km_real:.1f}{_km_plan_str} km · {int(_dur_real)} min"
                 else:
                     _carga_real = ""
 
