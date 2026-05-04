@@ -55,13 +55,35 @@ _ALIAS_TIPO = {
     "Carrera extra": "Libre",
 }
 def _normaliza_tipo(t: str) -> str:
+    """Normaliza cualquier tipo legacy o con sufijos (ej. 'Carrera Z2 + 5min jog')
+    a uno de los 7 tipos canónicos. Si es Fuerza/Descanso, lo deja igual."""
     s = str(t or "").strip()
     if not s:
         return s
+    # Tipos ya canónicos / fuerza / descanso → no tocar
     if s in _TIPOS_CARRERA_CANON:
         return s
+    if "Fuerza" in s or s in ("Descanso", "Movilidad"):
+        return s
+    # Alias exacto
     if s in _ALIAS_TIPO:
         return _ALIAS_TIPO[s]
+    # Coincidencia por prefijo / palabra clave (cubre sufijos como "+ 5min jog")
+    sl = s.lower()
+    if "regener" in sl:
+        return "Regenerativo"
+    if "tempo" in sl or "umbral" in sl:
+        return "Tempo"
+    if "interval" in sl or "vo2" in sl or "calidad" in sl:
+        return "Intervalos"
+    if "cambios" in sl or "fartlek" in sl:
+        return "Cambios de Ritmo"
+    if "progres" in sl:
+        return "Progresivas"
+    if "carrera z2" in sl or "rodaje" in sl or "tirada" in sl or "carrera continua" in sl:
+        return "Tirada Larga"
+    if "carrera extra" in sl or "sustitu" in sl or "libre" in sl:
+        return "Libre"
     return s
 
 _TIPOS_CARRERA = _TIPOS_CARRERA_CANON | set(_ALIAS_TIPO.keys())

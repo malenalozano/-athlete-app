@@ -352,7 +352,8 @@ def render_navbar(pagina_activa: str):
     with nav_container:
         # ── Main nav row: logo | 4 pages | spacer | sync | user ─────────────
         # Pesos ajustados: links anchos para que no se corten textos
-        cols = st.columns([2.0, 1.4, 1.8, 1.4, 1.4, 2.0, 0.7, 1.4])
+        # Pesos ajustados: logo + links anchos para que no se corten textos
+        cols = st.columns([2.6, 1.3, 1.7, 1.3, 1.3, 2.0, 0.7, 1.4])
 
         with cols[0]:
             st.markdown(_logo_html(auth_user), unsafe_allow_html=True)
