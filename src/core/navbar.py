@@ -81,19 +81,27 @@ header {{ display: none !important; }}
     align-items: center !important;
     height: 86px !important;
 }}
+{_NAV} [data-testid="stPageLink"] {{
+    overflow: visible !important;
+}}
 {_NAV} [data-testid="stPageLink"] p {{
     font-size: 15px !important;
     font-weight: 600 !important;
     color: #8B949E !important;
-    padding: 11px 18px !important;
+    padding: 11px 14px !important;
     margin: 0 !important;
     border-radius: 12px !important;
     border: 1px solid transparent !important;
     white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
     display: flex !important;
     align-items: center !important;
     gap: 8px !important;
     transition: color 0.2s, background 0.2s !important;
+}}
+{_NAV} > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+    overflow: visible !important;
 }}
 {_NAV} [data-testid="stPageLink"]:hover p {{
     color: #e6edf3 !important;
@@ -343,7 +351,8 @@ def render_navbar(pagina_activa: str):
     nav_container = st.container(key="main_navbar")
     with nav_container:
         # ── Main nav row: logo | 4 pages | spacer | sync | user ─────────────
-        cols = st.columns([2.4, 1.1, 1.3, 1.0, 0.95, 5.0, 0.7, 1.4])
+        # Pesos ajustados: más espacio a links de navegación, spacer menor
+        cols = st.columns([2.2, 1.3, 1.6, 1.2, 1.2, 3.0, 0.7, 1.4])
 
         with cols[0]:
             st.markdown(_logo_html(auth_user), unsafe_allow_html=True)
