@@ -1,10 +1,11 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useLocation } from "react-router";
 import { Header } from "../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { useUser } from "../context/UserContext";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
+import { getPlanSemana, actualizarSesion, type PlanSemana, type SesionPlan } from "../api";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import {
   Sparkles,
@@ -13,7 +14,6 @@ import {
   Dumbbell,
   Moon,
   Zap,
-  ChevronRight,
   BarChart3,
   TrendingUp,
   Target,
@@ -21,6 +21,16 @@ import {
   X,
   GripVertical,
   ChevronDown,
+  CheckCircle2,
+  Circle,
+  Plus,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  Minus,
+  StickyNote,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   BarChart,
@@ -35,71 +45,83 @@ import {
   Legend,
 } from "recharts";
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface Session {
+  id: string;
+  activity: string;
+  type: "running" | "strength" | "rest";
+  duration: string;
+  zone?: string;
+  notes?: string;
+  completed: boolean;
+  kmDone?: number;
+  kmPlanned?: number;
+}
+
+interface DayPlan {
+  dayKey: string;
+  date: string;
+  isToday?: boolean;
+  sessions: Session[];
+}
+
+interface ExerciseLog {
+  id: string;
+  name: string;
+  sets: number;
+  reps: string;
+  weight: number | null;
+  prevWeight: number | null;
+}
+
 // ── Mock data ──────────────────────────────────────────────────────────────────
 
-const weekPlan = [
+const INITIAL_WEEK_PLAN: DayPlan[] = [
   {
-    day: "LUN",
-    date: "14 Abr",
-    activity: "Rodaje Suave",
-    type: "running",
-    duration: "8 km · 45 min",
-    zone: "Zona 2",
-    notes: "Ritmo conversacional, RPE 5-6",
+    dayKey: "LUN", date: "5 May",
+    sessions: [
+      { id: "lun-1", activity: "Rodaje Suave", type: "running", duration: "8 km · 45 min", zone: "Zona 2", notes: "Ritmo conversacional, RPE 5-6", completed: true, kmDone: 7.8, kmPlanned: 8 },
+      { id: "lun-2", activity: "Core Activación", type: "strength", duration: "20 min", notes: "Plancha, dead bug, pallof press", completed: true },
+    ],
   },
   {
-    day: "MAR",
-    date: "15 Abr",
-    activity: "Fuerza Core",
-    type: "strength",
-    duration: "45 min",
-    zone: "—",
-    notes: "Plancha, dead bug, pallof press",
+    dayKey: "MAR", date: "6 May",
+    sessions: [
+      { id: "mar-1", activity: "Fuerza Tren Superior", type: "strength", duration: "60 min", notes: "Press banca, dominadas, remo", completed: true },
+    ],
   },
   {
-    day: "MIÉ",
-    date: "16 Abr",
-    activity: "Series 400m",
-    type: "running",
-    duration: "6 km · 40 min",
-    zone: "Zona 4-5",
-    notes: "8×400m con 90s recuperación",
+    dayKey: "MIÉ", date: "7 May", isToday: true,
+    sessions: [
+      { id: "mie-1", activity: "Series 400m", type: "running", duration: "6 km · 40 min", zone: "Zona 4-5", notes: "8×400m con 90s recuperación", completed: false, kmPlanned: 6 },
+      { id: "mie-2", activity: "Activación Previa", type: "strength", duration: "10 min", notes: "Activación glúteo y core", completed: false },
+    ],
   },
   {
-    day: "JUE",
-    date: "17 Abr",
-    activity: "Descanso Activo",
-    type: "rest",
-    duration: "20 min",
-    zone: "—",
-    notes: "Movilidad, estiramientos",
+    dayKey: "JUE", date: "8 May",
+    sessions: [
+      { id: "jue-1", activity: "Descanso Activo", type: "rest", duration: "20 min", notes: "Movilidad, estiramientos", completed: false },
+    ],
   },
   {
-    day: "VIE",
-    date: "18 Abr",
-    activity: "Tempo Run",
-    type: "running",
-    duration: "10 km · 55 min",
-    zone: "Zona 3",
-    notes: "Ritmo de umbral sostenido",
+    dayKey: "VIE", date: "9 May",
+    sessions: [
+      { id: "vie-1", activity: "Tempo Run", type: "running", duration: "10 km · 55 min", zone: "Zona 3", notes: "Ritmo de umbral sostenido", completed: false, kmPlanned: 10 },
+    ],
   },
   {
-    day: "SÁB",
-    date: "19 Abr",
-    activity: "Fuerza Piernas",
-    type: "strength",
-    duration: "60 min",
-    zone: "—",
-    notes: "Sentadillas, peso muerto rumano, zancadas",
+    dayKey: "SÁB", date: "10 May",
+    sessions: [
+      { id: "sab-1", activity: "Fuerza Piernas", type: "strength", duration: "60 min", notes: "Sentadillas, peso muerto rumano, zancadas", completed: false },
+      { id: "sab-2", activity: "Movilidad Post", type: "rest", duration: "15 min", notes: "Foam roller, estiramientos", completed: false },
+    ],
   },
   {
-    day: "DOM",
-    date: "20 Abr",
-    activity: "Tirada Larga",
-    type: "running",
-    duration: "18 km · 1h50",
-    zone: "Zona 2",
-    notes: "Pace objetivo maratón +45s/km",
+    dayKey: "DOM", date: "11 May",
+    sessions: [
+      { id: "dom-1", activity: "Tirada Larga", type: "running", duration: "12 km · 1h15", zone: "Zona 2", notes: "Pace objetivo maratón +45s/km", completed: false, kmPlanned: 12 },
+    ],
   },
 ];
 
@@ -114,115 +136,619 @@ const weeksData = [
   { semana: "S8", km: 43, fuerza: 2, objetivo: 48 },
 ];
 
-const TYPE_COLORS: Record<string, { border: string; bg: string; text: string; badge: string }> = {
-  running: {
-    border: "border-l-cyan-400",
-    bg: "from-cyan-500/5 to-blue-500/5",
-    text: "text-cyan-400",
-    badge: "bg-cyan-400/15 text-cyan-300 border-cyan-500/30",
-  },
-  strength: {
-    border: "border-l-purple-400",
-    bg: "from-purple-500/5 to-pink-500/5",
-    text: "text-purple-400",
-    badge: "bg-purple-400/15 text-purple-300 border-purple-500/30",
-  },
-  rest: {
-    border: "border-l-green-400",
-    bg: "from-green-500/5 to-emerald-500/5",
-    text: "text-green-400",
-    badge: "bg-green-400/15 text-green-300 border-green-500/30",
-  },
+// Strength exercises per session type
+const STRENGTH_PLANS: Record<string, ExerciseLog[]> = {
+  "Core Activación": [
+    { id: "e1", name: "Plancha Frontal", sets: 3, reps: "30s", weight: null, prevWeight: null },
+    { id: "e2", name: "Dead Bug", sets: 3, reps: "12", weight: null, prevWeight: null },
+    { id: "e3", name: "Pallof Press", sets: 3, reps: "12", weight: 10, prevWeight: 9 },
+  ],
+  "Fuerza Tren Superior": [
+    { id: "e1", name: "Press Banca", sets: 3, reps: "8", weight: 15, prevWeight: 14 },
+    { id: "e2", name: "Dominadas", sets: 3, reps: "8", weight: null, prevWeight: null },
+    { id: "e3", name: "Remo Mancuerna", sets: 3, reps: "10", weight: 14, prevWeight: 12 },
+    { id: "e4", name: "Face Pull", sets: 3, reps: "15", weight: 12, prevWeight: 11 },
+  ],
+  "Fuerza Piernas": [
+    { id: "e1", name: "Sentadilla", sets: 3, reps: "10", weight: 50, prevWeight: 47.5 },
+    { id: "e2", name: "Peso Muerto Rumano", sets: 3, reps: "10", weight: 40, prevWeight: 40 },
+    { id: "e3", name: "Zancada Búlgara", sets: 3, reps: "12", weight: 14, prevWeight: 12 },
+    { id: "e4", name: "Hip Thrust", sets: 3, reps: "12", weight: 60, prevWeight: 55 },
+  ],
+  "Activación Previa": [
+    { id: "e1", name: "Puente Glúteo", sets: 3, reps: "15", weight: null, prevWeight: null },
+    { id: "e2", name: "Clamshell", sets: 3, reps: "15", weight: null, prevWeight: null },
+  ],
 };
 
-// ── Drag-and-drop Day Card ─────────────────────────────────────────────────────
+// ── API helpers ───────────────────────────────────────────────────────────────
 
-const DRAG_TYPE = "DAY_CARD";
+const DAY_KEYS = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
+const MONTH_NAMES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-interface DayCardProps {
-  day: typeof weekPlan[0];
-  index: number;
-  isSelected: boolean;
-  onSelect: (day: typeof weekPlan[0]) => void;
-  onMove: (from: number, to: number) => void;
+function getWeekStart(offset = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() - d.getDay() + 1 + offset * 7);
+  return d.toISOString().slice(0, 10);
 }
 
-function DayCard({ day, index, isSelected, onSelect, onMove }: DayCardProps) {
+function apiPlanToDayPlans(plan: PlanSemana): DayPlan[] {
+  const days: DayPlan[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(plan.semana_inicio);
+    d.setDate(d.getDate() + i);
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dateStr = d.toISOString().slice(0, 10);
+    return {
+      dayKey: DAY_KEYS[i],
+      date: `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`,
+      isToday: dateStr === todayStr,
+      sessions: [],
+    };
+  });
+
+  plan.sesiones.forEach((s) => {
+    const dayIdx = Math.min(
+      6,
+      Math.max(0, Math.round((new Date(s.fecha).getTime() - new Date(plan.semana_inicio).getTime()) / 86400000))
+    );
+    days[dayIdx].sessions.push({
+      id: String(s.id),
+      activity: s.sesion,
+      type: s.tipo as "running" | "strength" | "rest",
+      duration: s.duracion_min ? `${s.duracion_min} min` : "",
+      zone: s.intensidad ?? undefined,
+      notes: s.detalles ?? undefined,
+      completed: Boolean(s.completado),
+      kmDone: s.km_realizados ?? undefined,
+      kmPlanned: s.km_planificados ?? undefined,
+    });
+  });
+
+  // If API returned no sessions, fall back to mock
+  const hasSessions = days.some((d) => d.sessions.length > 0);
+  if (!hasSessions) return INITIAL_WEEK_PLAN;
+  return days;
+}
+
+// ── Colors ─────────────────────────────────────────────────────────────────────
+
+const TYPE_COLORS: Record<string, { borderColor: string; textColor: string; badgeClass: string; bgColor: string }> = {
+  running: { borderColor: "#22D3EE", textColor: "text-cyan-400", badgeClass: "bg-cyan-400/15 text-cyan-300 border-cyan-500/30", bgColor: "rgba(0,212,255,0.06)" },
+  strength: { borderColor: "#C084FC", textColor: "text-purple-400", badgeClass: "bg-purple-400/15 text-purple-300 border-purple-500/30", bgColor: "rgba(168,85,247,0.06)" },
+  rest: { borderColor: "#4ADE80", textColor: "text-green-400", badgeClass: "bg-green-400/15 text-green-300 border-green-500/30", bgColor: "rgba(34,197,94,0.04)" },
+};
+
+// ── Drag Types ─────────────────────────────────────────────────────────────────
+
+const DRAG_DAY = "DRAG_DAY";
+const DRAG_SESSION = "DRAG_SESSION";
+
+// ── Session Card (within a day column) ────────────────────────────────────────
+
+interface SessionCardProps {
+  session: Session;
+  dayIdx: number;
+  sessionIdx: number;
+  isSelected: boolean;
+  onSelect: (dayIdx: number, sessionIdx: number) => void;
+  onToggleComplete: (dayIdx: number, sessionIdx: number) => void;
+  onMoveSession: (fromDayIdx: number, fromSessionIdx: number, toDayIdx: number, toSessionIdx: number) => void;
+}
+
+function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onToggleComplete, onMoveSession }: SessionCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const gripRef = useRef<HTMLDivElement>(null);
-  const colors = TYPE_COLORS[day.type] ?? TYPE_COLORS.rest;
+  const colors = TYPE_COLORS[session.type] ?? TYPE_COLORS.rest;
 
   const [{ isDragging }, drag, dragPreview] = useDrag({
-    type: DRAG_TYPE,
-    item: { index },
-    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+    type: DRAG_SESSION,
+    item: { dayIdx, sessionIdx },
+    collect: (m) => ({ isDragging: m.isDragging() }),
   });
 
   const [{ isOver }, drop] = useDrop({
-    accept: DRAG_TYPE,
-    drop: (item: { index: number }) => {
-      if (item.index !== index) {
-        onMove(item.index, index);
-      }
+    accept: DRAG_SESSION,
+    hover: (item: { dayIdx: number; sessionIdx: number }) => {
+      if (item.dayIdx === dayIdx && item.sessionIdx === sessionIdx) return;
+      onMoveSession(item.dayIdx, item.sessionIdx, dayIdx, sessionIdx);
+      item.dayIdx = dayIdx;
+      item.sessionIdx = sessionIdx;
     },
-    collect: (monitor) => ({ isOver: monitor.isOver() }),
+    collect: (m) => ({ isOver: m.isOver() }),
   });
 
-  // drag preview on the whole card, drag handle on the grip icon
   dragPreview(drop(cardRef));
   drag(gripRef);
+
+  const typeLabel = session.type === "running" ? "Carrera" : session.type === "strength" ? "Fuerza" : "Descanso";
 
   return (
     <div
       ref={cardRef}
-      onClick={() => onSelect(day)}
-      className={`border-l-4 ${colors.border} rounded-xl transition-all cursor-pointer group relative select-none`}
+      className="rounded-lg select-none group relative cursor-pointer transition-all"
       style={{
-        background: "rgba(22,27,34,0.8)",
-        borderRight: `1px solid ${isSelected ? "rgba(201,255,0,0.3)" : "rgba(255,255,255,0.05)"}`,
-        borderTop: `1px solid ${isSelected ? "rgba(201,255,0,0.2)" : "rgba(255,255,255,0.05)"}`,
-        borderBottom: `1px solid ${isSelected ? "rgba(201,255,0,0.2)" : "rgba(255,255,255,0.05)"}`,
-        opacity: isDragging ? 0.35 : 1,
-        boxShadow: isOver
-          ? "0 0 0 2px rgba(201,255,0,0.5), 0 0 20px rgba(201,255,0,0.15)"
+        background: session.completed
+          ? "rgba(14,17,23,0.6)"
           : isSelected
-          ? "0 0 0 1px rgba(201,255,0,0.4), 0 0 20px rgba(201,255,0,0.1)"
-          : "none",
-        transform: isOver ? "scale(1.04)" : "scale(1)",
-        transition: "transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease",
+          ? colors.bgColor
+          : "rgba(22,27,34,0.95)",
+        border: `1px solid ${session.completed ? "rgba(48,54,61,0.4)" : isSelected ? colors.borderColor : "rgba(255,255,255,0.08)"}`,
+        borderLeftWidth: "3px",
+        borderLeftColor: session.completed ? "rgba(48,54,61,0.5)" : colors.borderColor,
+        opacity: isDragging ? 0.3 : session.completed ? 0.7 : 1,
+        boxShadow: isOver
+          ? `0 0 0 2px ${colors.borderColor}80`
+          : isSelected
+          ? `0 4px 12px ${colors.borderColor}30, 0 0 0 1px ${colors.borderColor}40`
+          : "0 2px 4px rgba(0,0,0,0.1)",
       }}
+      onClick={() => onSelect(dayIdx, sessionIdx)}
     >
-      {/* Grip handle — separate drag source */}
+      {/* Grip */}
       <div
         ref={gripRef}
         onClick={(e) => e.stopPropagation()}
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-70 transition-opacity cursor-grab active:cursor-grabbing p-1 rounded"
-        style={{ zIndex: 2 }}
-        title="Arrastra para mover"
+        className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-60 transition-opacity cursor-grab z-10"
       >
         <GripVertical className="h-3 w-3 text-[#8B949E]" />
       </div>
 
-      <div className="p-4">
-        <p className="text-[10px] text-[#8B949E] font-bold mb-1">{day.day}</p>
-        <p className="text-xs text-white font-semibold mb-2">{day.date}</p>
-        <p className={`text-xs font-bold mb-1 ${colors.text}`}>{day.activity}</p>
-        <p className="text-[10px] text-[#8B949E] mb-2">{day.duration}</p>
-        {day.zone !== "—" && (
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${colors.badge}`}>
-            {day.zone}
+      <div className="p-3">
+        <div className="flex items-start gap-2 mb-1.5">
+          {/* Complete toggle */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleComplete(dayIdx, sessionIdx); }}
+            className="shrink-0 mt-0.5 transition-colors"
+          >
+            {session.completed
+              ? <CheckCircle2 className="h-4 w-4 text-green-400" />
+              : <Circle className="h-4 w-4 text-[#8B949E] hover:text-white" />
+            }
+          </button>
+          <div className="flex-1 min-w-0">
+            <p className={`text-xs font-bold truncate ${session.completed ? "text-[#8B949E] line-through" : colors.textColor}`}>
+              {session.activity}
+            </p>
+            <p className="text-[10px] text-[#8B949E] mt-0.5">{session.duration}</p>
+          </div>
+        </div>
+
+        {/* Running km feedback for completed sessions */}
+        {session.type === "running" && session.completed && session.kmDone !== undefined && session.kmPlanned !== undefined && (
+          <div
+            className="mt-1.5 rounded-lg px-2 py-1 flex items-center justify-between"
+            style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)" }}
+          >
+            <span className="text-[10px] text-[#8B949E]">km</span>
+            <span className="text-[10px] font-bold text-cyan-400">
+              {session.kmDone} / {session.kmPlanned}
+            </span>
+          </div>
+        )}
+
+        {/* Zone badge */}
+        {session.zone && !session.completed && (
+          <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${colors.badgeClass}`}>
+            {session.zone}
           </span>
         )}
-        {isSelected ? (
-          <div className="mt-2 flex items-center gap-1">
-            <ChevronDown className="h-3 w-3 text-[#C9FF00]" />
-            <span className="text-[10px] text-[#C9FF00] font-semibold">Detalles abajo</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Day Column (draggable column with multiple sessions) ───────────────────────
+
+interface DayColumnProps {
+  day: DayPlan;
+  dayIdx: number;
+  selectedKey: string | null;
+  onSelectSession: (dayIdx: number, sessionIdx: number) => void;
+  onToggleComplete: (dayIdx: number, sessionIdx: number) => void;
+  onMoveSession: (fromDayIdx: number, fromSessionIdx: number, toDayIdx: number, toSessionIdx: number) => void;
+  onMoveDay: (from: number, to: number) => void;
+}
+
+function DayColumn({ day, dayIdx, selectedKey, onSelectSession, onToggleComplete, onMoveSession, onMoveDay }: DayColumnProps) {
+  const colRef = useRef<HTMLDivElement>(null);
+  const gripRef = useRef<HTMLDivElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
+
+  const [{ isDraggingCol }, dragDay, dragDayPreview] = useDrag({
+    type: DRAG_DAY,
+    item: { dayIdx },
+    collect: (m) => ({ isDraggingCol: m.isDragging() }),
+  });
+
+  const [{ isOverCol }, dropDay] = useDrop({
+    accept: DRAG_DAY,
+    hover: (item: { dayIdx: number }) => {
+      if (item.dayIdx === dayIdx) return;
+      onMoveDay(item.dayIdx, dayIdx);
+      item.dayIdx = dayIdx;
+    },
+    collect: (m) => ({ isOverCol: m.isOver() }),
+  });
+
+  // Drop zone for sessions at the end of the day
+  const [{ isOverDropZone }, dropSessionZone] = useDrop({
+    accept: DRAG_SESSION,
+    drop: (item: { dayIdx: number; sessionIdx: number }) => {
+      if (item.dayIdx === dayIdx && item.sessionIdx === day.sessions.length - 1) return;
+      onMoveSession(item.dayIdx, item.sessionIdx, dayIdx, day.sessions.length);
+    },
+    collect: (m) => ({ isOverDropZone: m.isOver() }),
+  });
+
+  dragDayPreview(dropDay(colRef));
+  dragDay(gripRef);
+  dropSessionZone(dropZoneRef);
+
+  const totalPlanned = day.sessions.filter(s => s.type === "running" && s.kmPlanned).reduce((a, s) => a + (s.kmPlanned ?? 0), 0);
+  const totalDone = day.sessions.filter(s => s.type === "running" && s.completed && s.kmDone).reduce((a, s) => a + (s.kmDone ?? 0), 0);
+  const completedCount = day.sessions.filter(s => s.completed).length;
+
+  return (
+    <div
+      ref={colRef}
+      className="rounded-xl flex flex-col gap-2"
+      style={{
+        opacity: isDraggingCol ? 0.3 : 1,
+        transition: "opacity 0.15s, box-shadow 0.15s",
+        boxShadow: isOverCol ? "0 0 0 2px rgba(201,255,0,0.5)" : "none",
+      }}
+    >
+      {/* Day header - Pill-style */}
+      <div
+        className="rounded-full px-4 py-3 flex items-center justify-between group relative"
+        style={{
+          background: day.isToday
+            ? "linear-gradient(135deg, rgba(0,212,255,0.2), rgba(99,102,241,0.15))"
+            : "linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04))",
+          border: day.isToday
+            ? "2px solid rgba(0,212,255,0.5)"
+            : "2px solid rgba(255,255,255,0.12)",
+          boxShadow: day.isToday
+            ? "0 0 20px rgba(0,212,255,0.2), inset 0 1px 0 rgba(255,255,255,0.1)"
+            : "inset 0 1px 0 rgba(255,255,255,0.05)",
+        }}
+      >
+        <div className="flex items-center gap-2 flex-1">
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs"
+            style={{
+              background: day.isToday
+                ? "rgba(0,212,255,0.25)"
+                : "rgba(255,255,255,0.1)",
+              color: day.isToday ? "#00D4FF" : "#8B949E",
+              border: day.isToday ? "1px solid rgba(0,212,255,0.4)" : "1px solid rgba(255,255,255,0.15)"
+            }}
+          >
+            {day.dayKey.substring(0, 1)}
+          </div>
+          <div className="flex-1">
+            <p className="text-xs font-black text-white leading-none">{day.dayKey}</p>
+            <p className="text-[10px] text-[#8B949E] mt-0.5">{day.date}</p>
+          </div>
+        </div>
+        {day.isToday && (
+          <div className="mr-2">
+            <span className="text-[9px] px-2 py-0.5 rounded-full font-bold bg-cyan-400/20 text-cyan-400 border border-cyan-400/30">
+              HOY
+            </span>
+          </div>
+        )}
+        {completedCount > 0 && !day.isToday && (
+          <div className="mr-2">
+            <span className="text-[9px] px-2 py-0.5 rounded-full font-bold bg-green-400/15 text-green-400 border border-green-400/25">
+              {completedCount}/{day.sessions.length} ✓
+            </span>
+          </div>
+        )}
+        <div
+          ref={gripRef}
+          onClick={(e) => e.stopPropagation()}
+          className="opacity-0 group-hover:opacity-70 cursor-grab transition-opacity"
+          title="Mover día"
+        >
+          <GripVertical className="h-3.5 w-3.5 text-[#8B949E]" />
+        </div>
+      </div>
+
+      {/* Sessions */}
+      <div className="flex flex-col gap-1.5">
+        {day.sessions.map((session, sIdx) => (
+          <SessionCard
+            key={session.id}
+            session={session}
+            dayIdx={dayIdx}
+            sessionIdx={sIdx}
+            isSelected={selectedKey === `${dayIdx}-${sIdx}`}
+            onSelect={onSelectSession}
+            onToggleComplete={onToggleComplete}
+            onMoveSession={onMoveSession}
+          />
+        ))}
+
+        {/* Drop zone at end of day - only visible when dragging over or when day is empty */}
+        {(isOverDropZone || day.sessions.length === 0) && (
+          <div
+            ref={dropZoneRef}
+            className="rounded-lg border-2 border-dashed transition-all min-h-[40px] flex items-center justify-center"
+            style={{
+              borderColor: isOverDropZone ? "rgba(0,212,255,0.6)" : "rgba(255,255,255,0.08)",
+              background: isOverDropZone ? "rgba(0,212,255,0.1)" : "transparent",
+            }}
+          >
+            {isOverDropZone ? (
+              <span className="text-[10px] text-cyan-400">Soltar aquí</span>
+            ) : (
+              <span className="text-[10px] text-[#8B949E]">Sin sesiones</span>
+            )}
+          </div>
+        )}
+        {/* Hidden drop zone when not visible */}
+        {!isOverDropZone && day.sessions.length > 0 && (
+          <div ref={dropZoneRef} className="h-0 w-full" />
+        )}
+      </div>
+
+      {/* Running KM summary if day has running */}
+      {totalPlanned > 0 && (
+        <div className="text-[9px] text-[#8B949E] text-center px-1">
+          {totalDone > 0 ? `${totalDone}/${totalPlanned} km` : `${totalPlanned} km plan`}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Strength Session Logger ────────────────────────────────────────────────────
+
+interface StrengthLoggerProps {
+  session: Session;
+}
+
+function StrengthLogger({ session }: StrengthLoggerProps) {
+  const initialExercises = STRENGTH_PLANS[session.activity]?.map((e) => ({ ...e })) ?? [];
+  const [exercises, setExercises] = useState<ExerciseLog[]>(
+    initialExercises.length > 0 ? initialExercises : [
+      { id: "new-1", name: "", sets: 3, reps: "10", weight: null, prevWeight: null },
+    ]
+  );
+  const [note, setNote] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const updateExercise = (id: string, field: keyof ExerciseLog, value: string | number | null) => {
+    setExercises((prev) => prev.map((e) => e.id === id ? { ...e, [field]: value } : e));
+  };
+
+  const addExercise = () => {
+    setExercises((prev) => [...prev, { id: `ex-${Date.now()}`, name: "", sets: 3, reps: "10", weight: null, prevWeight: null }]);
+  };
+
+  const removeExercise = (id: string) => {
+    setExercises((prev) => prev.filter((e) => e.id !== id));
+  };
+
+  const getProgression = (current: number | null, prev: number | null): "up" | "down" | "equal" | "new" => {
+    if (prev === null) return "new";
+    if (current === null) return "new";
+    if (current > prev) return "up";
+    if (current < prev) return "down";
+    return "equal";
+  };
+
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{
+        background: "rgba(14,17,23,0.97)",
+        border: "1px solid rgba(168,85,247,0.3)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+      }}
+    >
+      {/* Header */}
+      <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="w-1 h-8 rounded-full" style={{ background: "#A855F7", boxShadow: "0 0 8px rgba(168,85,247,0.6)" }} />
+        <div>
+          <p className="text-sm font-bold text-white">{session.activity}</p>
+          <p className="text-xs text-[#8B949E]">{session.duration} · Logger de Fuerza</p>
+        </div>
+      </div>
+
+      <div className="p-5 space-y-5">
+        {/* Nota de entrenamiento */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <StickyNote className="h-3.5 w-3.5 text-purple-400" />
+            <p className="text-xs font-bold text-[#8B949E] uppercase tracking-widest">Nota de Entrenamiento</p>
+          </div>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Escribe aquí sensaciones, ajustes, RPE general de la sesión..."
+            rows={3}
+            className="w-full rounded-xl px-3 py-2.5 text-sm text-white resize-none focus:outline-none"
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(168,85,247,0.25)",
+            }}
+          />
+        </div>
+
+        {/* Exercise Logger */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Dumbbell className="h-3.5 w-3.5 text-purple-400" />
+              <p className="text-xs font-bold text-[#8B949E] uppercase tracking-widest">Logger de Ejercicios</p>
+            </div>
+            <button
+              onClick={addExercise}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all hover:opacity-90"
+              style={{ background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.35)", color: "#C084FC" }}
+            >
+              <Plus className="h-3 w-3" /> Ejercicio
+            </button>
+          </div>
+
+          <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(168,85,247,0.2)" }}>
+            {/* Table header */}
+            <div
+              className="grid gap-2 px-3 py-2"
+              style={{ background: "rgba(168,85,247,0.08)", gridTemplateColumns: "1fr 70px 70px 80px 60px 32px" }}
+            >
+              {["Ejercicio", "Series", "Reps", "Peso (kg)", "Progres.", ""].map((h) => (
+                <p key={h} className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wide">{h}</p>
+              ))}
+            </div>
+
+            {/* Rows */}
+            {exercises.map((ex) => {
+              const prog = getProgression(ex.weight, ex.prevWeight);
+              return (
+                <div
+                  key={ex.id}
+                  className="grid gap-2 px-3 py-2 items-center border-t"
+                  style={{ gridTemplateColumns: "1fr 70px 70px 80px 60px 32px", borderColor: "rgba(255,255,255,0.05)" }}
+                >
+                  {/* Name */}
+                  <input
+                    value={ex.name}
+                    onChange={(e) => updateExercise(ex.id, "name", e.target.value)}
+                    placeholder="Ej: Sentadilla"
+                    className="text-xs text-white bg-transparent focus:outline-none placeholder-[#8B949E]"
+                  />
+                  {/* Sets */}
+                  <input
+                    type="number"
+                    min={1}
+                    value={ex.sets}
+                    onChange={(e) => updateExercise(ex.id, "sets", parseInt(e.target.value) || 1)}
+                    className="text-xs text-white bg-transparent focus:outline-none w-full"
+                    style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "2px 6px" }}
+                  />
+                  {/* Reps */}
+                  <input
+                    value={ex.reps}
+                    onChange={(e) => updateExercise(ex.id, "reps", e.target.value)}
+                    placeholder="10"
+                    className="text-xs text-white bg-transparent focus:outline-none w-full"
+                    style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "2px 6px" }}
+                  />
+                  {/* Weight */}
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={ex.weight ?? ""}
+                    onChange={(e) => updateExercise(ex.id, "weight", e.target.value === "" ? null : parseFloat(e.target.value))}
+                    placeholder="—"
+                    className="text-xs text-white bg-transparent focus:outline-none w-full"
+                    style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "2px 6px" }}
+                  />
+                  {/* Progression */}
+                  <div className="flex flex-col items-center gap-0.5">
+                    {prog === "up" && (
+                      <div className="flex items-center gap-1">
+                        <ArrowUp className="h-3.5 w-3.5 text-green-400" />
+                        <span className="text-[9px] text-green-400">+{((ex.weight ?? 0) - (ex.prevWeight ?? 0)).toFixed(1)}</span>
+                      </div>
+                    )}
+                    {prog === "down" && (
+                      <div className="flex items-center gap-1">
+                        <ArrowDown className="h-3.5 w-3.5 text-red-400" />
+                        <span className="text-[9px] text-red-400">{((ex.weight ?? 0) - (ex.prevWeight ?? 0)).toFixed(1)}</span>
+                      </div>
+                    )}
+                    {prog === "equal" && <Minus className="h-3.5 w-3.5 text-[#8B949E]" />}
+                    {prog === "new" && <span className="text-[9px] text-cyan-400 font-bold">NEW</span>}
+                    {ex.prevWeight !== null && (
+                      <span className="text-[8px] text-[#8B949E]">prev: {ex.prevWeight}kg</span>
+                    )}
+                  </div>
+                  {/* Delete */}
+                  <button
+                    onClick={() => removeExercise(ex.id)}
+                    className="flex items-center justify-center h-6 w-6 rounded hover:bg-red-500/20 transition-colors"
+                  >
+                    <Trash2 className="h-3 w-3 text-[#8B949E] hover:text-red-400 transition-colors" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Save button */}
+        <button
+          onClick={() => setSaved(true)}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all"
+          style={{
+            background: saved ? "rgba(34,197,94,0.15)" : "linear-gradient(135deg, #A855F7, #6366F1)",
+            color: saved ? "#22C55E" : "#fff",
+            border: saved ? "1px solid rgba(34,197,94,0.4)" : "none",
+            boxShadow: saved ? "none" : "0 0 20px rgba(168,85,247,0.4)",
+          }}
+        >
+          {saved ? "✓ Sesión guardada" : "Guardar sesión de fuerza"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Running Detail Panel ───────────────────────────────────────────────────────
+
+function RunningDetail({ session, onClose }: { session: Session; onClose: () => void }) {
+  return (
+    <div className="space-y-3">
+      {/* Stats row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="rounded-xl p-3" style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)" }}>
+          <p className="text-[10px] text-[#8B949E] mb-1 uppercase font-bold">Distancia / Duración</p>
+          <p className="text-sm font-bold text-white">{session.duration}</p>
+        </div>
+        <div className="rounded-xl p-3" style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)" }}>
+          <p className="text-[10px] text-[#8B949E] mb-1 uppercase font-bold">Zona</p>
+          <p className="text-sm font-bold text-white">{session.zone ?? "—"}</p>
+        </div>
+        {session.completed && session.kmDone !== undefined && session.kmPlanned !== undefined ? (
+          <div className="rounded-xl p-3 col-span-2" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)" }}>
+            <p className="text-[10px] text-[#8B949E] mb-1 uppercase font-bold">✓ km Realizados / Planeados</p>
+            <div className="flex items-baseline gap-1">
+              <p className="text-xl font-black text-green-400">{session.kmDone}</p>
+              <p className="text-sm text-[#8B949E]">/ {session.kmPlanned} km</p>
+            </div>
+            <div className="mt-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(48,54,61,0.6)" }}>
+              <div className="h-full rounded-full" style={{ width: `${Math.min(100, (session.kmDone / session.kmPlanned) * 100)}%`, background: "linear-gradient(90deg, #22C55E, #86EFAC)" }} />
+            </div>
           </div>
         ) : (
-          <p className="text-[10px] text-[#8B949E] mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            Click para ver detalles
-          </p>
+          <div className="rounded-xl p-3 col-span-2" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-[10px] text-[#8B949E] mb-1 uppercase font-bold flex items-center gap-1">
+              <Sparkles className="h-3 w-3 text-cyan-400" /> Instrucciones
+            </p>
+            <p className="text-sm text-[#C8D1D9]">{session.notes}</p>
+          </div>
         )}
+      </div>
+
+      <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
+        <p className="text-sm font-semibold text-white mb-2">Objetivos de la sesión</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          {[
+            `Mantener ritmo constante en ${session.zone ?? "Z2"}`,
+            "Cadencia objetivo: 175-180 spm",
+            "Sensación: Conversacional / Controlado",
+          ].map((obj, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-cyan-400 shrink-0">✓</span>
+              <p className="text-xs text-white">{obj}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -230,153 +756,56 @@ function DayCard({ day, index, isSelected, onSelect, onMove }: DayCardProps) {
 
 // ── Day Detail Panel ───────────────────────────────────────────────────────────
 
-function DayDetailPanel({ day, onClose }: { day: typeof weekPlan[0]; onClose: () => void }) {
-  const colors = TYPE_COLORS[day.type] ?? TYPE_COLORS.rest;
-  const typeLabel =
-    day.type === "running" ? "Carrera" : day.type === "strength" ? "Fuerza" : "Descanso";
+function DayDetailPanel({ day, session, onClose }: { day: DayPlan; session: Session; onClose: () => void }) {
+  const colors = TYPE_COLORS[session.type] ?? TYPE_COLORS.rest;
+  const typeLabel = session.type === "running" ? "Carrera" : session.type === "strength" ? "Fuerza" : "Descanso";
+  const typeColor = session.type === "running" ? "#00D4FF" : session.type === "strength" ? "#A855F7" : "#22C55E";
 
   return (
     <div
       className="rounded-2xl overflow-hidden mt-4"
       style={{
-        background: "rgba(18,23,30,0.97)",
+        background: "rgba(14,17,23,0.97)",
         border: "1px solid rgba(201,255,0,0.2)",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(201,255,0,0.08)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
       }}
     >
       {/* Header */}
-      <div
-        className="flex items-center justify-between px-5 py-4"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
-      >
+      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div className="flex items-center gap-3">
-          <div
-            className={`w-1 h-10 rounded-full`}
-            style={{
-              background:
-                day.type === "running"
-                  ? "#00D4FF"
-                  : day.type === "strength"
-                  ? "#A855F7"
-                  : "#22C55E",
-              boxShadow:
-                day.type === "running"
-                  ? "0 0 8px rgba(0,212,255,0.6)"
-                  : day.type === "strength"
-                  ? "0 0 8px rgba(168,85,247,0.6)"
-                  : "0 0 8px rgba(34,197,94,0.6)",
-            }}
-          />
+          <div className="w-1 h-10 rounded-full" style={{ background: typeColor, boxShadow: `0 0 8px ${typeColor}80` }} />
           <div>
             <div className="flex items-center gap-2">
-              <p className="text-base font-bold text-white">{day.activity}</p>
-              <Badge className={colors.badge}>{typeLabel}</Badge>
+              <p className="text-base font-bold text-white">{session.activity}</p>
+              <Badge className={colors.badgeClass}>{typeLabel}</Badge>
+              {session.completed && <Badge className="bg-green-500/20 text-green-300 border-green-500/30">✓ Completada</Badge>}
             </div>
-            <p className="text-xs text-[#8B949E] mt-0.5">
-              {day.day} · {day.date}
-            </p>
+            <p className="text-xs text-[#8B949E] mt-0.5">{day.dayKey} · {day.date}</p>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-        >
+        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
           <X className="h-4 w-4 text-[#8B949E]" />
         </button>
       </div>
 
       {/* Body */}
-      <div className="p-5 space-y-4">
-        {/* Stats row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div
-            className="rounded-xl p-4"
-            style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)" }}
-          >
-            <p className="text-[10px] text-[#8B949E] mb-1 uppercase tracking-wider font-semibold">Duración / Distancia</p>
-            <p className="text-sm font-bold text-white">{day.duration}</p>
-          </div>
-          <div
-            className="rounded-xl p-4"
-            style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)" }}
-          >
-            <p className="text-[10px] text-[#8B949E] mb-1 uppercase tracking-wider font-semibold">Zona</p>
-            <p className="text-sm font-bold text-white">{day.zone}</p>
-          </div>
-          <div
-            className="rounded-xl p-4 col-span-2"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
-          >
-            <p className="text-[10px] text-[#8B949E] mb-1 uppercase tracking-wider font-semibold flex items-center gap-1">
-              <Sparkles className="h-3 w-3 text-cyan-400" /> Instrucciones
-            </p>
-            <p className="text-sm text-[#C8D1D9]">{day.notes}</p>
-          </div>
-        </div>
-
-        {/* Running objectives */}
-        {day.type === "running" && (
-          <div
-            className="rounded-xl p-4"
-            style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}
-          >
-            <p className="text-sm font-semibold text-white mb-3">Objetivos de la sesión</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              {[
-                `Mantener ritmo constante en ${day.zone}`,
-                "Cadencia objetivo: 175-180 spm",
-                "Sensación: Conversacional / Controlado",
-              ].map((obj, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <span className="text-cyan-400 mt-0.5 shrink-0">✓</span>
-                  <p className="text-sm text-white">{obj}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Strength focus */}
-        {day.type === "strength" && (
-          <div
-            className="rounded-xl p-4"
-            style={{ background: "rgba(168,85,247,0.05)", border: "1px solid rgba(168,85,247,0.15)" }}
-          >
-            <p className="text-sm font-semibold text-white mb-3">Enfoque de la sesión</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              {[
-                "Fuerza específica para running",
-                "Prevención de lesiones",
-                "Economía de carrera mejorada",
-              ].map((obj, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <span className="text-purple-400 mt-0.5 shrink-0">•</span>
-                  <p className="text-sm text-white">{obj}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Rest */}
-        {day.type === "rest" && (
-          <div
-            className="rounded-xl p-4"
-            style={{ background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.15)" }}
-          >
+      <div className="p-5">
+        {session.type === "running" && <RunningDetail session={session} onClose={onClose} />}
+        {session.type === "strength" && <StrengthLogger session={session} />}
+        {session.type === "rest" && (
+          <div className="rounded-xl p-4" style={{ background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.15)" }}>
             <p className="text-sm font-semibold text-white mb-3">Actividades recomendadas</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              {[
-                "Movilidad articular 10-15 min",
-                "Foam roller en cuádriceps e isquios",
-                "Hidratación y nutrición de recuperación",
-              ].map((obj, i) => (
+              {["Movilidad articular 10-15 min", "Foam roller en cuádriceps e isquios", "Hidratación y nutrición de recuperación"].map((obj, i) => (
                 <div key={i} className="flex items-start gap-2">
-                  <span className="text-green-400 mt-0.5 shrink-0">→</span>
+                  <span className="text-green-400 shrink-0">→</span>
                   <p className="text-sm text-white">{obj}</p>
                 </div>
               ))}
             </div>
+            {session.notes && (
+              <p className="text-xs text-[#8B949E] mt-3 italic">"{session.notes}"</p>
+            )}
           </div>
         )}
       </div>
@@ -384,30 +813,106 @@ function DayDetailPanel({ day, onClose }: { day: typeof weekPlan[0]; onClose: ()
   );
 }
 
-// ── Generar Plan tab ───────────────────────────────────────────────────────────
+// ── GenerarPlan ────────────────────────────────────────────────────────────────
 
 function GenerarPlanInner() {
   const { userId } = useUser();
-  const [days, setDays] = useState(weekPlan);
-  const [selectedDay, setSelectedDay] = useState<typeof weekPlan[0] | null>(null);
+  const [days, setDays] = useState<DayPlan[]>(INITIAL_WEEK_PLAN);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [currentWeek, setCurrentWeek] = useState(0); // 0 = semana actual, -1 anterior, +1 siguiente
+  const [planData, setPlanData] = useState<PlanSemana | null>(null);
+  const [coachTip, setCoachTip] = useState<string>("");
+
+  useEffect(() => {
+    if (!userId) return;
+    const semanaInicio = getWeekStart(currentWeek);
+    getPlanSemana(userId, semanaInicio)
+      .then((plan) => {
+        setPlanData(plan);
+        setDays(apiPlanToDayPlans(plan));
+        setCoachTip(plan.coach_tip);
+      })
+      .catch(() => {
+        setDays(INITIAL_WEEK_PLAN);
+      });
+  }, [userId, currentWeek]);
+
+  // Computed KPIs
+  const kmPlanned = days.flatMap((d) => d.sessions).filter((s) => s.type === "running" && s.kmPlanned).reduce((a, s) => a + (s.kmPlanned ?? 0), 0);
+  const kmDone = days.flatMap((d) => d.sessions).filter((s) => s.type === "running" && s.completed && s.kmDone).reduce((a, s) => a + (s.kmDone ?? 0), 0);
+  const totalSessions = days.flatMap((d) => d.sessions).length;
+  const fuerzaSessions = days.flatMap((d) => d.sessions).filter((s) => s.type === "strength").length;
 
   const moveDay = useCallback((from: number, to: number) => {
     setDays((prev) => {
       const updated = [...prev];
-      // Swap only workout content — day name and date stay fixed in their column
-      const workoutKeys = ["activity", "type", "duration", "zone", "notes"] as const;
-      const fromWorkout = Object.fromEntries(workoutKeys.map((k) => [k, updated[from][k]]));
-      const toWorkout = Object.fromEntries(workoutKeys.map((k) => [k, updated[to][k]]));
-      updated[from] = { ...updated[from], ...toWorkout };
-      updated[to] = { ...updated[to], ...fromWorkout };
+      const [moved] = updated.splice(from, 1);
+      updated.splice(to, 0, moved);
       return updated;
     });
-    setSelectedDay(null);
+    setSelectedKey(null);
   }, []);
 
-  const handleSelect = (day: typeof weekPlan[0]) => {
-    setSelectedDay((prev) => (prev?.activity === day.activity && prev?.day === day.day ? null : day));
+  const moveSession = useCallback((fromDayIdx: number, fromSessionIdx: number, toDayIdx: number, toSessionIdx: number) => {
+    setDays((prev) => {
+      const updated = [...prev];
+
+      // Extract the session being moved
+      const sessionToMove = updated[fromDayIdx].sessions[fromSessionIdx];
+
+      // Remove from source day
+      updated[fromDayIdx] = {
+        ...updated[fromDayIdx],
+        sessions: updated[fromDayIdx].sessions.filter((_, idx) => idx !== fromSessionIdx)
+      };
+
+      // If moving to same day, adjust target index if needed
+      let targetIdx = toSessionIdx;
+      if (fromDayIdx === toDayIdx && fromSessionIdx < toSessionIdx) {
+        targetIdx = toSessionIdx - 1;
+      }
+
+      // Insert into target day
+      const targetSessions = [...updated[toDayIdx].sessions];
+      targetSessions.splice(targetIdx, 0, sessionToMove);
+      updated[toDayIdx] = {
+        ...updated[toDayIdx],
+        sessions: targetSessions
+      };
+
+      return updated;
+    });
+  }, []);
+
+  const toggleComplete = useCallback((dayIdx: number, sessionIdx: number) => {
+    setDays((prev) => {
+      const session = prev[dayIdx]?.sessions[sessionIdx];
+      const newCompleted = !session?.completed;
+      const sesionId = parseInt(session?.id ?? "0");
+      if (sesionId > 0) {
+        actualizarSesion(sesionId, newCompleted).catch(() => null);
+      }
+      return prev.map((d, dI) => {
+        if (dI !== dayIdx) return d;
+        return {
+          ...d,
+          sessions: d.sessions.map((s, sI) =>
+            sI === sessionIdx ? { ...s, completed: newCompleted } : s
+          ),
+        };
+      });
+    });
+  }, []);
+
+  const handleSelectSession = (dayIdx: number, sessionIdx: number) => {
+    const key = `${dayIdx}-${sessionIdx}`;
+    setSelectedKey((prev) => (prev === key ? null : key));
   };
+
+  const selectedDayIdx = selectedKey ? parseInt(selectedKey.split("-")[0]) : null;
+  const selectedSessionIdx = selectedKey ? parseInt(selectedKey.split("-")[1]) : null;
+  const selectedDay = selectedDayIdx !== null ? days[selectedDayIdx] : null;
+  const selectedSession = selectedDayIdx !== null && selectedSessionIdx !== null ? days[selectedDayIdx]?.sessions[selectedSessionIdx] : null;
 
   return (
     <div className="space-y-8">
@@ -415,98 +920,165 @@ function GenerarPlanInner() {
       <div
         className="rounded-2xl p-8 relative overflow-hidden"
         style={{
-          background: "linear-gradient(135deg, rgba(0,212,255,0.15) 0%, rgba(34,197,94,0.08) 50%, rgba(168,85,247,0.1) 100%)",
+          background: "linear-gradient(135deg, rgba(0,212,255,0.12) 0%, rgba(34,197,94,0.06) 50%, rgba(168,85,247,0.1) 100%)",
           border: "1px solid rgba(0,212,255,0.25)",
-          boxShadow: "0 0 40px rgba(0,212,255,0.08), inset 0 1px 0 rgba(0,212,255,0.15)",
         }}
       >
-        <div
-          className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-10 blur-3xl"
-          style={{ background: "radial-gradient(circle, #00D4FF, transparent)" }}
-        />
+        <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-8 blur-3xl" style={{ background: "radial-gradient(circle, #00D4FF, transparent)" }} />
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative">
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Badge className="bg-cyan-400/20 text-cyan-300 border-cyan-500/30 text-xs">
-                Semana 8 · Pre-Específico
+                ⚡ Acondicionamiento
               </Badge>
               <Badge className="bg-green-400/20 text-green-300 border-green-500/30 text-xs">
                 Plan Activo ✓
               </Badge>
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">
-              Plan Semanal — 14 al 20 Abril
+            <h2 className="text-2xl font-bold text-white mb-1">
+              Plan Semanal — {planData?.semana_inicio
+                ? new Date(planData.semana_inicio).toLocaleDateString("es-ES", { day: "numeric", month: "long" })
+                : "Esta semana"}
             </h2>
-            <p className="text-[#8B949E] text-sm">
-              62 días para el maratón · 52 km objetivo esta semana
-            </p>
+            <p className="text-[#8B949E] text-sm">{coachTip || "Fase: " + (planData?.fase ?? "Acondicionamiento")}</p>
           </div>
           <button
-            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all"
-            style={{
-              background: "linear-gradient(135deg, #00D4FF, #0EA5E9)",
-              color: "#0E1117",
-              boxShadow: "0 0 20px rgba(0,212,255,0.4)",
-            }}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all hover:scale-105"
+            style={{ background: "linear-gradient(135deg, #00D4FF, #0EA5E9)", color: "#0E1117", boxShadow: "0 0 20px rgba(0,212,255,0.4)" }}
+            title="Adapta el plan basándose en tu cumplimiento y datos anteriores"
           >
             <Sparkles className="h-4 w-4" />
-            Regenerar con IA
+            Adaptar Plan con IA
           </button>
         </div>
       </div>
 
-      {/* Summary KPIs */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "KM Semana", value: "52", icon: Activity, color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.25)" },
-          { label: "Sesiones", value: "7", icon: Calendar, color: "#C9FF00", bg: "rgba(201,255,0,0.1)", border: "rgba(201,255,0,0.25)" },
-          { label: "Fuerza", value: "2", icon: Dumbbell, color: "#A855F7", bg: "rgba(168,85,247,0.1)", border: "rgba(168,85,247,0.25)" },
-          { label: "Carga", value: "Alta", icon: Zap, color: "#F97316", bg: "rgba(249,115,22,0.1)", border: "rgba(249,115,22,0.25)" },
-        ].map((kpi) => (
-          <div
-            key={kpi.label}
-            className="rounded-xl p-4"
-            style={{ background: kpi.bg, border: `1px solid ${kpi.border}` }}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <kpi.icon className="h-4 w-4" style={{ color: kpi.color }} />
-              <span className="text-xs text-[#8B949E] font-medium">{kpi.label}</span>
-            </div>
-            <p className="text-2xl font-bold text-white">{kpi.value}</p>
+        {/* KM ratio */}
+        <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.25)" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Activity className="h-4 w-4 text-cyan-400" />
+            <span className="text-xs text-[#8B949E] font-medium">KM SEMANA</span>
           </div>
-        ))}
+          <div className="flex items-baseline gap-1">
+            <p className="text-xl font-bold text-white">{kmDone.toFixed(1)}</p>
+            <p className="text-sm text-[#8B949E]">/ {kmPlanned.toFixed(1)}</p>
+          </div>
+          <div className="mt-1.5 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(48,54,61,0.6)" }}>
+            <div className="h-full rounded-full" style={{ width: `${kmPlanned > 0 ? Math.min(100, (kmDone / kmPlanned) * 100) : 0}%`, background: "linear-gradient(90deg, #00D4FF, #22D3EE)" }} />
+          </div>
+        </div>
+
+        <div className="rounded-xl p-4" style={{ background: "rgba(201,255,0,0.08)", border: "1px solid rgba(201,255,0,0.25)" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="h-4 w-4 text-[#C9FF00]" />
+            <span className="text-xs text-[#8B949E] font-medium">SESIONES</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{totalSessions}</p>
+        </div>
+
+        <div className="rounded-xl p-4" style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.25)" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Dumbbell className="h-4 w-4 text-purple-400" />
+            <span className="text-xs text-[#8B949E] font-medium">FUERZA</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{fuerzaSessions}</p>
+        </div>
+
+        {/* Fase Actual replacing Carga */}
+        <div className="rounded-xl p-4" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <TrendingUp className="h-4 w-4 text-green-400" />
+            <span className="text-xs text-[#8B949E] font-medium">FASE ACTUAL</span>
+          </div>
+          <p className="text-sm font-bold text-green-400">Acondiciona-miento</p>
+        </div>
       </div>
 
       {/* Week Grid */}
       <div>
-        <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-cyan-400" />
-          Distribución Semanal
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <h3 className="text-base font-semibold text-white flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-cyan-400" />
+              Distribución Semanal
+            </h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentWeek(currentWeek - 1)}
+                className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+                title="Semana anterior"
+              >
+                <ChevronLeft className="h-4 w-4 text-[#8B949E] hover:text-white transition-colors" />
+              </button>
+              <span className="text-sm font-bold text-white px-3 py-1 rounded-lg" style={{ background: "rgba(0,212,255,0.15)", border: "1px solid rgba(0,212,255,0.3)" }}>
+                {planData?.semana_inicio ? new Date(planData.semana_inicio).toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : getWeekStart(currentWeek)}
+              </span>
+              <button
+                onClick={() => setCurrentWeek(currentWeek + 1)}
+                className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+                title="Semana siguiente"
+              >
+                <ChevronRight className="h-4 w-4 text-[#8B949E] hover:text-white transition-colors" />
+              </button>
+            </div>
+          </div>
+        </div>
         <p className="text-[11px] text-[#8B949E] mb-4 flex items-center gap-1.5">
           <GripVertical className="h-3 w-3" />
-          Arrastra las tarjetas para reorganizar los entrenamientos · Haz click para ver detalles
+          Arrastra columnas para reorganizar días · Arrastra sesiones entre días o dentro del mismo día · Click para ver detalles
         </p>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
-          {days.map((day, index) => (
-            <DayCard
-              key={day.day}
+          {days.map((day, dayIdx) => (
+            <DayColumn
+              key={`${day.dayKey}-${day.date}`}
               day={day}
-              index={index}
-              isSelected={selectedDay?.activity === day.activity && selectedDay?.day === day.day}
-              onSelect={handleSelect}
-              onMove={moveDay}
+              dayIdx={dayIdx}
+              selectedKey={selectedKey}
+              onSelectSession={handleSelectSession}
+              onToggleComplete={toggleComplete}
+              onMoveSession={moveSession}
+              onMoveDay={moveDay}
             />
           ))}
         </div>
 
-        {/* Detail panel appears below the grid */}
-        {selectedDay && (
+        {/* Detail panel below grid */}
+        {selectedDay && selectedSession && (
           <DayDetailPanel
             day={selectedDay}
-            onClose={() => setSelectedDay(null)}
+            session={selectedSession}
+            onClose={() => setSelectedKey(null)}
           />
         )}
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-4 px-1">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+          <span className="text-xs text-[#8B949E]">Sesión completada</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Circle className="h-3.5 w-3.5 text-[#8B949E]" />
+          <span className="text-xs text-[#8B949E]">Sesión pendiente</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded" style={{ background: "rgba(0,212,255,0.2)", border: "2px solid #22D3EE" }} />
+          <span className="text-xs text-[#8B949E]">Carrera</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded" style={{ background: "rgba(168,85,247,0.2)", border: "2px solid #C084FC" }} />
+          <span className="text-xs text-[#8B949E]">Fuerza</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded" style={{ background: "rgba(34,197,94,0.15)", border: "2px solid #4ADE80" }} />
+          <span className="text-xs text-[#8B949E]">Descanso</span>
+        </div>
       </div>
 
       {/* AI Suggestions */}
@@ -525,15 +1097,11 @@ function GenerarPlanInner() {
         </CardHeader>
         <CardContent className="space-y-3">
           {[
-            { icon: "🚀", title: "Semana de carga alta", desc: "Asegúrate de dormir 8h mínimo y aumentar proteínas a 1.8g/kg.", color: "text-cyan-300" },
-            { icon: "💜", title: "Técnica de zancada", desc: "Incluye 4×100m de \"strides\" al final del rodaje del lunes.", color: "text-purple-300" },
-            { icon: "⚡", title: "Activación pre-largo", desc: "El domingo, realiza 10 min de movilidad dinámica antes de salir.", color: "text-[#C9FF00]" },
+            { icon: "🌸", title: "Fase Folicular — aprovechar la energía", desc: "Esta es tu mejor ventana para fuerza máxima y series de calidad. Prioriza las sesiones de mayor intensidad.", color: "text-pink-300" },
+            { icon: "💜", title: "Técnica de zancada", desc: "Incluye 4×100m de strides al final del rodaje del lunes para mejorar la economía de carrera.", color: "text-purple-300" },
+            { icon: "⚡", title: "Activación pre-largo", desc: "El domingo, realiza 10 min de movilidad dinámica antes de salir para la tirada larga.", color: "text-[#C9FF00]" },
           ].map((tip, i) => (
-            <div
-              key={i}
-              className="flex items-start gap-3 p-3 rounded-xl"
-              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
-            >
+            <div key={i} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
               <span className="text-xl">{tip.icon}</span>
               <div>
                 <p className={`text-sm font-semibold ${tip.color}`}>{tip.title}</p>
@@ -558,18 +1126,18 @@ function GenerarPlan() {
 // ── Datos tab ─────────────────────────────────────────────────────────────────
 
 const lastRunningActivities = [
-  { fecha: "2026-04-11 18:37:18", km: 7.02, cadencia_media: 0, fc_media: 149, ritmo_medio: 7.5 },
-  { fecha: "2026-04-09 15:10:30", km: 0.59, cadencia_media: 133.06, fc_media: 150, ritmo_medio: 36.31 },
-  { fecha: "2026-04-07 17:29:21", km: 3.17, cadencia_media: 136.31, fc_media: 132, ritmo_medio: 9.75 },
+  { fecha: "2026-05-05 17:30", km: 7.8, cadencia_media: 175, fc_media: 142, ritmo_medio: "5:46" },
+  { fecha: "2026-04-30 18:20", km: 10.2, cadencia_media: 177, fc_media: 158, ritmo_medio: "5:23" },
+  { fecha: "2026-04-28 07:15", km: 12.0, cadencia_media: 174, fc_media: 148, ritmo_medio: "5:52" },
 ];
 
 const fuerzaProuesta = [
-  { ejercicio: "Hip Thrust", grupo: "Glúteos", series: 2, reps: "12-15", peso: "32.5", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
-  { ejercicio: "Sentadilla Búlgara", grupo: "Glúteos/Cuádriceps", series: 2, reps: "12-15", peso: "10.0", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
-  { ejercicio: "Dominadas", grupo: "Espalda/Bíceps", series: 2, reps: "12-15", peso: "Peso corporal", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
-  { ejercicio: "Peso Muerto Rumano", grupo: "Isquios/Glúteos", series: 2, reps: "12-15", peso: "25.0", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
-  { ejercicio: "Press Banca", grupo: "Pecho/Tríceps", series: 2, reps: "12-15", peso: "15.0", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
-  { ejercicio: "Prensa 45°", grupo: "Cuádriceps", series: 2, reps: "12-15", peso: "47.5", nota: "65-70% 1RM, hipertrofia funcional · Semáforo rojo — -20% peso, -series" },
+  { ejercicio: "Sentadilla", grupo: "Cuádriceps/Glúteos", series: 3, reps: "10", peso: "50.0", nota: "65-70% 1RM, hipertrofia funcional" },
+  { ejercicio: "Peso Muerto Rumano", grupo: "Isquios/Glúteos", series: 3, reps: "10", peso: "40.0", nota: "Foco en activación isquiotibial" },
+  { ejercicio: "Zancada Búlgara", grupo: "Glúteos/Cuádriceps", series: 3, reps: "12", peso: "14.0", nota: "Unilateral, estabilidad" },
+  { ejercicio: "Hip Thrust", grupo: "Glúteos", series: 3, reps: "12", peso: "60.0", nota: "Activación máxima de glúteo" },
+  { ejercicio: "Press Banca", grupo: "Pecho/Tríceps", series: 3, reps: "8", peso: "15.0", nota: "Fuerza base tren superior" },
+  { ejercicio: "Face Pull", grupo: "Hombro/Espalda", series: 3, reps: "15", peso: "12.0", nota: "Salud del manguito rotador" },
 ];
 
 function Datos() {
@@ -590,21 +1158,21 @@ function Datos() {
         <p className="text-[#8B949E] text-sm">Todas las variables que el sistema analiza para construir tu semana</p>
       </div>
 
-      {/* BIOMÉTRICOS ACTUALES */}
+      {/* BIOMÉTRICOS */}
       <div>
         <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
           <span className="text-blue-400">🔵</span> BIOMÉTRICOS ACTUALES
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "HRV", value: "39 ms", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)" },
-            { label: "SLEEP SCORE", value: "92.0/100", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)" },
-            { label: "ESTRÉS MEDIO", value: "21/100", color: "#F97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.2)" },
-            { label: "BODY BATTERY", value: "—", color: "#8B949E", bg: "rgba(139,148,158,0.05)", border: "rgba(139,148,158,0.15)" },
-            { label: "SUEÑO TOTAL", value: "8.8h", color: "#A855F7", bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.2)" },
-            { label: "PROFUNDO", value: "1.1h", color: "#6366F1", bg: "rgba(99,102,241,0.08)", border: "rgba(99,102,241,0.2)" },
-            { label: "REM", value: "2.2h", color: "#EC4899", bg: "rgba(236,72,153,0.08)", border: "rgba(236,72,153,0.2)" },
-            { label: "VIGILIA", value: "0.1h", color: "#F43F5E", bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.2)" },
+            { label: "HRV", value: "73 ms", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)" },
+            { label: "SLEEP SCORE", value: "72/100", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)" },
+            { label: "ESTRÉS MEDIO", value: "20/100", color: "#22C55E", bg: "rgba(34,197,94,0.08)", border: "rgba(34,197,94,0.2)" },
+            { label: "BODY BATTERY", value: "75/100", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)" },
+            { label: "SUEÑO TOTAL", value: "9.2h", color: "#A855F7", bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.2)" },
+            { label: "PROFUNDO", value: "1.8h", color: "#6366F1", bg: "rgba(99,102,241,0.08)", border: "rgba(99,102,241,0.2)" },
+            { label: "REM", value: "2.1h", color: "#EC4899", bg: "rgba(236,72,153,0.08)", border: "rgba(236,72,153,0.2)" },
+            { label: "FC REPOSO", value: "48 bpm", color: "#F43F5E", bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.2)" },
           ].map((m) => (
             <div key={m.label} className="rounded-xl p-4" style={{ background: m.bg, border: `1px solid ${m.border}` }}>
               <p className="text-[10px] font-bold text-[#8B949E] mb-2 uppercase tracking-wider">{m.label}</p>
@@ -614,7 +1182,7 @@ function Datos() {
         </div>
       </div>
 
-      {/* ANÁLISIS DE CARRERA & RENDIMIENTO */}
+      {/* ANÁLISIS DE CARRERA */}
       <div>
         <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
           <span>🏃</span> ANÁLISIS DE CARRERA & RENDIMIENTO
@@ -622,29 +1190,28 @@ function Datos() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           <div className="rounded-xl p-4" style={{ background: "rgba(201,255,0,0.08)", border: "1px solid rgba(201,255,0,0.2)" }}>
             <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">CADENCIA MEDIA</p>
-            <p className="text-2xl font-black text-[#C9FF00]">68 spm</p>
-            <p className="text-[10px] text-[#8B949E] mt-1">↓ Mejorar técnica</p>
+            <p className="text-2xl font-black text-[#C9FF00]">175 spm</p>
+            <p className="text-[10px] text-green-400 mt-1">↑ Mejorando (+2 vs semana ant.)</p>
           </div>
           <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
-            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">VO2MAX</p>
-            <p className="text-xl font-black text-[#8B949E]">—</p>
-            <p className="text-[10px] text-[#8B949E] mt-1">No disponible</p>
-          </div>
-          <div className="rounded-xl p-4" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
             <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">ACWR</p>
-            <p className="text-2xl font-black text-green-400">1.00</p>
+            <p className="text-2xl font-black text-green-400">1.05</p>
             <div className="flex items-center gap-1 mt-1">
               <span className="w-2 h-2 rounded-full bg-green-400" />
-              <p className="text-[10px] text-green-400">Normal</p>
+              <p className="text-[10px] text-green-400">Óptimo</p>
             </div>
           </div>
+          <div className="rounded-xl p-4" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
+            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">VOLUMEN SEMANA</p>
+            <p className="text-3xl font-black text-green-400">36 km</p>
+          </div>
         </div>
-        <p className="text-xs text-[#8B949E] mb-2">Últimas actividades de running (7 días)</p>
+        <p className="text-xs text-[#8B949E] mb-2">Últimas actividades de running</p>
         <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
           <table className="w-full">
             <thead>
               <tr className="border-b border-[#30363D]" style={{ background: "rgba(255,255,255,0.03)" }}>
-                {["fecha", "km", "cadencia_media", "fc_media", "ritmo_medio"].map(h => (
+                {["Fecha", "km", "Cadencia", "FC Media", "Ritmo Medio"].map((h) => (
                   <th key={h} className="text-left text-[10px] font-bold text-[#8B949E] py-2.5 px-3 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -654,9 +1221,9 @@ function Datos() {
                 <tr key={i} className="border-b border-[#30363D]/40 hover:bg-[#30363D]/20 transition-colors">
                   <td className="text-xs text-white py-2.5 px-3">{row.fecha}</td>
                   <td className="text-xs text-cyan-400 py-2.5 px-3">{row.km}</td>
-                  <td className="text-xs text-white py-2.5 px-3">{row.cadencia_media}</td>
-                  <td className="text-xs text-white py-2.5 px-3">{row.fc_media}</td>
-                  <td className="text-xs text-[#C9FF00] py-2.5 px-3">{row.ritmo_medio}</td>
+                  <td className="text-xs text-white py-2.5 px-3">{row.cadencia_media} spm</td>
+                  <td className="text-xs text-white py-2.5 px-3">{row.fc_media} bpm</td>
+                  <td className="text-xs text-[#C9FF00] py-2.5 px-3">{row.ritmo_medio}/km</td>
                 </tr>
               ))}
             </tbody>
@@ -672,102 +1239,16 @@ function Datos() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
           {[
             { label: "FASE ACTUAL", value: "Acondicionamiento", color: "#C9FF00" },
-            { label: "KM MÁX/SEMANA", value: "30 km", color: "#00D4FF" },
-            { label: "DÍAS FUERZA", value: "4 días", color: "#A855F7" },
-            { label: "DÍAS HASTA OBJETIVO", value: "312", color: "#F97316" },
-            { label: "SEMANAS HASTA OBJETIVO", value: "44", color: "#F43F5E" },
+            { label: "KM MÁX/SEMANA", value: "36 km", color: "#00D4FF" },
+            { label: "DÍAS FUERZA", value: "3 días", color: "#A855F7" },
+            { label: "DÍAS HASTA OBJETIVO", value: "290", color: "#F97316" },
+            { label: "SEMANAS HASTA OBJETIVO", value: "41", color: "#F43F5E" },
           ].map((m) => (
             <div key={m.label} className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">{m.label}</p>
               <p className="text-lg font-black" style={{ color: m.color }}>{m.value}</p>
             </div>
           ))}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
-            <p className="text-xs text-[#8B949E] mb-1 font-semibold">Enfoque Running:</p>
-            <p className="text-sm text-white">Base aeróbica Z2. Bici/elíptica en días de tibia.</p>
-          </div>
-          <div className="rounded-xl p-4" style={{ background: "rgba(168,85,247,0.05)", border: "1px solid rgba(168,85,247,0.15)" }}>
-            <p className="text-xs text-[#8B949E] mb-1 font-semibold">Enfoque Fuerza:</p>
-            <p className="text-sm text-white">Hipertrofia base y glúteo (3×12-15, 65-70% 1RM)</p>
-          </div>
-        </div>
-      </div>
-
-      {/* SEMÁFORO DE RECUPERACIÓN */}
-      <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-          <span>🚦</span> SEMÁFORO DE RECUPERACIÓN
-        </h3>
-        <div className="rounded-xl p-5" style={{ background: "rgba(244,63,94,0.08)", border: "1px solid rgba(244,63,94,0.3)" }}>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-4 h-4 rounded-full bg-red-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]" />
-            <span className="text-base font-black text-red-400">ROJO</span>
-          </div>
-          <p className="text-sm text-white mb-3">Adaptación fallida — HRV caído 25%. Considera regenerativo.</p>
-          <div className="flex flex-wrap items-center gap-4 text-xs">
-            <span className="text-[#8B949E]">Multiplicador volumen: <span className="text-white font-bold">1.00x</span></span>
-            <span className="text-[#8B949E]">Calidad permitida: <span className="text-green-400 font-bold">Sí</span></span>
-          </div>
-          <p className="text-xs text-orange-400 mt-3 flex items-center gap-1">
-            <span>⚠</span> Recuperación baja — el plan no se modifica automáticamente. Considera reducir intensidad manualmente.
-          </p>
-        </div>
-      </div>
-
-      {/* CICLO MENSTRUAL */}
-      <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-          <span>🩸</span> CICLO MENSTRUAL
-        </h3>
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: "FASE", value: "Lútea", color: "#EC4899" },
-            { label: "MULTIPLICADOR VOL.", value: "1.00x", color: "#C9FF00" },
-            { label: "¿CALIDAD PERMITIDA?", value: "Sí", color: "#22C55E" },
-          ].map((m) => (
-            <div key={m.label} className="rounded-xl p-4" style={{ background: "rgba(236,72,153,0.06)", border: "1px solid rgba(236,72,153,0.2)" }}>
-              <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">{m.label}</p>
-              <p className="text-lg font-black" style={{ color: m.color }}>{m.value}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* RESTRICCIONES & LESIONES */}
-      <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-          <span>⚠️</span> RESTRICCIONES & LESIONES ACTIVAS
-        </h3>
-        <div className="rounded-xl p-4 flex items-center gap-2" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)" }}>
-          <span className="text-green-400">✅</span>
-          <p className="text-sm text-green-400 font-semibold">Sin lesiones activas</p>
-        </div>
-      </div>
-
-      {/* EVALUACIONES ESPECIALIZADAS */}
-      <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-          <span>📊</span> EVALUACIONES ESPECIALIZADAS
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="rounded-xl p-4" style={{ background: "rgba(201,255,0,0.08)", border: "1px solid rgba(201,255,0,0.2)" }}>
-            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">CADENCIA</p>
-            <div className="rounded-lg p-3" style={{ background: "rgba(201,255,0,0.08)", border: "1px solid rgba(201,255,0,0.2)" }}>
-              <p className="text-xs text-[#C9FF00]">✏️ Cadencia 68 spm — añadir 5min drills técnica antes de cada rodaje.</p>
-            </div>
-          </div>
-          <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
-            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">EFICIENCIA AERÓBICA</p>
-            <div className="rounded-lg p-3" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
-              <p className="text-xs text-cyan-400">Sin datos suficientes (mín. 4 sesiones Z2 en 28 días).</p>
-            </div>
-          </div>
-          <div className="rounded-xl p-4" style={{ background: "rgba(201,255,0,0.08)", border: "1px solid rgba(201,255,0,0.2)" }}>
-            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">VOLUMEN ESTIMADO SEMANA</p>
-            <p className="text-3xl font-black text-[#C9FF00]">11.2 km</p>
-          </div>
         </div>
       </div>
 
@@ -780,7 +1261,7 @@ function Datos() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-[#30363D]" style={{ background: "rgba(168,85,247,0.08)" }}>
-                {["Ejercicio", "Grupo", "Series", "Reps", "Peso (kg)", "Nota"].map(h => (
+                {["Ejercicio", "Grupo", "Series", "Reps", "Peso (kg)", "Nota"].map((h) => (
                   <th key={h} className="text-left text-[10px] font-bold text-[#8B949E] py-3 px-3 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -801,58 +1282,21 @@ function Datos() {
         </div>
       </div>
 
-      {/* RESUMEN EJECUTIVO */}
+      {/* SEMÁFORO DE RECUPERACIÓN */}
       <div>
         <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-          <span>🚀</span> RESUMEN EJECUTIVO
+          <span>🚦</span> SEMÁFORO DE RECUPERACIÓN
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="rounded-xl p-5" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <p className="text-xs font-bold text-[#8B949E] uppercase tracking-wider mb-3">ESTADO DE ENTRENAMIENTO</p>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[#8B949E]">Recuperación:</span>
-                <span className="text-xs font-bold text-red-400">ROJO</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[#8B949E]">Volumen objetivo:</span>
-                <span className="text-xs font-bold text-cyan-400">19.0 km</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[#8B949E]">Calidad permitida:</span>
-                <span className="text-xs font-bold text-green-400">Sí</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[#8B949E]">ACWR:</span>
-                <span className="text-xs font-bold text-white">1.00</span>
-              </div>
-            </div>
+        <div className="rounded-xl p-5" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-4 h-4 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]" />
+            <span className="text-base font-black text-green-400">VERDE</span>
           </div>
-          <div className="rounded-xl p-5" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <p className="text-xs font-bold text-[#8B949E] uppercase tracking-wider mb-3">AJUSTES APLICADOS</p>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[#8B949E]">Ciclo menstrual:</span>
-                <span className="text-xs font-bold text-pink-400">Lútea</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[#8B949E]">Drills cadencia:</span>
-                <span className="text-xs font-bold text-[#C9FF00]">Sí — 5min técnica</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[#8B949E]">Lesiones:</span>
-                <span className="text-xs font-bold text-green-400">Ninguna</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[#8B949E]">Fase:</span>
-                <span className="text-xs font-bold text-[#C9FF00]">Acondicionamiento</span>
-              </div>
-            </div>
+          <p className="text-sm text-white mb-3">HRV estable · Sueño óptimo. Lista para carga normal o elevada.</p>
+          <div className="flex flex-wrap items-center gap-4 text-xs">
+            <span className="text-[#8B949E]">Multiplicador volumen: <span className="text-white font-bold">1.05x</span></span>
+            <span className="text-[#8B949E]">Calidad permitida: <span className="text-green-400 font-bold">Sí</span></span>
           </div>
-        </div>
-        <div className="mt-3 rounded-xl p-4 flex items-center gap-2" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)" }}>
-          <span className="text-green-400">✅</span>
-          <p className="text-sm text-green-400 font-semibold">Datos listos para generar tu plan semanal personalizado.</p>
         </div>
       </div>
     </div>
