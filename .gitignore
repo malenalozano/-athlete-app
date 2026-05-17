@@ -8,10 +8,16 @@ __pycache__/
 venv/
 env/
 
-# Base de datos (opcional)
-# Si quieres que tu novio vea tus mismos datos, NO la pongas aquí.
-# Si quieres que cada uno tenga su propia base de datos vacía, ponla:
+# Bases de datos locales (nunca subir — usamos Turso en producción)
 atleta.db
+athlete.db
+*.db
+
+# Archivos de build frontend
+Figma/dist/
+
+# Logs
+*.log
 
 # Archivos de configuración de editores
 .vscode/

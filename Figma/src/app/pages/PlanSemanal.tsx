@@ -5,7 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Badge } from "../components/ui/badge";
 import { useUser } from "../context/UserContext";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
-import { getPlanSemana, actualizarSesion, type PlanSemana, type SesionPlan } from "../api";
+import {
+  getPlanSemana, actualizarSesion, actualizarSesionCompleta, crearSesion, borrarSesion,
+  generarPlanSemana, regenerarPlanTotal,
+  getActividades, getDiarioBiometrico, getEjercicios, getDashboard,
+  type PlanSemana, type SesionPlan, type ActividadGarmin, type EntradaBiometrica, type DashboardData,
+} from "../api";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import {
   Sparkles,
@@ -31,6 +36,11 @@ import {
   StickyNote,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
+  RotateCcw,
+  Pencil,
+  Save,
+  AlertTriangle,
 } from "lucide-react";
 import {
   BarChart,
@@ -50,13 +60,16 @@ import {
 interface Session {
   id: string;
   activity: string;
-  type: "running" | "strength" | "rest";
+  type: "running" | "strength";
   duration: string;
   zone?: string;
   notes?: string;
   completed: boolean;
+  autoCompleted?: boolean; // detectado automáticamente por Garmin
+  notDone?: boolean;       // día pasado sin actividad coincidente
   kmDone?: number;
   kmPlanned?: number;
+  garminKm?: number;       // km reales de Garmin si hay match
 }
 
 interface DayPlan {
@@ -75,66 +88,7 @@ interface ExerciseLog {
   prevWeight: number | null;
 }
 
-// ── Mock data ──────────────────────────────────────────────────────────────────
-
-const INITIAL_WEEK_PLAN: DayPlan[] = [
-  {
-    dayKey: "LUN", date: "5 May",
-    sessions: [
-      { id: "lun-1", activity: "Rodaje Suave", type: "running", duration: "8 km · 45 min", zone: "Zona 2", notes: "Ritmo conversacional, RPE 5-6", completed: true, kmDone: 7.8, kmPlanned: 8 },
-      { id: "lun-2", activity: "Core Activación", type: "strength", duration: "20 min", notes: "Plancha, dead bug, pallof press", completed: true },
-    ],
-  },
-  {
-    dayKey: "MAR", date: "6 May",
-    sessions: [
-      { id: "mar-1", activity: "Fuerza Tren Superior", type: "strength", duration: "60 min", notes: "Press banca, dominadas, remo", completed: true },
-    ],
-  },
-  {
-    dayKey: "MIÉ", date: "7 May", isToday: true,
-    sessions: [
-      { id: "mie-1", activity: "Series 400m", type: "running", duration: "6 km · 40 min", zone: "Zona 4-5", notes: "8×400m con 90s recuperación", completed: false, kmPlanned: 6 },
-      { id: "mie-2", activity: "Activación Previa", type: "strength", duration: "10 min", notes: "Activación glúteo y core", completed: false },
-    ],
-  },
-  {
-    dayKey: "JUE", date: "8 May",
-    sessions: [
-      { id: "jue-1", activity: "Descanso Activo", type: "rest", duration: "20 min", notes: "Movilidad, estiramientos", completed: false },
-    ],
-  },
-  {
-    dayKey: "VIE", date: "9 May",
-    sessions: [
-      { id: "vie-1", activity: "Tempo Run", type: "running", duration: "10 km · 55 min", zone: "Zona 3", notes: "Ritmo de umbral sostenido", completed: false, kmPlanned: 10 },
-    ],
-  },
-  {
-    dayKey: "SÁB", date: "10 May",
-    sessions: [
-      { id: "sab-1", activity: "Fuerza Piernas", type: "strength", duration: "60 min", notes: "Sentadillas, peso muerto rumano, zancadas", completed: false },
-      { id: "sab-2", activity: "Movilidad Post", type: "rest", duration: "15 min", notes: "Foam roller, estiramientos", completed: false },
-    ],
-  },
-  {
-    dayKey: "DOM", date: "11 May",
-    sessions: [
-      { id: "dom-1", activity: "Tirada Larga", type: "running", duration: "12 km · 1h15", zone: "Zona 2", notes: "Pace objetivo maratón +45s/km", completed: false, kmPlanned: 12 },
-    ],
-  },
-];
-
-const weeksData = [
-  { semana: "S1", km: 28, fuerza: 2, objetivo: 30 },
-  { semana: "S2", km: 32, fuerza: 3, objetivo: 32 },
-  { semana: "S3", km: 35, fuerza: 3, objetivo: 35 },
-  { semana: "S4", km: 38, fuerza: 2, objetivo: 38 },
-  { semana: "S5", km: 40, fuerza: 3, objetivo: 40 },
-  { semana: "S6", km: 42, fuerza: 3, objetivo: 42 },
-  { semana: "S7", km: 45, fuerza: 3, objetivo: 45 },
-  { semana: "S8", km: 43, fuerza: 2, objetivo: 48 },
-];
+// ── UI helpers ─────────────────────────────────────────────────────────────────
 
 // Strength exercises per session type
 const STRENGTH_PLANS: Record<string, ExerciseLog[]> = {
@@ -168,7 +122,9 @@ const MONTH_NAMES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Se
 
 function getWeekStart(offset = 0): string {
   const d = new Date();
-  d.setDate(d.getDate() - d.getDay() + 1 + offset * 7);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // Sunday → go back 6, otherwise go to Monday
+  d.setDate(d.getDate() + diff + offset * 7);
   return d.toISOString().slice(0, 10);
 }
 
@@ -186,27 +142,93 @@ function apiPlanToDayPlans(plan: PlanSemana): DayPlan[] {
     };
   });
 
+  const TIPO_MAP: Record<string, "running" | "strength"> = {
+    Carrera: "running", carrera: "running", running: "running",
+    Fuerza: "strength", fuerza: "strength", strength: "strength",
+  };
+
+  const RUNNING_TIPOS = new Set([
+    "running", "trail_running", "correr", "carrera", "trail", "run",
+    "treadmill_running", "indoor_running",
+  ]);
+  const STRENGTH_TIPOS = new Set([
+    "strength_training", "fitness_equipment", "gym", "fuerza", "strength",
+    "indoor_cycling", "yoga", "pilates",
+  ]);
+
+  // Agrupar actividades Garmin por fecha
+  const actByDate = new Map<string, typeof plan.actividades_garmin>();
+  (plan.actividades_garmin ?? []).forEach((a) => {
+    const arr = actByDate.get(a.fecha) ?? [];
+    arr.push(a);
+    actByDate.set(a.fecha, arr);
+  });
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
   plan.sesiones.forEach((s) => {
+    const mappedType = TIPO_MAP[s.tipo];
+    if (!mappedType) return; // Ignorar Descanso y tipos desconocidos — día vacío = descanso
     const dayIdx = Math.min(
       6,
       Math.max(0, Math.round((new Date(s.fecha).getTime() - new Date(plan.semana_inicio).getTime()) / 86400000))
     );
+
+    const isPast = s.fecha < todayStr;
+    const actsDia = actByDate.get(s.fecha) ?? [];
+    let autoCompleted = false;
+    let notDone = false;
+    let garminKm: number | undefined;
+
+    if (isPast && !Boolean(s.completado)) {
+      if (mappedType === "running") {
+        const runActs = actsDia.filter((a) =>
+          RUNNING_TIPOS.has((a.tipo_deporte ?? "").toLowerCase())
+        );
+        if (runActs.length > 0) {
+          autoCompleted = true;
+          // Buscar la actividad con km más cercanos al plan
+          const bestMatch = runActs.reduce((best, a) => {
+            if (!best) return a;
+            const kmA = (a.distancia_m ?? 0) / 1000;
+            const kmB = (best.distancia_m ?? 0) / 1000;
+            const planned = s.km_planificados ?? 0;
+            return Math.abs(kmA - planned) < Math.abs(kmB - planned) ? a : best;
+          }, runActs[0]);
+          garminKm = bestMatch ? Math.round((bestMatch.distancia_m ?? 0) / 100) / 10 : undefined;
+        } else if (actsDia.length === 0) {
+          notDone = true; // día sin ninguna actividad
+        } else {
+          notDone = true; // actividades pero ninguna de carrera
+        }
+      } else if (mappedType === "strength") {
+        const strActs = actsDia.filter((a) =>
+          STRENGTH_TIPOS.has((a.tipo_deporte ?? "").toLowerCase())
+        );
+        if (strActs.length > 0) {
+          autoCompleted = true;
+        } else {
+          notDone = true;
+        }
+      }
+    }
+
     days[dayIdx].sessions.push({
       id: String(s.id),
       activity: s.sesion,
-      type: s.tipo as "running" | "strength" | "rest",
+      type: mappedType,
       duration: s.duracion_min ? `${s.duracion_min} min` : "",
       zone: s.intensidad ?? undefined,
       notes: s.detalles ?? undefined,
       completed: Boolean(s.completado),
+      autoCompleted,
+      notDone,
       kmDone: s.km_realizados ?? undefined,
       kmPlanned: s.km_planificados ?? undefined,
+      garminKm,
     });
   });
 
-  // If API returned no sessions, fall back to mock
-  const hasSessions = days.some((d) => d.sessions.length > 0);
-  if (!hasSessions) return INITIAL_WEEK_PLAN;
   return days;
 }
 
@@ -215,7 +237,6 @@ function apiPlanToDayPlans(plan: PlanSemana): DayPlan[] {
 const TYPE_COLORS: Record<string, { borderColor: string; textColor: string; badgeClass: string; bgColor: string }> = {
   running: { borderColor: "#22D3EE", textColor: "text-cyan-400", badgeClass: "bg-cyan-400/15 text-cyan-300 border-cyan-500/30", bgColor: "rgba(0,212,255,0.06)" },
   strength: { borderColor: "#C084FC", textColor: "text-purple-400", badgeClass: "bg-purple-400/15 text-purple-300 border-purple-500/30", bgColor: "rgba(168,85,247,0.06)" },
-  rest: { borderColor: "#4ADE80", textColor: "text-green-400", badgeClass: "bg-green-400/15 text-green-300 border-green-500/30", bgColor: "rgba(34,197,94,0.04)" },
 };
 
 // ── Drag Types ─────────────────────────────────────────────────────────────────
@@ -238,7 +259,9 @@ interface SessionCardProps {
 function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onToggleComplete, onMoveSession }: SessionCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const gripRef = useRef<HTMLDivElement>(null);
-  const colors = TYPE_COLORS[session.type] ?? TYPE_COLORS.rest;
+  const colors = TYPE_COLORS[session.type] ?? TYPE_COLORS.running;
+
+  const isDone = session.completed || session.autoCompleted;
 
   const [{ isDragging }, drag, dragPreview] = useDrag({
     type: DRAG_SESSION,
@@ -260,25 +283,48 @@ function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onTogg
   dragPreview(drop(cardRef));
   drag(gripRef);
 
-  const typeLabel = session.type === "running" ? "Carrera" : session.type === "strength" ? "Fuerza" : "Descanso";
+  // Estilos según estado
+  const cardBg = session.notDone
+    ? "rgba(14,17,23,0.5)"
+    : isDone
+    ? "rgba(14,17,23,0.6)"
+    : isSelected
+    ? colors.bgColor
+    : "rgba(22,27,34,0.95)";
+
+  const borderColor = session.notDone
+    ? "rgba(48,54,61,0.3)"
+    : isDone
+    ? "rgba(48,54,61,0.4)"
+    : isSelected
+    ? colors.borderColor
+    : "rgba(255,255,255,0.08)";
+
+  const leftBorderColor = session.notDone
+    ? "rgba(48,54,61,0.3)"
+    : isDone
+    ? "rgba(34,197,94,0.5)"
+    : colors.borderColor;
+
+  const titleClass = session.notDone
+    ? "text-[#4B5563] line-through"
+    : isDone
+    ? "text-[#8B949E] line-through"
+    : colors.textColor;
 
   return (
     <div
       ref={cardRef}
       className="rounded-lg select-none group relative cursor-pointer transition-all"
       style={{
-        background: session.completed
-          ? "rgba(14,17,23,0.6)"
-          : isSelected
-          ? colors.bgColor
-          : "rgba(22,27,34,0.95)",
-        border: `1px solid ${session.completed ? "rgba(48,54,61,0.4)" : isSelected ? colors.borderColor : "rgba(255,255,255,0.08)"}`,
+        background: cardBg,
+        border: `1px solid ${borderColor}`,
         borderLeftWidth: "3px",
-        borderLeftColor: session.completed ? "rgba(48,54,61,0.5)" : colors.borderColor,
-        opacity: isDragging ? 0.3 : session.completed ? 0.7 : 1,
+        borderLeftColor: leftBorderColor,
+        opacity: isDragging ? 0.3 : session.notDone ? 0.55 : isDone ? 0.75 : 1,
         boxShadow: isOver
           ? `0 0 0 2px ${colors.borderColor}80`
-          : isSelected
+          : isSelected && !session.notDone && !isDone
           ? `0 4px 12px ${colors.borderColor}30, 0 0 0 1px ${colors.borderColor}40`
           : "0 2px 4px rgba(0,0,0,0.1)",
       }}
@@ -295,42 +341,66 @@ function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onTogg
 
       <div className="p-3">
         <div className="flex items-start gap-2 mb-1.5">
-          {/* Complete toggle */}
+          {/* Estado visual */}
           <button
             onClick={(e) => { e.stopPropagation(); onToggleComplete(dayIdx, sessionIdx); }}
             className="shrink-0 mt-0.5 transition-colors"
+            title={session.notDone ? "No realizado" : isDone ? "Realizado" : "Marcar completado"}
           >
-            {session.completed
-              ? <CheckCircle2 className="h-4 w-4 text-green-400" />
-              : <Circle className="h-4 w-4 text-[#8B949E] hover:text-white" />
-            }
+            {session.notDone ? (
+              <div className="h-4 w-4 rounded-full border-2 border-[#4B5563] flex items-center justify-center">
+                <div className="h-1.5 w-1.5 rounded-full bg-[#4B5563]" />
+              </div>
+            ) : isDone ? (
+              <CheckCircle2 className="h-4 w-4 text-green-400" />
+            ) : (
+              <Circle className="h-4 w-4 text-[#8B949E] hover:text-white" />
+            )}
           </button>
           <div className="flex-1 min-w-0">
-            <p className={`text-xs font-bold truncate ${session.completed ? "text-[#8B949E] line-through" : colors.textColor}`}>
+            <p className={`text-xs font-bold truncate ${titleClass}`}>
               {session.activity}
             </p>
             <p className="text-[10px] text-[#8B949E] mt-0.5">{session.duration}</p>
           </div>
         </div>
 
-        {/* Running km feedback for completed sessions */}
-        {session.type === "running" && session.completed && session.kmDone !== undefined && session.kmPlanned !== undefined && (
+        {/* Running km */}
+        {session.type === "running" && (session.kmPlanned !== undefined || session.garminKm !== undefined) && (
           <div
             className="mt-1.5 rounded-lg px-2 py-1 flex items-center justify-between"
-            style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)" }}
+            style={{
+              background: session.notDone ? "rgba(48,54,61,0.2)" : "rgba(0,212,255,0.08)",
+              border: `1px solid ${session.notDone ? "rgba(48,54,61,0.3)" : "rgba(0,212,255,0.2)"}`,
+            }}
           >
             <span className="text-[10px] text-[#8B949E]">km</span>
-            <span className="text-[10px] font-bold text-cyan-400">
-              {session.kmDone} / {session.kmPlanned}
+            <span className={`text-[10px] font-bold ${session.notDone ? "text-[#4B5563]" : "text-cyan-400"}`}>
+              {session.notDone
+                ? `— / ${session.kmPlanned ?? "?"}`
+                : isDone && session.garminKm !== undefined
+                ? `${session.garminKm} / ${session.kmPlanned ?? "?"}`
+                : isDone && session.kmDone !== undefined
+                ? `${session.kmDone} / ${session.kmPlanned ?? "?"}`
+                : `${session.kmPlanned} km`}
             </span>
           </div>
         )}
 
-        {/* Zone badge */}
-        {session.zone && !session.completed && (
+        {/* Zona/intensidad badge — solo si no hay km y no está hecho */}
+        {session.zone && !isDone && !session.notDone && session.kmPlanned === undefined && (
           <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${colors.badgeClass}`}>
             {session.zone}
           </span>
+        )}
+
+        {/* Etiqueta "No realizado" para días pasados sin actividad */}
+        {session.notDone && (
+          <span className="text-[9px] text-[#4B5563] font-medium">No realizado</span>
+        )}
+        {/* Etiqueta "Garmin ✓" para auto-detectados */}
+        {session.autoCompleted && !session.completed && (
+          <span className="text-[9px] text-green-500/70 font-medium">Garmin ✓</span>
         )}
       </div>
     </div>
@@ -756,10 +826,10 @@ function RunningDetail({ session, onClose }: { session: Session; onClose: () => 
 
 // ── Day Detail Panel ───────────────────────────────────────────────────────────
 
-function DayDetailPanel({ day, session, onClose }: { day: DayPlan; session: Session; onClose: () => void }) {
-  const colors = TYPE_COLORS[session.type] ?? TYPE_COLORS.rest;
-  const typeLabel = session.type === "running" ? "Carrera" : session.type === "strength" ? "Fuerza" : "Descanso";
-  const typeColor = session.type === "running" ? "#00D4FF" : session.type === "strength" ? "#A855F7" : "#22C55E";
+function DayDetailPanel({ day, session, onClose, onEdit }: { day: DayPlan; session: Session; onClose: () => void; onEdit?: () => void }) {
+  const colors = TYPE_COLORS[session.type] ?? TYPE_COLORS.running;
+  const typeLabel = session.type === "running" ? "Carrera" : "Fuerza";
+  const typeColor = session.type === "running" ? "#00D4FF" : "#A855F7";
 
   return (
     <div
@@ -783,31 +853,26 @@ function DayDetailPanel({ day, session, onClose }: { day: DayPlan; session: Sess
             <p className="text-xs text-[#8B949E] mt-0.5">{day.dayKey} · {day.date}</p>
           </div>
         </div>
-        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
-          <X className="h-4 w-4 text-[#8B949E]" />
-        </button>
+        <div className="flex items-center gap-2">
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={{ background: "rgba(201,255,0,0.12)", border: "1px solid rgba(201,255,0,0.3)", color: "#C9FF00" }}
+            >
+              <Pencil className="h-3.5 w-3.5" /> Editar
+            </button>
+          )}
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
+            <X className="h-4 w-4 text-[#8B949E]" />
+          </button>
+        </div>
       </div>
 
       {/* Body */}
       <div className="p-5">
         {session.type === "running" && <RunningDetail session={session} onClose={onClose} />}
         {session.type === "strength" && <StrengthLogger session={session} />}
-        {session.type === "rest" && (
-          <div className="rounded-xl p-4" style={{ background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.15)" }}>
-            <p className="text-sm font-semibold text-white mb-3">Actividades recomendadas</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              {["Movilidad articular 10-15 min", "Foam roller en cuádriceps e isquios", "Hidratación y nutrición de recuperación"].map((obj, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <span className="text-green-400 shrink-0">→</span>
-                  <p className="text-sm text-white">{obj}</p>
-                </div>
-              ))}
-            </div>
-            {session.notes && (
-              <p className="text-xs text-[#8B949E] mt-3 italic">"{session.notes}"</p>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -815,17 +880,350 @@ function DayDetailPanel({ day, session, onClose }: { day: DayPlan; session: Sess
 
 // ── GenerarPlan ────────────────────────────────────────────────────────────────
 
+function buildEmptyWeek(): DayPlan[] {
+  const semana = getWeekStart(0);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(semana);
+    d.setDate(d.getDate() + i);
+    return {
+      dayKey: DAY_KEYS[i],
+      date: `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`,
+      isToday: d.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10),
+      sessions: [],
+    };
+  });
+}
+
+// ── Session Edit Modal ─────────────────────────────────────────────────────────
+
+interface SessionEditModalProps {
+  session: Session | null;
+  dayIdx: number | null;
+  sessionIdx: number | null;
+  dayDate: string;
+  onClose: () => void;
+  onSave: (dayIdx: number, sessionIdx: number, updated: Partial<Session>) => void;
+  onDelete: (dayIdx: number, sessionIdx: number) => void;
+}
+
+function SessionEditModal({ session, dayIdx, sessionIdx, dayDate, onClose, onSave, onDelete }: SessionEditModalProps) {
+  const [form, setForm] = useState({
+    activity: session?.activity ?? "",
+    type: (session?.type ?? "running") as "running" | "strength",
+    duration: session?.duration ?? "",
+    zone: session?.zone ?? "",
+    notes: session?.notes ?? "",
+    kmPlanned: session?.kmPlanned?.toString() ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  if (!session || dayIdx === null || sessionIdx === null) return null;
+
+  const handleSave = async () => {
+    setSaving(true);
+    const id = parseInt(session.id);
+    const kmParsed = form.kmPlanned ? parseFloat(form.kmPlanned) : undefined;
+    const durParsed = form.duration ? parseInt(form.duration) : undefined;
+    const updated: Partial<Session> = {
+      activity: form.activity,
+      type: form.type,
+      duration: form.duration,
+      zone: form.zone || undefined,
+      notes: form.notes || undefined,
+      kmPlanned: kmParsed,
+    };
+    if (id > 0) {
+      await actualizarSesionCompleta(id, {
+        sesion: form.activity,
+        tipo: form.type === "running" ? "Carrera" : "Fuerza",
+        detalles: form.notes || undefined,
+        intensidad: form.zone || undefined,
+        km_planificados: kmParsed,
+        duracion_min: durParsed,
+      }).catch(() => null);
+    }
+    onSave(dayIdx, sessionIdx, updated);
+    setSaving(false);
+    onClose();
+  };
+
+  const handleDelete = async () => {
+    const id = parseInt(session.id);
+    if (id > 0) await borrarSesion(id).catch(() => null);
+    onDelete(dayIdx, sessionIdx);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)" }} onClick={onClose}>
+      <div
+        className="w-full max-w-lg rounded-2xl overflow-hidden"
+        style={{ background: "#161B22", border: "1px solid rgba(201,255,0,0.3)", boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <p className="text-sm font-bold text-white flex items-center gap-2">
+            <Pencil className="h-4 w-4 text-[#C9FF00]" /> Editar sesión — {dayDate}
+          </p>
+          <button onClick={onClose} className="p-1 rounded hover:bg-white/10"><X className="h-4 w-4 text-[#8B949E]" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Nombre de la sesión</label>
+            <input
+              value={form.activity}
+              onChange={(e) => setForm({ ...form, activity: e.target.value })}
+              className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Tipo</label>
+              <select
+                value={form.type}
+                onChange={(e) => setForm({ ...form, type: e.target.value as "running" | "strength" })}
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }}
+              >
+                <option value="running">Carrera</option>
+                <option value="strength">Fuerza</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Duración (min)</label>
+              <input
+                type="number"
+                value={form.duration.replace(" min", "")}
+                onChange={(e) => setForm({ ...form, duration: e.target.value ? `${e.target.value} min` : "" })}
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Km planificados</label>
+              <input
+                type="number" step="0.5"
+                value={form.kmPlanned}
+                onChange={(e) => setForm({ ...form, kmPlanned: e.target.value })}
+                placeholder="—"
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Zona / Intensidad</label>
+              <input
+                value={form.zone}
+                onChange={(e) => setForm({ ...form, zone: e.target.value })}
+                placeholder="Z2, Alta, Moderada…"
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Instrucciones / Detalles</label>
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              rows={3}
+              className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white resize-none focus:outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }}
+            />
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={handleDelete}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all"
+              style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#F87171" }}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Eliminar
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all"
+              style={{ background: "linear-gradient(135deg, #C9FF00, #86EFAC)", color: "#0E1117" }}
+            >
+              <Save className="h-4 w-4" /> {saving ? "Guardando…" : "Guardar cambios"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Add Session Modal ──────────────────────────────────────────────────────────
+
+interface AddSessionModalProps {
+  dayIdx: number | null;
+  dayDate: string;
+  weekStart: string;
+  userId: number;
+  onClose: () => void;
+  onAdded: (dayIdx: number, session: Session) => void;
+}
+
+function AddSessionModal({ dayIdx, dayDate, weekStart, userId, onClose, onAdded }: AddSessionModalProps) {
+  const [form, setForm] = useState({
+    activity: "",
+    type: "running" as "running" | "strength",
+    duration: "",
+    zone: "",
+    notes: "",
+    kmPlanned: "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  if (dayIdx === null) return null;
+
+  const handleSave = async () => {
+    if (!form.activity.trim()) return;
+    setSaving(true);
+
+    const weekStartDate = new Date(weekStart);
+    const fecha = new Date(weekStartDate);
+    fecha.setDate(fecha.getDate() + dayIdx);
+    const fechaStr = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}-${String(fecha.getDate()).padStart(2, "0")}`;
+
+    const kmParsed = form.kmPlanned ? parseFloat(form.kmPlanned) : undefined;
+    const durParsed = form.duration ? parseInt(form.duration) : undefined;
+
+    const tipoMap = { running: "Carrera", strength: "Fuerza" };
+    const result = await crearSesion({
+      usuario_id: userId,
+      fecha: fechaStr,
+      tipo: tipoMap[form.type],
+      sesion: form.activity,
+      detalles: form.notes || undefined,
+      duracion_min: durParsed,
+      intensidad: form.zone || undefined,
+      km_planificados: kmParsed,
+    }).catch(() => null);
+
+    if (result) {
+      // Re-fetch to get the real ID — for now create a temp session
+      const newSession: Session = {
+        id: `temp-${Date.now()}`,
+        activity: form.activity,
+        type: form.type,
+        duration: form.duration ? `${form.duration} min` : "",
+        zone: form.zone || undefined,
+        notes: form.notes || undefined,
+        completed: false,
+        kmPlanned: kmParsed,
+      };
+      onAdded(dayIdx, newSession);
+    }
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)" }} onClick={onClose}>
+      <div
+        className="w-full max-w-lg rounded-2xl overflow-hidden"
+        style={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.3)", boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <p className="text-sm font-bold text-white flex items-center gap-2">
+            <Plus className="h-4 w-4 text-cyan-400" /> Añadir sesión — {dayDate}
+          </p>
+          <button onClick={onClose} className="p-1 rounded hover:bg-white/10"><X className="h-4 w-4 text-[#8B949E]" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Nombre de la sesión</label>
+            <input
+              value={form.activity}
+              onChange={(e) => setForm({ ...form, activity: e.target.value })}
+              placeholder="Ej: Rodaje Base Z2, Fuerza Pierna…"
+              className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Tipo</label>
+              <select
+                value={form.type}
+                onChange={(e) => setForm({ ...form, type: e.target.value as "running" | "strength" })}
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }}
+              >
+                <option value="running">Carrera</option>
+                <option value="strength">Fuerza</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Duración (min)</label>
+              <input
+                type="number"
+                value={form.duration}
+                onChange={(e) => setForm({ ...form, duration: e.target.value })}
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Km planificados</label>
+              <input type="number" step="0.5" value={form.kmPlanned} onChange={(e) => setForm({ ...form, kmPlanned: e.target.value })} placeholder="—"
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }} />
+            </div>
+            <div>
+              <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Zona / Intensidad</label>
+              <input value={form.zone} onChange={(e) => setForm({ ...form, zone: e.target.value })} placeholder="Z2, Alta…"
+                className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }} />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] text-[#8B949E] uppercase font-bold tracking-wider">Instrucciones</label>
+            <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2}
+              className="mt-1 w-full rounded-lg px-3 py-2 text-sm text-white resize-none focus:outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }} />
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving || !form.activity.trim()}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #00D4FF, #0EA5E9)", color: "#0E1117" }}
+          >
+            <Plus className="h-4 w-4" /> {saving ? "Añadiendo…" : "Añadir sesión"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GenerarPlanInner() {
   const { userId } = useUser();
-  const [days, setDays] = useState<DayPlan[]>(INITIAL_WEEK_PLAN);
+  const [days, setDays] = useState<DayPlan[]>(buildEmptyWeek);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [currentWeek, setCurrentWeek] = useState(0); // 0 = semana actual, -1 anterior, +1 siguiente
+  const [currentWeek, setCurrentWeek] = useState(0);
   const [planData, setPlanData] = useState<PlanSemana | null>(null);
+  const weekStartRef = useRef<string>("");
   const [coachTip, setCoachTip] = useState<string>("");
+  const [loadingRegen, setLoadingRegen] = useState<"semana" | "total" | null>(null);
+  const [editModal, setEditModal] = useState<{ dayIdx: number; sessionIdx: number } | null>(null);
+  const [addModal, setAddModal] = useState<{ dayIdx: number } | null>(null);
+  const [kmEditValue, setKmEditValue] = useState<string>("");
+  const [kmEditing, setKmEditing] = useState(false);
+  const [regenMsg, setRegenMsg] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadPlan = (weekOffset: number) => {
     if (!userId) return;
-    const semanaInicio = getWeekStart(currentWeek);
+    const semanaInicio = getWeekStart(weekOffset);
+    weekStartRef.current = semanaInicio;
     getPlanSemana(userId, semanaInicio)
       .then((plan) => {
         setPlanData(plan);
@@ -833,15 +1231,103 @@ function GenerarPlanInner() {
         setCoachTip(plan.coach_tip);
       })
       .catch(() => {
-        setDays(INITIAL_WEEK_PLAN);
+        setDays(buildEmptyWeek());
       });
+  };
+
+  useEffect(() => {
+    loadPlan(currentWeek);
   }, [userId, currentWeek]);
 
   // Computed KPIs
   const kmPlanned = days.flatMap((d) => d.sessions).filter((s) => s.type === "running" && s.kmPlanned).reduce((a, s) => a + (s.kmPlanned ?? 0), 0);
-  const kmDone = days.flatMap((d) => d.sessions).filter((s) => s.type === "running" && s.completed && s.kmDone).reduce((a, s) => a + (s.kmDone ?? 0), 0);
+  const kmDone = days.flatMap((d) => d.sessions).filter((s) => s.type === "running" && (s.completed || s.autoCompleted)).reduce((a, s) => {
+    // Usar km reales: garminKm (auto-detect), kmDone (manual), o kmPlanned como fallback
+    const km = s.garminKm ?? s.kmDone ?? s.kmPlanned ?? 0;
+    return a + km;
+  }, 0);
   const totalSessions = days.flatMap((d) => d.sessions).length;
   const fuerzaSessions = days.flatMap((d) => d.sessions).filter((s) => s.type === "strength").length;
+
+  // Handlers
+  const handleRegenerarSemana = async () => {
+    if (!userId) return;
+    setLoadingRegen("semana");
+    setRegenMsg(null);
+    try {
+      const semanaInicio = getWeekStart(currentWeek);
+      const result = await generarPlanSemana(userId, semanaInicio);
+      setRegenMsg(`Semana regenerada: ${result.km_total} km · ${result.tipo_semana}`);
+      loadPlan(currentWeek);
+    } catch (e: any) {
+      setRegenMsg(`Error: ${e.message}`);
+    } finally {
+      setLoadingRegen(null);
+    }
+  };
+
+  const handleRegenerarTotal = async () => {
+    if (!userId) return;
+    setLoadingRegen("total");
+    setRegenMsg(null);
+    try {
+      const result = await regenerarPlanTotal(userId, 4);
+      setRegenMsg(`Plan total regenerado: ${result.semanas_regeneradas} semanas · base ${result.km_base_real} km/sem`);
+      loadPlan(currentWeek);
+    } catch (e: any) {
+      setRegenMsg(`Error: ${e.message}`);
+    } finally {
+      setLoadingRegen(null);
+    }
+  };
+
+  const handleKmEdit = async () => {
+    if (!userId || !kmEditValue) return;
+    const km = parseFloat(kmEditValue);
+    if (isNaN(km) || km < 5) return;
+    setKmEditing(false);
+    setLoadingRegen("semana");
+    setRegenMsg(null);
+    try {
+      const semanaInicio = getWeekStart(currentWeek);
+      const result = await generarPlanSemana(userId, semanaInicio, km);
+      setRegenMsg(`Semana recalculada a ${km} km · distribución ajustada`);
+      loadPlan(currentWeek);
+    } catch (e: any) {
+      setRegenMsg(`Error: ${e.message}`);
+    } finally {
+      setLoadingRegen(null);
+    }
+  };
+
+  const handleSaveEditedSession = (dayIdx: number, sessionIdx: number, updated: Partial<Session>) => {
+    setDays((prev) =>
+      prev.map((d, di) =>
+        di !== dayIdx ? d : {
+          ...d,
+          sessions: d.sessions.map((s, si) =>
+            si !== sessionIdx ? s : { ...s, ...updated }
+          ),
+        }
+      )
+    );
+  };
+
+  const handleDeleteSession = (dayIdx: number, sessionIdx: number) => {
+    setDays((prev) =>
+      prev.map((d, di) =>
+        di !== dayIdx ? d : { ...d, sessions: d.sessions.filter((_, si) => si !== sessionIdx) }
+      )
+    );
+  };
+
+  const handleAddSession = (dayIdx: number, session: Session) => {
+    setDays((prev) =>
+      prev.map((d, di) =>
+        di !== dayIdx ? d : { ...d, sessions: [...d.sessions, session] }
+      )
+    );
+  };
 
   const moveDay = useCallback((from: number, to: number) => {
     setDays((prev) => {
@@ -857,27 +1343,38 @@ function GenerarPlanInner() {
     setDays((prev) => {
       const updated = [...prev];
 
-      // Extract the session being moved
       const sessionToMove = updated[fromDayIdx].sessions[fromSessionIdx];
 
-      // Remove from source day
+      // Persistir cambio de día en el backend
+      if (fromDayIdx !== toDayIdx) {
+        const id = parseInt(sessionToMove.id);
+        if (id > 0 && weekStartRef.current) {
+          const d = new Date(weekStartRef.current + "T12:00:00");
+          d.setDate(d.getDate() + toDayIdx);
+          const newFecha = [
+            d.getFullYear(),
+            String(d.getMonth() + 1).padStart(2, "0"),
+            String(d.getDate()).padStart(2, "0"),
+          ].join("-");
+          actualizarSesionCompleta(id, { fecha: newFecha }).catch(() => null);
+        }
+      }
+
       updated[fromDayIdx] = {
         ...updated[fromDayIdx],
-        sessions: updated[fromDayIdx].sessions.filter((_, idx) => idx !== fromSessionIdx)
+        sessions: updated[fromDayIdx].sessions.filter((_, idx) => idx !== fromSessionIdx),
       };
 
-      // If moving to same day, adjust target index if needed
       let targetIdx = toSessionIdx;
       if (fromDayIdx === toDayIdx && fromSessionIdx < toSessionIdx) {
         targetIdx = toSessionIdx - 1;
       }
 
-      // Insert into target day
       const targetSessions = [...updated[toDayIdx].sessions];
       targetSessions.splice(targetIdx, 0, sessionToMove);
       updated[toDayIdx] = {
         ...updated[toDayIdx],
-        sessions: targetSessions
+        sessions: targetSessions,
       };
 
       return updated;
@@ -942,20 +1439,45 @@ function GenerarPlanInner() {
             </h2>
             <p className="text-[#8B949E] text-sm">{coachTip || "Fase: " + (planData?.fase ?? "Acondicionamiento")}</p>
           </div>
-          <button
-            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all hover:scale-105"
-            style={{ background: "linear-gradient(135deg, #00D4FF, #0EA5E9)", color: "#0E1117", boxShadow: "0 0 20px rgba(0,212,255,0.4)" }}
-            title="Adapta el plan basándose en tu cumplimiento y datos anteriores"
-          >
-            <Sparkles className="h-4 w-4" />
-            Adaptar Plan con IA
-          </button>
+          {userId !== 2 && (
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={handleRegenerarSemana}
+              disabled={loadingRegen !== null}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all hover:scale-105 disabled:opacity-60"
+              style={{ background: "linear-gradient(135deg, #00D4FF, #0EA5E9)", color: "#0E1117", boxShadow: "0 0 20px rgba(0,212,255,0.4)" }}
+              title="Regenera la semana actual basándose en el historial real"
+            >
+              {loadingRegen === "semana" ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Regenerar semana
+            </button>
+            <button
+              onClick={handleRegenerarTotal}
+              disabled={loadingRegen !== null}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all hover:scale-105 disabled:opacity-60"
+              style={{ background: "rgba(201,255,0,0.12)", border: "1px solid rgba(201,255,0,0.4)", color: "#C9FF00" }}
+              title="Regenera el plan completo de las próximas 4 semanas"
+            >
+              {loadingRegen === "total" ? <RotateCcw className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              Regenerar plan total
+            </button>
+          </div>
+          )}
         </div>
       </div>
 
+      {/* Regen feedback */}
+      {regenMsg && (
+        <div className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ background: "rgba(201,255,0,0.1)", border: "1px solid rgba(201,255,0,0.3)" }}>
+          <Sparkles className="h-4 w-4 text-[#C9FF00] shrink-0" />
+          <p className="text-sm text-[#C9FF00] font-medium">{regenMsg}</p>
+          <button onClick={() => setRegenMsg(null)} className="ml-auto p-1 rounded hover:bg-white/10"><X className="h-3.5 w-3.5 text-[#8B949E]" /></button>
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* KM ratio */}
+        {/* KM ratio — editable */}
         <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.25)" }}>
           <div className="flex items-center gap-2 mb-2">
             <Activity className="h-4 w-4 text-cyan-400" />
@@ -963,11 +1485,34 @@ function GenerarPlanInner() {
           </div>
           <div className="flex items-baseline gap-1">
             <p className="text-xl font-bold text-white">{kmDone.toFixed(1)}</p>
-            <p className="text-sm text-[#8B949E]">/ {kmPlanned.toFixed(1)}</p>
+            <p className="text-sm text-[#8B949E]">/ </p>
+            {kmEditing ? (
+              <form onSubmit={(e) => { e.preventDefault(); handleKmEdit(); }} className="inline-flex items-center gap-1">
+                <input
+                  autoFocus
+                  type="number" step="0.5" min="5"
+                  value={kmEditValue}
+                  onChange={(e) => setKmEditValue(e.target.value)}
+                  onBlur={() => { if (!kmEditValue) setKmEditing(false); }}
+                  className="w-16 text-lg font-bold text-cyan-400 bg-transparent focus:outline-none border-b border-cyan-400"
+                />
+                <button type="submit" className="text-[10px] text-cyan-400 font-bold px-1">OK</button>
+              </form>
+            ) : (
+              <button
+                onClick={() => { setKmEditValue(kmPlanned.toFixed(1)); setKmEditing(true); }}
+                className="flex items-center gap-1 text-sm text-[#8B949E] hover:text-white transition-colors group"
+                title="Click para editar km totales de la semana"
+              >
+                {kmPlanned.toFixed(1)} km
+                <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            )}
           </div>
           <div className="mt-1.5 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(48,54,61,0.6)" }}>
             <div className="h-full rounded-full" style={{ width: `${kmPlanned > 0 ? Math.min(100, (kmDone / kmPlanned) * 100) : 0}%`, background: "linear-gradient(90deg, #00D4FF, #22D3EE)" }} />
           </div>
+          <p className="text-[9px] text-[#8B949E] mt-1">Click en km para editar y recalcular</p>
         </div>
 
         <div className="rounded-xl p-4" style={{ background: "rgba(201,255,0,0.08)", border: "1px solid rgba(201,255,0,0.25)" }}>
@@ -1034,25 +1579,39 @@ function GenerarPlanInner() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
           {days.map((day, dayIdx) => (
-            <DayColumn
-              key={`${day.dayKey}-${day.date}`}
-              day={day}
-              dayIdx={dayIdx}
-              selectedKey={selectedKey}
-              onSelectSession={handleSelectSession}
-              onToggleComplete={toggleComplete}
-              onMoveSession={moveSession}
-              onMoveDay={moveDay}
-            />
+            <div key={`${day.dayKey}-${day.date}`} className="flex flex-col gap-1">
+              <DayColumn
+                day={day}
+                dayIdx={dayIdx}
+                selectedKey={selectedKey}
+                onSelectSession={handleSelectSession}
+                onToggleComplete={toggleComplete}
+                onMoveSession={moveSession}
+                onMoveDay={moveDay}
+              />
+              {/* Add session button per day */}
+              <button
+                onClick={() => setAddModal({ dayIdx })}
+                className="w-full flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] text-[#8B949E] hover:text-white transition-colors group"
+                style={{ border: "1px dashed rgba(255,255,255,0.08)" }}
+              >
+                <Plus className="h-3 w-3 group-hover:text-cyan-400 transition-colors" />
+                Añadir
+              </button>
+            </div>
           ))}
         </div>
 
         {/* Detail panel below grid */}
-        {selectedDay && selectedSession && (
+        {selectedDay && selectedSession && selectedDayIdx !== null && selectedSessionIdx !== null && (
           <DayDetailPanel
             day={selectedDay}
             session={selectedSession}
             onClose={() => setSelectedKey(null)}
+            onEdit={() => {
+              setEditModal({ dayIdx: selectedDayIdx, sessionIdx: selectedSessionIdx });
+              setSelectedKey(null);
+            }}
           />
         )}
       </div>
@@ -1075,42 +1634,46 @@ function GenerarPlanInner() {
           <div className="w-3 h-3 rounded" style={{ background: "rgba(168,85,247,0.2)", border: "2px solid #C084FC" }} />
           <span className="text-xs text-[#8B949E]">Fuerza</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded" style={{ background: "rgba(34,197,94,0.15)", border: "2px solid #4ADE80" }} />
-          <span className="text-xs text-[#8B949E]">Descanso</span>
-        </div>
       </div>
 
-      {/* AI Suggestions */}
-      <Card
-        className="rounded-2xl"
-        style={{
-          background: "linear-gradient(135deg, rgba(168,85,247,0.1), rgba(0,212,255,0.05))",
-          border: "1px solid rgba(168,85,247,0.25)",
-        }}
-      >
-        <CardHeader>
-          <CardTitle className="text-white text-base flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-purple-400" />
-            Recomendaciones IA para esta semana
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {[
-            { icon: "🌸", title: "Fase Folicular — aprovechar la energía", desc: "Esta es tu mejor ventana para fuerza máxima y series de calidad. Prioriza las sesiones de mayor intensidad.", color: "text-pink-300" },
-            { icon: "💜", title: "Técnica de zancada", desc: "Incluye 4×100m de strides al final del rodaje del lunes para mejorar la economía de carrera.", color: "text-purple-300" },
-            { icon: "⚡", title: "Activación pre-largo", desc: "El domingo, realiza 10 min de movilidad dinámica antes de salir para la tirada larga.", color: "text-[#C9FF00]" },
-          ].map((tip, i) => (
-            <div key={i} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-              <span className="text-xl">{tip.icon}</span>
-              <div>
-                <p className={`text-sm font-semibold ${tip.color}`}>{tip.title}</p>
-                <p className="text-xs text-[#8B949E] mt-0.5">{tip.desc}</p>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      {/* Coach tip */}
+      {coachTip && (
+        <div
+          className="rounded-2xl p-5 flex items-start gap-4"
+          style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.1), rgba(0,212,255,0.05))", border: "1px solid rgba(168,85,247,0.25)" }}
+        >
+          <Sparkles className="h-5 w-5 text-purple-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-white mb-1">Tip del entrenador</p>
+            <p className="text-sm text-[#8B949E]">{coachTip}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Session Edit Modal */}
+      {editModal && (
+        <SessionEditModal
+          session={days[editModal.dayIdx]?.sessions[editModal.sessionIdx] ?? null}
+          dayIdx={editModal.dayIdx}
+          sessionIdx={editModal.sessionIdx}
+          dayDate={days[editModal.dayIdx]?.date ?? ""}
+          onClose={() => setEditModal(null)}
+          onSave={handleSaveEditedSession}
+          onDelete={handleDeleteSession}
+        />
+      )}
+
+      {/* Add Session Modal */}
+      {addModal && userId && (
+        <AddSessionModal
+          dayIdx={addModal.dayIdx}
+          dayDate={days[addModal.dayIdx]?.date ?? ""}
+          weekStart={getWeekStart(currentWeek)}
+          userId={userId}
+          onClose={() => setAddModal(null)}
+          onAdded={handleAddSession}
+        />
+      )}
     </div>
   );
 }

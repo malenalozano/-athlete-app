@@ -18,17 +18,18 @@ def dashboard(usuario_id: int):
     conn = get_db()
     hoy = datetime.now().date()
     hace_7 = (hoy - timedelta(days=7)).isoformat()
+    hace_10 = (hoy - timedelta(days=10)).isoformat()
     hace_30 = (hoy - timedelta(days=30)).isoformat()
     semana_inicio = (hoy - timedelta(days=hoy.weekday())).isoformat()
 
     # Perfil
     row = conn.execute(
-        "SELECT id, nombre, genero, objetivo, nivel, fcmax, objetivo_tipo, fecha_objetivo FROM usuarios WHERE id = ?",
+        "SELECT id, nombre, genero, objetivo, nivel, fcmax, objetivo_tipo, fecha_objetivo, fecha_inicio_entrenamiento FROM usuarios WHERE id = ?",
         (usuario_id,),
     ).fetchone()
     perfil = dict(zip(
-        ["id", "nombre", "genero", "objetivo", "nivel", "fcmax", "objetivo_tipo", "fecha_objetivo"],
-        row or [usuario_id, "Atleta", "Mujer", "", "Intermedio", None, "maraton", None]
+        ["id", "nombre", "genero", "objetivo", "nivel", "fcmax", "objetivo_tipo", "fecha_objetivo", "fecha_inicio_entrenamiento"],
+        row or [usuario_id, "Atleta", "Mujer", "", "Intermedio", None, "maraton", None, None]
     ))
 
     # Fase macrociclo
@@ -80,12 +81,12 @@ def dashboard(usuario_id: int):
                 "training_status", "training_readiness", "estres_medio"]
     hrv_data = [dict(zip(hrv_cols, r)) for r in hrv_rows]
 
-    # Sueño últimos 7 días
+    # Sueño últimos 10 días (margen extra para zona horaria y delay Garmin)
     sleep_rows = conn.execute(
         """SELECT fecha, horas_totales, score, sleep_profundo_horas, sleep_rem_horas
            FROM datos_sueno WHERE usuario_id = ? AND fecha >= ?
            ORDER BY fecha ASC""",
-        (usuario_id, hace_7),
+        (usuario_id, hace_10),
     ).fetchall()
     sleep_cols = ["fecha", "horas_totales", "score", "sleep_profundo_horas", "sleep_rem_horas"]
     sleep_data = [dict(zip(sleep_cols, r)) for r in sleep_rows]
@@ -131,6 +132,80 @@ def dashboard(usuario_id: int):
         for r in last_fuerza
     ]
 
+    # Ciclo menstrual (solo mujeres / usuario 1)
+    ciclo_info = None
+    try:
+        ultimo_ciclo = conn.execute(
+            """SELECT fecha_inicio_regla, fecha_siguiente_regla, duracion_ciclo_dias
+               FROM historial_ciclos_menstruales
+               WHERE usuario_id = ?
+               ORDER BY fecha_inicio_regla DESC LIMIT 1""",
+            (usuario_id,),
+        ).fetchone()
+        if ultimo_ciclo:
+            inicio = datetime.strptime(ultimo_ciclo[0], "%Y-%m-%d").date()
+            proxima_str = ultimo_ciclo[1]
+            dur_ciclo = ultimo_ciclo[2] or 28
+            dia_ciclo = (hoy - inicio).days + 1
+            if proxima_str:
+                proxima = datetime.strptime(proxima_str, "%Y-%m-%d").date()
+            else:
+                proxima = inicio + timedelta(days=dur_ciclo)
+            dias_para_regla = (proxima - hoy).days
+
+            if dia_ciclo <= 5:
+                fase, energia = "Menstruación", "Baja — enfócate en recuperación"
+            elif dia_ciclo <= 13:
+                fase, energia = "Folicular", "Alta — ideal para intensidad"
+            elif dia_ciclo <= 15:
+                fase, energia = "Ovulación", "Máxima — pico de fuerza"
+            else:
+                fase, energia = "Lútea", "Media — preferir volumen suave"
+
+            months_es = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+            ciclo_info = {
+                "fase": fase,
+                "dia_ciclo": dia_ciclo,
+                "duracion_ciclo": dur_ciclo,
+                "dias_para_regla": dias_para_regla,
+                "proxima_fecha": f"{proxima.day} {months_es[proxima.month-1]}",
+                "energia": energia,
+            }
+    except Exception:
+        pass
+
+    # Ritmo medio semanal running (últimas 8 semanas), en min/km
+    ritmo_rows = conn.execute(
+        """SELECT strftime('%W', fecha) as semana, AVG(ritmo_medio) as ritmo
+           FROM actividades_garmin
+           WHERE usuario_id = ? AND fecha >= ?
+             AND tipo_deporte IN ('running','trail_running','correr','carrera')
+             AND ritmo_medio IS NOT NULL AND ritmo_medio > 0
+           GROUP BY strftime('%W', fecha)
+           ORDER BY semana ASC LIMIT 8""",
+        (usuario_id, (hoy - timedelta(days=56)).isoformat()),
+    ).fetchall()
+    ritmo_trend = [
+        {"semana": f"S{i+1}", "ritmo": round((r[1] or 0) / 60, 2)}
+        for i, r in enumerate(ritmo_rows)
+    ]
+
+    # Cadencia media semanal (running, últimas 8 semanas)
+    cadencia_rows = conn.execute(
+        """SELECT strftime('%W', fecha) as semana, AVG(cadencia_media) as cad
+           FROM actividades_garmin
+           WHERE usuario_id = ? AND fecha >= ?
+             AND tipo_deporte IN ('running','trail_running','correr','carrera')
+             AND cadencia_media IS NOT NULL
+           GROUP BY strftime('%W', fecha)
+           ORDER BY semana ASC LIMIT 8""",
+        (usuario_id, (hoy - timedelta(days=56)).isoformat()),
+    ).fetchall()
+    cadencia_trend = [
+        {"semana": f"S{i+1}", "cadencia": round(r[1] or 0)}
+        for i, r in enumerate(cadencia_rows)
+    ]
+
     conn.close()
 
     return {
@@ -145,8 +220,11 @@ def dashboard(usuario_id: int):
         "actividades_recientes": actividades[:5],
         "hrv_data": hrv_data,
         "sleep_data": sleep_data,
+        "ciclo": ciclo_info,
         "running_trend": running_trend,
+        "ritmo_trend": ritmo_trend,
         "fuerza_reciente": fuerza_reciente,
+        "cadencia_trend": cadencia_trend,
     }
 
 

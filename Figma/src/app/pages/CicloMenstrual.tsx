@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { useUser } from "../context/UserContext";
 import { Heart, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { crearEntradaDiario } from "../api";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type Phase = "Menstrual" | "Folicular" | "Ovulación" | "Lútea";
@@ -124,9 +125,33 @@ export function CicloMenstrual() {
   const [animo, setAnimo] = useState("");
   const [entreno, setEntreno] = useState("");
   const [calMonth, setCalMonth] = useState(2); // 0-indexed: 2 = March
+  const [saving, setSaving] = useState(false);
 
   const toggleSintoma = (s: string) =>
     setSintomas((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+
+  const handleGuardar = async () => {
+    if (!userId) return;
+    setSaving(true);
+    try {
+      const dayNum = parseInt(fecha.split("-")[2]);
+      await crearEntradaDiario({
+        usuario_id: userId,
+        fecha,
+        fase_ciclo: DAY_PHASES[dayNum] || null,
+        sangre,
+        sintomas: sintomas.length > 0 ? sintomas.join(", ") : null,
+        estado_animo: animo || null,
+        feedback_entreno: entreno || null,
+        fatiga_subjetiva: null,
+        dolor_notas: null,
+      });
+    } catch {
+      // silent
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (userId !== 1) {
     return (
@@ -212,7 +237,7 @@ export function CicloMenstrual() {
         </div>
 
         {/* Main layout: Form LEFT | Calendar RIGHT */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 xl:items-start">
 
           {/* ── LEFT: Registration Form ─────────────────────────────────── */}
           <Card className="bg-[#161B22] border border-pink-500/30 rounded-xl">
@@ -310,20 +335,22 @@ export function CicloMenstrual() {
 
               {/* Guardar */}
               <button
-                className="w-full py-3 rounded-xl text-sm font-bold transition-all"
+                onClick={handleGuardar}
+                disabled={saving}
+                className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-60"
                 style={{
                   background: "linear-gradient(135deg, #C9FF00, #a3e635)",
                   color: "#0E1117",
                   boxShadow: "0 0 20px rgba(201,255,0,0.4)",
                 }}
               >
-                Guardar Registro
+                {saving ? "Guardando..." : "Guardar Registro"}
               </button>
             </CardContent>
           </Card>
 
           {/* ── RIGHT: Calendar ────────────────────────────────────────── */}
-          <Card className="bg-[#161B22] border border-pink-500/30 rounded-xl">
+          <Card className="bg-[#161B22] border border-pink-500/30 rounded-xl h-full flex flex-col">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-white text-base">Calendario del Ciclo</CardTitle>

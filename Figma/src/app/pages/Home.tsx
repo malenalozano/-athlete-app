@@ -46,6 +46,44 @@ import {
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 
+const DAY_ABBR = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
+function isoToDay(fecha: string) {
+  return DAY_ABBR[new Date(fecha + "T12:00:00").getDay()];
+}
+
+function localIso(d: Date) {
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, "0"),
+    String(d.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function buildSleepChartData(sleepData: DashboardData["sleep_data"]) {
+  const map = new Map((sleepData ?? []).map((d) => [d.fecha, d]));
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const iso = localIso(d);
+    const entry = map.get(iso);
+    return {
+      dia: isoToDay(iso),
+      horas: entry?.horas_totales ?? null,
+      score: entry?.score ?? null,
+    };
+  });
+}
+
+function buildHrvChartData(hrvData: DashboardData["hrv_data"]) {
+  if (!hrvData?.length) return [];
+  return [...hrvData].reverse().map((d, i) => ({
+    semana: isoToDay(d.fecha),
+    hrv: d.hrv_ms ? Math.round(d.hrv_ms) : null,
+    fc: d.fc_reposo ?? null,
+  }));
+}
+
 const macrocicloPhases = [
   { name: "FUNDAMENTACIÓN", progress: 100, status: "completed" as const, color: "green" as const },
   { name: "ACONDICIONAMIENTO", progress: 45, status: "in-progress" as const, color: "cyan" as const },
@@ -55,92 +93,6 @@ const macrocicloPhases = [
 
 const globalMacrocicloProgress =
   macrocicloPhases.reduce((acc, p) => acc + p.progress, 0) / macrocicloPhases.length;
-
-const runningProgressData = [
-  { semana: "S1", km: 28, objetivo: 30 },
-  { semana: "S2", km: 32, objetivo: 32 },
-  { semana: "S3", km: 35, objetivo: 35 },
-  { semana: "S4", km: 38, objetivo: 38 },
-  { semana: "S5", km: 40, objetivo: 40 },
-  { semana: "S6", km: 42, objetivo: 42 },
-  { semana: "S7", km: 45, objetivo: 45 },
-  { semana: "S8", km: 43, objetivo: 48 },
-];
-
-const sleepWeekData = [
-  { dia: "Lun", horas: 7.5, score: 78 },
-  { dia: "Mar", horas: 6.8, score: 72 },
-  { dia: "Mié", horas: 7.2, score: 80 },
-  { dia: "Jue", horas: 7.8, score: 85 },
-  { dia: "Vie", horas: 6.5, score: 68 },
-  { dia: "Sáb", horas: 8.2, score: 92 },
-  { dia: "Dom", horas: 9.2, score: 72 },
-];
-
-// Running pace evolution in Z2 (weekly average)
-const z2PaceEvolution = [
-  { semana: "S1", ritmo: 9.8 },
-  { semana: "S2", ritmo: 9.5 },
-  { semana: "S3", ritmo: 9.3 },
-  { semana: "S4", ritmo: 9.1 },
-  { semana: "S5", ritmo: 8.9 },
-  { semana: "S6", ritmo: 8.7 },
-  { semana: "S7", ritmo: 8.5 },
-  { semana: "S8", ritmo: 8.4 },
-];
-
-// Average pace by HR zone
-const paceByHRZone = [
-  { zona: "Z5 (VO2max)", ritmo: 4.8, color: "#F43F5E" },
-  { zona: "Z4 (Umbral)", ritmo: 7.23, color: "#F97316" },
-  { zona: "Z3 (Tempo)", ritmo: 8.28, color: "#C9FF00" },
-  { zona: "Z2 (Aeróbico)", ritmo: 9.68, color: "#00D4FF" },
-  { zona: "Z1 (Recuperación)", ritmo: 8.0, color: "#22C55E" },
-];
-
-// Strength progression data
-const strengthProgressionData = [
-  { name: "Sentadilla", weight: 50, prevWeight: 47.5, volume: "3x10", trend: "up" as const },
-  { name: "Press Banca", weight: 15, prevWeight: 14, volume: "3x8", trend: "up" as const },
-  { name: "Peso Muerto Rumano", weight: 40, prevWeight: 40, volume: "3x10", trend: "equal" as const },
-  { name: "Zancada Búlgara", weight: 14, prevWeight: 12, volume: "3x12", trend: "up" as const },
-  { name: "Face Pull", weight: 12, prevWeight: 11, volume: "3x15", trend: "up" as const },
-  { name: "Curl de bíceps", weight: 10, prevWeight: 10, volume: "3x12", trend: "equal" as const },
-];
-
-// Biometric trends data
-const hrvTrendData = [
-  { semana: "S1", hrv: 65 },
-  { semana: "S2", hrv: 68 },
-  { semana: "S3", hrv: 70 },
-  { semana: "S4", hrv: 69 },
-  { semana: "S5", hrv: 71 },
-  { semana: "S6", hrv: 72 },
-  { semana: "S7", hrv: 71 },
-  { semana: "S8", hrv: 73 },
-];
-
-const cadenceTrendData = [
-  { semana: "S1", cadencia: 170 },
-  { semana: "S2", cadencia: 172 },
-  { semana: "S3", cadencia: 171 },
-  { semana: "S4", cadencia: 173 },
-  { semana: "S5", cadencia: 174 },
-  { semana: "S6", cadencia: 175 },
-  { semana: "S7", cadencia: 176 },
-  { semana: "S8", cadencia: 175 },
-];
-
-const restingHRTrendData = [
-  { semana: "S1", fc: 52 },
-  { semana: "S2", fc: 51 },
-  { semana: "S3", fc: 50 },
-  { semana: "S4", fc: 51 },
-  { semana: "S5", fc: 49 },
-  { semana: "S6", fc: 49 },
-  { semana: "S7", fc: 48 },
-  { semana: "S8", fc: 48 },
-];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -177,8 +129,17 @@ function SectionTitle({ icon, title, color }: { icon: React.ReactNode; title: st
 
 // Sleep Donut Card
 function SleepAnalysis({ score: scoreProp, hours: hoursProp }: { score?: number | null; hours?: number | null } = {}) {
-  const score = scoreProp ?? 72;
-  const totalHoras = hoursProp ?? 9.2;
+  const score = scoreProp ?? null;
+  const totalHoras = hoursProp ?? null;
+  if (score === null || totalHoras === null) {
+    return (
+      <div className="rounded-2xl p-5 flex flex-col gap-4 items-center justify-center text-center" style={{ background: "rgba(22,27,34,0.9)", border: "1px solid rgba(168,85,247,0.25)", minHeight: 160 }}>
+        <Moon className="h-8 w-8 text-[#30363D]" />
+        <p className="text-xs text-[#8B949E]">Sueño anoche</p>
+        <p className="text-[#30363D] text-xs">Sin datos · Sincroniza Garmin</p>
+      </div>
+    );
+  }
   const scoreData = [{ value: score }, { value: 100 - score }];
   const phases = [
     { label: "Profundo", hours: Math.round(totalHoras * 0.20 * 10) / 10, color: "#6366F1", pct: 20 },
@@ -246,7 +207,16 @@ function SleepAnalysis({ score: scoreProp, hours: hoursProp }: { score?: number 
 
 // Readiness HRV Card
 function ReadinessCard({ hrv: hrvProp }: { hrv?: number | null } = {}) {
-  const hrv = hrvProp ?? 73;
+  const hrv = hrvProp ?? null;
+  if (hrv === null) {
+    return (
+      <div className="rounded-2xl p-5 flex flex-col gap-4 items-center justify-center text-center" style={{ background: "rgba(22,27,34,0.9)", border: "1px solid rgba(34,197,94,0.25)", minHeight: 160 }}>
+        <Brain className="h-8 w-8 text-[#30363D]" />
+        <p className="text-xs text-[#8B949E]">HRV / Readiness</p>
+        <p className="text-[#30363D] text-xs">Sin datos · Sincroniza Garmin</p>
+      </div>
+    );
+  }
   return (
     <div
       className="rounded-2xl p-5 flex flex-col gap-3"
@@ -297,9 +267,18 @@ function ReadinessCard({ hrv: hrvProp }: { hrv?: number | null } = {}) {
 
 // Stress & Battery Card
 function StressBatteryCard({ stress: stressProp, battery: batteryProp, fcReposo: fcRepProp }: { stress?: number | null; battery?: number | null; fcReposo?: number | null } = {}) {
-  const stress = stressProp ?? 20;
-  const battery = batteryProp ?? 75;
-  const fcReposo = fcRepProp ?? 48;
+  const stress = stressProp ?? null;
+  const battery = batteryProp ?? null;
+  const fcReposo = fcRepProp ?? null;
+  if (stress === null && battery === null && fcReposo === null) {
+    return (
+      <div className="rounded-2xl p-5 flex flex-col gap-4 items-center justify-center text-center" style={{ background: "rgba(22,27,34,0.9)", border: "1px solid rgba(249,115,22,0.2)", minHeight: 160 }}>
+        <Zap className="h-8 w-8 text-[#30363D]" />
+        <p className="text-xs text-[#8B949E]">Estrés & Energía</p>
+        <p className="text-[#30363D] text-xs">Sin datos · Sincroniza Garmin</p>
+      </div>
+    );
+  }
   return (
     <div
       className="rounded-2xl p-5 flex flex-col gap-4"
@@ -317,15 +296,15 @@ function StressBatteryCard({ stress: stressProp, battery: batteryProp, fcReposo:
             <Wind className="h-3.5 w-3.5 text-green-400" />
             <span className="text-xs text-[#8B949E]">Score de Estrés</span>
           </div>
-          <span className="text-sm font-bold text-green-400">{stress}/100</span>
+          <span className="text-sm font-bold text-green-400">{stress !== null ? `${Math.round(stress)}/100` : "—"}</span>
         </div>
         <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "rgba(48,54,61,0.7)" }}>
           <div
             className="h-full rounded-full"
-            style={{ width: `${stress}%`, background: "linear-gradient(90deg, #22C55E, #86EFAC)" }}
+            style={{ width: `${stress ?? 0}%`, background: "linear-gradient(90deg, #22C55E, #86EFAC)" }}
           />
         </div>
-        <p className="text-[10px] text-green-400 mt-1">Muy bajo · Óptimo</p>
+        <p className="text-[10px] text-green-400 mt-1">{stress !== null && stress < 30 ? "Muy bajo · Óptimo" : stress !== null ? `${Math.round(stress)}/100` : "Sin datos"}</p>
       </div>
 
       {/* Body Battery */}
@@ -335,15 +314,15 @@ function StressBatteryCard({ stress: stressProp, battery: batteryProp, fcReposo:
             <BatteryMedium className="h-3.5 w-3.5 text-cyan-400" />
             <span className="text-xs text-[#8B949E]">Body Battery</span>
           </div>
-          <span className="text-sm font-bold text-cyan-400">{battery}/100</span>
+          <span className="text-sm font-bold text-cyan-400">{battery !== null ? `${battery}/100` : "—"}</span>
         </div>
         <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "rgba(48,54,61,0.7)" }}>
           <div
             className="h-full rounded-full"
-            style={{ width: `${battery}%`, background: "linear-gradient(90deg, #00D4FF, #0EA5E9)" }}
+            style={{ width: `${battery ?? 0}%`, background: "linear-gradient(90deg, #00D4FF, #0EA5E9)" }}
           />
         </div>
-        <p className="text-[10px] text-cyan-400 mt-1">Cargada · Buena recuperación</p>
+        <p className="text-[10px] text-cyan-400 mt-1">{battery !== null && battery >= 75 ? "Cargada · Buena recuperación" : battery !== null ? `${battery}/100` : "Sin datos"}</p>
       </div>
 
       {/* FC Reposo */}
@@ -352,28 +331,31 @@ function StressBatteryCard({ stress: stressProp, battery: batteryProp, fcReposo:
           <Heart className="h-3.5 w-3.5 text-pink-400" />
           <span className="text-xs text-[#8B949E]">FC Reposo</span>
         </div>
-        <span className="text-sm font-bold text-pink-400">{fcReposo} bpm</span>
+        <span className="text-sm font-bold text-pink-400">{fcReposo !== null ? `${fcReposo} bpm` : "—"}</span>
       </div>
     </div>
   );
 }
 
 function buildSevenDayMetrics(data?: DashboardData | null) {
-  const km = data?.semana_actual?.km_realizados ?? 42.5;
-  const fuerza = data?.semana_actual?.sesiones_fuerza ?? 3;
-  const hrv = data?.hrv_data?.[0]?.hrv_ms ?? 73;
-  const sleep = data?.sleep_data?.length
-    ? data.sleep_data.reduce((s, d) => s + (d.score ?? 0), 0) / data.sleep_data.length
-    : 7.8;
-  const fcReposo = data?.hrv_data?.[0]?.fc_reposo ?? 48;
+  const hasData = data != null;
+  const km = hasData ? (data.semana_actual?.km_realizados ?? 0) : null;
+  const fuerza = hasData ? (data.semana_actual?.sesiones_fuerza ?? 0) : null;
+  const hrv = data?.hrv_data?.[0]?.hrv_ms ?? null;
+  const sleepArr = data?.sleep_data ?? [];
+  const sleepAvg = sleepArr.length
+    ? Math.round(sleepArr.reduce((s, d) => s + (d.score ?? 0), 0) / sleepArr.length)
+    : null;
+  const fcReposo = data?.hrv_data?.[0]?.fc_reposo ?? null;
+  const estres = data?.hrv_data?.[0]?.estres_medio ?? null;
   return [
-    { label: "KM TOTALES", value: km.toFixed(1), unit: "km", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)", icon: Footprints, delta: "—", up: null },
-    { label: "SESIONES FUERZA", value: String(fuerza), unit: "sesiones", color: "#A855F7", bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.2)", icon: Dumbbell, delta: "=", up: null },
-    { label: "SLEEP SCORE", value: Math.round(sleep).toString(), unit: "/100", color: "#6366F1", bg: "rgba(99,102,241,0.08)", border: "rgba(99,102,241,0.2)", icon: Moon, delta: "—", up: null },
-    { label: "SCORE ESTRÉS", value: "—", unit: "/100", color: "#22C55E", bg: "rgba(34,197,94,0.08)", border: "rgba(34,197,94,0.2)", icon: Wind, delta: "—", up: null },
+    { label: "KM TOTALES", value: km !== null ? km.toFixed(1) : "—", unit: "km", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)", icon: Footprints, delta: "—", up: null },
+    { label: "SESIONES FUERZA", value: fuerza !== null ? String(fuerza) : "—", unit: "sesiones", color: "#A855F7", bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.2)", icon: Dumbbell, delta: "—", up: null },
+    { label: "SLEEP SCORE", value: sleepAvg !== null ? String(sleepAvg) : "—", unit: "/100", color: "#6366F1", bg: "rgba(99,102,241,0.08)", border: "rgba(99,102,241,0.2)", icon: Moon, delta: "—", up: null },
+    { label: "SCORE ESTRÉS", value: estres !== null ? String(Math.round(estres)) : "—", unit: "/100", color: "#22C55E", bg: "rgba(34,197,94,0.08)", border: "rgba(34,197,94,0.2)", icon: Wind, delta: "—", up: null },
     { label: "CADENCIA MEDIA", value: "—", unit: "spm", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)", icon: Activity, delta: "—", up: null },
-    { label: "HRV", value: hrv ? Math.round(hrv).toString() : "—", unit: "ms", color: "#F43F5E", bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.2)", icon: Brain, delta: "—", up: null },
-    { label: "FC REPOSO", value: fcReposo ? String(fcReposo) : "—", unit: "bpm", color: "#F97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.2)", icon: Heart, delta: "—", up: null },
+    { label: "HRV", value: hrv !== null ? Math.round(hrv).toString() : "—", unit: "ms", color: "#F43F5E", bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.2)", icon: Brain, delta: "—", up: null },
+    { label: "FC REPOSO", value: fcReposo !== null ? String(fcReposo) : "—", unit: "bpm", color: "#F97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.2)", icon: Heart, delta: "—", up: null },
   ];
 }
 
@@ -423,7 +405,29 @@ export function Home() {
   const fase = dashData?.fase_macrociclo?.nombre ?? "Acondicionamiento";
   const objetivo = dashData?.perfil?.objetivo ?? "Maratón de Sevilla";
   const fechaObj = dashData?.perfil?.fecha_objetivo ?? "2027-02-21";
-  const runTrend = dashData?.running_trend?.length ? dashData.running_trend : runningProgressData;
+  const runTrend = dashData?.running_trend?.length ? dashData.running_trend : [];
+  const ritmoTrend = dashData?.ritmo_trend ?? [];
+  const sleepChartData = buildSleepChartData(dashData?.sleep_data ?? []);
+  const bioChartData = buildHrvChartData(dashData?.hrv_data ?? []);
+  const cadenciaTrend = dashData?.cadencia_trend ?? [];
+  const fuerzaData = dashData?.fuerza_reciente ?? [];
+  const actRecientes = dashData?.actividades_recientes ?? [];
+
+  // Semana de entrenamiento calculada desde fecha_inicio
+  const semanaNum = (() => {
+    const inicio = dashData?.perfil?.fecha_inicio_entrenamiento;
+    if (!inicio) return null;
+    const diff = new Date().getTime() - new Date(inicio).getTime();
+    return Math.max(1, Math.ceil(diff / (7 * 24 * 60 * 60 * 1000)));
+  })();
+
+  // Fecha objetivo formateada
+  const fechaObjFmt = (() => {
+    if (!fechaObj) return null;
+    const d = new Date(fechaObj + "T12:00:00");
+    const months = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    return `${d.getDate()} ${months[d.getMonth()]} · ${d.getFullYear()}`;
+  })();
 
   const completedCheckpoints = checkpoints.filter((c) => c.status === "completed").length;
   const progressPercentage = (completedCheckpoints / checkpoints.length) * 100;
@@ -463,19 +467,14 @@ export function Home() {
               <p className="text-[#8B949E] text-sm mb-4">{getCurrentDate()}</p>
 
               <div className="flex flex-wrap items-center gap-2">
-                {/* Fase de entrenamiento */}
                 <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/30">
                   ⚡ {fase}
                 </Badge>
-                {/* Fase del ciclo */}
-                {userId === 1 && (
-                  <Badge className="bg-pink-500/20 text-pink-300 border-pink-500/30">
-                    🌸 Fase Folicular · Día 8
+                {semanaNum !== null && (
+                  <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">
+                    🗓 Semana {semanaNum} de entrenamiento
                   </Badge>
                 )}
-                <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">
-                  🗓 Semana 10 de entrenamiento
-                </Badge>
               </div>
             </div>
 
@@ -509,7 +508,7 @@ export function Home() {
                   <p className="text-[10px] text-[#8B949E]">semanas</p>
                 </div>
               </div>
-              <p className="text-[10px] text-[#8B949E] mt-2">22 Feb · 2027</p>
+              {fechaObjFmt && <p className="text-[10px] text-[#8B949E] mt-2">{fechaObjFmt}</p>}
             </div>
           </div>
         </section>
@@ -668,7 +667,7 @@ export function Home() {
         </section>
 
         {/* ── Ciclo para Malena ─────────────────────────────────────────────── */}
-        {userId === 1 && (
+        {userId === 1 && dashData?.ciclo && (
           <section>
             <div
               className="rounded-2xl p-6 relative overflow-hidden"
@@ -685,9 +684,9 @@ export function Home() {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {[
-                    { label: "Fase Actual", value: "Folicular", sub: "Día 8 de 28", color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.3)" },
-                    { label: "Próxima Regla", value: "En 20 días", sub: "27 de Mayo", color: "#F43F5E", bg: "rgba(244,63,94,0.1)", border: "rgba(244,63,94,0.3)" },
-                    { label: "Nivel Energía", value: "Alto ⚡", sub: "Óptimo para entrenar", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)" },
+                    { label: "Fase Actual", value: dashData.ciclo.fase, sub: `Día ${dashData.ciclo.dia_ciclo} de ${dashData.ciclo.duracion_ciclo}`, color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.3)" },
+                    { label: "Próxima Regla", value: `En ${dashData.ciclo.dias_para_regla} días`, sub: dashData.ciclo.proxima_fecha, color: "#F43F5E", bg: "rgba(244,63,94,0.1)", border: "rgba(244,63,94,0.3)" },
+                    { label: "Nivel Energía", value: dashData.ciclo.energia.split("—")[0].trim(), sub: dashData.ciclo.energia.split("—")[1]?.trim() ?? "", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)" },
                   ].map((item) => (
                     <div key={item.label} className="rounded-xl p-4" style={{ background: item.bg, border: `1px solid ${item.border}` }}>
                       <p className="text-[10px] mb-1 font-bold uppercase tracking-wider" style={{ color: item.color }}>{item.label}</p>
@@ -698,7 +697,7 @@ export function Home() {
                 </div>
                 <div className="mt-3 rounded-xl p-3" style={{ background: "rgba(244,63,94,0.06)", border: "1px solid rgba(244,63,94,0.15)" }}>
                   <p className="text-xs text-pink-200">
-                    💡 <span className="font-semibold text-pink-300">Consejo:</span> Fase folicular — ideal para alta intensidad. Aprovecha el pico de energía para series o fuerza máxima.
+                    💡 <span className="font-semibold text-pink-300">Consejo:</span> {dashData.ciclo.energia}
                   </p>
                 </div>
               </div>
@@ -717,67 +716,37 @@ export function Home() {
             }}
           >
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-              {strengthProgressionData.map((exercise) => {
-                const trendIcon = exercise.trend === "up" ? (
-                  <ArrowUp className="h-4 w-4 text-green-400" />
-                ) : exercise.trend === "down" ? (
-                  <ArrowDown className="h-4 w-4 text-red-400" />
-                ) : (
-                  <Minus className="h-4 w-4 text-[#8B949E]" />
-                );
-                const trendColor = exercise.trend === "up" ? "#22C55E" : exercise.trend === "down" ? "#F43F5E" : "#8B949E";
-                const diff = exercise.weight - exercise.prevWeight;
-
-                return (
-                  <div
-                    key={exercise.name}
-                    className="rounded-xl p-4 relative overflow-hidden group hover:scale-[1.02] transition-all cursor-default"
-                    style={{
-                      background: "rgba(22,27,34,0.9)",
-                      border: "1px solid rgba(168,85,247,0.2)",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.2)"
-                    }}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <h4 className="text-sm font-bold text-white mb-0.5">{exercise.name}</h4>
-                        <p className="text-xs text-[#8B949E]">{exercise.volume}</p>
-                      </div>
-                      <div className="flex items-center gap-1" style={{ color: trendColor }}>
-                        {trendIcon}
-                        {exercise.trend !== "equal" && (
-                          <span className="text-xs font-bold">
-                            {diff > 0 ? "+" : ""}{diff.toFixed(1)}kg
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-end justify-between">
-                      <div>
-                        <p className="text-xs text-[#8B949E] mb-1">Carga actual</p>
-                        <p className="text-2xl font-black text-purple-300">{exercise.weight}<span className="text-sm text-[#8B949E]"> kg</span></p>
-                      </div>
-                      {exercise.prevWeight > 0 && (
-                        <div className="text-right">
-                          <p className="text-[10px] text-[#8B949E]">Anterior</p>
-                          <p className="text-sm font-semibold text-[#8B949E]">{exercise.prevWeight} kg</p>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(48,54,61,0.6)" }}>
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${exercise.prevWeight > 0 ? Math.min(100, (exercise.weight / exercise.prevWeight) * 100) : 100}%`,
-                          background: exercise.trend === "up" ? "linear-gradient(90deg, #A855F7, #22C55E)" : exercise.trend === "down" ? "#F43F5E" : "#8B949E"
-                        }}
-                      />
+              {fuerzaData.length === 0 ? (
+                <div className="col-span-3 text-center py-8 text-[#8B949E] text-sm">
+                  Sin datos de fuerza registrados aún. Registra una sesión en el Diario.
+                </div>
+              ) : fuerzaData.map((exercise, idx) => (
+                <div
+                  key={idx}
+                  className="rounded-xl p-4 relative overflow-hidden group hover:scale-[1.02] transition-all cursor-default"
+                  style={{
+                    background: "rgba(22,27,34,0.9)",
+                    border: "1px solid rgba(168,85,247,0.2)",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.2)"
+                  }}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <h4 className="text-sm font-bold text-white mb-0.5">{exercise.ejercicio}</h4>
+                      <p className="text-xs text-[#8B949E]">{exercise.series}x{exercise.repeticiones}</p>
                     </div>
                   </div>
-                );
-              })}
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <p className="text-xs text-[#8B949E] mb-1">Carga</p>
+                      <p className="text-2xl font-black text-purple-300">
+                        {exercise.peso ?? "—"}
+                        {exercise.peso != null && <span className="text-sm text-[#8B949E]"> kg</span>}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
 
             <button
@@ -799,105 +768,78 @@ export function Home() {
           <SectionTitle icon={<Footprints className="h-4 w-4 text-cyan-400" />} title="Análisis de Running — Zona 2, Ritmo y Progreso" color="#00D4FF" />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
-            {/* Evolución Ritmo Z2 */}
+            {/* Ritmo medio semanal */}
             <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.2)" }}>
               <div className="px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-                <h3 className="text-sm font-bold text-white">Ritmo Z2 — Evolución</h3>
-                <p className="text-xs text-[#8B949E] mt-0.5">Media semanal de carreras Z2</p>
+                <h3 className="text-sm font-bold text-white">Ritmo Medio — Evolución</h3>
+                <p className="text-xs text-[#8B949E] mt-0.5">Min/km media semanal en running</p>
               </div>
               <div className="p-4 flex-1 flex flex-col">
                 <div className="flex-1">
-                  <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={z2PaceEvolution} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                    <XAxis dataKey="semana" stroke="#8B949E" fontSize={11} />
-                    <YAxis
-                      stroke="#8B949E"
-                      fontSize={11}
-                      domain={[7.5, 10]}
-                      tickFormatter={(val) => `${val.toFixed(1)}`}
-                    />
-                    <Tooltip
-                      contentStyle={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 8, fontSize: 12 }}
-                      labelStyle={{ color: "#fff" }}
-                      formatter={(value: number) => {
-                        const mins = Math.floor(value);
-                        const secs = Math.round((value % 1) * 60);
-                        return [`${mins}:${String(secs).padStart(2, '0')}/km`, "Ritmo Z2"];
-                      }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="ritmo"
-                      name="Ritmo Z2"
-                      stroke="#00D4FF"
-                      strokeWidth={3}
-                      dot={{ fill: "#00D4FF", r: 4, strokeWidth: 2, stroke: "#0E1117" }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                  {ritmoTrend.length === 0 ? (
+                    <div className="h-[220px] flex items-center justify-center text-[#8B949E] text-sm">Sin datos — sincroniza Garmin</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <LineChart data={ritmoTrend} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                        <XAxis dataKey="semana" stroke="#8B949E" fontSize={11} />
+                        <YAxis stroke="#8B949E" fontSize={11} tickFormatter={(v) => `${Math.floor(v)}:${String(Math.round((v % 1) * 60)).padStart(2,"0")}`} />
+                        <Tooltip
+                          contentStyle={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 8, fontSize: 12 }}
+                          labelStyle={{ color: "#fff" }}
+                          formatter={(value: number) => {
+                            const mins = Math.floor(value);
+                            const secs = Math.round((value % 1) * 60);
+                            return [`${mins}:${String(secs).padStart(2, "0")}/km`, "Ritmo"];
+                          }}
+                        />
+                        <Line type="monotone" dataKey="ritmo" name="Ritmo" stroke="#00D4FF" strokeWidth={3}
+                          dot={{ fill: "#00D4FF", r: 4, strokeWidth: 2, stroke: "#0E1117" }} activeDot={{ r: 6 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
                 <div className="mt-3 pt-3 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-[#8B949E]">Mejora total</span>
-                    <span className="font-bold text-green-400">-1.4 min/km ↓</span>
+                    <span className="text-[#8B949E]">Semanas con datos</span>
+                    <span className="font-bold text-cyan-400">{ritmoTrend.length}</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Ritmo Medio por Zona FC */}
+            {/* Últimas actividades */}
             <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.2)" }}>
               <div className="px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-                <h3 className="text-sm font-bold text-white">Ritmo por Zona FC</h3>
-                <p className="text-xs text-[#8B949E] mt-0.5">Ritmo medio en cada zona</p>
+                <h3 className="text-sm font-bold text-white">Últimas Actividades</h3>
+                <p className="text-xs text-[#8B949E] mt-0.5">Ritmo y FC de los últimos entrenos</p>
               </div>
               <div className="p-4 flex-1 flex flex-col justify-between">
-                <div className="space-y-2.5">
-                  {paceByHRZone.map((zone) => {
-                    const minPace = 4.5;
-                    const maxPace = 10;
-                    const normalizedWidth = ((zone.ritmo - minPace) / (maxPace - minPace)) * 100;
-
-                    return (
-                      <div key={zone.zona} className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-semibold" style={{ color: zone.color }}>{zone.zona}</span>
-                          <span className="text-[11px] font-bold text-white">{Math.floor(zone.ritmo)}:{String(Math.round((zone.ritmo % 1) * 60)).padStart(2, '0')}/km</span>
-                        </div>
-                        <div className="h-5 rounded-full overflow-hidden" style={{ background: "rgba(48,54,61,0.6)" }}>
-                          <div
-                            className="h-full flex items-center justify-end pr-2"
-                            style={{
-                              width: `${Math.max(15, normalizedWidth)}%`,
-                              background: zone.color,
-                              transition: "width 0.3s ease"
-                            }}
-                          >
-                            <span className="text-[9px] font-bold text-white/90">{zone.ritmo.toFixed(2)}</span>
+                {actRecientes.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center text-[#8B949E] text-sm">Sin datos — sincroniza Garmin</div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {actRecientes.slice(0, 5).map((act, i) => {
+                      const km = ((act.distancia_m || 0) / 1000).toFixed(1);
+                      const ritmoSec = act.ritmo_medio;
+                      const ritmofmt = ritmoSec
+                        ? `${Math.floor(ritmoSec / 60)}:${String(Math.round(ritmoSec % 60)).padStart(2, "0")}/km`
+                        : "—";
+                      return (
+                        <div key={i} className="flex items-center justify-between py-1.5 border-b border-[#30363D]/40 last:border-0">
+                          <div>
+                            <p className="text-xs font-semibold text-white capitalize">{act.tipo_deporte?.replace(/_/g, " ")}</p>
+                            <p className="text-[10px] text-[#8B949E]">{act.fecha} · {km} km</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-bold text-cyan-400">{ritmofmt}</p>
+                            {act.fc_media && <p className="text-[10px] text-pink-400">{act.fc_media} bpm</p>}
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="mt-3 pt-3 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-                  <div className="grid grid-cols-3 gap-1 text-center">
-                    <div>
-                      <p className="text-[10px] text-[#8B949E]">Mejor</p>
-                      <p className="text-xs font-bold text-green-400">4:48</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-[#8B949E]">Promedio</p>
-                      <p className="text-xs font-bold text-cyan-400">7:38</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-[#8B949E]">Más lento</p>
-                      <p className="text-xs font-bold text-orange-400">9:41</p>
-                    </div>
+                      );
+                    })}
                   </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -947,12 +889,12 @@ export function Home() {
                 <div className="mt-3 pt-3 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <p className="text-[#8B949E]">KM totales</p>
-                      <p className="font-bold text-cyan-400">293 km</p>
+                      <p className="text-[#8B949E]">KM esta semana</p>
+                      <p className="font-bold text-cyan-400">{dashData?.semana_actual?.km_realizados ?? "—"} km</p>
                     </div>
                     <div>
-                      <p className="text-[#8B949E]">Cumplimiento</p>
-                      <p className="font-bold text-green-400">89.6% ✓</p>
+                      <p className="text-[#8B949E]">Plan semana</p>
+                      <p className="font-bold text-[#C9FF00]">{dashData?.semana_actual?.km_planificados ?? "—"} km</p>
                     </div>
                   </div>
                 </div>
@@ -974,36 +916,43 @@ export function Home() {
                 <p className="text-xs text-[#8B949E] mt-0.5">Evolución de recuperación</p>
               </div>
               <div className="p-4">
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={hrvTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                    <XAxis dataKey="semana" stroke="#8B949E" fontSize={11} />
-                    <YAxis stroke="#8B949E" fontSize={11} domain={[60, 75]} />
-                    <Tooltip
-                      contentStyle={{ background: "#161B22", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 8 }}
-                      labelStyle={{ color: "#fff" }}
-                      formatter={(value: number) => [`${value} ms`, "HRV"]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="hrv"
-                      name="HRV"
-                      stroke="#22C55E"
-                      strokeWidth={3}
-                      dot={{ fill: "#22C55E", r: 4, strokeWidth: 2, stroke: "#0E1117" }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                {bioChartData.length === 0 ? (
+                  <div className="h-[200px] flex items-center justify-center text-[#8B949E] text-sm">Sin datos — sincroniza Garmin</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={bioChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                      <XAxis dataKey="semana" stroke="#8B949E" fontSize={11} />
+                      <YAxis stroke="#8B949E" fontSize={11} />
+                      <Tooltip
+                        contentStyle={{ background: "#161B22", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 8 }}
+                        labelStyle={{ color: "#fff" }}
+                        formatter={(value: number) => [`${value} ms`, "HRV"]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="hrv"
+                        name="HRV"
+                        stroke="#22C55E"
+                        strokeWidth={3}
+                        dot={{ fill: "#22C55E", r: 4, strokeWidth: 2, stroke: "#0E1117" }}
+                        activeDot={{ r: 6 }}
+                        connectNulls
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
                 <div className="mt-3 pt-3 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <p className="text-[#8B949E]">Actual</p>
-                      <p className="font-bold text-green-400">73 ms</p>
+                      <p className="font-bold text-green-400">
+                        {latestHrv?.hrv_ms ? `${Math.round(latestHrv.hrv_ms)} ms` : "—"}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[#8B949E]">Mejora</p>
-                      <p className="font-bold text-green-400">+8 ms ↑</p>
+                      <p className="text-[#8B949E]">Días con datos</p>
+                      <p className="font-bold text-green-400">{bioChartData.filter(d => d.hrv).length}</p>
                     </div>
                   </div>
                 </div>
@@ -1017,36 +966,42 @@ export function Home() {
                 <p className="text-xs text-[#8B949E] mt-0.5">Pasos por minuto (spm)</p>
               </div>
               <div className="p-4">
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={cadenceTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                    <XAxis dataKey="semana" stroke="#8B949E" fontSize={11} />
-                    <YAxis stroke="#8B949E" fontSize={11} domain={[165, 180]} />
-                    <Tooltip
-                      contentStyle={{ background: "#161B22", border: "1px solid rgba(201,255,0,0.3)", borderRadius: 8 }}
-                      labelStyle={{ color: "#fff" }}
-                      formatter={(value: number) => [`${value} spm`, "Cadencia"]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="cadencia"
-                      name="Cadencia"
-                      stroke="#C9FF00"
-                      strokeWidth={3}
-                      dot={{ fill: "#C9FF00", r: 4, strokeWidth: 2, stroke: "#0E1117" }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                {cadenciaTrend.length === 0 ? (
+                  <div className="h-[200px] flex items-center justify-center text-[#8B949E] text-sm">Sin datos — sincroniza Garmin</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={cadenciaTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                      <XAxis dataKey="semana" stroke="#8B949E" fontSize={11} />
+                      <YAxis stroke="#8B949E" fontSize={11} />
+                      <Tooltip
+                        contentStyle={{ background: "#161B22", border: "1px solid rgba(201,255,0,0.3)", borderRadius: 8 }}
+                        labelStyle={{ color: "#fff" }}
+                        formatter={(value: number) => [`${value} spm`, "Cadencia"]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="cadencia"
+                        name="Cadencia"
+                        stroke="#C9FF00"
+                        strokeWidth={3}
+                        dot={{ fill: "#C9FF00", r: 4, strokeWidth: 2, stroke: "#0E1117" }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
                 <div className="mt-3 pt-3 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <p className="text-[#8B949E]">Actual</p>
-                      <p className="font-bold text-[#C9FF00]">175 spm</p>
+                      <p className="text-[#8B949E]">Última semana</p>
+                      <p className="font-bold text-[#C9FF00]">
+                        {cadenciaTrend.length ? `${cadenciaTrend[cadenciaTrend.length - 1].cadencia} spm` : "—"}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[#8B949E]">Mejora</p>
-                      <p className="font-bold text-green-400">+5 spm ↑</p>
+                      <p className="text-[#8B949E]">Semanas</p>
+                      <p className="font-bold text-green-400">{cadenciaTrend.length}</p>
                     </div>
                   </div>
                 </div>
@@ -1060,36 +1015,43 @@ export function Home() {
                 <p className="text-xs text-[#8B949E] mt-0.5">Frecuencia cardíaca basal</p>
               </div>
               <div className="p-4">
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={restingHRTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                    <XAxis dataKey="semana" stroke="#8B949E" fontSize={11} />
-                    <YAxis stroke="#8B949E" fontSize={11} domain={[45, 55]} />
-                    <Tooltip
-                      contentStyle={{ background: "#161B22", border: "1px solid rgba(244,63,94,0.3)", borderRadius: 8 }}
-                      labelStyle={{ color: "#fff" }}
-                      formatter={(value: number) => [`${value} bpm`, "FC Reposo"]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="fc"
-                      name="FC Reposo"
-                      stroke="#F43F5E"
-                      strokeWidth={3}
-                      dot={{ fill: "#F43F5E", r: 4, strokeWidth: 2, stroke: "#0E1117" }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                {bioChartData.length === 0 ? (
+                  <div className="h-[200px] flex items-center justify-center text-[#8B949E] text-sm">Sin datos — sincroniza Garmin</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={bioChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                      <XAxis dataKey="semana" stroke="#8B949E" fontSize={11} />
+                      <YAxis stroke="#8B949E" fontSize={11} />
+                      <Tooltip
+                        contentStyle={{ background: "#161B22", border: "1px solid rgba(244,63,94,0.3)", borderRadius: 8 }}
+                        labelStyle={{ color: "#fff" }}
+                        formatter={(value: number) => [`${value} bpm`, "FC Reposo"]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="fc"
+                        name="FC Reposo"
+                        stroke="#F43F5E"
+                        strokeWidth={3}
+                        dot={{ fill: "#F43F5E", r: 4, strokeWidth: 2, stroke: "#0E1117" }}
+                        activeDot={{ r: 6 }}
+                        connectNulls
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
                 <div className="mt-3 pt-3 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <p className="text-[#8B949E]">Actual</p>
-                      <p className="font-bold text-pink-400">48 bpm</p>
+                      <p className="font-bold text-pink-400">
+                        {latestHrv?.fc_reposo ? `${latestHrv.fc_reposo} bpm` : "—"}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[#8B949E]">Mejora</p>
-                      <p className="font-bold text-green-400">-4 bpm ↓</p>
+                      <p className="text-[#8B949E]">Días con datos</p>
+                      <p className="font-bold text-green-400">{bioChartData.filter(d => d.fc).length}</p>
                     </div>
                   </div>
                 </div>
@@ -1117,7 +1079,7 @@ export function Home() {
             </div>
             <div className="px-6 pb-6">
               <ResponsiveContainer width="100%" height={280}>
-                <ComposedChart data={sleepWeekData}>
+                <ComposedChart data={sleepChartData.length ? sleepChartData : []}>
                   <defs>
                     <linearGradient id="sleepGradH" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#A855F7" stopOpacity={0.9} />

@@ -25,6 +25,13 @@ export function getPerfil(usuarioId: number) {
   return req<PerfilUsuario>(`/auth/perfil/${usuarioId}`);
 }
 
+export function actualizarPerfil(usuarioId: number, data: Partial<Omit<PerfilUsuario, "id">>) {
+  return req<{ ok: boolean }>(`/auth/perfil/${usuarioId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
 export function getDashboard(usuarioId: number) {
@@ -108,6 +115,38 @@ export function getGarminStats(usuarioId: number) {
   return req<GarminStats>(`/garmin/${usuarioId}/stats`);
 }
 
+export function sincronizarGarmin(usuarioId: number) {
+  return req<{ ok: boolean; message: string }>(`/garmin/${usuarioId}/sync`, { method: "POST" });
+}
+
+export function guardarCredencialesGarmin(usuarioId: number, emailGarmin: string, passwordGarmin: string) {
+  return req<{ ok: boolean }>(`/auth/garmin-credentials/${usuarioId}`, {
+    method: "PUT",
+    body: JSON.stringify({ email_garmin: emailGarmin, password_garmin: passwordGarmin }),
+  });
+}
+
+export function generarPlanSemana(usuarioId: number, fechaInicio: string, kmTotal?: number) {
+  return req<PlanGenerado>(`/plan/${usuarioId}/generar-semana`, {
+    method: "POST",
+    body: JSON.stringify({ fecha_inicio: fechaInicio, km_total: kmTotal ?? null }),
+  });
+}
+
+export function regenerarPlanTotal(usuarioId: number, semanas = 4) {
+  return req<{ ok: boolean; km_base_real: number; semanas_regeneradas: number; detalle: { semana_inicio: string; km_total: number; descarga: boolean }[] }>(
+    `/plan/${usuarioId}/regenerar-total`,
+    { method: "POST", body: JSON.stringify({ semanas }) }
+  );
+}
+
+export function actualizarSesionCompleta(sesionId: number, data: Partial<{ completado: boolean; km_realizados: number; sesion: string; tipo: string; detalles: string; duracion_min: number; intensidad: string; km_planificados: number; fecha: string }>) {
+  return req<{ ok: boolean }>(`/plan/sesion/${sesionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 // ── Entrenador ───────────────────────────────────────────────────────────────
 
 export function getResumenEntrenador(usuarioId: number) {
@@ -128,6 +167,8 @@ export interface PerfilUsuario {
   fcmax: number | null;
   fecha_objetivo: string | null;
   objetivo_tipo: string;
+  fecha_inicio_entrenamiento?: string | null;
+  email_garmin?: string | null;
 }
 
 export interface FaseMacrociclo {
@@ -145,7 +186,17 @@ export interface DashboardData {
   hrv_data: HrvEntry[];
   sleep_data: SleepEntry[];
   running_trend: { semana: string; km: number }[];
+  ritmo_trend: { semana: string; ritmo: number }[];
   fuerza_reciente: { ejercicio: string; peso: number; series: number; repeticiones: number }[];
+  cadencia_trend: { semana: string; cadencia: number }[];
+  ciclo: {
+    fase: string;
+    dia_ciclo: number;
+    duracion_ciclo: number;
+    dias_para_regla: number;
+    proxima_fecha: string;
+    energia: string;
+  } | null;
 }
 
 export interface PlanSemana {
@@ -229,6 +280,8 @@ export interface EntradaDiario {
   dolor_notas: string | null;
   estado_animo: string | null;
   feedback_entreno: string | null;
+  sangre?: string | null;
+  sintomas?: string | null;
 }
 
 export interface EntradaBiometrica {
@@ -243,6 +296,9 @@ export interface EntradaBiometrica {
   training_readiness: number | null;
   training_status: string | null;
   vo2max: number | null;
+  horas_totales: number | null;
+  sleep_profundo_horas: number | null;
+  sleep_rem_horas: number | null;
 }
 
 export interface GarminStats {
@@ -259,4 +315,24 @@ export interface ResumenEntrenador {
   biometrico: Record<string, number | string | null>;
   lesiones_activas: { tipo: string; grado: number }[];
   recomendaciones: string[];
+}
+
+export interface SesionGenerada {
+  fecha: string;
+  tipo: string;
+  sesion: string;
+  detalles: string | null;
+  km_planificados: number | null;
+  duracion_min: number | null;
+  intensidad: string | null;
+}
+
+export interface PlanGenerado {
+  ok: boolean;
+  semana_inicio: string;
+  km_total: number;
+  tipo_semana: string;
+  coach_tip: string;
+  macrociclo: number;
+  sesiones: SesionGenerada[];
 }

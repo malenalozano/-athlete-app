@@ -10,12 +10,14 @@ import {
 import {
   Home,
   CalendarDays,
-  Activity,
-  Watch,
   BookOpen,
   ChevronDown,
   Zap,
+  User,
+  RefreshCw,
 } from "lucide-react";
+import { useState } from "react";
+import { sincronizarGarmin } from "../api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -88,9 +90,9 @@ const NAV_ITEMS: NavItem[] = [
     subTabs: undefined,
   },
   {
-    path: "/garmin",
-    label: "Garmin",
-    icon: Watch,
+    path: "/perfil",
+    label: "Perfil",
+    icon: User,
     color: "text-blue-400",
     glowColor: "rgba(96,165,250,0.35)",
     bgActive: "bg-blue-500/15",
@@ -109,7 +111,7 @@ const DOT_COLORS: Record<string, string> = {
   "/plan-semanal": "bg-cyan-400",
   "/diario": "bg-purple-400",
   "/calendario": "bg-orange-400",
-  "/garmin": "bg-blue-400",
+  "/perfil": "bg-blue-400",
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -118,6 +120,23 @@ export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
   const { userId, userName, setUser } = useUser();
+  const [syncing, setSyncing] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
+
+  const handleSync = async () => {
+    if (!userId || syncing) return;
+    setSyncing(true);
+    setSyncSuccess(false);
+    try {
+      await sincronizarGarmin(userId);
+      setSyncSuccess(true);
+      setTimeout(() => setSyncSuccess(false), 1500);
+    } catch {
+      // silent — no romper UI si falla
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const activeNav = NAV_ITEMS.find((item) => {
     if (item.path === "/") return location.pathname === "/";
@@ -238,8 +257,29 @@ export function Header() {
               })}
             </nav>
 
-            {/* User selector */}
-            <div className="shrink-0">
+            {/* Sync button + User selector */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Garmin sync button */}
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                title="Sincronizar Garmin"
+                className="h-8 w-8 rounded-lg flex items-center justify-center transition-all"
+                style={{
+                  background: syncSuccess
+                    ? "rgba(34,197,94,0.25)"
+                    : "rgba(48,54,61,0.6)",
+                  border: syncSuccess
+                    ? "1px solid rgba(34,197,94,0.6)"
+                    : "1px solid rgba(255,255,255,0.1)",
+                }}
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 transition-colors ${syncing ? "animate-spin" : ""}`}
+                  style={{ color: syncSuccess ? "#22C55E" : "#8B949E" }}
+                />
+              </button>
+
               <Select
                 value={userName?.toLowerCase()}
                 onValueChange={handleUserChange}

@@ -77,19 +77,22 @@ def crear_entrada(e: EntradaDiario):
 
 
 @router.get("/biometrico/{usuario_id}")
-def get_biometrico(usuario_id: int, limit: int = 14):
+def get_biometrico(usuario_id: int, limit: int = 30):
     conn = get_db()
     rows = conn.execute(
-        """SELECT fecha, hrv_ms, fc_reposo, sleep_score, carga_aguda, carga_cronica,
-                  estres_medio, body_battery, training_readiness, training_status, vo2max
-           FROM datos_biometricos_premium
-           WHERE usuario_id = ?
-           ORDER BY fecha DESC LIMIT ?""",
+        """SELECT b.fecha, b.hrv_ms, b.fc_reposo, b.sleep_score, b.carga_aguda, b.carga_cronica,
+                  b.estres_medio, b.body_battery, b.training_readiness, b.training_status, b.vo2max,
+                  s.horas_totales, s.sleep_profundo_horas, s.sleep_rem_horas
+           FROM datos_biometricos_premium b
+           LEFT JOIN datos_sueno s ON b.usuario_id = s.usuario_id AND b.fecha = s.fecha
+           WHERE b.usuario_id = ?
+           ORDER BY b.fecha DESC LIMIT ?""",
         (usuario_id, limit),
     ).fetchall()
     conn.close()
     cols = ["fecha", "hrv_ms", "fc_reposo", "sleep_score", "carga_aguda", "carga_cronica",
-            "estres_medio", "body_battery", "training_readiness", "training_status", "vo2max"]
+            "estres_medio", "body_battery", "training_readiness", "training_status", "vo2max",
+            "horas_totales", "sleep_profundo_horas", "sleep_rem_horas"]
     return [dict(zip(cols, r)) for r in rows]
 
 

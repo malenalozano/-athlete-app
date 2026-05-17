@@ -19,107 +19,10 @@ import {
   Activity,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { crearEntradaDiario, getActividades, getEjercicios, getResumenEntrenador, type ActividadGarmin, type EjercicioBiblioteca } from "../api";
 
-// ── Mock data ──────────────────────────────────────────────────────────────────
-
-const entrenosLibres = [
-  {
-    id: 1,
-    fecha: "Dom 13 Abr",
-    tipo: "Carrera",
-    descripcion: "Tirada larga base — Parque del Retiro",
-    duracion: "1h 32min",
-    distancia: "15.4 km",
-    fc: "142 bpm",
-    sensacion: "😊 Bien",
-    notas: "Buenas sensaciones, cadencia estable. Zona 2 perfecta.",
-  },
-  {
-    id: 2,
-    fecha: "Vie 11 Abr",
-    tipo: "Carrera",
-    descripcion: "Tempo Run — Ritmo umbral",
-    duracion: "55 min",
-    distancia: "10.2 km",
-    fc: "162 bpm",
-    sensacion: "💪 Fuerte",
-    notas: "Últimos 2km algo pesados, pero mantuve el ritmo objetivo.",
-  },
-  {
-    id: 3,
-    fecha: "Jue 10 Abr",
-    tipo: "Movilidad",
-    descripcion: "Descanso activo — Yoga Runner",
-    duracion: "20 min",
-    distancia: "—",
-    fc: "—",
-    sensacion: "😌 Relajada",
-    notas: "Piernas cargadas. Estiramientos de cadera y gemelos.",
-  },
-];
-
-const ejercicios = [
-  {
-    nombre: "Sentadilla",
-    series: 4,
-    reps: "8",
-    peso: "65 kg",
-    notas: "Aumentar 5kg próxima semana",
-    tipo: "Piernas",
-    color: "#A855F7",
-  },
-  {
-    nombre: "Peso Muerto Rumano",
-    series: 3,
-    reps: "10",
-    peso: "55 kg",
-    notas: "Foco en activación de glúteos",
-    tipo: "Piernas",
-    color: "#A855F7",
-  },
-  {
-    nombre: "Plancha Lateral",
-    series: 3,
-    reps: "30s",
-    peso: "—",
-    notas: "Añadir elevación de cadera",
-    tipo: "Core",
-    color: "#00D4FF",
-  },
-  {
-    nombre: "Zancada búlgara",
-    series: 3,
-    reps: "12",
-    peso: "20 kg",
-    notas: "Equilibrio estable",
-    tipo: "Piernas",
-    color: "#A855F7",
-  },
-  {
-    nombre: "Dead Bug",
-    series: 3,
-    reps: "12",
-    peso: "—",
-    notas: "Lento y controlado",
-    tipo: "Core",
-    color: "#00D4FF",
-  },
-];
-
-const lesiones = [
-  {
-    id: 1,
-    zona: "Tibial anterior derecho",
-    tipo: "Sobrecarga",
-    inicio: "28 Mar",
-    estado: "En seguimiento",
-    dolor: 3,
-    tratamiento: "Hielo, antiinflamatorio, reducción de volume",
-    color: "#F97316",
-    stateColor: "bg-orange-400/15 text-orange-300 border-orange-500/30",
-  },
-];
+// ── Mock data (sólo para fallback del calendario) ──────────────────────────────
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
 
@@ -233,9 +136,27 @@ const RUN_TYPE_COLORS: Record<string, { bg: string; text: string; border: string
 };
 
 function EntrenoLibre() {
+  const { userId } = useUser();
   const [currentMonth, setCurrentMonth] = useState(new Date(2026, 3, 1)); // April 2026
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [nota, setNota] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [apiActividades, setApiActividades] = useState<ActividadGarmin[]>([]);
+
+  useEffect(() => {
+    if (!userId) return;
+    getActividades(userId, 60).then(setApiActividades).catch(() => null);
+  }, [userId]);
+
+  const handleProcesar = async () => {
+    if (!nota.trim() || !userId) return;
+    setSubmitting(true);
+    try {
+      await crearEntradaDiario({ usuario_id: userId, fecha: new Date().toISOString().split("T")[0], feedback_entreno: nota, fatiga_subjetiva: null, dolor_notas: null, estado_animo: null, fase_ciclo: null });
+      setNota("");
+    } catch { /* silent */ }
+    finally { setSubmitting(false); }
+  };
 
   // Generate calendar days
   const getDaysInMonth = (date: Date) => {
@@ -260,15 +181,45 @@ function EntrenoLibre() {
   const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   const dayNames = ["D", "L", "M", "X", "J", "V", "S"];
 
-  // Mock stats
+  // Build activity map from API data for current month
+  const apiActividadesPorDia = (() => {
+    const map: Record<number, typeof actividadesPorDia[number]> = {};
+    apiActividades.forEach(a => {
+      const d = new Date(a.fecha + "T12:00:00");
+      if (d.getMonth() !== currentMonth.getMonth() || d.getFullYear() !== currentMonth.getFullYear()) return;
+      const day = d.getDate();
+      const isRunning = a.tipo_deporte?.toLowerCase().includes("running") || a.tipo_deporte?.toLowerCase().includes("carrera");
+      if (!map[day]) map[day] = [];
+      map[day].push({
+        id: parseInt(a.id || "0") || day,
+        fecha: a.fecha,
+        tipo: isRunning ? "Carrera" : "Fuerza",
+        descripcion: `${a.tipo_deporte} — ${a.km?.toFixed(1) || "?"} km`,
+        duracion: a.duracion_fmt || "--",
+        distancia: a.km ? `${a.km.toFixed(1)} km` : "—",
+        fc: a.fc_media ? `${a.fc_media} bpm` : "—",
+        sensacion: "—",
+        notas: "",
+        runType: isRunning ? "Carrera" : undefined,
+        gymType: !isRunning ? a.tipo_deporte : undefined,
+      });
+    });
+    return map;
+  })();
+
+  const mergedActividades = apiActividades.length > 0 ? apiActividadesPorDia : actividadesPorDia;
+
+  // Stats del mes
+  const diasEntrenados = Object.keys(mergedActividades).length;
+  const todasActs = Object.values(mergedActividades).flat();
   const statsDelMes = [
-    { label: "DÍAS", value: "8", icon: Activity, color: "#C9FF00", bg: "rgba(201,255,0,0.1)", border: "rgba(201,255,0,0.25)" },
-    { label: "FUERZA", value: "4", icon: Dumbbell, color: "#F97316", bg: "rgba(249,115,22,0.1)", border: "rgba(249,115,22,0.25)" },
-    { label: "CARRERAS", value: "6", icon: Zap, color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.25)" },
+    { label: "DÍAS", value: String(diasEntrenados || Object.keys(actividadesPorDia).length), icon: Activity, color: "#C9FF00", bg: "rgba(201,255,0,0.1)", border: "rgba(201,255,0,0.25)" },
+    { label: "FUERZA", value: String(todasActs.filter(a => a.tipo === "Fuerza").length || "4"), icon: Dumbbell, color: "#F97316", bg: "rgba(249,115,22,0.1)", border: "rgba(249,115,22,0.25)" },
+    { label: "CARRERAS", value: String(todasActs.filter(a => a.tipo === "Carrera").length || "6"), icon: Zap, color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.25)" },
   ];
 
   const getActivityColorForDay = (day: number) => {
-    const activities = actividadesPorDia[day];
+    const activities = mergedActividades[day];
     if (!activities || activities.length === 0) return null;
     const hasRunning = activities.some(a => a.tipo === "Carrera");
     const hasStrength = activities.some(a => a.tipo === "Fuerza");
@@ -279,7 +230,7 @@ function EntrenoLibre() {
   };
 
   const getTypeLabelForDay = (day: number): { label: string; color: string } | null => {
-    const activities = actividadesPorDia[day];
+    const activities = mergedActividades[day];
     if (!activities || activities.length === 0) return null;
     const gymAct = activities.find(a => a.gymType);
     const runAct = activities.find(a => a.runType);
@@ -294,7 +245,8 @@ function EntrenoLibre() {
     return null;
   };
 
-  const TODAY = 14;
+  const TODAY = new Date().getDate();
+  const TODAY_MONTH = new Date().getMonth();
 
   return (
     <div className="space-y-6">
@@ -324,7 +276,7 @@ function EntrenoLibre() {
           >
             <div>
               <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-widest mb-0.5">Hoy</p>
-              <p className="text-sm font-bold text-white">14 de Abril, 2026</p>
+              <p className="text-sm font-bold text-white">{new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}</p>
             </div>
             <span
               className="text-xs font-black px-2 py-1 rounded-lg"
@@ -351,8 +303,9 @@ function EntrenoLibre() {
                 }}
               />
               <button
-                onClick={() => setNota("")}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all"
+                onClick={handleProcesar}
+                disabled={submitting || !nota.trim()}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
                 style={{
                   background: "linear-gradient(135deg, #22c55e, #16a34a)",
                   color: "#0E1117",
@@ -360,7 +313,7 @@ function EntrenoLibre() {
                 }}
               >
                 <Plus className="h-4 w-4" />
-                Procesar nota
+                {submitting ? "Guardando..." : "Procesar nota"}
               </button>
             </CardContent>
           </Card>
@@ -412,10 +365,10 @@ function EntrenoLibre() {
               </div>
               <div className="grid grid-cols-7 gap-1.5">
                 {days.map((day, index) => {
-                  const hasActivity = day ? actividadesPorDia[day] : null;
+                  const hasActivity = day ? mergedActividades[day] : null;
                   const activityColor = day ? getActivityColorForDay(day) : null;
                   const typeLabel = day ? getTypeLabelForDay(day) : null;
-                  const isToday = day === TODAY && currentMonth.getMonth() === 3;
+                  const isToday = day === TODAY && currentMonth.getMonth() === TODAY_MONTH;
                   return (
                     <div
                       key={index}
@@ -479,16 +432,16 @@ function EntrenoLibre() {
       {/* Modal de actividades del día */}
       <Dialog open={selectedDay !== null} onOpenChange={() => setSelectedDay(null)}>
         <DialogContent className="bg-[#161B22] border border-green-400/25 max-w-3xl max-h-[80vh] overflow-y-auto">
-          {selectedDay && actividadesPorDia[selectedDay] && (
+          {selectedDay && mergedActividades[selectedDay] && (
             <>
               <DialogHeader>
                 <DialogTitle className="text-xl font-bold text-white">
                   Actividades del {selectedDay} de {monthNames[currentMonth.getMonth()]}
                 </DialogTitle>
-                <p className="text-sm text-[#8B949E]">{actividadesPorDia[selectedDay].length} {actividadesPorDia[selectedDay].length === 1 ? "actividad" : "actividades"} registradas</p>
+                <p className="text-sm text-[#8B949E]">{mergedActividades[selectedDay].length} {mergedActividades[selectedDay].length === 1 ? "actividad" : "actividades"} registradas</p>
               </DialogHeader>
               <div className="space-y-4 mt-4">
-                {actividadesPorDia[selectedDay].map((entreno) => {
+                {mergedActividades[selectedDay].map((entreno) => {
                   const gymStyle = entreno.gymType ? GYM_TYPE_COLORS[entreno.gymType] : null;
                   const runStyle = entreno.runType ? RUN_TYPE_COLORS[entreno.runType] : null;
                   return (
@@ -631,7 +584,8 @@ function CicloMenstrualDiario() {
     { label: "No completo", emoji: "❌", activeStyle: { bg: "rgba(244,63,94,0.15)", border: "#F43F5E", text: "#F43F5E" } },
   ];
 
-  const TODAY_DAY = 14;
+  const TODAY_DAY = new Date().getDate();
+  const TODAY_DAY_MONTH = new Date().getMonth();
 
   return (
     <div className="space-y-6">
@@ -812,7 +766,7 @@ function CicloMenstrualDiario() {
               <div className="grid grid-cols-7 gap-1.5">
                 {days.map((day, index) => {
                   const phaseInfo = day ? CYCLE_PHASES[day] : null;
-                  const isToday = day === TODAY_DAY && currentMonth.getMonth() === 3;
+                  const isToday = day === TODAY_DAY && currentMonth.getMonth() === TODAY_DAY_MONTH;
                   return (
                     <div
                       key={index}
@@ -854,7 +808,44 @@ function CicloMenstrualDiario() {
   );
 }
 
+// Color por grupo muscular
+const GRUPO_COLORS: Record<string, string> = {
+  "Pierna": "#EC4899",
+  "Piernas": "#EC4899",
+  "Core": "#00D4FF",
+  "Pull": "#A855F7",
+  "Push": "#F97316",
+  "Espalda": "#A855F7",
+  "Pecho": "#F97316",
+  "Hombros": "#F97316",
+  "Bíceps": "#6366F1",
+  "Tríceps": "#6366F1",
+};
+
+function getGrupoColor(grupo: string): string {
+  for (const key of Object.keys(GRUPO_COLORS)) {
+    if (grupo?.toLowerCase().includes(key.toLowerCase())) return GRUPO_COLORS[key];
+  }
+  return "#C9FF00";
+}
+
 function Ejercicios() {
+  const { userId } = useUser();
+  const [ejerciciosData, setEjerciciosData] = useState<EjercicioBiblioteca[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    setLoading(true);
+    getEjercicios(userId)
+      .then((data) => {
+        const todos = data.grupos.flatMap((g) => g.ejercicios);
+        setEjerciciosData(todos);
+      })
+      .catch(() => setEjerciciosData([]))
+      .finally(() => setLoading(false));
+  }, [userId]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -868,7 +859,7 @@ function Ejercicios() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-white mb-1">Biblioteca de Ejercicios</h2>
-            <p className="text-[#8B949E] text-sm">Última sesión: Fuerza Piernas — Sáb 12 Abr</p>
+            <p className="text-[#8B949E] text-sm">{ejerciciosData.length} ejercicios registrados</p>
           </div>
           <button
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-[#0E1117] transition-all"
@@ -884,53 +875,79 @@ function Ejercicios() {
       </div>
 
       {/* Exercise list */}
-      <div className="space-y-3">
-        {ejercicios.map((ej, i) => (
-          <Card
-            key={i}
-            className="rounded-xl transition-all hover:scale-[1.01]"
-            style={{
-              background: "#161B22",
-              border: `1px solid ${ej.color}25`,
-            }}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="h-10 w-10 rounded-xl flex items-center justify-center"
-                    style={{ background: `${ej.color}15`, border: `1px solid ${ej.color}30` }}
-                  >
-                    <Dumbbell className="h-5 w-5" style={{ color: ej.color }} />
+      {loading ? (
+        <div className="text-center text-[#8B949E] py-10 text-sm">Cargando ejercicios...</div>
+      ) : ejerciciosData.length === 0 ? (
+        <div className="text-center text-[#8B949E] py-10 text-sm">Sin ejercicios registrados aún.</div>
+      ) : (
+        <div className="space-y-3">
+          {ejerciciosData.map((ej) => {
+            const color = getGrupoColor(ej.grupo_muscular);
+            return (
+              <Card
+                key={ej.id}
+                className="rounded-xl transition-all hover:scale-[1.01]"
+                style={{ background: "#161B22", border: `1px solid ${color}25` }}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="h-10 w-10 rounded-xl flex items-center justify-center"
+                        style={{ background: `${color}15`, border: `1px solid ${color}30` }}
+                      >
+                        <Dumbbell className="h-5 w-5" style={{ color }} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white">{ej.nombre}</p>
+                        <p className="text-xs text-[#8B949E]">{ej.grupo_muscular}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-right">
+                      {ej.ultimo_peso != null && (
+                        <div>
+                          <p className="text-xs text-[#8B949E]">Último peso</p>
+                          <p className="text-sm font-bold text-white">{ej.ultimo_peso} kg</p>
+                        </div>
+                      )}
+                      {ej.mejor_peso != null && (
+                        <div>
+                          <p className="text-xs text-[#8B949E]">Mejor</p>
+                          <p className="text-sm font-bold" style={{ color }}>{ej.mejor_peso} kg</p>
+                        </div>
+                      )}
+                      {ej.ultimo_peso == null && ej.mejor_peso == null && (
+                        <p className="text-xs text-[#8B949E]">Sin registros</p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-white">{ej.nombre}</p>
-                    <p className="text-xs text-[#8B949E]">{ej.tipo}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 text-right">
-                  <div>
-                    <p className="text-xs text-[#8B949E]">Series × Reps</p>
-                    <p className="text-sm font-bold text-white">{ej.series} × {ej.reps}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-[#8B949E]">Peso</p>
-                    <p className="text-sm font-bold" style={{ color: ej.color }}>{ej.peso}</p>
-                  </div>
-                </div>
-              </div>
-              {ej.notas && (
-                <p className="text-xs text-[#8B949E] mt-2 pl-13 ml-13">{ej.notas}</p>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                  {ej.ultima_fecha && (
+                    <p className="text-xs text-[#8B949E] mt-2">Última vez: {ej.ultima_fecha}</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
 function Lesiones() {
+  const { userId } = useUser();
+  const [lesionesActivas, setLesionesActivas] = useState<{ tipo: string; grado: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    setLoading(true);
+    getResumenEntrenador(userId)
+      .then((r) => setLesionesActivas(r.lesiones_activas || []))
+      .catch(() => setLesionesActivas([]))
+      .finally(() => setLoading(false));
+  }, [userId]);
+
   const preventionTips = [
     { check: true, tip: "Calentamiento dinámico 10min antes de cada carrera" },
     { check: true, tip: "Estiramientos post-entreno (cadera, gemelos, isquios)" },
@@ -971,51 +988,49 @@ function Lesiones() {
       </div>
 
       {/* Active injuries */}
-      {lesiones.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-orange-400" />
-            Lesiones activas
-          </h3>
-          {lesiones.map((l) => (
+      <div>
+        <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-orange-400" />
+          Lesiones activas
+        </h3>
+        {loading ? (
+          <p className="text-[#8B949E] text-sm">Cargando...</p>
+        ) : lesionesActivas.length === 0 ? (
+          <div
+            className="rounded-xl p-4"
+            style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)" }}
+          >
+            <p className="text-sm text-[#22C55E] font-semibold">Sin lesiones activas</p>
+            <p className="text-xs text-[#8B949E] mt-1">El plan se genera sin restricciones de lesión.</p>
+          </div>
+        ) : (
+          lesionesActivas.map((l, i) => (
             <Card
-              key={l.id}
-              className="rounded-2xl"
+              key={i}
+              className="rounded-2xl mb-3"
               style={{
                 background: "linear-gradient(135deg, rgba(249,115,22,0.1), rgba(22,27,34,1))",
                 border: "1px solid rgba(249,115,22,0.25)",
               }}
             >
               <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-4">
+                <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-base font-bold text-white mb-1">{l.zona}</p>
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-orange-400/15 text-orange-300 border-orange-500/30 text-xs">
-                        {l.tipo}
-                      </Badge>
-                      <Badge className={`text-xs ${l.stateColor}`}>
-                        {l.estado}
-                      </Badge>
-                    </div>
+                    <p className="text-base font-bold text-white mb-1">{l.tipo}</p>
+                    <Badge className="bg-orange-400/15 text-orange-300 border-orange-500/30 text-xs">
+                      Activa
+                    </Badge>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-[#8B949E]">Dolor (1–10)</p>
-                    <p className="text-2xl font-bold" style={{ color: l.color }}>{l.dolor}</p>
+                    <p className="text-xs text-[#8B949E]">Grado</p>
+                    <p className="text-2xl font-bold text-orange-400">{l.grado}</p>
                   </div>
-                </div>
-                <div
-                  className="rounded-xl p-3"
-                  style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.15)" }}
-                >
-                  <p className="text-xs text-[#8B949E] mb-1">Tratamiento actual</p>
-                  <p className="text-sm text-white">{l.tratamiento}</p>
                 </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
       {/* Prevention checklist */}
       <Card

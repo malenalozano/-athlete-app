@@ -1,27 +1,61 @@
 import { Header } from "../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Brain, HeartPulse, MessageSquare, BookOpen, Dumbbell } from "lucide-react";
+import { Brain, HeartPulse, MessageSquare } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
-import { BibliotecaCientifica } from "./BibliotecaCientifica";
-import { DiarioFuerza } from "./DiarioFuerza";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useUser } from "../context/UserContext";
+import { getResumenEntrenador, getPerfil, generarPlanSemana, type ResumenEntrenador, type PerfilUsuario, type PlanGenerado, type SesionGenerada } from "../api";
 
 export function PersonalTrainer() {
+  const { userId } = useUser();
   const [injuryDate, setInjuryDate] = useState("");
+  const [resumen, setResumen] = useState<ResumenEntrenador | null>(null);
+  const [perfil, setPerfil] = useState<PerfilUsuario | null>(null);
+  const [generando, setGenerando] = useState(false);
+  const [planGenerado, setPlanGenerado] = useState<PlanGenerado | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
 
-  // TODO: estos datos se poblarán desde el perfil del usuario y métricas Garmin
+  useEffect(() => {
+    if (!userId) return;
+    getResumenEntrenador(userId).then(setResumen).catch(() => null);
+    getPerfil(userId).then(setPerfil).catch(() => null);
+  }, [userId]);
+
+  const handleGenerarPlan = async () => {
+    if (!userId) return;
+    setGenerando(true);
+    setPlanError(null);
+    setPlanGenerado(null);
+    try {
+      // Inicio de la semana actual (lunes)
+      const hoy = new Date();
+      const diaSemana = hoy.getDay(); // 0=dom, 1=lun...
+      const diff = diaSemana === 0 ? -6 : 1 - diaSemana;
+      const lunes = new Date(hoy);
+      lunes.setDate(hoy.getDate() + diff);
+      const fechaInicio = lunes.toISOString().split("T")[0];
+      const plan = await generarPlanSemana(userId, fechaInicio);
+      setPlanGenerado(plan);
+    } catch (e: unknown) {
+      setPlanError(e instanceof Error ? e.message : "Error generando el plan");
+    } finally {
+      setGenerando(false);
+    }
+  };
+
+  const b = resumen?.biometrico;
   const planContextData: { label: string; value: string }[] = [
-    { label: "Objetivo", value: "--" },
+    { label: "Objetivo", value: perfil?.objetivo_tipo || "--" },
     { label: "Días disponibles", value: "--" },
-    { label: "Nivel actual", value: "--" },
-    { label: "Lesiones activas", value: "--" },
-    { label: "HRV promedio", value: "--" },
-    { label: "Nivel de estrés", value: "--" },
-    { label: "Calidad del sueño", value: "--" },
+    { label: "Nivel actual", value: perfil?.nivel || "--" },
+    { label: "Lesiones activas", value: resumen ? String(resumen.lesiones_activas.length) : "--" },
+    { label: "HRV promedio", value: b?.hrv_ms != null ? `${b.hrv_ms} ms` : "--" },
+    { label: "Nivel de estrés", value: b?.estres_medio != null ? `${b.estres_medio}/100` : "--" },
+    { label: "Calidad del sueño", value: b?.sleep_score != null ? `${b.sleep_score}/100` : "--" },
     { label: "RPE última semana", value: "--" },
   ];
 
@@ -32,15 +66,8 @@ export function PersonalTrainer() {
       <main className="container mx-auto px-6 py-8">
         <h2 className="text-2xl font-semibold mb-6 text-white">Entrenador Personal Premium</h2>
 
-        <Tabs defaultValue="diario" className="space-y-6">
+        <Tabs defaultValue="plan" className="space-y-6">
           <TabsList className="bg-[#161B22] border border-[#C9FF00]/30 p-1 rounded-xl">
-            <TabsTrigger
-              value="diario"
-              className="data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
-            >
-              <Dumbbell className="h-4 w-4 mr-2" />
-              Diario de Fuerza
-            </TabsTrigger>
             <TabsTrigger
               value="plan"
               className="data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
@@ -56,13 +83,6 @@ export function PersonalTrainer() {
               Lesiones y Prevención
             </TabsTrigger>
             <TabsTrigger
-              value="biblioteca"
-              className="data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
-            >
-              <BookOpen className="h-4 w-4 mr-2" />
-              Biblioteca Científica
-            </TabsTrigger>
-            <TabsTrigger
               value="asistente"
               className="data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
             >
@@ -70,11 +90,6 @@ export function PersonalTrainer() {
               Asistente Virtual
             </TabsTrigger>
           </TabsList>
-
-          {/* Tab: Diario de Fuerza */}
-          <TabsContent value="diario">
-            <DiarioFuerza />
-          </TabsContent>
 
           {/* Tab: Generar Plan Semanal */}
           <TabsContent value="plan" className="space-y-6">
@@ -135,28 +150,90 @@ export function PersonalTrainer() {
                     />
                   </div>
 
-                  <Button className="w-full bg-gradient-to-r from-[#C9FF00] to-[#a8d600] text-[#0E1117] hover:from-[#a8d600] hover:to-[#C9FF00] font-bold py-3">
-                    🚀 Generar Plan de Esta Semana
+                  <Button
+                    onClick={handleGenerarPlan}
+                    disabled={generando}
+                    className="w-full bg-gradient-to-r from-[#C9FF00] to-[#a8d600] text-[#0E1117] hover:from-[#a8d600] hover:to-[#C9FF00] font-bold py-3 disabled:opacity-60"
+                  >
+                    {generando ? "Generando..." : "Generar Plan de Esta Semana"}
                   </Button>
                 </CardContent>
               </Card>
             </div>
 
-            {/* Plan generado (se rellena tras llamar a la IA) */}
+            {/* Plan generado */}
             <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
               <CardHeader>
                 <CardTitle className="text-white">Plan Generado</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-col items-center justify-center py-10 text-center">
-                  <Brain className="h-10 w-10 text-[#30363D] mb-3" />
-                  <p className="text-[#8B949E] text-sm">
-                    El plan aparecerá aquí después de generarlo.
-                  </p>
-                  <p className="text-xs text-[#30363D] mt-1">
-                    Pulsa "Generar Plan de Esta Semana" para comenzar.
-                  </p>
-                </div>
+                {planError && (
+                  <p className="text-red-400 text-sm">{planError}</p>
+                )}
+                {!planGenerado && !planError && (
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <Brain className="h-10 w-10 text-[#30363D] mb-3" />
+                    <p className="text-[#8B949E] text-sm">
+                      El plan aparecerá aquí después de generarlo.
+                    </p>
+                    <p className="text-xs text-[#30363D] mt-1">
+                      Pulsa "Generar Plan de Esta Semana" para comenzar.
+                    </p>
+                  </div>
+                )}
+                {planGenerado && (
+                  <div className="space-y-4">
+                    {/* Resumen */}
+                    <div
+                      className="rounded-xl p-4"
+                      style={{ background: "rgba(201,255,0,0.06)", border: "1px solid rgba(201,255,0,0.2)" }}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-[#C9FF00] uppercase tracking-widest">{planGenerado.tipo_semana}</span>
+                        <span className="text-xs text-[#8B949E]">Mac {planGenerado.macrociclo}</span>
+                      </div>
+                      <p className="text-sm text-white font-semibold">{planGenerado.km_total} km totales</p>
+                      <p className="text-xs text-[#8B949E] mt-1">{planGenerado.coach_tip}</p>
+                    </div>
+
+                    {/* Lista de sesiones */}
+                    <div className="space-y-2">
+                      {planGenerado.sesiones.map((s: SesionGenerada, i: number) => {
+                        const fecha = new Date(s.fecha + "T12:00:00");
+                        const diaNombre = fecha.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
+                        const isCarrera = s.tipo === "Carrera";
+                        const color = isCarrera ? "#00D4FF" : "#A855F7";
+                        return (
+                          <div
+                            key={i}
+                            className="rounded-lg p-3 flex items-start gap-3"
+                            style={{ background: `${color}08`, border: `1px solid ${color}20` }}
+                          >
+                            <div
+                              className="shrink-0 rounded-lg px-2 py-1 text-center min-w-[44px]"
+                              style={{ background: `${color}15` }}
+                            >
+                              <p className="text-[9px] font-bold uppercase" style={{ color }}>{diaNombre.split(" ")[0]}</p>
+                              <p className="text-xs font-bold text-white">{diaNombre.split(" ")[1]}</p>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-white truncate">{s.sesion}</p>
+                              {s.detalles && (
+                                <p className="text-xs text-[#8B949E] mt-0.5 line-clamp-2">{s.detalles}</p>
+                              )}
+                            </div>
+                            {s.km_planificados != null && (
+                              <span className="shrink-0 text-xs font-bold" style={{ color }}>{s.km_planificados} km</span>
+                            )}
+                            {s.duracion_min != null && s.km_planificados == null && (
+                              <span className="shrink-0 text-xs text-[#8B949E]">{s.duracion_min}min</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -217,11 +294,6 @@ export function PersonalTrainer() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          {/* Tab: Biblioteca Científica */}
-          <TabsContent value="biblioteca">
-            <BibliotecaCientifica />
           </TabsContent>
 
           {/* Tab: Asistente Virtual */}
