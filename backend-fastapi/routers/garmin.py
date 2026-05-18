@@ -185,6 +185,11 @@ def _do_sync(usuario_id: int) -> dict:
                     status_code=400,
                     detail="Garmin requiere verificación en dos pasos (2FA). Desactívala temporalmente en tu cuenta Garmin Connect.",
                 )
+            if "403" in msg or "forbidden" in msg.lower() or "exhausted" in msg.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Garmin bloquea el login desde el servidor cloud (IP no permitida). Ejecuta desde tu PC: python scripts/garmin_login_once.py --usuario 1",
+                )
             raise HTTPException(status_code=400, detail=f"Error al conectar con Garmin: {msg[:200]}")
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
