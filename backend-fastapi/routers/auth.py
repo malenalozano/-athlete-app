@@ -41,7 +41,7 @@ class PerfilUpdate(BaseModel):
 @router.put("/perfil/{usuario_id}")
 def actualizar_perfil(usuario_id: int, body: PerfilUpdate):
     conn = get_db()
-    updates = {k: v for k, v in body.dict().items() if v is not None}
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if updates:
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         conn.execute(
@@ -74,16 +74,22 @@ def perfil(usuario_id: int):
 
 class GarminCredentials(BaseModel):
     email_garmin: str
-    password_garmin: str
+    password_garmin: Optional[str] = None
 
 
 @router.put("/garmin-credentials/{usuario_id}")
 def guardar_credenciales_garmin(usuario_id: int, body: GarminCredentials):
     conn = get_db()
-    conn.execute(
-        "UPDATE usuarios SET email_garmin = ?, password_garmin_enc = ? WHERE id = ?",
-        (body.email_garmin, body.password_garmin, usuario_id),
-    )
+    if body.password_garmin:
+        conn.execute(
+            "UPDATE usuarios SET email_garmin = ?, password_garmin_enc = ? WHERE id = ?",
+            (body.email_garmin, body.password_garmin, usuario_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE usuarios SET email_garmin = ? WHERE id = ?",
+            (body.email_garmin, usuario_id),
+        )
     conn.commit()
     conn.close()
     return {"ok": True}

@@ -542,6 +542,7 @@ function Historial({ actividades, biometrico, stats }: { actividades: ActividadG
 function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perfil: PerfilUsuario | null; onSaved?: () => void }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [savingGarmin, setSavingGarmin] = useState(false);
   const [garminMsg, setGarminMsg] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -569,6 +570,7 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
       fcmax: String(perfil.fcmax || ""),
       nivel: perfil.nivel || "",
     });
+    if (perfil.email_garmin) setEmailGarmin(perfil.email_garmin);
   }, [perfil]);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -578,6 +580,7 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
     e.preventDefault();
     if (!userId) return;
     setSaving(true);
+    setSaveMsg(null);
     try {
       await actualizarPerfil(userId, {
         nombre: form.nombre || undefined,
@@ -591,7 +594,10 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
         fcmax: form.fcmax ? Number(form.fcmax) : undefined,
         nivel: form.nivel || undefined,
       });
+      setSaveMsg({ ok: true, text: "Perfil guardado correctamente." });
       onSaved?.();
+    } catch (err: unknown) {
+      setSaveMsg({ ok: false, text: err instanceof Error ? err.message : "Error al guardar" });
     } finally {
       setSaving(false);
     }
@@ -708,12 +714,13 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
                     <div className="relative">
                       <Label className="text-white mb-2 block text-sm flex items-center gap-2">
                         Contraseña Garmin
+                        {perfil?.email_garmin && <span className="text-[10px] text-green-400 font-normal">(ya guardada)</span>}
                         <HelpCircle className="h-3 w-3 text-[#8B949E]" />
                       </Label>
                       <div className="relative">
                         <Input
                           type={showPassword ? "text" : "password"}
-                          placeholder="••••••••"
+                          placeholder={perfil?.email_garmin ? "Dejar vacío para no cambiar" : "••••••••"}
                           value={passwordGarmin}
                           onChange={(e) => setPasswordGarmin(e.target.value)}
                           className="bg-[#161B22] border-[#C9FF00]/30 text-white pr-10"
@@ -734,7 +741,7 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
                     )}
                     <Button
                       type="button"
-                      disabled={savingGarmin || !emailGarmin || !passwordGarmin}
+                      disabled={savingGarmin || !emailGarmin || (!passwordGarmin && !perfil?.email_garmin)}
                       onClick={handleSaveGarmin}
                       className="w-full bg-[#161B22] border border-[#C9FF00]/40 text-white hover:bg-[#C9FF00]/10 disabled:opacity-50"
                     >
@@ -803,14 +810,21 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
               </div>
             </div>
 
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                disabled={saving}
-                className="bg-gradient-to-r from-[#C9FF00] to-[#a8d600] text-[#0E1117] hover:from-[#a8d600] hover:to-[#C9FF00] font-bold px-8 py-3 disabled:opacity-60"
-              >
-                {saving ? "Guardando..." : "Guardar cambios de perfil"}
-              </Button>
+            <div className="flex flex-col gap-3">
+              {saveMsg && (
+                <p className={`text-xs px-3 py-2 rounded-lg ${saveMsg.ok ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-400 border border-red-500/20"}`}>
+                  {saveMsg.text}
+                </p>
+              )}
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={saving}
+                  className="bg-gradient-to-r from-[#C9FF00] to-[#a8d600] text-[#0E1117] hover:from-[#a8d600] hover:to-[#C9FF00] font-bold px-8 py-3 disabled:opacity-60"
+                >
+                  {saving ? "Guardando..." : "Guardar cambios de perfil"}
+                </Button>
+              </div>
             </div>
           </form>
         </CardContent>
@@ -846,10 +860,10 @@ export function Profile() {
   const fuerzaSem = actividades.filter(a => a.fecha >= sevenDaysAgoIso && STRENGTH_TYPES.has(a.tipo_deporte?.toLowerCase() ?? "")).length;
 
   const kpis = [
-    { label: "OBJETIVO", value: perfil?.objetivo_tipo || "--" },
-    { label: "RITMO", value: perfil?.ritmo || "--" },
-    { label: "CARRERA/SEM", value: stats?.km_semana != null ? `${stats.km_semana} km` : "--" },
-    { label: "FUERZA/SEM", value: fuerzaSem > 0 ? `${fuerzaSem} ses.` : "--" },
+    { label: "OBJETIVO", value: perfil?.objetivo || perfil?.objetivo_tipo || "--", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)" },
+    { label: "RITMO", value: perfil?.ritmo || "--", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)" },
+    { label: "CARRERA/SEM", value: stats?.km_semana != null ? `${stats.km_semana} km` : "--", color: "#A855F7", bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.2)" },
+    { label: "FUERZA/SEM", value: fuerzaSem > 0 ? `${fuerzaSem} ses.` : "--", color: "#F97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.2)" },
   ];
 
   return (
@@ -857,22 +871,57 @@ export function Profile() {
       <Header />
 
       <main className="container mx-auto px-6 py-8 space-y-8">
-        <h2 className="text-2xl font-semibold text-white">Perfil de {perfil?.nombre || userName}</h2>
+        {/* Profile Hero */}
+        <div
+          className="rounded-2xl p-8 relative overflow-hidden"
+          style={{
+            background: "linear-gradient(135deg, rgba(201,255,0,0.1), rgba(22,27,34,1))",
+            border: "1px solid rgba(201,255,0,0.2)",
+            boxShadow: "0 0 40px rgba(201,255,0,0.05)",
+          }}
+        >
+          <div
+            className="absolute -right-10 -top-10 w-60 h-60 rounded-full opacity-10 blur-3xl"
+            style={{ background: "#C9FF00" }}
+          />
+          <div className="flex items-center gap-6 relative">
+            <div
+              className="h-20 w-20 rounded-2xl flex items-center justify-center shrink-0 text-2xl font-bold"
+              style={{
+                background: "linear-gradient(135deg, rgba(201,255,0,0.2), rgba(201,255,0,0.05))",
+                border: "2px solid rgba(201,255,0,0.4)",
+                color: "#C9FF00",
+              }}
+            >
+              {(perfil?.nombre || userName || "U")[0].toUpperCase()}
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">{perfil?.nombre || userName}</h2>
+              <p className="text-[#8B949E] text-sm mt-1">
+                {[perfil?.nivel, perfil?.objetivo_tipo].filter(Boolean).join(" · ")}
+              </p>
+              {perfil?.fecha_objetivo && (
+                <p className="text-xs mt-1" style={{ color: "#C9FF00" }}>
+                  Objetivo: {perfil.fecha_objetivo}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* KPIs */}
-        <section>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {kpis.map((kpi) => (
-              <div
-                key={kpi.label}
-                className="bg-[#161B22] border-l-4 border-l-[#C9FF00] rounded-xl p-4"
-              >
-                <p className="text-sm text-[#8B949E] font-semibold mb-1">{kpi.label}</p>
-                <p className="text-xl font-bold text-white">{kpi.value}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {kpis.map((kpi) => (
+            <div
+              key={kpi.label}
+              className="rounded-xl p-4 transition-all hover:scale-[1.02]"
+              style={{ background: kpi.bg, border: `1px solid ${kpi.border}` }}
+            >
+              <p className="text-xs font-semibold mb-2" style={{ color: kpi.color }}>{kpi.label}</p>
+              <p className="text-lg font-bold text-white truncate">{kpi.value}</p>
+            </div>
+          ))}
+        </div>
 
         {/* Editar Perfil (desplegable) */}
         <EditarPerfil
