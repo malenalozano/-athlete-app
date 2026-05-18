@@ -7,10 +7,15 @@ from routers import auth, dashboard, diario, ejercicios, entrenador, garmin, pla
 
 app = FastAPI(title="Athlete Performance API", version="1.0.0")
 
+_cors_origins = list({
+    "https://athlete-app-kohl.vercel.app",
+    *settings.cors_origins,
+})
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
