@@ -99,6 +99,13 @@ def _clear_blockade():
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Login único Garmin")
+    parser.add_argument("--usuario", type=int, default=None, help="ID de usuario (1=Malena, 2=Dani)")
+    args = parser.parse_args()
+
+    usuario_id = args.usuario
+
     print("=== Login único Garmin ===")
     print(f"Directorio base de tokens: {GARTH_HOME}\n")
 
@@ -118,21 +125,45 @@ def main():
         print("   python scripts/garmin_login_once.py")
         return
 
-    # Intentar leer credenciales de BD primero
-    try:
-        from src.db.db_manager import obtener_credenciales_garmin
-        from src.core.seguridad import desencriptar_password
-        creds = obtener_credenciales_garmin(1)
-        if creds and creds[0] and creds[1]:
-            usuario = creds[0]
-            password = desencriptar_password(creds[1])
-            print(f"Usando credenciales guardadas: {usuario}")
-        else:
+    # Si se especificó usuario, leer sus credenciales de la BD del backend
+    if usuario_id is not None:
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "backend-fastapi"))
+            from database import get_db
+            conn = get_db()
+            row = conn.execute(
+                "SELECT email_garmin, password_garmin_enc FROM usuarios WHERE id = ?",
+                (usuario_id,)
+            ).fetchone()
+            conn.close()
+            if row and row[0] and row[1]:
+                usuario = row[0]
+                password = row[1]
+                print(f"Usando credenciales de usuario {usuario_id}: {usuario}")
+            else:
+                print(f"No hay credenciales guardadas para usuario {usuario_id}.")
+                usuario = input("Email Garmin: ").strip()
+                password = input("Password: ").strip()
+        except Exception as e:
+            print(f"No se pudo leer BD: {e}")
             usuario = input("Email Garmin: ").strip()
             password = input("Password: ").strip()
-    except Exception:
-        usuario = input("Email Garmin: ").strip()
-        password = input("Password: ").strip()
+    else:
+        # Intentar leer credenciales de BD primero (usuario 1 por defecto)
+        try:
+            from src.db.db_manager import obtener_credenciales_garmin
+            from src.core.seguridad import desencriptar_password
+            creds = obtener_credenciales_garmin(1)
+            if creds and creds[0] and creds[1]:
+                usuario = creds[0]
+                password = desencriptar_password(creds[1])
+                print(f"Usando credenciales guardadas: {usuario}")
+            else:
+                usuario = input("Email Garmin: ").strip()
+                password = input("Password: ").strip()
+        except Exception:
+            usuario = input("Email Garmin: ").strip()
+            password = input("Password: ").strip()
 
     print("Conectando con Garmin... (puede tardar 10-30 seg)\n")
 
@@ -181,13 +212,20 @@ def main():
 
         # IMPORTANTE: Guardar también en BD para que funcione en Cloud
         try:
-            from src.db.db_manager import get_db_connection
-            conn = get_db_connection()
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "backend-fastapi"))
+            from database import get_db
+            conn = get_db()
             token_json = store.dumps()
-            conn.execute(
-                "UPDATE usuarios SET garmin_tokens=? WHERE email_garmin=?",
-                (token_json, usuario)
-            )
+            if usuario_id is not None:
+                conn.execute(
+                    "UPDATE usuarios SET garmin_tokens=? WHERE id=?",
+                    (token_json, usuario_id)
+                )
+            else:
+                conn.execute(
+                    "UPDATE usuarios SET garmin_tokens=? WHERE email_garmin=?",
+                    (token_json, usuario)
+                )
             conn.commit()
             conn.close()
             print(f"✓ Tokens guardados en BASE DE DATOS (Turso)")
