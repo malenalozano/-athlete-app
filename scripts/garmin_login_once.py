@@ -20,6 +20,24 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 GARTH_HOME = os.path.expanduser("~/.garth_athlete")
 BLOCKADE_FILE = os.path.expanduser("~/.garth_athlete/.blockade.json")
+_BACKEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "backend-fastapi")
+
+
+def _get_backend_db():
+    """Obtiene conexión a la BD del backend (Turso o SQLite local)."""
+    # Cargar .env de backend-fastapi para obtener credenciales de Turso
+    env_file = os.path.join(_BACKEND_DIR, ".env")
+    if os.path.exists(env_file):
+        with open(env_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    os.environ.setdefault(k.strip(), v.strip())
+    if _BACKEND_DIR not in sys.path:
+        sys.path.insert(0, _BACKEND_DIR)
+    from database import get_db
+    return get_db()
 
 
 def _safe_email_slug(email: str) -> str:
@@ -128,9 +146,7 @@ def main():
     # Si se especificó usuario, leer sus credenciales de la BD del backend
     if usuario_id is not None:
         try:
-            sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "backend-fastapi"))
-            from database import get_db
-            conn = get_db()
+            conn = _get_backend_db()
             row = conn.execute(
                 "SELECT email_garmin, password_garmin_enc FROM usuarios WHERE id = ?",
                 (usuario_id,)
@@ -212,9 +228,7 @@ def main():
 
         # IMPORTANTE: Guardar también en BD para que funcione en Cloud
         try:
-            sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "backend-fastapi"))
-            from database import get_db
-            conn = get_db()
+            conn = _get_backend_db()
             token_json = store.dumps()
             if usuario_id is not None:
                 conn.execute(
