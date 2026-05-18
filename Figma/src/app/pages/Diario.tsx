@@ -22,103 +22,7 @@ import {
 import { useState, useEffect } from "react";
 import { crearEntradaDiario, getActividades, getEjercicios, getResumenEntrenador, type ActividadGarmin, type EjercicioBiblioteca } from "../api";
 
-// ── Mock data (sólo para fallback del calendario) ──────────────────────────────
-
 // ── Tabs ───────────────────────────────────────────────────────────────────────
-
-// Datos de actividades por día (simulado)
-const actividadesPorDia: Record<number, Array<{
-  id: number; fecha: string; tipo: string; descripcion: string;
-  duracion: string; distancia: string; fc: string; sensacion: string;
-  notas: string; gymType?: string; runType?: string;
-}>> = {
-  7: [
-    {
-      id: 1, fecha: "Dom 7 Abr", tipo: "Carrera",
-      descripcion: "Rodaje regenerativo — Madrid Río",
-      duracion: "45 min", distancia: "7.2 km", fc: "135 bpm",
-      sensacion: "😊 Recuperado",
-      notas: "Piernas ligeras después del descanso del sábado",
-      runType: "Regenerativo",
-    },
-    {
-      id: 4, fecha: "Dom 7 Abr", tipo: "Fuerza",
-      descripcion: "Core y estabilidad",
-      duracion: "30 min", distancia: "—", fc: "110 bpm",
-      sensacion: "💪 Fuerte",
-      notas: "Plancha frontal, lateral, bird-dog",
-      gymType: "Core",
-    },
-  ],
-  10: [
-    {
-      id: 2, fecha: "Mié 10 Abr", tipo: "Carrera",
-      descripcion: "Series 1000m — Pista",
-      duracion: "52 min", distancia: "8.5 km", fc: "168 bpm",
-      sensacion: "🔥 Intenso",
-      notas: "4×1000m a ritmo 10K. Últimas dos series costaron",
-      runType: "Intervalos",
-    },
-  ],
-  12: [
-    {
-      id: 5, fecha: "Sáb 12 Abr", tipo: "Fuerza",
-      descripcion: "Fuerza piernas — Gym",
-      duracion: "60 min", distancia: "—", fc: "120 bpm",
-      sensacion: "💪 Fuerte",
-      notas: "Sentadillas, peso muerto rumano, zancadas búlgaras",
-      gymType: "Pierna",
-    },
-  ],
-  13: [
-    {
-      id: 3, fecha: "Dom 13 Abr", tipo: "Carrera",
-      descripcion: "Tirada larga base — Parque del Retiro",
-      duracion: "1h 32min", distancia: "15.4 km", fc: "142 bpm",
-      sensacion: "😊 Bien",
-      notas: "Buenas sensaciones, cadencia estable. Zona 2 perfecta.",
-      runType: "Tirada Larga",
-    },
-  ],
-  9: [
-    {
-      id: 6, fecha: "Mié 9 Abr", tipo: "Fuerza",
-      descripcion: "Tren superior — Gym",
-      duracion: "55 min", distancia: "—", fc: "115 bpm",
-      sensacion: "💪 Fuerte",
-      notas: "Press banca, dominadas, remo con mancuerna",
-      gymType: "Push",
-    },
-  ],
-  5: [
-    {
-      id: 7, fecha: "Dom 5 Abr", tipo: "Carrera",
-      descripcion: "Cambios de ritmo — Parque",
-      duracion: "40 min", distancia: "7.5 km", fc: "155 bpm",
-      sensacion: "⚡ Activada",
-      notas: "8×200m progresivos. Buena respuesta neuromuscular.",
-      runType: "Cambios de Ritmo",
-    },
-    {
-      id: 8, fecha: "Dom 5 Abr", tipo: "Fuerza",
-      descripcion: "Espalda y bíceps — Gym",
-      duracion: "50 min", distancia: "—", fc: "112 bpm",
-      sensacion: "😊 Bien",
-      notas: "Dominadas, remo, curl. Foco en contracción.",
-      gymType: "Pull",
-    },
-  ],
-  2: [
-    {
-      id: 9, fecha: "Jue 2 Abr", tipo: "Carrera",
-      descripcion: "Progresivas — Circuito urbano",
-      duracion: "50 min", distancia: "9.0 km", fc: "158 bpm",
-      sensacion: "💪 Fuerte",
-      notas: "Salida suave, último tercio a ritmo de umbral.",
-      runType: "Progresivas",
-    },
-  ],
-};
 
 const GYM_TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   Pull:   { bg: "rgba(168,85,247,0.2)", text: "#A855F7", border: "rgba(168,85,247,0.4)" },
@@ -137,7 +41,7 @@ const RUN_TYPE_COLORS: Record<string, { bg: string; text: string; border: string
 
 function EntrenoLibre() {
   const { userId } = useUser();
-  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 3, 1)); // April 2026
+  const [currentMonth, setCurrentMonth] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [nota, setNota] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -183,7 +87,7 @@ function EntrenoLibre() {
 
   // Build activity map from API data for current month
   const apiActividadesPorDia = (() => {
-    const map: Record<number, typeof actividadesPorDia[number]> = {};
+    const map: Record<number, Array<{ id: number; fecha: string; tipo: string; descripcion: string; duracion: string; distancia: string; fc: string; sensacion: string; notas: string; gymType?: string; runType?: string }>> = {};
     apiActividades.forEach(a => {
       const d = new Date(a.fecha + "T12:00:00");
       if (d.getMonth() !== currentMonth.getMonth() || d.getFullYear() !== currentMonth.getFullYear()) return;
@@ -207,15 +111,15 @@ function EntrenoLibre() {
     return map;
   })();
 
-  const mergedActividades = apiActividades.length > 0 ? apiActividadesPorDia : actividadesPorDia;
+  const mergedActividades = apiActividadesPorDia;
 
   // Stats del mes
   const diasEntrenados = Object.keys(mergedActividades).length;
   const todasActs = Object.values(mergedActividades).flat();
   const statsDelMes = [
-    { label: "DÍAS", value: String(diasEntrenados || Object.keys(actividadesPorDia).length), icon: Activity, color: "#C9FF00", bg: "rgba(201,255,0,0.1)", border: "rgba(201,255,0,0.25)" },
-    { label: "FUERZA", value: String(todasActs.filter(a => a.tipo === "Fuerza").length || "4"), icon: Dumbbell, color: "#F97316", bg: "rgba(249,115,22,0.1)", border: "rgba(249,115,22,0.25)" },
-    { label: "CARRERAS", value: String(todasActs.filter(a => a.tipo === "Carrera").length || "6"), icon: Zap, color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.25)" },
+    { label: "DÍAS", value: String(diasEntrenados), icon: Activity, color: "#C9FF00", bg: "rgba(201,255,0,0.1)", border: "rgba(201,255,0,0.25)" },
+    { label: "FUERZA", value: String(todasActs.filter(a => a.tipo === "Fuerza").length), icon: Dumbbell, color: "#F97316", bg: "rgba(249,115,22,0.1)", border: "rgba(249,115,22,0.25)" },
+    { label: "CARRERAS", value: String(todasActs.filter(a => a.tipo === "Carrera").length), icon: Zap, color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.25)" },
   ];
 
   const getActivityColorForDay = (day: number) => {
@@ -515,7 +419,7 @@ function EntrenoLibre() {
 }
 
 function CicloMenstrualDiario() {
-  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 3, 1)); // April 2026
+  const [currentMonth, setCurrentMonth] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [sangre, setSangre] = useState("Sin sangre");
   const [sintomas, setSintomas] = useState<string[]>([]);
   const [animo, setAnimo] = useState("");

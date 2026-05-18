@@ -152,22 +152,31 @@ def _do_sync(usuario_id: int) -> dict:
 
     conn = get_db()
 
-    # Intentar primero con tokens OAuth (funciona en cloud, no necesita contraseña)
+    # Intentar primero con tokens OAuth
     client = _load_client_from_tokens(conn, usuario_id)
 
+    # Verificar que los tokens realmente funcionan (pueden estar caducados)
+    if client is not None:
+        try:
+            client.get_stats(date.today().isoformat())
+        except Exception:
+            client = None  # Tokens caducados, usar credenciales
+
     if client is None:
-        # Fallback: login con credenciales (puede fallar en Railway/Vercel por IP bloqueada)
         try:
             email, password = _get_credentials(conn, usuario_id)
         except HTTPException:
             conn.close()
             raise HTTPException(
                 status_code=400,
-                detail="No hay tokens Garmin guardados. Ejecuta el login desde tu PC local con: python scripts/garmin_login_once.py",
+                detail="No hay credenciales Garmin configuradas. Ve a Perfil → Editar Perfil para añadirlas.",
             )
         try:
             client = Garmin(email, password)
             client.login()
+            # Guardar tokens frescos para la próxima vez
+            _save_tokens_to_db(conn, usuario_id, client)
+            conn.commit()
         except Exception as e:
             conn.close()
             msg = str(e)
