@@ -178,90 +178,50 @@ def _do_sync(usuario_id: int) -> dict:
                 )
             raise HTTPException(status_code=400, detail=f"Error al conectar con Garmin: {msg[:200]}")
 
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     actividades_ok = 0
     biometrico_ok = 0
     sueno_ok = 0
     errores = []
-
-    # ── Actividades (últimos 30 días) ──────────────────────────────────────────
-    try:
-        activities = client.get_activities(0, 50)
-        hoy = date.today()
-        hace_30 = hoy - timedelta(days=30)
-        for act in activities:
-            fecha_raw = act.get("startTimeLocal", "")[:10]
-            try:
-                if fecha_raw and date.fromisoformat(fecha_raw) >= hace_30:
-                    _upsert_actividad(conn, usuario_id, act)
-                    actividades_ok += 1
-            except Exception:
-                pass
-        conn.commit()
-    except Exception as e:
-        errores.append(f"Actividades: {str(e)[:100]}")
-
-    # ── Datos diarios (últimos 14 días): sueño, HRV, body battery, estrés ─────
     hoy = date.today()
-    for delta in range(14):
-        dia = hoy - timedelta(days=delta)
-        dia_str = dia.isoformat()
 
-        # Sueño
+    def _fetch_day(dia_str: str) -> dict:
+        """Descarga todos los datos de un día en paralelo (se ejecuta en hilo)."""
+        result = {"fecha": dia_str, "sueno": None, "hrv": None, "stats": None, "readiness": None}
         try:
             sleep = client.get_sleep_data(dia_str)
             daily = (sleep or {}).get("dailySleepDTO") or {}
-            horas_totales = None
-            if daily.get("sleepTimeSeconds"):
-                horas_totales = round(daily["sleepTimeSeconds"] / 3600, 2)
-            score = daily.get("sleepScores", {}).get("overall", {}).get("value") if isinstance(daily.get("sleepScores"), dict) else None
-            if score is None:
-                score = daily.get("sleepScore")
+            horas = round(daily["sleepTimeSeconds"] / 3600, 2) if daily.get("sleepTimeSeconds") else None
+            score = (daily.get("sleepScores", {}) or {}).get("overall", {}).get("value") if isinstance(daily.get("sleepScores"), dict) else daily.get("sleepScore")
             profundo = round(daily.get("deepSleepSeconds", 0) / 3600, 2) if daily.get("deepSleepSeconds") else None
             rem = round(daily.get("remSleepSeconds", 0) / 3600, 2) if daily.get("remSleepSeconds") else None
-            if horas_totales or score:
-                _upsert_sueno(conn, usuario_id, dia_str,
-                              horas_totales=horas_totales, score=score,
-                              sleep_profundo_horas=profundo, sleep_rem_horas=rem)
-                sueno_ok += 1
-        except Exception as e:
-            if delta == 0:
-                errores.append(f"Sueño: {str(e)[:80]}")
-
-        # HRV
+            if horas or score:
+                result["sueno"] = {"horas_totales": horas, "score": score, "profundo": profundo, "rem": rem}
+        except Exception:
+            pass
         try:
             hrv_data = client.get_hrv_data(dia_str)
             hrv_summary = (hrv_data or {}).get("hrvSummary") or {}
             hrv_ms = hrv_summary.get("lastNight") or hrv_summary.get("weeklyAvg")
             if hrv_ms:
-                _upsert_biometrico(conn, usuario_id, dia_str, hrv_ms=hrv_ms)
-                biometrico_ok += 1
+                result["hrv"] = hrv_ms
         except Exception:
             pass
-
-        # Stats diarias (FC reposo, estrés, body battery, VO2max, etc.)
         try:
             stats = client.get_stats(dia_str)
-            fc_rep = stats.get("restingHeartRate")
-            estres = stats.get("averageStressLevel")
-            body_bat_end = stats.get("bodyBatteryChargedValue") or stats.get("bodyBatteryHighValue")
-            body_bat_min = stats.get("bodyBatteryDrainedValue") or stats.get("bodyBatteryLowValue")
-            vo2max = stats.get("vo2MaxValue")
-            _upsert_biometrico(conn, usuario_id, dia_str,
-                               fc_reposo=fc_rep,
-                               estres_medio=estres,
-                               body_battery=body_bat_end,
-                               body_battery_min=body_bat_min,
-                               vo2max=vo2max)
-            biometrico_ok += 1
-        except Exception as e:
-            if delta == 0:
-                errores.append(f"Stats: {str(e)[:80]}")
-
-        # Training readiness / training status
+            result["stats"] = {
+                "fc_reposo": stats.get("restingHeartRate"),
+                "estres_medio": stats.get("averageStressLevel"),
+                "body_battery": stats.get("bodyBatteryChargedValue") or stats.get("bodyBatteryHighValue"),
+                "body_battery_min": stats.get("bodyBatteryDrainedValue") or stats.get("bodyBatteryLowValue"),
+                "vo2max": stats.get("vo2MaxValue"),
+            }
+        except Exception:
+            pass
         try:
             tr = client.get_training_readiness(dia_str)
-            readiness = None
-            status = None
+            readiness = status = None
             if isinstance(tr, dict):
                 readiness = tr.get("score") or tr.get("trainingReadiness")
                 status = tr.get("trainingStatus") or tr.get("status")
@@ -269,11 +229,53 @@ def _do_sync(usuario_id: int) -> dict:
                 readiness = tr[0].get("score")
                 status = tr[0].get("trainingStatus")
             if readiness or status:
-                _upsert_biometrico(conn, usuario_id, dia_str,
-                                   training_readiness=readiness,
-                                   training_status=status)
+                result["readiness"] = {"training_readiness": readiness, "training_status": status}
         except Exception:
             pass
+        return result
+
+    # ── Actividades + datos diarios en paralelo ────────────────────────────────
+    dias = [hoy - timedelta(days=d) for d in range(7)]
+    dias_str = [d.isoformat() for d in dias]
+    hace_30 = hoy - timedelta(days=30)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        fut_acts = pool.submit(client.get_activities, 0, 30)
+        fut_dias = {pool.submit(_fetch_day, d): d for d in dias_str}
+
+        # Actividades
+        try:
+            activities = fut_acts.result(timeout=20)
+            for act in activities:
+                fecha_raw = act.get("startTimeLocal", "")[:10]
+                try:
+                    if fecha_raw and date.fromisoformat(fecha_raw) >= hace_30:
+                        _upsert_actividad(conn, usuario_id, act)
+                        actividades_ok += 1
+                except Exception:
+                    pass
+            conn.commit()
+        except Exception as e:
+            errores.append(f"Actividades: {str(e)[:100]}")
+
+        # Datos diarios
+        for fut in as_completed(fut_dias, timeout=25):
+            try:
+                day = fut.result()
+                dia_str = day["fecha"]
+                if day["sueno"]:
+                    _upsert_sueno(conn, usuario_id, dia_str, **day["sueno"])
+                    sueno_ok += 1
+                if day["hrv"]:
+                    _upsert_biometrico(conn, usuario_id, dia_str, hrv_ms=day["hrv"])
+                    biometrico_ok += 1
+                if day["stats"]:
+                    _upsert_biometrico(conn, usuario_id, dia_str, **day["stats"])
+                    biometrico_ok += 1
+                if day["readiness"]:
+                    _upsert_biometrico(conn, usuario_id, dia_str, **day["readiness"])
+            except Exception:
+                pass
 
     _save_tokens_to_db(conn, usuario_id, client)
     conn.commit()
