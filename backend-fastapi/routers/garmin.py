@@ -103,7 +103,10 @@ def _upsert_sueno(conn, usuario_id: int, fecha: str, **kwargs):
 
 
 def _load_client_from_tokens(conn, usuario_id: int):
-    """Intenta crear un cliente Garmin usando tokens OAuth guardados en BD."""
+    """Carga cliente Garmin desde tokens OAuth guardados en BD.
+    No hace login ni llama a la API — la renovación de token ocurre
+    automáticamente en el primer 401 mediante di_refresh_token.
+    """
     try:
         from garminconnect import Garmin
         row = conn.execute(
@@ -112,14 +115,12 @@ def _load_client_from_tokens(conn, usuario_id: int):
         if not row or not row[0]:
             return None
         gc = Garmin()
-        store = None
-        if hasattr(gc, "garth") and gc.garth is not None:
-            store = gc.garth
-        elif hasattr(gc, "client") and gc.client is not None:
-            store = gc.client
+        store = gc.client if hasattr(gc, "client") and gc.client is not None else None
         if store is None:
             return None
         store.loads(row[0])
+        if not store.is_authenticated:
+            return None
         return gc
     except Exception:
         return None
@@ -152,45 +153,17 @@ def _do_sync(usuario_id: int) -> dict:
 
     conn = get_db()
 
-    # Intentar primero con tokens OAuth
+    # Solo usar tokens OAuth — NUNCA intentar login con contraseña desde el cloud
+    # (Garmin bloquea IPs de servidores con 403).
+    # garminconnect auto-refresca el di_token usando di_refresh_token en los 401.
     client = _load_client_from_tokens(conn, usuario_id)
 
-    # Verificar que los tokens realmente funcionan (pueden estar caducados)
-    if client is not None:
-        try:
-            client.get_stats(date.today().isoformat())
-        except Exception:
-            client = None  # Tokens caducados, usar credenciales
-
     if client is None:
-        try:
-            email, password = _get_credentials(conn, usuario_id)
-        except HTTPException:
-            conn.close()
-            raise HTTPException(
-                status_code=400,
-                detail="No hay credenciales Garmin configuradas. Ve a Perfil → Editar Perfil para añadirlas.",
-            )
-        try:
-            client = Garmin(email, password)
-            client.login()
-            # Guardar tokens frescos para la próxima vez
-            _save_tokens_to_db(conn, usuario_id, client)
-            conn.commit()
-        except Exception as e:
-            conn.close()
-            msg = str(e)
-            if "2FA" in msg or "MFA" in msg or "factor" in msg.lower():
-                raise HTTPException(
-                    status_code=400,
-                    detail="Garmin requiere verificación en dos pasos (2FA). Desactívala temporalmente en tu cuenta Garmin Connect.",
-                )
-            if "403" in msg or "forbidden" in msg.lower() or "exhausted" in msg.lower():
-                raise HTTPException(
-                    status_code=400,
-                    detail="Garmin bloquea el login desde el servidor cloud (IP no permitida). Ejecuta desde tu PC: python scripts/garmin_login_once.py --usuario 1",
-                )
-            raise HTTPException(status_code=400, detail=f"Error al conectar con Garmin: {msg[:200]}")
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail="Sesión Garmin caducada. Ejecuta desde tu PC: python scripts/garmin_login_once.py --usuario 1 (o --usuario 2 para Dani)",
+        )
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
