@@ -102,6 +102,47 @@ def _upsert_sueno(conn, usuario_id: int, fecha: str, **kwargs):
         )
 
 
+def _load_client_from_tokens(conn, usuario_id: int):
+    """Intenta crear un cliente Garmin usando tokens OAuth guardados en BD."""
+    try:
+        from garminconnect import Garmin
+        row = conn.execute(
+            "SELECT garmin_tokens FROM usuarios WHERE id = ?", (usuario_id,)
+        ).fetchone()
+        if not row or not row[0]:
+            return None
+        gc = Garmin()
+        store = None
+        if hasattr(gc, "garth") and gc.garth is not None:
+            store = gc.garth
+        elif hasattr(gc, "client") and gc.client is not None:
+            store = gc.client
+        if store is None:
+            return None
+        store.loads(row[0])
+        return gc
+    except Exception:
+        return None
+
+
+def _save_tokens_to_db(conn, usuario_id: int, gc):
+    """Guarda los tokens actualizados de vuelta a la BD tras una sync exitosa."""
+    try:
+        store = None
+        if hasattr(gc, "garth") and gc.garth is not None:
+            store = gc.garth
+        elif hasattr(gc, "client") and gc.client is not None:
+            store = gc.client
+        if store and hasattr(store, "dumps"):
+            token_json = store.dumps()
+            conn.execute(
+                "UPDATE usuarios SET garmin_tokens = ? WHERE id = ?",
+                (token_json, usuario_id),
+            )
+    except Exception:
+        pass
+
+
 def _do_sync(usuario_id: int) -> dict:
     """Realiza la sincronización completa con Garmin Connect."""
     try:
@@ -110,20 +151,32 @@ def _do_sync(usuario_id: int) -> dict:
         raise HTTPException(status_code=500, detail="garminconnect no instalado en el servidor")
 
     conn = get_db()
-    email, password = _get_credentials(conn, usuario_id)
 
-    try:
-        client = Garmin(email, password)
-        client.login()
-    except Exception as e:
-        conn.close()
-        msg = str(e)
-        if "2FA" in msg or "MFA" in msg or "factor" in msg.lower():
+    # Intentar primero con tokens OAuth (funciona en cloud, no necesita contraseña)
+    client = _load_client_from_tokens(conn, usuario_id)
+
+    if client is None:
+        # Fallback: login con credenciales (puede fallar en Railway/Vercel por IP bloqueada)
+        try:
+            email, password = _get_credentials(conn, usuario_id)
+        except HTTPException:
+            conn.close()
             raise HTTPException(
                 status_code=400,
-                detail="Garmin requiere verificación en dos pasos (2FA). Desactívala temporalmente en tu cuenta Garmin Connect.",
+                detail="No hay tokens Garmin guardados. Ejecuta el login desde tu PC local con: python scripts/garmin_login_once.py",
             )
-        raise HTTPException(status_code=400, detail=f"Error al conectar con Garmin: {msg[:200]}")
+        try:
+            client = Garmin(email, password)
+            client.login()
+        except Exception as e:
+            conn.close()
+            msg = str(e)
+            if "2FA" in msg or "MFA" in msg or "factor" in msg.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Garmin requiere verificación en dos pasos (2FA). Desactívala temporalmente en tu cuenta Garmin Connect.",
+                )
+            raise HTTPException(status_code=400, detail=f"Error al conectar con Garmin: {msg[:200]}")
 
     actividades_ok = 0
     biometrico_ok = 0
@@ -222,6 +275,7 @@ def _do_sync(usuario_id: int) -> dict:
         except Exception:
             pass
 
+    _save_tokens_to_db(conn, usuario_id, client)
     conn.commit()
     conn.close()
 
