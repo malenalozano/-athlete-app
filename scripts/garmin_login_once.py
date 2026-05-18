@@ -217,9 +217,18 @@ def main():
                 return
             print("Tokens expirados o inválidos — haciendo login fresco...\n")
 
+    def _prompt_mfa():
+        print("\n🔐 Garmin requiere verificación adicional.")
+        print("   Si usas la app 'Garmin Connect' en el móvil:")
+        print("   → Abre la app → aprueba la notificación push → pulsa ENTER aquí.")
+        print("   Si recibes un código por email/SMS:")
+        print("   → Escríbelo aquí y pulsa ENTER.")
+        code = input("   Código MFA (o ENTER si aprobaste por app): ").strip()
+        return code if code else "0"  # garth necesita un valor no vacío
+
     try:
         from garminconnect import Garmin
-        gc = Garmin(email=usuario, password=password)
+        gc = Garmin(email=usuario, password=password, prompt_mfa=_prompt_mfa)
         gc.login()
         os.makedirs(token_home, exist_ok=True)
         store = _token_store(gc)
@@ -272,6 +281,12 @@ def main():
             print("      python scripts/garmin_login_once.py")
             print("\n💡 Nota: Si usas la app de Garmin oficial o conectas desde otro lado,")
             print("   puede afectar este bloqueo. Cierra sesiones extras si es posible.")
+        elif "Authentication Application" in msg or "Unexpected title" in msg:
+            print(f"❌ ERROR: Garmin usa autenticación por app push y el código no llegó.")
+            print("   Soluciones:")
+            print("   1. Vuelve a ejecutar el script y aprueba la notificación push en la app Garmin Connect")
+            print("      ANTES de pulsar ENTER cuando pregunte por el código.")
+            print("   2. O cambia el método MFA en garmin.com → Cuenta → Seguridad → usa Email/SMS en vez de App.")
         elif "Authentication" in msg or "auth" in msg.lower():
             print(f"❌ ERROR de autenticación: {msg}")
             print("   Comprueba que el email y password sean correctos.")
