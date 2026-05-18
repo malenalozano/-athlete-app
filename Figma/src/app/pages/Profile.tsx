@@ -106,7 +106,7 @@ function Sincronizacion({ biometrico, stats, userId, perfil, onSyncComplete }: {
     setSyncMsg(null);
     try {
       const result = await sincronizarGarmin(userId);
-      setSyncMsg(result.message);
+      setSyncMsg(`Sincronizado: ${result.actividades_importadas} actividades, ${result.dias_biometrico} días biométricos, ${result.dias_sueno} días sueño.`);
       onSyncComplete();
     } catch (e: unknown) {
       setSyncMsg(e instanceof Error ? e.message : "Error al sincronizar");
@@ -793,7 +793,7 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
                         setSyncMsg(null);
                         try {
                           const result = await sincronizarGarmin(userId);
-                          setSyncMsg(result.message);
+                          setSyncMsg(`Sincronizado: ${result.actividades_importadas} actividades, ${result.dias_biometrico} días biométricos, ${result.dias_sueno} días sueño.`);
                           onSaved?.();
                         } catch (e: unknown) {
                           setSyncMsg(e instanceof Error ? e.message : "Error al sincronizar");
