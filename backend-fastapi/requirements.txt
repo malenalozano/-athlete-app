@@ -3,5 +3,5 @@ uvicorn[standard]==0.30.6
 pydantic==2.9.2
 pydantic-settings==2.5.2
 python-dotenv==1.0.1
-garminconnect==0.3.3
+garminconnect
 xlrd==2.0.1
