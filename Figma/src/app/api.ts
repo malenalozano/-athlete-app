@@ -1,15 +1,27 @@
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
-async function req<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`API ${res.status}: ${err}`);
+async function req<T>(path: string, options?: RequestInit, timeoutMs = 60000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      ...options,
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`API ${res.status}: ${err}`);
+    }
+    return res.json();
+  } catch (e: unknown) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error("La petición tardó demasiado. Inténtalo de nuevo.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -116,7 +128,7 @@ export function getGarminStats(usuarioId: number) {
 }
 
 export function sincronizarGarmin(usuarioId: number) {
-  return req<{ ok: boolean; message: string }>(`/garmin/${usuarioId}/sync`, { method: "POST" });
+  return req<{ ok: boolean; message: string }>(`/garmin/${usuarioId}/sync`, { method: "POST" }, 90000);
 }
 
 export function guardarCredencialesGarmin(usuarioId: number, emailGarmin: string, passwordGarmin: string) {
