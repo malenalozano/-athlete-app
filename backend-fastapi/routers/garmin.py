@@ -368,3 +368,33 @@ def sync_garmin(usuario_id: int):
     """Sincroniza actividades y datos biométricos desde Garmin Connect."""
     result = _do_sync(usuario_id)
     return result
+
+
+class TokensPayload(BaseModel):
+    tokens_json: str
+
+
+@router.post("/{usuario_id}/upload-tokens")
+def upload_tokens(usuario_id: int, body: TokensPayload):
+    """Guarda tokens OAuth de Garmin en la BD (llamado desde el script local)."""
+    conn = get_db()
+    conn.execute(
+        "UPDATE usuarios SET garmin_tokens = ? WHERE id = ?",
+        (body.tokens_json, usuario_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True, "message": f"Tokens guardados para usuario {usuario_id}"}
+
+
+@router.get("/{usuario_id}/token-status")
+def token_status(usuario_id: int):
+    """Comprueba si hay tokens Garmin guardados para el usuario."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT garmin_tokens IS NOT NULL AND garmin_tokens != '' FROM usuarios WHERE id = ?",
+        (usuario_id,),
+    ).fetchone()
+    conn.close()
+    tiene_tokens = bool(row and row[0])
+    return {"usuario_id": usuario_id, "tiene_tokens": tiene_tokens}

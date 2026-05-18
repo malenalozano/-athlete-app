@@ -14,6 +14,8 @@ import sys
 import re
 import json
 import time
+import urllib.request
+import urllib.error
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -21,6 +23,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 GARTH_HOME = os.path.expanduser("~/.garth_athlete")
 BLOCKADE_FILE = os.path.expanduser("~/.garth_athlete/.blockade.json")
 _BACKEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "backend-fastapi")
+# URL del backend en producción (Railway). Puede sobreescribirse con variable de entorno.
+_API_URL = os.environ.get("ATHLETE_API_URL", "https://athlete-app-production-78ff.up.railway.app")
 
 
 def _get_backend_db():
@@ -226,29 +230,27 @@ def main():
         print(f"✓ Tokens guardados en DISCO: {token_home}")
         print(f"✓ Sesión activa como: {name}")
 
-        # IMPORTANTE: Guardar también en BD para que funcione en Cloud
+        # IMPORTANTE: Subir tokens al API de Railway para que funcione en Cloud
         try:
-            conn = _get_backend_db()
             token_json = store.dumps()
-            if usuario_id is not None:
-                conn.execute(
-                    "UPDATE usuarios SET garmin_tokens=? WHERE id=?",
-                    (token_json, usuario_id)
-                )
-            else:
-                conn.execute(
-                    "UPDATE usuarios SET garmin_tokens=? WHERE email_garmin=?",
-                    (token_json, usuario)
-                )
-            conn.commit()
-            conn.close()
-            print(f"✓ Tokens guardados en BASE DE DATOS (Turso)")
-            print("\n✅ SUCCESS: Tokens guardados en disco Y BD.")
-            print("   La app en Cloud podrá usar estos tokens sin volver a hacer login.")
+            uid = usuario_id if usuario_id is not None else 1
+            payload = json.dumps({"tokens_json": token_json}).encode("utf-8")
+            req_http = urllib.request.Request(
+                f"{_API_URL}/garmin/{uid}/upload-tokens",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req_http, timeout=15) as resp:
+                result = json.loads(resp.read())
+            print(f"✓ Tokens subidos al servidor ({_API_URL})")
+            print("\n✅ SUCCESS: Tokens guardados en disco Y subidos al servidor.")
+            print("   La app en Cloud podrá sincronizar Garmin sin contraseña.")
             _clear_blockade()  # Éxito: limpiar bloqueo si lo había
         except Exception as e:
-            print(f"\n⚠️  No se pudo guardar en BD: {e}")
-            print("   (Los tokens se guardaron en disco, pero no en Cloud)")
+            print(f"\n⚠️  No se pudieron subir tokens al servidor: {e}")
+            print("   Los tokens se guardaron en DISCO pero no en el servidor.")
+            print(f"   Asegúrate de que el servidor está accesible en: {_API_URL}")
             
     except Exception as e:
         msg = str(e)
