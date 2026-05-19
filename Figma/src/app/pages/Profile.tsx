@@ -92,8 +92,8 @@ function Sincronizacion({ biometrico, stats, userId, perfil, onSyncComplete }: {
     { label: "HRV", value: yesterdayEntry?.hrv_ms != null ? String(Math.round(yesterdayEntry.hrv_ms)) : "—", unit: "ms", icon: Activity, color: "#C9FF00", bg: "rgba(201,255,0,0.1)", border: "rgba(201,255,0,0.25)" },
     { label: "Sueño", value: yesterdayEntry?.horas_totales != null ? fmtHours(yesterdayEntry.horas_totales) : "—", unit: "", icon: Moon, color: "#A855F7", bg: "rgba(168,85,247,0.1)", border: "rgba(168,85,247,0.25)" },
     { label: "FC Reposo", value: yesterdayEntry?.fc_reposo != null ? String(yesterdayEntry.fc_reposo) : "—", unit: "bpm", icon: Heart, color: "#F43F5E", bg: "rgba(244,63,94,0.1)", border: "rgba(244,63,94,0.25)" },
-    { label: "Body Battery", value: todayEntry?.body_battery != null ? String(todayEntry.body_battery) : "—", unit: "/100", icon: Zap, color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.25)" },
-    { label: "Estrés", value: todayEntry?.estres_medio != null ? String(Math.round(todayEntry.estres_medio)) : "—", unit: "/100", icon: Activity, color: "#F97316", bg: "rgba(249,115,22,0.1)", border: "rgba(249,115,22,0.25)" },
+    { label: "Body Battery", value: (todayEntry ?? yesterdayEntry)?.body_battery != null ? String((todayEntry ?? yesterdayEntry)!.body_battery) : "—", unit: "/100", icon: Zap, color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.25)" },
+    { label: "Estrés", value: (todayEntry ?? yesterdayEntry)?.estres_medio != null ? String(Math.round((todayEntry ?? yesterdayEntry)!.estres_medio!)) : "—", unit: "/100", icon: Activity, color: "#F97316", bg: "rgba(249,115,22,0.1)", border: "rgba(249,115,22,0.25)" },
     { label: "Score Sueño", value: yesterdayEntry?.sleep_score != null ? String(yesterdayEntry.sleep_score) : "—", unit: "/100", icon: Moon, color: "#6366F1", bg: "rgba(99,102,241,0.1)", border: "rgba(99,102,241,0.25)" },
   ];
 
@@ -542,8 +542,7 @@ function Historial({ actividades, biometrico, stats }: { actividades: ActividadG
 
 // ── Editar Perfil (desplegable) ────────────────────────────────────────────────
 
-function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perfil: PerfilUsuario | null; onSaved?: () => void }) {
-  const [open, setOpen] = useState(false);
+function EditarPerfil({ userId, perfil, onSaved, open, onOpenChange }: { userId: number | null; perfil: PerfilUsuario | null; onSaved?: () => void; open: boolean; onOpenChange: (v: boolean) => void }) {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [savingGarmin, setSavingGarmin] = useState(false);
@@ -633,7 +632,7 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
       <CardHeader className="pb-0">
         <button
           type="button"
-          onClick={() => setOpen(!open)}
+          onClick={() => onOpenChange(!open)}
           className="flex items-center justify-between w-full text-white font-semibold hover:text-[#C9FF00] transition-colors py-1"
         >
           <CardTitle className="text-white">Editar Perfil</CardTitle>
@@ -882,6 +881,7 @@ export function Profile() {
   const [actividades, setActividades] = useState<ActividadGarmin[]>([]);
   const [biometrico, setBiometrico] = useState<EntradaBiometrica[]>([]);
   const [stats, setStats] = useState<GarminStats | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -891,80 +891,65 @@ export function Profile() {
     getGarminStats(userId).then(setStats).catch(() => null);
   }, [userId]);
 
-  const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const sevenDaysAgoIso = sevenDaysAgo.toISOString().slice(0, 10);
-  const STRENGTH_TYPES = new Set(["strength_training", "fitness_equipment", "gym", "fuerza", "strength", "indoor_cycling", "yoga", "pilates"]);
-  const fuerzaSem = actividades.filter(a => a.fecha >= sevenDaysAgoIso && STRENGTH_TYPES.has(a.tipo_deporte?.toLowerCase() ?? "")).length;
-
-  const kpis = [
-    { label: "OBJETIVO", value: perfil?.objetivo || perfil?.objetivo_tipo || "--", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)" },
-    { label: "RITMO", value: perfil?.ritmo || "--", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)" },
-    { label: "CARRERA/SEM", value: stats?.km_semana != null ? `${stats.km_semana} km` : "--", color: "#A855F7", bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.2)" },
-    { label: "FUERZA/SEM", value: fuerzaSem > 0 ? `${fuerzaSem} ses.` : "--", color: "#F97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.2)" },
-  ];
 
   return (
     <div className="min-h-screen bg-[#0E1117]">
       <Header />
 
       <main className="container mx-auto px-6 py-8 space-y-8">
-        {/* Profile Hero */}
-        <div
-          className="rounded-2xl p-8 relative overflow-hidden"
+        {/* Profile Hero — click para editar */}
+        <button
+          type="button"
+          onClick={() => setEditOpen(!editOpen)}
+          className="w-full text-left rounded-2xl p-8 relative overflow-hidden transition-all hover:brightness-110"
           style={{
             background: "linear-gradient(135deg, rgba(201,255,0,0.1), rgba(22,27,34,1))",
-            border: "1px solid rgba(201,255,0,0.2)",
-            boxShadow: "0 0 40px rgba(201,255,0,0.05)",
+            border: `1px solid ${editOpen ? "rgba(201,255,0,0.5)" : "rgba(201,255,0,0.2)"}`,
+            boxShadow: editOpen ? "0 0 40px rgba(201,255,0,0.12)" : "0 0 40px rgba(201,255,0,0.05)",
           }}
         >
           <div
             className="absolute -right-10 -top-10 w-60 h-60 rounded-full opacity-10 blur-3xl"
             style={{ background: "#C9FF00" }}
           />
-          <div className="flex items-center gap-6 relative">
-            <div
-              className="h-20 w-20 rounded-2xl flex items-center justify-center shrink-0 text-2xl font-bold"
-              style={{
-                background: "linear-gradient(135deg, rgba(201,255,0,0.2), rgba(201,255,0,0.05))",
-                border: "2px solid rgba(201,255,0,0.4)",
-                color: "#C9FF00",
-              }}
-            >
-              {(perfil?.nombre || userName || "U")[0].toUpperCase()}
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-white">{perfil?.nombre || userName}</h2>
-              <p className="text-[#8B949E] text-sm mt-1">
-                {[perfil?.nivel, perfil?.objetivo_tipo].filter(Boolean).join(" · ")}
-              </p>
-              {perfil?.fecha_objetivo && (
-                <p className="text-xs mt-1" style={{ color: "#C9FF00" }}>
-                  Objetivo: {perfil.fecha_objetivo}
+          <div className="flex items-center justify-between gap-6 relative">
+            <div className="flex items-center gap-6">
+              <div
+                className="h-20 w-20 rounded-2xl flex items-center justify-center shrink-0 text-2xl font-bold"
+                style={{
+                  background: "linear-gradient(135deg, rgba(201,255,0,0.2), rgba(201,255,0,0.05))",
+                  border: "2px solid rgba(201,255,0,0.4)",
+                  color: "#C9FF00",
+                }}
+              >
+                {(perfil?.nombre || userName || "U")[0].toUpperCase()}
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-white">{perfil?.nombre || userName}</h2>
+                <p className="text-[#8B949E] text-sm mt-1">
+                  {[perfil?.nivel, perfil?.objetivo_tipo].filter(Boolean).join(" · ")}
                 </p>
-              )}
+                {perfil?.fecha_objetivo && (
+                  <p className="text-xs mt-1" style={{ color: "#C9FF00" }}>
+                    Objetivo: {perfil.fecha_objetivo}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-[#8B949E] shrink-0">
+              <span className="text-xs hidden sm:block">{editOpen ? "Cerrar" : "Editar perfil"}</span>
+              {editOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
             </div>
           </div>
-        </div>
-
-        {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {kpis.map((kpi) => (
-            <div
-              key={kpi.label}
-              className="rounded-xl p-4 transition-all hover:scale-[1.02]"
-              style={{ background: kpi.bg, border: `1px solid ${kpi.border}` }}
-            >
-              <p className="text-xs font-semibold mb-2" style={{ color: kpi.color }}>{kpi.label}</p>
-              <p className="text-lg font-bold text-white truncate">{kpi.value}</p>
-            </div>
-          ))}
-        </div>
+        </button>
 
         {/* Editar Perfil (desplegable) */}
         <EditarPerfil
           key={userId ?? 0}
           userId={userId}
           perfil={perfil}
+          open={editOpen}
+          onOpenChange={setEditOpen}
           onSaved={() => {
             if (!userId) return;
             getPerfil(userId).then(setPerfil).catch(() => null);

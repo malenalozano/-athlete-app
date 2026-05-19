@@ -527,7 +527,7 @@ export function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <SleepAnalysis score={latestSleep?.score} hours={latestSleep?.horas_totales} />
             <ReadinessCard hrv={latestHrv?.hrv_ms} />
-            <StressBatteryCard stress={todayHrv?.estres_medio} battery={todayHrv?.body_battery} fcReposo={todayHrv?.fc_reposo} />
+            <StressBatteryCard stress={(todayHrv ?? latestHrv)?.estres_medio} battery={(todayHrv ?? latestHrv)?.body_battery} fcReposo={(todayHrv ?? latestHrv)?.fc_reposo} />
           </div>
         </section>
 
