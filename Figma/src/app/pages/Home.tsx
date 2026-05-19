@@ -400,8 +400,12 @@ export function Home() {
   }, [userId]);
 
   const sevenDayMetrics = buildSevenDayMetrics(dashData);
-  const latestHrv = dashData?.hrv_data?.[0];
-  const latestSleep = dashData?.sleep_data?.[dashData.sleep_data.length - 1];
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const yesterdayIso = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
+  const mostRecentHrv = dashData?.hrv_data?.[0] ?? null;
+  const latestHrv = dashData?.hrv_data?.find(h => h.fecha === yesterdayIso) ?? null;
+  const todayHrv = dashData?.hrv_data?.find(h => h.fecha === todayIso) ?? null;
+  const latestSleep = dashData?.sleep_data?.find(s => s.fecha === yesterdayIso) ?? null;
   const fase = dashData?.fase_macrociclo?.nombre ?? "Acondicionamiento";
   const objetivo = dashData?.perfil?.objetivo ?? "Maratón de Sevilla";
   const fechaObj = dashData?.perfil?.fecha_objetivo ?? "2027-02-21";
@@ -523,7 +527,7 @@ export function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <SleepAnalysis score={latestSleep?.score} hours={latestSleep?.horas_totales} />
             <ReadinessCard hrv={latestHrv?.hrv_ms} />
-            <StressBatteryCard stress={latestHrv?.estres_medio} battery={latestHrv?.body_battery} fcReposo={latestHrv?.fc_reposo} />
+            <StressBatteryCard stress={todayHrv?.estres_medio} battery={todayHrv?.body_battery} fcReposo={todayHrv?.fc_reposo} />
           </div>
         </section>
 
@@ -947,7 +951,7 @@ export function Home() {
                     <div>
                       <p className="text-[#8B949E]">Actual</p>
                       <p className="font-bold text-green-400">
-                        {latestHrv?.hrv_ms ? `${Math.round(latestHrv.hrv_ms)} ms` : "—"}
+                        {mostRecentHrv?.hrv_ms ? `${Math.round(mostRecentHrv.hrv_ms)} ms` : "—"}
                       </p>
                     </div>
                     <div>
@@ -1046,7 +1050,7 @@ export function Home() {
                     <div>
                       <p className="text-[#8B949E]">Actual</p>
                       <p className="font-bold text-pink-400">
-                        {latestHrv?.fc_reposo ? `${latestHrv.fc_reposo} bpm` : "—"}
+                        {mostRecentHrv?.fc_reposo ? `${mostRecentHrv.fc_reposo} bpm` : "—"}
                       </p>
                     </div>
                     <div>

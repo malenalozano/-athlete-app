@@ -546,11 +546,12 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
   const [savingGarmin, setSavingGarmin] = useState(false);
   const [garminMsg, setGarminMsg] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [activitiesToSync, setActivitiesToSync] = useState(20);
+  const [activitiesToSync, setActivitiesToSync] = useState(7);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [emailGarmin, setEmailGarmin] = useState("");
   const [passwordGarmin, setPasswordGarmin] = useState("");
+  const [showGarminForm, setShowGarminForm] = useState(!perfil?.email_garmin);
   const [form, setForm] = useState({
     nombre: "", edad: "", peso: "", objetivo: "", ritmo: "", genero: "",
     objetivo_tipo: "", fecha_objetivo: "", fcmax: "", nivel: "",
@@ -570,7 +571,12 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
       fcmax: String(perfil.fcmax || ""),
       nivel: perfil.nivel || "",
     });
-    if (perfil.email_garmin) setEmailGarmin(perfil.email_garmin);
+    if (perfil.email_garmin) {
+      setEmailGarmin(perfil.email_garmin);
+      setShowGarminForm(false);
+    } else {
+      setShowGarminForm(true);
+    }
   }, [perfil]);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -609,8 +615,8 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
     setGarminMsg(null);
     try {
       await guardarCredencialesGarmin(userId, emailGarmin, passwordGarmin);
-      setGarminMsg("Credenciales guardadas correctamente.");
       setPasswordGarmin("");
+      setShowGarminForm(false);
       onSaved?.();
     } catch (e: unknown) {
       setGarminMsg(e instanceof Error ? e.message : "Error al guardar credenciales");
@@ -700,53 +706,78 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card className="bg-[#0E1117] border border-[#C9FF00]/20 rounded-xl">
                   <CardContent className="pt-6 pb-6 space-y-4">
-                    <h5 className="text-[#C9FF00] font-bold uppercase text-xs mb-4">GARMIN CONNECT (OPCIONAL)</h5>
-                    <div>
-                      <Label className="text-white mb-2 block text-sm">Email Garmin</Label>
-                      <Input
-                        type="email"
-                        placeholder="tu@email.com"
-                        value={emailGarmin}
-                        onChange={(e) => setEmailGarmin(e.target.value)}
-                        className="bg-[#161B22] border-[#C9FF00]/30 text-white"
-                      />
-                    </div>
-                    <div className="relative">
-                      <Label className="text-white mb-2 block text-sm flex items-center gap-2">
-                        Contraseña Garmin
-                        {perfil?.email_garmin && <span className="text-[10px] text-green-400 font-normal">(ya guardada)</span>}
-                        <HelpCircle className="h-3 w-3 text-[#8B949E]" />
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          type={showPassword ? "text" : "password"}
-                          placeholder={perfil?.email_garmin ? "Dejar vacío para no cambiar" : "••••••••"}
-                          value={passwordGarmin}
-                          onChange={(e) => setPasswordGarmin(e.target.value)}
-                          className="bg-[#161B22] border-[#C9FF00]/30 text-white pr-10"
-                        />
+                    <h5 className="text-[#C9FF00] font-bold uppercase text-xs mb-4">GARMIN CONNECT</h5>
+
+                    {!showGarminForm ? (
+                      /* ── Estado: conectado ── */
+                      <div className="flex flex-col items-center gap-4 py-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-green-500/15 flex items-center justify-center">
+                            <CheckCircle2 className="h-5 w-5 text-green-400" />
+                          </div>
+                          <div>
+                            <p className="text-white font-semibold text-sm">Garmin Conectado</p>
+                            <p className="text-[#8B949E] text-xs">{emailGarmin}</p>
+                          </div>
+                        </div>
                         <button
                           type="button"
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8B949E] hover:text-white transition-colors"
-                          onClick={() => setShowPassword(!showPassword)}
+                          onClick={() => { setShowGarminForm(true); setPasswordGarmin(""); setGarminMsg(null); }}
+                          className="text-xs text-[#8B949E] hover:text-white underline underline-offset-2 transition-colors"
                         >
-                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          Cambiar credenciales
                         </button>
                       </div>
-                    </div>
-                    {garminMsg && (
-                      <p className={`text-xs px-3 py-2 rounded-lg ${garminMsg.includes("Error") || garminMsg.includes("error") ? "bg-red-500/10 text-red-400 border border-red-500/20" : "bg-green-500/10 text-green-400 border border-green-500/20"}`}>
-                        {garminMsg}
-                      </p>
+                    ) : (
+                      /* ── Estado: formulario ── */
+                      <>
+                        <div>
+                          <Label className="text-white mb-2 block text-sm">Email Garmin</Label>
+                          <Input
+                            type="email"
+                            placeholder="tu@email.com"
+                            value={emailGarmin}
+                            onChange={(e) => setEmailGarmin(e.target.value)}
+                            className="bg-[#161B22] border-[#C9FF00]/30 text-white"
+                          />
+                        </div>
+                        <div className="relative">
+                          <Label className="text-white mb-2 block text-sm flex items-center gap-2">
+                            Contraseña Garmin
+                            <HelpCircle className="h-3 w-3 text-[#8B949E]" />
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              type={showPassword ? "text" : "password"}
+                              placeholder="••••••••"
+                              value={passwordGarmin}
+                              onChange={(e) => setPasswordGarmin(e.target.value)}
+                              className="bg-[#161B22] border-[#C9FF00]/30 text-white pr-10"
+                            />
+                            <button
+                              type="button"
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8B949E] hover:text-white transition-colors"
+                              onClick={() => setShowPassword(!showPassword)}
+                            >
+                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </div>
+                        {garminMsg && (
+                          <p className={`text-xs px-3 py-2 rounded-lg ${garminMsg.includes("Error") || garminMsg.includes("error") ? "bg-red-500/10 text-red-400 border border-red-500/20" : "bg-green-500/10 text-green-400 border border-green-500/20"}`}>
+                            {garminMsg}
+                          </p>
+                        )}
+                        <Button
+                          type="button"
+                          disabled={savingGarmin || !emailGarmin || !passwordGarmin}
+                          onClick={handleSaveGarmin}
+                          className="w-full bg-[#161B22] border border-[#C9FF00]/40 text-white hover:bg-[#C9FF00]/10 disabled:opacity-50"
+                        >
+                          {savingGarmin ? "Guardando..." : "Conectar Garmin"}
+                        </Button>
+                      </>
                     )}
-                    <Button
-                      type="button"
-                      disabled={savingGarmin || !emailGarmin || (!passwordGarmin && !perfil?.email_garmin)}
-                      onClick={handleSaveGarmin}
-                      className="w-full bg-[#161B22] border border-[#C9FF00]/40 text-white hover:bg-[#C9FF00]/10 disabled:opacity-50"
-                    >
-                      {savingGarmin ? "Guardando..." : "Guardar conexión Garmin"}
-                    </Button>
                   </CardContent>
                 </Card>
 
@@ -796,7 +827,10 @@ function EditarPerfil({ userId, perfil, onSaved }: { userId: number | null; perf
                           setSyncMsg(`Sincronizado: ${result.actividades_importadas} actividades, ${result.dias_biometrico} días biométricos, ${result.dias_sueno} días sueño.`);
                           onSaved?.();
                         } catch (e: unknown) {
-                          setSyncMsg(e instanceof Error ? e.message : "Error al sincronizar");
+                          const msg = e instanceof Error ? e.message : "Error al sincronizar";
+                          setSyncMsg(msg);
+                          const isAuthError = msg.includes("401") || msg.includes("Unauthorized") || msg.includes("caducada") || msg.includes("contraseña") || msg.includes("credenciales");
+                          if (isAuthError) setShowGarminForm(true);
                         } finally {
                           setSyncing(false);
                         }
@@ -925,6 +959,7 @@ export function Profile() {
 
         {/* Editar Perfil (desplegable) */}
         <EditarPerfil
+          key={userId ?? 0}
           userId={userId}
           perfil={perfil}
           onSaved={() => {
