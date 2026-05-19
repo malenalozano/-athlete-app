@@ -11,7 +11,7 @@ import {
   ChevronUp,
   Minus,
   Plus,
-  Eye,
+  Eye,h
   EyeOff,
   HelpCircle,
   Watch,
@@ -60,7 +60,7 @@ function fmtPace(minPerKm: number | null): string {
 }
 
 function fmtDate(iso: string): string {
-  const d = new Date(iso + "T12:00:00");
+  const d = new Date((iso || "").substring(0, 10) + "T12:00:00");
   const days = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
   const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
   return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
