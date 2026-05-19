@@ -78,7 +78,10 @@ const DAY_SHORT = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 function Sincronizacion({ biometrico, stats, userId, perfil, onSyncComplete }: { biometrico: EntradaBiometrica[]; stats: GarminStats | null; userId: number | null; perfil: PerfilUsuario | null; onSyncComplete: () => void }) {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const latest = biometrico[0];
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const yesterdayIso = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
+  const yesterdayEntry = biometrico.find(b => b.fecha === yesterdayIso) ?? null;
+  const todayEntry = biometrico.find(b => b.fecha === todayIso) ?? null;
   const hasCredentials = !!perfil?.email_garmin;
   const hasData = hasCredentials && !!stats?.ultima_actividad;
   const lastSync = stats?.ultima_actividad
@@ -86,12 +89,12 @@ function Sincronizacion({ biometrico, stats, userId, perfil, onSyncComplete }: {
     : "Sin sincronizar";
 
   const garminMetrics = [
-    { label: "HRV", value: latest?.hrv_ms != null ? String(Math.round(latest.hrv_ms)) : "—", unit: "ms", icon: Activity, color: "#C9FF00", bg: "rgba(201,255,0,0.1)", border: "rgba(201,255,0,0.25)" },
-    { label: "Sueño", value: latest?.horas_totales != null ? fmtHours(latest.horas_totales) : "—", unit: "", icon: Moon, color: "#A855F7", bg: "rgba(168,85,247,0.1)", border: "rgba(168,85,247,0.25)" },
-    { label: "FC Reposo", value: latest?.fc_reposo != null ? String(latest.fc_reposo) : "—", unit: "bpm", icon: Heart, color: "#F43F5E", bg: "rgba(244,63,94,0.1)", border: "rgba(244,63,94,0.25)" },
-    { label: "Body Battery", value: latest?.body_battery != null ? String(latest.body_battery) : "—", unit: "/100", icon: Zap, color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.25)" },
-    { label: "Estrés", value: latest?.estres_medio != null ? String(Math.round(latest.estres_medio)) : "—", unit: "/100", icon: Activity, color: "#F97316", bg: "rgba(249,115,22,0.1)", border: "rgba(249,115,22,0.25)" },
-    { label: "Score Sueño", value: latest?.sleep_score != null ? String(latest.sleep_score) : "—", unit: "/100", icon: Moon, color: "#6366F1", bg: "rgba(99,102,241,0.1)", border: "rgba(99,102,241,0.25)" },
+    { label: "HRV", value: yesterdayEntry?.hrv_ms != null ? String(Math.round(yesterdayEntry.hrv_ms)) : "—", unit: "ms", icon: Activity, color: "#C9FF00", bg: "rgba(201,255,0,0.1)", border: "rgba(201,255,0,0.25)" },
+    { label: "Sueño", value: yesterdayEntry?.horas_totales != null ? fmtHours(yesterdayEntry.horas_totales) : "—", unit: "", icon: Moon, color: "#A855F7", bg: "rgba(168,85,247,0.1)", border: "rgba(168,85,247,0.25)" },
+    { label: "FC Reposo", value: yesterdayEntry?.fc_reposo != null ? String(yesterdayEntry.fc_reposo) : "—", unit: "bpm", icon: Heart, color: "#F43F5E", bg: "rgba(244,63,94,0.1)", border: "rgba(244,63,94,0.25)" },
+    { label: "Body Battery", value: todayEntry?.body_battery != null ? String(todayEntry.body_battery) : "—", unit: "/100", icon: Zap, color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.25)" },
+    { label: "Estrés", value: todayEntry?.estres_medio != null ? String(Math.round(todayEntry.estres_medio)) : "—", unit: "/100", icon: Activity, color: "#F97316", bg: "rgba(249,115,22,0.1)", border: "rgba(249,115,22,0.25)" },
+    { label: "Score Sueño", value: yesterdayEntry?.sleep_score != null ? String(yesterdayEntry.sleep_score) : "—", unit: "/100", icon: Moon, color: "#6366F1", bg: "rgba(99,102,241,0.1)", border: "rgba(99,102,241,0.25)" },
   ];
 
   const hrvData = biometrico.slice(0, 7).reverse().map(b => ({
