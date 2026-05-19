@@ -11,7 +11,7 @@ import {
   ChevronUp,
   Minus,
   Plus,
-  Eye,h
+  Eye,
   EyeOff,
   HelpCircle,
   Watch,
