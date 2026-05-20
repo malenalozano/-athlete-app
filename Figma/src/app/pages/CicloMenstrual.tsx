@@ -111,20 +111,19 @@ function PillBtn({
   );
 }
 
-// ── March 2026 calendar data ──────────────────────────────────────────────────
-const MARCH_OFFSET = 6; // March 1 2026 is Sunday → 6 empty cells before day 1
-const MARCH_DAYS = 31;
+const MONTH_NAMES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
 export function CicloMenstrual() {
   const { userId } = useUser();
 
   // Form state
-  const [fecha, setFecha] = useState("2026-04-14");
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [fecha, setFecha] = useState(todayStr);
   const [sangre, setSangre] = useState("Sin sangre");
   const [sintomas, setSintomas] = useState<string[]>([]);
   const [animo, setAnimo] = useState("");
   const [entreno, setEntreno] = useState("");
-  const [calMonth, setCalMonth] = useState(2); // 0-indexed: 2 = March
+  const [calMonth, setCalMonth] = useState(new Date().getMonth()); // 0-indexed: mes actual
   const [saving, setSaving] = useState(false);
 
   const toggleSintoma = (s: string) =>
@@ -170,13 +169,19 @@ export function CicloMenstrual() {
     );
   }
 
-  // Build calendar cells
-  const totalCells = Math.ceil((MARCH_OFFSET + MARCH_DAYS) / 7) * 7;
+  // Build calendar cells dynamically for calMonth
+  const calYear = 2026;
+  const firstDayOfWeek = new Date(calYear, calMonth, 1).getDay();
+  const monthOffset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1; // Monday-first
+  const monthDays = new Date(calYear, calMonth + 1, 0).getDate();
+  const totalCells = Math.ceil((monthOffset + monthDays) / 7) * 7;
   const cells = Array.from({ length: totalCells }, (_, i) => {
-    const dayNum = i - MARCH_OFFSET + 1;
-    if (dayNum < 1 || dayNum > MARCH_DAYS) return null;
+    const dayNum = i - monthOffset + 1;
+    if (dayNum < 1 || dayNum > monthDays) return null;
     return dayNum;
   });
+  const todayObj = new Date();
+  const isCurrentMonth = todayObj.getMonth() === calMonth && todayObj.getFullYear() === calYear;
 
   const SANGRE_OPTIONS = [
     { label: "Sin sangre", emoji: "⚪", activeStyle: { bg: "rgba(201,255,0,0.15)", border: "#C9FF00", text: "#C9FF00" } },
@@ -211,7 +216,7 @@ export function CicloMenstrual() {
     { label: "No completo", emoji: "❌", activeStyle: { bg: "rgba(244,63,94,0.15)", border: "#F43F5E", text: "#F43F5E" } },
   ];
 
-  const TODAY_DAY = 16;
+  const TODAY_DAY = isCurrentMonth ? todayObj.getDate() : -1;
 
   return (
     <div className="min-h-screen bg-[#0E1117]">
@@ -361,7 +366,7 @@ export function CicloMenstrual() {
                   >
                     <ChevronLeft className="h-3 w-3" /> Anterior
                   </button>
-                  <span className="text-white text-sm font-semibold px-2">Marzo 2026</span>
+                  <span className="text-white text-sm font-semibold px-2">{MONTH_NAMES[calMonth]} {calYear}</span>
                   <button
                     className="flex items-center gap-1 px-2 py-1 rounded border border-[#30363D] text-[#8B949E] text-xs hover:border-pink-400/50 transition-all"
                     onClick={() => setCalMonth((m) => m + 1)}

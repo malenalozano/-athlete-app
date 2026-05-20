@@ -32,11 +32,11 @@ def get_ejercicios(usuario_id: int):
     """Devuelve biblioteca completa agrupada por grupo muscular con último peso usado."""
     conn = get_db()
 
-    # Biblioteca de ejercicios del usuario
+    # Biblioteca de ejercicios del usuario (tabla: ejercicios_catalogo)
     rows = conn.execute(
-        """SELECT e.id, e.nombre, e.grupo_muscular, e.musculo_principal, e.alias
-           FROM ejercicios_biblioteca e
-           WHERE e.usuario_id = ? AND e.activo = 1
+        """SELECT e.id, e.nombre, e.grupo_muscular, e.musculo_principal, e.notas
+           FROM ejercicios_catalogo e
+           WHERE e.usuario_id = ? AND (e.archivado IS NULL OR e.archivado = 0)
            ORDER BY e.grupo_muscular, e.nombre""",
         (usuario_id,),
     ).fetchall()
@@ -109,18 +109,18 @@ def registrar_serie(s: SerieCreate):
 
     # Buscar ejercicio por nombre
     row = conn.execute(
-        "SELECT id FROM ejercicios_biblioteca WHERE usuario_id = ? AND nombre = ?",
+        "SELECT id FROM ejercicios_catalogo WHERE usuario_id = ? AND nombre = ?",
         (s.usuario_id, s.ejercicio_nombre),
     ).fetchone()
 
     if not row:
         # Crear ejercicio si no existe
         conn.execute(
-            "INSERT OR IGNORE INTO ejercicios_biblioteca (usuario_id, nombre, activo, creado_en) VALUES (?, ?, 1, ?)",
+            "INSERT OR IGNORE INTO ejercicios_catalogo (usuario_id, nombre, creado_en) VALUES (?, ?, ?)",
             (s.usuario_id, s.ejercicio_nombre, fecha),
         )
         row = conn.execute(
-            "SELECT id FROM ejercicios_biblioteca WHERE usuario_id = ? AND nombre = ?",
+            "SELECT id FROM ejercicios_catalogo WHERE usuario_id = ? AND nombre = ?",
             (s.usuario_id, s.ejercicio_nombre),
         ).fetchone()
 
@@ -141,9 +141,9 @@ def crear_ejercicio(e: EjercicioCreate):
     conn = get_db()
     fecha = datetime.now().strftime("%Y-%m-%d")
     conn.execute(
-        """INSERT OR IGNORE INTO ejercicios_biblioteca
-           (usuario_id, nombre, grupo_muscular, musculo_principal, alias, activo, creado_en)
-           VALUES (?, ?, ?, ?, ?, 1, ?)""",
+        """INSERT OR IGNORE INTO ejercicios_catalogo
+           (usuario_id, nombre, grupo_muscular, musculo_principal, notas, creado_en)
+           VALUES (?, ?, ?, ?, ?, ?)""",
         (e.usuario_id, e.nombre, e.grupo_muscular, e.musculo_principal, e.alias, fecha),
     )
     conn.commit()

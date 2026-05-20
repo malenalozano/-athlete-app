@@ -605,19 +605,28 @@ def _generar_semana_interna(conn, usuario_id: int, fecha_inicio_str: str, km_tot
         )
 
 
-def _detalles_calidad_mac1(tipo: str, km: float, reps: int, bloque_min: int) -> tuple[str, str]:
-    """Devuelve (sesion_nombre, detalles) para sesiones de calidad del Mac1."""
+def _detalles_calidad_mac1(tipo: str, km: float, reps: int, bloque_min: int) -> tuple[str, str, float]:
+    """Devuelve (sesion_nombre, detalles, km_real) para sesiones de calidad del Mac1.
+    km_real se calcula desde la estructura real de la sesión, no como % del total."""
     if tipo == "Fartlek":
+        # 15' Z2 a 6:20/km ≈ 2.4km + reps×(1'@4:55 + 2' Z1) + 5' Z1
+        km_warmup = round(15 / 6.33, 1)   # 15' a ~6:20/km
+        km_per_rep = round(1 / 4.917 + 2 / 6.5, 2)  # 1'@4:55 + 2' Z2
+        km_cool = round(5 / 7.0, 1)
+        km_real = round(km_warmup + reps * km_per_rep + km_cool, 1)
         return (
             "Fartlek",
-            f"15' calentamiento Z2 + {reps}×(1'@4:55min/km + 2' Z1) + 5' Z1. Total ~{km} km. "
+            f"15' calentamiento Z2 + {reps}×(1'@4:55min/km + 2' Z1) + 5' Z1. Total ~{km_real} km. "
             f"Progresión: comenzar con 6 reps, +1 rep cada ciclo de 4 semanas.",
+            km_real,
         )
     else:  # Progresiva
+        km_real = km  # La progresiva cubre el total del rodaje
         return (
             "Progresiva",
-            f"{km} km — 1er tercio Z1 · 2º tercio Z2 · 3er tercio Z4 ({bloque_min} min a 4:55min/km). "
+            f"{km_real} km — 1er tercio Z1 · 2º tercio Z2 · 3er tercio Z4 ({bloque_min} min a 4:55min/km). "
             f"Progresión: bloque Z4 empieza 5 min, +2 min por ciclo.",
+            km_real,
         )
 
 
@@ -756,9 +765,9 @@ def _construir_sesiones(
                     "detalles": "Dominadas 4×6, Remo con barra 4×8, Curl bíceps 3×12, Face Pull 3×15. 65-70% 1RM.",
                     "duracion_min": 55, "intensidad": "Moderada", "km_planificados": None})
             elif dia_semana == 1:
-                nombre, det = _detalles_calidad_mac1(tipo_calidad, km_calidad, fartlek_reps, prog_bloque_min)
+                nombre, det, km_real_cal = _detalles_calidad_mac1(tipo_calidad, km_calidad, fartlek_reps, prog_bloque_min)
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre, "detalles": det,
-                    "duracion_min": 65, "intensidad": "Alta", "km_planificados": km_calidad})
+                    "duracion_min": round(km_real_cal * 6.0), "intensidad": "Alta", "km_planificados": km_real_cal})
             elif dia_semana == 2:
                 sesiones.append({"fecha": fecha_dia, "tipo": "Fuerza", "sesion": "Fuerza Tren Superior Push",
                     "detalles": "Press banca 4×6, Press militar 4×8, Fondos 3×12, Extensión tríceps 3×15. 65-70% 1RM.",

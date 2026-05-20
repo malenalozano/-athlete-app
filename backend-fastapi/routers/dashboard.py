@@ -62,11 +62,18 @@ def dashboard(usuario_id: int):
     ).fetchone()
     km_plan_val = round(float(km_plan[0] or 0), 1)
 
-    # Sesiones fuerza semana
-    sesiones_fuerza_semana = conn.execute(
+    # Sesiones fuerza semana: sesiones_fuerza (app) + strength_training de Garmin
+    fuerza_app = conn.execute(
         "SELECT COUNT(*) FROM sesiones_fuerza WHERE usuario_id = ? AND fecha >= ?",
         (usuario_id, semana_inicio),
-    ).fetchone()[0]
+    ).fetchone()[0] or 0
+    fuerza_garmin = conn.execute(
+        """SELECT COUNT(*) FROM actividades_garmin
+           WHERE usuario_id = ? AND fecha >= ?
+             AND tipo_deporte IN ('strength_training','strength','fuerza','gym')""",
+        (usuario_id, semana_inicio),
+    ).fetchone()[0] or 0
+    sesiones_fuerza_semana = fuerza_app + fuerza_garmin
 
     # HRV últimos 14 días
     hrv_rows = conn.execute(

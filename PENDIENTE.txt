@@ -27,6 +27,13 @@ COMPLETADO ✓
 PENDIENTE — Por hacer
 ======================================================================
 
+PRIORIDAD ALTA — Bugs visibles al usuario
+----------------------------------------------------------------------
+
+[HOME-5] SPM (cadencia) no aparece en el Home
+  - La cadencia debería mostrarse en las métricas de la semana
+  - Verificar si las actividades de running tienen cadencia_media en la BD
+
 PRIORIDAD MEDIA
 ----------------------------------------------------------------------
 

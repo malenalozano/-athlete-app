@@ -80,7 +80,9 @@ def crear_entrada(e: EntradaDiario):
 def get_biometrico(usuario_id: int, limit: int = 30):
     conn = get_db()
     rows = conn.execute(
-        """SELECT b.fecha, b.hrv_ms, b.fc_reposo, b.sleep_score, b.carga_aguda, b.carga_cronica,
+        """SELECT b.fecha, b.hrv_ms, b.fc_reposo,
+                  COALESCE(b.sleep_score, s.score) as sleep_score,
+                  b.carga_aguda, b.carga_cronica,
                   b.estres_medio, b.body_battery, b.training_readiness, b.training_status, b.vo2max,
                   s.horas_totales, s.sleep_profundo_horas, s.sleep_rem_horas
            FROM datos_biometricos_premium b

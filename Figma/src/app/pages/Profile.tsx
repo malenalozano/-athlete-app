@@ -52,9 +52,11 @@ import {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function fmtPace(secPerKm: number | null): string {
-  if (!secPerKm) return "—";
-  return `${Math.floor(secPerKm / 60)}:${String(Math.round(secPerKm % 60)).padStart(2, "0")} /km`;
+function fmtPace(minPerKm: number | null): string {
+  if (!minPerKm || minPerKm <= 0) return "—";
+  const mins = Math.floor(minPerKm);
+  const secs = Math.round((minPerKm - mins) * 60);
+  return `${mins}:${String(secs).padStart(2, "0")} min/km`;
 }
 
 function fmtDate(iso: string): string {
