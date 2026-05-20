@@ -374,12 +374,14 @@ function buildSevenDayMetrics(data?: DashboardData | null) {
     : null;
   const fcReposo = data?.hrv_data?.[0]?.fc_reposo ?? null;
   const estres = data?.hrv_data?.[0]?.estres_medio ?? null;
+  const cadTrend = data?.cadencia_trend ?? [];
+  const cadenciaVal = cadTrend.length ? cadTrend[cadTrend.length - 1].cadencia : null;
   return [
     { label: "KM TOTALES", value: km !== null ? km.toFixed(1) : "—", unit: "km", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)", icon: Footprints, delta: "—", up: null },
     { label: "SESIONES FUERZA", value: fuerza !== null ? String(fuerza) : "—", unit: "sesiones", color: "#A855F7", bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.2)", icon: Dumbbell, delta: "—", up: null },
     { label: "SLEEP SCORE", value: sleepAvg !== null ? String(sleepAvg) : "—", unit: "/100", color: "#6366F1", bg: "rgba(99,102,241,0.08)", border: "rgba(99,102,241,0.2)", icon: Moon, delta: "—", up: null },
     { label: "SCORE ESTRÉS", value: estres !== null ? String(Math.round(estres)) : "—", unit: "/100", color: "#22C55E", bg: "rgba(34,197,94,0.08)", border: "rgba(34,197,94,0.2)", icon: Wind, delta: "—", up: null },
-    { label: "CADENCIA MEDIA", value: "—", unit: "spm", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)", icon: Activity, delta: "—", up: null },
+    { label: "CADENCIA MEDIA", value: cadenciaVal !== null ? String(cadenciaVal) : "—", unit: "spm", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)", icon: Activity, delta: "—", up: null },
     { label: "HRV", value: hrv !== null ? Math.round(hrv).toString() : "—", unit: "ms", color: "#F43F5E", bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.2)", icon: Brain, delta: "—", up: null },
     { label: "FC REPOSO", value: fcReposo !== null ? String(fcReposo) : "—", unit: "bpm", color: "#F97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.2)", icon: Heart, delta: "—", up: null },
   ];

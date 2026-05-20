@@ -8,6 +8,7 @@ COMPLETADO ✓
 [HOME-1] Fase del macrociclo incorrecta en Home → calcMacrocicloFases() dinámica
 [HOME-2] Checkpoints con datos inventados → conectados a actividades Garmin reales
 [HOME-3] MacrocicloCard con fases hardcodeadas → calculadas desde fecha objetivo
+[HOME-5] SPM (cadencia) no aparece → usa cadencia_trend del dashboard, último valor
 [DATOS-1] Tab Datos completamente rehecha con datos reales del API
 [PLAN-1] RG antes de TL → orden corregido: Sáb=TL, Dom=RG
 [PLAN-2] Mac2: solo 1 sesión de calidad → ahora Martes=Intervalos + Jueves=Tempo
@@ -21,29 +22,20 @@ COMPLETADO ✓
 [PLAN-10] TL Mac1 progresión % → ahora TL_anterior + 1.75 km (PDF: +1.5-2 km/semana)
 [PLAN-11] Mac3 ciclo 3+1 → ahora ciclo 2+1 (2 semanas carga + 1 descarga)
 [PLAN-12] HRV no integrada → semáforo calculado al generar, nota en sesiones de calidad si rojo
+[INFO-1] Notas de entrenamiento incompletas → FC post-TL en regenerativo, motivo reducción en sesiones, alerta Mac2 Z4/Z5 dos semanas
+[INFO-2] Hitos por macrociclo → ya mostrados en tab Datos de PlanSemanal (MAC_INFO.hitos)
 [INFO-3] Validación 80/20 → controlar_distribucion_intensidad llamado al generar plan
+[BUG-1] Fartlek km ~2.0 → km calculados desde estructura real de la sesión
+[BUG-2] 0 sesiones fuerza → suma sesiones_fuerza de app + strength_training de Garmin
+[BUG-3] Ciclo menstrual muestra abril → inicializa con fecha actual dinámica
+[BUG-4] Ejercicios no carga → tabla ejercicios_catalogo (no ejercicios_biblioteca)
+[BUG-5] Sleep score vacío en Perfil/biometrics → COALESCE(datos_biometricos_premium.sleep_score, datos_sueno.score)
+[BUG-6] Ritmo 0:09 /km → ritmo_medio en BD es min/km decimal, no sec/km
 
 ======================================================================
 PENDIENTE — Por hacer
 ======================================================================
 
-PRIORIDAD ALTA — Bugs visibles al usuario
-----------------------------------------------------------------------
-
-[HOME-5] SPM (cadencia) no aparece en el Home
-  - La cadencia debería mostrarse en las métricas de la semana
-  - Verificar si las actividades de running tienen cadencia_media en la BD
-
-PRIORIDAD MEDIA
-----------------------------------------------------------------------
-
-[INFO-1] Notas de entrenamiento incompletas
-  - Falta: pulsaciones post-TL de la semana pasada
-  - Falta: motivo de reducción cuando HRV/lesión afecta al plan
-  - Falta: nota en Mac2 si no se alcanzan ritmos Z4/Z5 dos semanas seguidas
-
-[INFO-2] Hitos por macrociclo no se muestran en ningún lugar de la app
-  - El PDF define hitos específicos para cada macrociclo
-  - FIX: Mostrarlos en la pestaña Datos o en el MacrocicloCard
+(Vacío — todo completado)
 
 ======================================================================

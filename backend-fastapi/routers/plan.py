@@ -368,18 +368,96 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         except Exception:
             pass
 
+    # ── 8b. FC post-TL semana anterior ──
+    fc_post_tl_nota = None
+    try:
+        # Buscar TL de la semana anterior (sábado, día 5 de la semana anterior)
+        tl_fecha = (fecha_inicio - timedelta(days=2)).strftime("%Y-%m-%d")  # sábado anterior
+        tl_act = conn.execute(
+            """SELECT fc_media, distancia_m FROM actividades_garmin
+               WHERE usuario_id = ? AND fecha = ?
+                 AND tipo_deporte IN ('running','trail_running','correr','carrera')
+               ORDER BY distancia_m DESC LIMIT 1""",
+            (usuario_id, tl_fecha),
+        ).fetchone()
+        if tl_act and tl_act[1] and float(tl_act[1]) > 8000:
+            # Tirada larga detectada — buscar FC reposo el día siguiente (domingo)
+            dia_post_tl = (datetime.strptime(tl_fecha, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+            fc_post_row = conn.execute(
+                """SELECT fc_reposo FROM datos_biometricos_premium
+                   WHERE usuario_id = ? AND fecha = ? AND fc_reposo IS NOT NULL
+                   LIMIT 1""",
+                (usuario_id, dia_post_tl),
+            ).fetchone()
+            if fc_post_row and fc_post_row[0]:
+                fc_tl = round(float(tl_act[0])) if tl_act[0] else None
+                fc_rep = int(fc_post_row[0])
+                nota_fc = f"FC post-TL semana pasada: media {fc_tl} bpm durante TL — reposo siguiente mañana {fc_rep} bpm."
+                if fc_rep > 62:
+                    nota_fc += " FC reposo elevada, prioriza recuperación activa esta semana."
+                fc_post_tl_nota = nota_fc
+    except Exception:
+        pass
+
+    # ── 8c. Mac2: alerta si ritmos Z4/Z5 no alcanzados dos semanas seguidas ──
+    mac2_alerta_z4 = None
+    if macrociclo == 2:
+        try:
+            pace_objetivo_mac2 = 4.75  # 4:45/km en decimal min/km
+            semana_2ant_inicio = (fecha_inicio - timedelta(days=14)).strftime("%Y-%m-%d")
+            ultimas_calidad = conn.execute(
+                """SELECT ritmo_medio FROM actividades_garmin
+                   WHERE usuario_id = ? AND fecha >= ? AND fecha < ?
+                     AND tipo_deporte IN ('running','trail_running','correr','carrera')
+                     AND distancia_m BETWEEN 3000 AND 12000
+                   ORDER BY fecha DESC LIMIT 4""",
+                (usuario_id, semana_2ant_inicio, fecha_inicio_str),
+            ).fetchall()
+            if len(ultimas_calidad) >= 2:
+                paces = [r[0] for r in ultimas_calidad if r[0] and float(r[0]) > 0]
+                if paces and all(p > pace_objetivo_mac2 + 0.15 for p in paces[:2]):
+                    mac2_alerta_z4 = (
+                        f"⚠️ Últimas 2 semanas no se han alcanzado ritmos Z4/Z5 (objetivo <4:45/km). "
+                        f"Ritmos registrados: {', '.join(f'{p:.2f} min/km' for p in paces[:2])}. "
+                        f"Revisa recuperación, calzado o reduce intensidad del siguiente bloque."
+                    )
+        except Exception:
+            pass
+
     # ── 9. Construir sesiones ──
     sesiones_plan = _construir_sesiones(
         fecha_inicio, tipo_calidad, macrociclo, km_calidad, km_rb, km_rg, km_tl,
         fartlek_reps, prog_bloque_min
     )
 
-    # Si semáforo rojo en Mac3, añadir advertencia a sesiones de calidad
+    # Si semáforo rojo, añadir advertencia a sesiones de calidad
     if semaforo_info.get("color") == "rojo":
         for s in sesiones_plan:
             if s["tipo"] == "Carrera" and s["intensidad"] == "Alta":
                 aviso = f"\n⚠️ HRV baja hoy ({semaforo_info['mensaje']}). Valora reducir intensidad a Z2."
                 s["detalles"] = (s["detalles"] or "") + aviso
+
+    # Nota de motivo de reducción en sesiones de baja intensidad
+    if volumen_congelado:
+        motivo = f"Volumen congelado por {lesiones_activas_count} lesión(es) activa(s). No aumentes carga."
+        for s in sesiones_plan:
+            if s["intensidad"] in ("Baja", "Muy baja", "Media"):
+                s["detalles"] = (s["detalles"] or "") + f"\n📌 {motivo}"
+                break  # Solo en la primera sesión suave
+
+    # FC post-TL: añadir al regenerativo del domingo
+    if fc_post_tl_nota:
+        for s in sesiones_plan:
+            if "Regenerativo" in (s.get("sesion") or "") or s.get("intensidad") == "Muy baja":
+                s["detalles"] = (s["detalles"] or "") + f"\nℹ️ {fc_post_tl_nota}"
+                break
+
+    # Mac2 alerta Z4: añadir a sesión de calidad de esta semana
+    if mac2_alerta_z4:
+        for s in sesiones_plan:
+            if s["intensidad"] == "Alta":
+                s["detalles"] = (s["detalles"] or "") + f"\n{mac2_alerta_z4}"
+                break
 
     # ── 10. Validar distribución 80/20 Z1+Z2 ──
     distribucion_msg = None
@@ -427,6 +505,8 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         tip_semana += f" | {semaforo_info['mensaje']}"
     if distribucion_msg and "⚠️" in distribucion_msg:
         tip_semana += f" | {distribucion_msg}"
+    if mac2_alerta_z4:
+        tip_semana += f" | {mac2_alerta_z4}"
 
     return {
         "ok": True,
