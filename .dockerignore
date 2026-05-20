@@ -1,0 +1,9 @@
+backend-fastapi/venv/
+backend-fastapi/__pycache__/
+backend-fastapi/**/__pycache__/
+backend-fastapi/*.db
+backend-fastapi/*.db-shm
+backend-fastapi/*.db-wal
+Figma/node_modules/
+Figma/dist/
+.git/

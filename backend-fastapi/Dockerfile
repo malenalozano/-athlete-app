@@ -3,13 +3,15 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Install deps first (cached layer)
-COPY requirements.txt .
+COPY backend-fastapi/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app code
-COPY . .
+# Copy backend code
+COPY backend-fastapi/ .
 
-# Railway injects $PORT; fall back to 8000 for local Docker
+# Copy shared business logic (plan rules, etc.)
+COPY src/ ./src/
+
 ENV PORT=8080
 EXPOSE 8080
 
