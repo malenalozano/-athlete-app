@@ -84,15 +84,41 @@ function buildHrvChartData(hrvData: DashboardData["hrv_data"]) {
   }));
 }
 
-const macrocicloPhases = [
-  { name: "FUNDAMENTACIÓN", progress: 100, status: "completed" as const, color: "green" as const },
-  { name: "ACONDICIONAMIENTO", progress: 45, status: "in-progress" as const, color: "cyan" as const },
-  { name: "ESPECÍFICO", progress: 0, status: "pending" as const, color: "blue" as const },
-  { name: "PICO", progress: 0, status: "pending" as const, color: "purple" as const },
-];
+function calcMacrocicloFases(fechaObjetivoStr: string) {
+  const hoy = new Date();
+  const fechaObj = new Date(fechaObjetivoStr + "T12:00:00");
+  const year = fechaObj.getFullYear();
+  const prevYear = year - 1;
 
-const globalMacrocicloProgress =
-  macrocicloPhases.reduce((acc, p) => acc + p.progress, 0) / macrocicloPhases.length;
+  const mac1Start = new Date(`${prevYear}-05-01`);
+  const mac1End   = new Date(`${prevYear}-08-31`);
+  const mac2Start = new Date(`${prevYear}-09-01`);
+  const mac2End   = new Date(`${prevYear}-11-30`);
+  const mac3Start = new Date(`${prevYear}-12-01`);
+  const mac3End   = new Date(`${year}-01-31`);
+  const mac4Start = new Date(`${year}-02-01`);
+  const mac4End   = fechaObj;
+
+  function pct(s: Date, e: Date) {
+    if (hoy < s) return 0;
+    if (hoy >= e) return 100;
+    return Math.round(((hoy.getTime() - s.getTime()) / (e.getTime() - s.getTime())) * 100);
+  }
+  function status(s: Date, e: Date): "completed" | "in-progress" | "pending" {
+    if (hoy >= e) return "completed";
+    if (hoy >= s) return "in-progress";
+    return "pending";
+  }
+
+  const phases = [
+    { name: `MAC 1 — BASE  May-Ago ${prevYear}`,       progress: pct(mac1Start, mac1End), status: status(mac1Start, mac1End), color: "green"  as const },
+    { name: `MAC 2 — UMBRAL  Sep-Nov ${prevYear}`,      progress: pct(mac2Start, mac2End), status: status(mac2Start, mac2End), color: "cyan"   as const },
+    { name: `MAC 3 — ESPECÍFICO  Dic ${prevYear}-Ene ${year}`, progress: pct(mac3Start, mac3End), status: status(mac3Start, mac3End), color: "blue"   as const },
+    { name: `MAC 4 — TAPERING  Feb ${year}`,            progress: pct(mac4Start, mac4End), status: status(mac4Start, mac4End), color: "purple" as const },
+  ];
+  const globalProgress = Math.round(phases.reduce((a, p) => a + p.progress, 0) / phases.length);
+  return { phases, globalProgress };
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -359,32 +385,11 @@ function buildSevenDayMetrics(data?: DashboardData | null) {
   ];
 }
 
-// Checkpoints data
-const checkpoints = [
-  {
-    distance: "5K",
-    targetTime: "Sub 22:30",
-    bestMark: "21:45",
-    description: "Velocidad máxima necesaria",
-    status: "completed" as const,
-    improvement: "45s mejor",
-  },
-  {
-    distance: "10K",
-    targetTime: "Sub 46:30",
-    bestMark: "47:12",
-    description: "Umbral y capacidad de sostener ritmo",
-    status: "pending" as const,
-    toImprove: "42s por mejorar",
-  },
-  {
-    distance: "Media Maratón",
-    targetTime: "Sub 1h42",
-    bestMark: "1:45:30",
-    description: "Checkpoint definitivo para el ritmo de maratón",
-    status: "pending" as const,
-    toImprove: "3'30\" por mejorar",
-  },
+// Checkpoints: objetivos reales del plan, sin marcas hardcodeadas
+const CHECKPOINTS_DEF = [
+  { distance: "5K",           targetTime: "Sub 22:30", description: "Velocidad máxima necesaria (ritmo 4:30/km)" },
+  { distance: "10K",          targetTime: "Sub 46:30", description: "Umbral y capacidad de sostener ritmo (4:39/km)" },
+  { distance: "Media Maratón",targetTime: "Sub 1h42",  description: "Checkpoint definitivo para el ritmo de maratón" },
 ];
 
 // ── Main Component ─────────────────────────────────────────────────────────────
@@ -433,6 +438,30 @@ export function Home() {
     return `${d.getDate()} ${months[d.getMonth()]} · ${d.getFullYear()}`;
   })();
 
+  // Macrociclo calculado dinámicamente
+  const { phases: macrocicloPhases, globalProgress: globalMacrocicloProgress } = calcMacrocicloFases(fechaObj);
+
+  // Checkpoints: best marks from Garmin activities (best pace × distance estimate)
+  type CheckpointStatus = "completed" | "pending";
+  const checkpoints = CHECKPOINTS_DEF.map((cp) => {
+    const distTarget = cp.distance === "5K" ? 5000 : cp.distance === "10K" ? 10000 : 21097;
+    const bestAct = (dashData?.actividades_recientes ?? [])
+      .filter((a) => a.tipo_deporte?.includes("running") || a.tipo_deporte?.includes("correr"))
+      .filter((a) => (a.distancia_m ?? 0) >= distTarget * 0.9)
+      .sort((a, b) => (a.ritmo_medio ?? 9999) - (b.ritmo_medio ?? 9999))[0];
+    const bestSec = bestAct ? (bestAct.ritmo_medio ?? 0) * ((bestAct.distancia_m ?? distTarget) / 1000) : null;
+    const fmtTime = (sec: number) => {
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = Math.round(sec % 60);
+      return h > 0 ? `${h}h${String(m).padStart(2,"0")}` : `${m}:${String(s).padStart(2,"0")}`;
+    };
+    // Target seconds
+    const targetMap: Record<string, number> = { "5K": 22*60+30, "10K": 46*60+30, "Media Maratón": 102*60 };
+    const targetSec = targetMap[cp.distance];
+    const status: CheckpointStatus = (bestSec !== null && bestSec < targetSec) ? "completed" : "pending";
+    return { ...cp, bestMark: bestSec ? fmtTime(bestSec) : null, status, bestSec, targetSec };
+  });
   const completedCheckpoints = checkpoints.filter((c) => c.status === "completed").length;
   const progressPercentage = (completedCheckpoints / checkpoints.length) * 100;
 
@@ -579,7 +608,7 @@ export function Home() {
 
         {/* ── Macrociclo ────────────────────────────────────────────────────── */}
         <section>
-          <SectionTitle icon={<TrendingUp className="h-4 w-4 text-cyan-400" />} title="Macrociclo — Maratón Sevilla · Feb 2027" color="#00D4FF" />
+          <SectionTitle icon={<TrendingUp className="h-4 w-4 text-cyan-400" />} title={`Macrociclo — ${objetivo}${fechaObjFmt ? ` · ${fechaObjFmt}` : ""}`} color="#00D4FF" />
           <MacrocicloCard title="Progreso Global del Macrociclo" phases={macrocicloPhases} globalProgress={globalMacrocicloProgress} />
         </section>
 
@@ -616,57 +645,65 @@ export function Home() {
 
           {/* Checkpoint Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {checkpoints.map((cp, i) => (
-              <div
-                key={i}
-                className="rounded-2xl p-5 flex flex-col gap-3 relative overflow-hidden"
-                style={{
-                  background: cp.status === "completed"
-                    ? "linear-gradient(135deg, rgba(34,197,94,0.12), rgba(201,255,0,0.06))"
-                    : "rgba(22,27,34,0.9)",
-                  border: cp.status === "completed"
-                    ? "1px solid rgba(34,197,94,0.35)"
-                    : "1px solid rgba(48,54,61,0.6)",
-                  boxShadow: cp.status === "completed" ? "0 0 20px rgba(34,197,94,0.08)" : "none",
-                }}
-              >
-                {cp.status === "completed" && (
-                  <div className="absolute top-3 right-3">
-                    <CheckCircle2 className="h-5 w-5 text-green-400" />
-                  </div>
-                )}
-                <div>
-                  <p className="text-2xl font-black text-white">{cp.distance}</p>
-                  <p className="text-xs text-[#8B949E] mt-0.5">{cp.description}</p>
-                </div>
-
-                {/* Target */}
-                <div className="rounded-xl px-3 py-2" style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)" }}>
-                  <p className="text-[10px] text-[#8B949E] uppercase tracking-wide mb-0.5">Objetivo</p>
-                  <p className="text-sm font-bold text-cyan-300">{cp.targetTime}</p>
-                </div>
-
-                {/* Best mark */}
+            {checkpoints.map((cp, i) => {
+              const achieved = cp.status === "completed";
+              const hasMark = cp.bestMark !== null;
+              const diff = hasMark && cp.bestSec != null
+                ? Math.abs(cp.targetSec - cp.bestSec)
+                : null;
+              const diffFmt = diff !== null
+                ? `${Math.floor(diff / 60)}'${String(Math.round(diff % 60)).padStart(2,"0")}"`
+                : null;
+              return (
                 <div
-                  className="rounded-xl px-3 py-2"
+                  key={i}
+                  className="rounded-2xl p-5 flex flex-col gap-3 relative overflow-hidden"
                   style={{
-                    background: cp.status === "completed" ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.03)",
-                    border: cp.status === "completed" ? "1px solid rgba(34,197,94,0.3)" : "1px solid rgba(255,255,255,0.06)",
+                    background: achieved
+                      ? "linear-gradient(135deg, rgba(34,197,94,0.12), rgba(201,255,0,0.06))"
+                      : "rgba(22,27,34,0.9)",
+                    border: achieved ? "1px solid rgba(34,197,94,0.35)" : "1px solid rgba(48,54,61,0.6)",
+                    boxShadow: achieved ? "0 0 20px rgba(34,197,94,0.08)" : "none",
                   }}
                 >
-                  <p className="text-[10px] text-[#8B949E] uppercase tracking-wide mb-0.5">Mejor Marca</p>
-                  <p className="text-sm font-bold" style={{ color: cp.status === "completed" ? "#22C55E" : "#C9FF00" }}>
-                    {cp.bestMark}
-                  </p>
-                  {cp.status === "completed" && cp.improvement && (
-                    <p className="text-[10px] text-green-400 mt-0.5">✓ {cp.improvement}</p>
+                  {achieved && (
+                    <div className="absolute top-3 right-3">
+                      <CheckCircle2 className="h-5 w-5 text-green-400" />
+                    </div>
                   )}
-                  {cp.status === "pending" && cp.toImprove && (
-                    <p className="text-[10px] text-orange-400 mt-0.5">⬆ {cp.toImprove}</p>
-                  )}
+                  <div>
+                    <p className="text-2xl font-black text-white">{cp.distance}</p>
+                    <p className="text-xs text-[#8B949E] mt-0.5">{cp.description}</p>
+                  </div>
+
+                  <div className="rounded-xl px-3 py-2" style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)" }}>
+                    <p className="text-[10px] text-[#8B949E] uppercase tracking-wide mb-0.5">Objetivo</p>
+                    <p className="text-sm font-bold text-cyan-300">{cp.targetTime}</p>
+                  </div>
+
+                  <div
+                    className="rounded-xl px-3 py-2"
+                    style={{
+                      background: achieved ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.03)",
+                      border: achieved ? "1px solid rgba(34,197,94,0.3)" : "1px solid rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    <p className="text-[10px] text-[#8B949E] uppercase tracking-wide mb-0.5">Mejor Marca</p>
+                    {hasMark ? (
+                      <>
+                        <p className="text-sm font-bold" style={{ color: achieved ? "#22C55E" : "#C9FF00" }}>
+                          {cp.bestMark}
+                        </p>
+                        {achieved && diffFmt && <p className="text-[10px] text-green-400 mt-0.5">✓ {diffFmt} mejor que el objetivo</p>}
+                        {!achieved && diffFmt && <p className="text-[10px] text-orange-400 mt-0.5">↑ {diffFmt} por mejorar</p>}
+                      </>
+                    ) : (
+                      <p className="text-xs text-[#8B949E] italic">Sin marca — sincroniza Garmin</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 

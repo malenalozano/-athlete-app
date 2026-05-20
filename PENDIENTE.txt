@@ -1,0 +1,42 @@
+======================================================================
+PENDIENTE.txt — Proyecto Athlete
+Actualizado: 2026-05-20
+======================================================================
+
+COMPLETADO ✓
+----------------------------------------------------------------------
+[HOME-1] Fase del macrociclo incorrecta en Home → calcMacrocicloFases() dinámica
+[HOME-2] Checkpoints con datos inventados → conectados a actividades Garmin reales
+[HOME-3] MacrocicloCard con fases hardcodeadas → calculadas desde fecha objetivo
+[DATOS-1] Tab Datos completamente rehecha con datos reales del API
+[PLAN-1] RG antes de TL → orden corregido: Sáb=TL, Dom=RG
+[PLAN-2] Mac2: solo 1 sesión de calidad → ahora Martes=Intervalos + Jueves=Tempo
+[PLAN-3] Mac2: detalles de Intervalos incorrectos → 3×2000m con progresión sep→nov
+[PLAN-4] Mac2: TL sin bloques Z4 → estructura 60%Z2+20%Z4+20%Z2
+[PLAN-5] Mac3: Intervalos_VO2max y Tempo_Largo genéricos → implementados con ritmos correctos
+[PLAN-6] Mac3: TL sin bloques específicos → estructura Z2/Z4/Z2 + nota nutrición
+[PLAN-7] Mac4: Tapering no implementado → detecta 3 semanas antes de fecha objetivo
+[PLAN-8] Fuerza sin adaptar por macrociclo → Pull/Push/Pierna(Mac1) / PiernaP+Core(Mac2) / Pliometría(Mac3)
+[PLAN-9] Lesiones no afectan volumen → volumen congelado si hay lesiones activas
+[PLAN-10] TL Mac1 progresión % → ahora TL_anterior + 1.75 km (PDF: +1.5-2 km/semana)
+[PLAN-11] Mac3 ciclo 3+1 → ahora ciclo 2+1 (2 semanas carga + 1 descarga)
+[PLAN-12] HRV no integrada → semáforo calculado al generar, nota en sesiones de calidad si rojo
+[INFO-3] Validación 80/20 → controlar_distribucion_intensidad llamado al generar plan
+
+======================================================================
+PENDIENTE — Por hacer
+======================================================================
+
+PRIORIDAD MEDIA
+----------------------------------------------------------------------
+
+[INFO-1] Notas de entrenamiento incompletas
+  - Falta: pulsaciones post-TL de la semana pasada
+  - Falta: motivo de reducción cuando HRV/lesión afecta al plan
+  - Falta: nota en Mac2 si no se alcanzan ritmos Z4/Z5 dos semanas seguidas
+
+[INFO-2] Hitos por macrociclo no se muestran en ningún lugar de la app
+  - El PDF define hitos específicos para cada macrociclo
+  - FIX: Mostrarlos en la pestaña Datos o en el MacrocicloCard
+
+======================================================================

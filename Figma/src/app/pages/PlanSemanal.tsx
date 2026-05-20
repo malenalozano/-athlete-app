@@ -1688,180 +1688,451 @@ function GenerarPlan() {
 
 // ── Datos tab ─────────────────────────────────────────────────────────────────
 
-const lastRunningActivities = [
-  { fecha: "2026-05-05 17:30", km: 7.8, cadencia_media: 175, fc_media: 142, ritmo_medio: "5:46" },
-  { fecha: "2026-04-30 18:20", km: 10.2, cadencia_media: 177, fc_media: 158, ritmo_medio: "5:23" },
-  { fecha: "2026-04-28 07:15", km: 12.0, cadencia_media: 174, fc_media: 148, ritmo_medio: "5:52" },
-];
+const MAC_INFO: Record<number, { nombre: string; objetivo: string; meses: string; kmMin: number; kmMax: number; calidad: string; fuerza: string; hitos: string[] }> = {
+  1: {
+    nombre: "Macrociclo 1 — BASE Y ADAPTACIÓN ANATÓMICA",
+    objetivo: "Construir la base aeróbica. Pasar de 20 km a 45 km/semana sin molestias articulares.",
+    meses: "Mayo – Agosto",
+    kmMin: 20, kmMax: 45,
+    calidad: "Fartlek (semanas impares) / Progresivas (semanas pares)",
+    fuerza: "3 días/semana — Pull + Push + Pierna (hipertrofia base, 3×12-15, 65-70% 1RM)",
+    hitos: [
+      "Correr 45 km/semana sin molestias articulares",
+      "Ritmo Z2 estable a 6:20-6:30 min/km",
+      "FC reposo normal al día siguiente de la Tirada Larga",
+    ],
+  },
+  2: {
+    nombre: "Macrociclo 2 — CONSTRUCCIÓN Y UMBRAL",
+    objetivo: "Desplazar el umbral de lactato para que 5:00/km sea sostenible. De 45 km a 60 km.",
+    meses: "Septiembre – Noviembre",
+    kmMin: 45, kmMax: 60,
+    calidad: "Intervalos Largos (2000m @ 4:40-4:45) + Tempo Run (a 5:10-5:15/km) — ambos en la misma semana",
+    fuerza: "2 días/semana — 1 día pierna pesado + 1 día Core y Tren Superior",
+    hitos: [
+      "10 km de Tempo a 5:10 min/km sin agotamiento máximo",
+      "Series de 2000m a 4:45/km estables (última serie no más lenta que la primera)",
+    ],
+  },
+  3: {
+    nombre: "Macrociclo 3 — ESPECÍFICO DE MARATÓN",
+    objetivo: "Resistencia a la fatiga y eficiencia a ritmo objetivo 5:00/km. De 60 km a 75 km.",
+    meses: "Diciembre – Enero",
+    kmMin: 60, kmMax: 75,
+    calidad: "Intervalos VO2max (800-1000m @ 4:25-4:35) + Tempo Largo (12-16km @ 5:05-5:10)",
+    fuerza: "1 día/semana — Pierna ligero (pliometría/saltos). Prioridad: core y prevención de lesiones.",
+    hitos: [
+      "Bloque de 18 km a 4:58/km dentro de una tirada larga de 28 km",
+      "Tolerar 60-90g de carbohidratos/hora en tiradas largas sin problemas digestivos",
+      "Ritmo 5:00/km mecánicamente 'natural'",
+    ],
+  },
+  4: {
+    nombre: "Macrociclo 4 — TAPERING (PUESTA A PUNTO)",
+    objetivo: "Eliminar la fatiga acumulada manteniendo la intensidad específica.",
+    meses: "3 semanas antes del maratón",
+    kmMin: 20, kmMax: 50,
+    calidad: "Sem -3: 1 sesión intervalos cortos · Sem -2: solo rodajes suaves · Sem carrera: activaciones mínimas",
+    fuerza: "Sin fuerza de pierna. Solo movilidad y activación.",
+    hitos: [
+      "Sensación de 'piernas inquietas' y muchas ganas de correr",
+      "Confianza total en los ritmos entrenados",
+    ],
+  },
+};
 
-const fuerzaProuesta = [
-  { ejercicio: "Sentadilla", grupo: "Cuádriceps/Glúteos", series: 3, reps: "10", peso: "50.0", nota: "65-70% 1RM, hipertrofia funcional" },
-  { ejercicio: "Peso Muerto Rumano", grupo: "Isquios/Glúteos", series: 3, reps: "10", peso: "40.0", nota: "Foco en activación isquiotibial" },
-  { ejercicio: "Zancada Búlgara", grupo: "Glúteos/Cuádriceps", series: 3, reps: "12", peso: "14.0", nota: "Unilateral, estabilidad" },
-  { ejercicio: "Hip Thrust", grupo: "Glúteos", series: 3, reps: "12", peso: "60.0", nota: "Activación máxima de glúteo" },
-  { ejercicio: "Press Banca", grupo: "Pecho/Tríceps", series: 3, reps: "8", peso: "15.0", nota: "Fuerza base tren superior" },
-  { ejercicio: "Face Pull", grupo: "Hombro/Espalda", series: 3, reps: "15", peso: "12.0", nota: "Salud del manguito rotador" },
-];
+function getMacrocicloActual(mes: number, dia: number): number {
+  if (mes >= 5 && mes <= 8) return 1;
+  if (mes >= 9 && mes <= 11) return 2;
+  if (mes === 12 || mes === 1) return 3;
+  return 4;
+}
+
+function getSemaforo(color: string) {
+  if (color === "rojo")  return { bg: "rgba(239,68,68,0.08)",   border: "rgba(239,68,68,0.35)",   dot: "#EF4444", label: "ROJO",  text: "text-red-400" };
+  if (color === "ambar") return { bg: "rgba(245,158,11,0.08)",  border: "rgba(245,158,11,0.35)",  dot: "#F59E0B", label: "ÁMBAR", text: "text-yellow-400" };
+  return                        { bg: "rgba(34,197,94,0.08)",   border: "rgba(34,197,94,0.35)",   dot: "#22C55E", label: "VERDE", text: "text-green-400" };
+}
+
+function InfoChip({ label, value, color, bg, border }: { label: string; value: string; color: string; bg: string; border: string }) {
+  return (
+    <div className="rounded-xl p-4" style={{ background: bg, border: `1px solid ${border}` }}>
+      <p className="text-[10px] font-bold text-[#8B949E] mb-1.5 uppercase tracking-wider">{label}</p>
+      <p className="text-lg font-black leading-tight" style={{ color }}>{value}</p>
+    </div>
+  );
+}
+
+function SectionH({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <div className="w-1 h-5 rounded-full" style={{ background: "#C9FF00" }} />
+      <h3 className="text-sm font-bold text-white uppercase tracking-wide">{title}</h3>
+    </div>
+  );
+}
 
 function Datos() {
+  const { userId } = useUser();
+  const [dash, setDash] = useState<DashboardData | null>(null);
+  const [plan, setPlan] = useState<PlanSemana | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    const semanaInicio = getWeekStart(0);
+    Promise.all([
+      getDashboard(userId).catch(() => null),
+      getPlanSemana(userId, semanaInicio).catch(() => null),
+    ]).then(([d, p]) => {
+      setDash(d);
+      setPlan(p);
+      setLoading(false);
+    });
+  }, [userId]);
+
+  const hoy = new Date();
+  const macNum = getMacrocicloActual(hoy.getMonth() + 1, hoy.getDate());
+  const macInfo = MAC_INFO[macNum];
+
+  const hrv0       = dash?.hrv_data?.[0] ?? null;
+  const sleep0     = dash?.sleep_data?.[dash.sleep_data.length - 1] ?? null;
+  const semaforo   = dash?.semaforo ?? { color: "verde", mensaje: "Sin datos" };
+  const sf         = getSemaforo(semaforo.color);
+  const fase       = dash?.fase_macrociclo ?? { nombre: macInfo.nombre, km_max: macInfo.kmMax, dias_fuerza: 3 };
+  const semana     = dash?.semana_actual ?? { km_realizados: 0, km_planificados: 0, sesiones_fuerza: 0 };
+  const actRunning = (dash?.actividades_recientes ?? []).filter(a => a.tipo_deporte?.includes("running") || a.tipo_deporte?.includes("correr"));
+
+  // Cálculo volumen: semana pasada → esta semana
+  const kmAnt = semana.km_realizados > 0 ? semana.km_realizados : null;
+  const kmEst = kmAnt ? Math.round(kmAnt * 1.10 * 10) / 10 : null;
+
+  // Sesiones del plan actual
+  const sesionesPlan = plan?.sesiones ?? [];
+  const sesRunning = sesionesPlan.filter(s => s.tipo === "Carrera" || s.tipo === "carrera");
+  const sesFuerza  = sesionesPlan.filter(s => s.tipo === "Fuerza" || s.tipo === "fuerza");
+  const kmTL  = sesRunning.find(s => s.sesion?.includes("Tirada"))?.km_planificados;
+  const kmRG  = sesRunning.find(s => s.sesion?.includes("Regenerativo") || s.sesion?.includes("Regen"))?.km_planificados;
+  const kmCal = sesRunning.find(s => !s.sesion?.includes("Tirada") && !s.sesion?.includes("Regen") && !s.sesion?.includes("Base"))?.km_planificados;
+  const kmRB  = sesRunning.find(s => s.sesion?.includes("Base"))?.km_planificados;
+
+  // Zonas FC
+  const zonas = [
+    { zona: "Z1 — Recuperación", fc: "< 130-135 ppm",  color: "#6B7280", desc: "Trote muy suave · Regenerativo" },
+    { zona: "Z2 — Aeróbico",     fc: "135-150 ppm",    color: "#22C55E", desc: "80% del total semanal (regla de oro)" },
+    { zona: "Z3 — Transición",   fc: "144-151 ppm",    color: "#F59E0B", desc: "Puente entre Z2 y Z4" },
+    { zona: "Z4 — Umbral",       fc: "152-159 ppm",    color: "#F97316", desc: "Ritmo objetivo maratón (5:00/km)" },
+    { zona: "Z5 — VO2max",       fc: "> 160 ppm",      color: "#EF4444", desc: "Series cortas / esfuerzo máximo" },
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-[#8B949E] text-sm">
+        Cargando datos...
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div
-        className="rounded-2xl p-6"
-        style={{
-          background: "linear-gradient(135deg, rgba(168,85,247,0.12), rgba(0,212,255,0.08))",
-          border: "1px solid rgba(168,85,247,0.25)",
-        }}
-      >
+    <div className="space-y-8">
+
+      {/* ── CABECERA ── */}
+      <div className="rounded-2xl p-6" style={{ background: "linear-gradient(135deg, rgba(201,255,0,0.08), rgba(0,212,255,0.06))", border: "1px solid rgba(201,255,0,0.2)" }}>
         <h2 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-purple-400" />
-          Análisis Completo — Datos que Generan tu Plan
+          <BarChart3 className="h-5 w-5 text-[#C9FF00]" />
+          Cómo se genera tu plan — Manual de entrenamiento
         </h2>
-        <p className="text-[#8B949E] text-sm">Todas las variables que el sistema analiza para construir tu semana</p>
+        <p className="text-[#8B949E] text-sm">
+          Aquí puedes ver exactamente qué variables analiza el sistema, qué reglas aplica y por qué cada sesión de tu semana está diseñada así.
+        </p>
       </div>
 
-      {/* BIOMÉTRICOS */}
-      <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-          <span className="text-blue-400">🔵</span> BIOMÉTRICOS ACTUALES
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: "HRV", value: "73 ms", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)" },
-            { label: "SLEEP SCORE", value: "72/100", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)" },
-            { label: "ESTRÉS MEDIO", value: "20/100", color: "#22C55E", bg: "rgba(34,197,94,0.08)", border: "rgba(34,197,94,0.2)" },
-            { label: "BODY BATTERY", value: "75/100", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)" },
-            { label: "SUEÑO TOTAL", value: "9.2h", color: "#A855F7", bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.2)" },
-            { label: "PROFUNDO", value: "1.8h", color: "#6366F1", bg: "rgba(99,102,241,0.08)", border: "rgba(99,102,241,0.2)" },
-            { label: "REM", value: "2.1h", color: "#EC4899", bg: "rgba(236,72,153,0.08)", border: "rgba(236,72,153,0.2)" },
-            { label: "FC REPOSO", value: "48 bpm", color: "#F43F5E", bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.2)" },
-          ].map((m) => (
-            <div key={m.label} className="rounded-xl p-4" style={{ background: m.bg, border: `1px solid ${m.border}` }}>
-              <p className="text-[10px] font-bold text-[#8B949E] mb-2 uppercase tracking-wider">{m.label}</p>
-              <p className="text-xl font-black" style={{ color: m.color }}>{m.value}</p>
+      {/* ── 1. MACROCICLO ACTIVO ── */}
+      <div className="rounded-2xl p-6" style={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.2)" }}>
+        <SectionH title={`Macrociclo ${macNum} — Fase Actual`} />
+        <div className="rounded-xl p-4 mb-4" style={{ background: "rgba(0,212,255,0.06)", border: "1px solid rgba(0,212,255,0.2)" }}>
+          <p className="text-sm font-bold text-cyan-300 mb-1">{fase.nombre ?? macInfo.nombre}</p>
+          <p className="text-xs text-[#8B949E] mb-3">{macInfo.meses} · {macInfo.objetivo}</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <InfoChip label="KM mín/sem" value={`${macInfo.kmMin} km`} color="#C9FF00" bg="rgba(201,255,0,0.06)" border="rgba(201,255,0,0.2)" />
+            <InfoChip label="KM máx/sem" value={`${fase.km_max ?? macInfo.kmMax} km`} color="#00D4FF" bg="rgba(0,212,255,0.06)" border="rgba(0,212,255,0.2)" />
+            <InfoChip label="Días carrera" value="4 días/sem" color="#A855F7" bg="rgba(168,85,247,0.06)" border="rgba(168,85,247,0.2)" />
+            <InfoChip label="Días fuerza" value={`${fase.dias_fuerza ?? 3} días/sem`} color="#F97316" bg="rgba(249,115,22,0.06)" border="rgba(249,115,22,0.2)" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl p-4" style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.15)" }}>
+            <p className="text-[10px] font-bold text-purple-400 uppercase tracking-wider mb-2">Sesiones de Calidad</p>
+            <p className="text-xs text-white">{macInfo.calidad}</p>
+          </div>
+          <div className="rounded-xl p-4" style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.15)" }}>
+            <p className="text-[10px] font-bold text-orange-400 uppercase tracking-wider mb-2">Fuerza este macrociclo</p>
+            <p className="text-xs text-white">{macInfo.fuerza}</p>
+          </div>
+        </div>
+        <div className="mt-4 rounded-xl p-4" style={{ background: "rgba(201,255,0,0.04)", border: "1px solid rgba(201,255,0,0.12)" }}>
+          <p className="text-[10px] font-bold text-[#C9FF00] uppercase tracking-wider mb-2">Hitos a conseguir</p>
+          <ul className="space-y-1">
+            {macInfo.hitos.map((h, i) => (
+              <li key={i} className="text-xs text-[#8B949E] flex gap-2">
+                <span className="text-[#C9FF00] shrink-0">→</span>{h}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {/* ── 2. CÓMO SE CALCULA EL VOLUMEN ── */}
+      <div className="rounded-2xl p-6" style={{ background: "#161B22", border: "1px solid rgba(34,197,94,0.2)" }}>
+        <SectionH title="Cómo se calcula el volumen semanal" />
+        <div className="space-y-3">
+          {/* Regla de progresión */}
+          <div className="rounded-xl p-4" style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)" }}>
+            <p className="text-xs font-bold text-green-400 mb-2">Ciclo de carga: 3 semanas de aumento + 1 semana de descarga</p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[
+                { label: "Sem. Aumento 1",  formula: "km × 1.10", color: "#22C55E" },
+                { label: "Sem. Aumento 2",  formula: "km × 1.10", color: "#22C55E" },
+                { label: "Sem. Descarga",   formula: "km × 0.70", color: "#F59E0B" },
+              ].map((s) => (
+                <div key={s.label} className="rounded-lg p-2" style={{ background: "rgba(0,0,0,0.3)" }}>
+                  <p className="text-[10px] text-[#8B949E]">{s.label}</p>
+                  <p className="text-sm font-black" style={{ color: s.color }}>{s.formula}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Aplicado esta semana */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <InfoChip
+              label="KM semana anterior (Garmin)"
+              value={kmAnt !== null ? `${kmAnt} km` : "Sin datos Garmin"}
+              color="#00D4FF" bg="rgba(0,212,255,0.06)" border="rgba(0,212,255,0.2)"
+            />
+            <InfoChip
+              label="KM planificados esta semana"
+              value={semana.km_planificados > 0 ? `${semana.km_planificados} km` : (kmEst ? `~${kmEst} km (est.)` : "—")}
+              color="#C9FF00" bg="rgba(201,255,0,0.06)" border="rgba(201,255,0,0.2)"
+            />
+            <InfoChip
+              label="KM realizados esta semana"
+              value={semana.km_realizados > 0 ? `${semana.km_realizados} km` : "—"}
+              color="#A855F7" bg="rgba(168,85,247,0.06)" border="rgba(168,85,247,0.2)"
+            />
+          </div>
+          <p className="text-[11px] text-[#8B949E] rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <span className="text-white font-semibold">Reglas de seguridad:</span>{" "}
+            Si ACWR &gt; 1.3 → mantener volumen. Si ACWR &gt; 1.5 o hay lesión → reducir -50%. La Tirada Larga nunca supera 32 km.
+          </p>
+        </div>
+      </div>
+
+      {/* ── 3. SESIONES ESTA SEMANA — POR QUÉ CADA UNA ── */}
+      <div className="rounded-2xl p-6" style={{ background: "#161B22", border: "1px solid rgba(168,85,247,0.2)" }}>
+        <SectionH title="Distribución de sesiones — esta semana" />
+        {sesionesPlan.length === 0 ? (
+          <p className="text-sm text-[#8B949E] italic">No hay plan generado para esta semana. Usa "Generar Plan" para crearlo.</p>
+        ) : (
+          <div className="space-y-2">
+            {/* Regla de distribución */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+              {[
+                { label: "Tirada Larga", regla: "30-35% del total", km: kmTL ? `${kmTL} km` : "—", color: "#C9FF00" },
+                { label: "Regenerativo", regla: "1/3 de la TL",     km: kmRG ? `${kmRG} km` : "—", color: "#22C55E" },
+                { label: "Calidad",      regla: "~17% del total",   km: kmCal ? `${kmCal} km` : "—", color: "#F97316" },
+                { label: "Rodaje Base",  regla: "Resto hasta completar", km: kmRB ? `${kmRB} km` : "—", color: "#00D4FF" },
+              ].map((s) => (
+                <div key={s.label} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid rgba(255,255,255,0.08)` }}>
+                  <p className="text-[10px] text-[#8B949E] mb-1">{s.label}</p>
+                  <p className="text-lg font-black" style={{ color: s.color }}>{s.km}</p>
+                  <p className="text-[10px] text-[#8B949E] mt-1">{s.regla}</p>
+                </div>
+              ))}
+            </div>
+            {/* Tabla de sesiones */}
+            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-[#30363D]" style={{ background: "rgba(255,255,255,0.03)" }}>
+                    {["Día", "Sesión", "Tipo", "KM", "Zona", "Por qué"].map(h => (
+                      <th key={h} className="text-left text-[10px] font-bold text-[#8B949E] py-2.5 px-3 uppercase tracking-wider">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sesionesPlan.map((s, i) => {
+                    const d = new Date(s.fecha + "T12:00:00");
+                    const dias = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+                    const porQue = s.tipo === "Fuerza"
+                      ? "Distribución fija: Lun=Pull, Mié=Push, Vie=Pierna"
+                      : s.sesion?.includes("Tirada") ? "30-35% del volumen semanal (norma PDF §1.2)"
+                      : s.sesion?.includes("Regen")  ? "Siempre el día después de la TL (norma PDF §1.2)"
+                      : s.sesion?.includes("Base")   ? "Volumen sobrante para completar km semanales"
+                      : "Sesión de calidad — alterna Fartlek/Progresiva o Tempo/Intervalos";
+                    return (
+                      <tr key={i} className="border-b border-[#30363D]/40 hover:bg-[#30363D]/20">
+                        <td className="text-xs font-semibold text-white py-2.5 px-3">{dias[d.getDay()]} {d.getDate()}</td>
+                        <td className="text-xs text-cyan-300 py-2.5 px-3">{s.sesion}</td>
+                        <td className="text-[10px] py-2.5 px-3">
+                          <span className="px-2 py-0.5 rounded-full" style={{ background: s.tipo === "Fuerza" ? "rgba(168,85,247,0.15)" : "rgba(0,212,255,0.12)", color: s.tipo === "Fuerza" ? "#C084FC" : "#00D4FF" }}>{s.tipo}</span>
+                        </td>
+                        <td className="text-xs text-[#C9FF00] py-2.5 px-3">{s.km_planificados ? `${s.km_planificados} km` : "—"}</td>
+                        <td className="text-[10px] text-[#8B949E] py-2.5 px-3">{s.intensidad ?? "—"}</td>
+                        <td className="text-[10px] text-[#8B949E] py-2.5 px-3 max-w-[200px]">{porQue}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        {/* Constraint de fuerza */}
+        <div className="mt-3 rounded-xl px-4 py-3" style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.15)" }}>
+          <p className="text-[11px] text-[#8B949E]">
+            <span className="text-orange-400 font-semibold">Constraint de fuerza (PDF §Parte 3):</span>{" "}
+            Si el día X hay fuerza de pierna pesada, el día X+1 NO puede haber Fartlek, Tempo ni Intervalos.
+            El layout fijo (Vie=Pierna → Sáb=RG suave) garantiza este constraint automáticamente.
+          </p>
+        </div>
+      </div>
+
+      {/* ── 4. SEMÁFORO HRV — DATOS REALES ── */}
+      <div className="rounded-2xl p-6" style={{ background: "#161B22", border: "1px solid rgba(34,197,94,0.2)" }}>
+        <SectionH title="Semáforo de recuperación (HRV + Biometría)" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          {/* Semáforo */}
+          <div className="rounded-xl p-5" style={{ background: sf.bg, border: `1px solid ${sf.border}` }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-4 h-4 rounded-full" style={{ background: sf.dot, boxShadow: `0 0 8px ${sf.dot}` }} />
+              <span className={`text-base font-black ${sf.text}`}>{sf.label}</span>
+            </div>
+            <p className="text-xs text-white">{semaforo.mensaje}</p>
+            <p className="text-[10px] text-[#8B949E] mt-2">El semáforo no modifica el plan automáticamente — es un AVISO. Usa tu criterio para ajustar la intensidad del día.</p>
+          </div>
+          {/* Datos HRV reales */}
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "HRV",          value: hrv0?.hrv_ms  ? `${Math.round(hrv0.hrv_ms)} ms`   : "—", color: "#C9FF00", bg: "rgba(201,255,0,0.06)", border: "rgba(201,255,0,0.2)" },
+              { label: "Sleep Score",  value: hrv0?.sleep_score ? `${hrv0.sleep_score}/100`      : (sleep0?.score ? `${sleep0.score}/100` : "—"), color: "#A855F7", bg: "rgba(168,85,247,0.06)", border: "rgba(168,85,247,0.2)" },
+              { label: "Estrés Medio", value: hrv0?.estres_medio ? `${Math.round(hrv0.estres_medio)}/100` : "—", color: "#22C55E", bg: "rgba(34,197,94,0.06)", border: "rgba(34,197,94,0.2)" },
+              { label: "Body Battery", value: hrv0?.body_battery ? `${hrv0.body_battery}/100`    : "—", color: "#00D4FF", bg: "rgba(0,212,255,0.06)", border: "rgba(0,212,255,0.2)" },
+              { label: "FC Reposo",    value: hrv0?.fc_reposo ? `${hrv0.fc_reposo} bpm`          : "—", color: "#F43F5E", bg: "rgba(244,63,94,0.06)", border: "rgba(244,63,94,0.2)" },
+              { label: "Sueño Total",  value: sleep0?.horas_totales ? `${sleep0.horas_totales}h` : "—", color: "#6366F1", bg: "rgba(99,102,241,0.06)", border: "rgba(99,102,241,0.2)" },
+            ].map(m => <InfoChip key={m.label} {...m} />)}
+          </div>
+        </div>
+        {/* Reglas del semáforo */}
+        <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">Cómo se decide el semáforo</p>
+          <div className="space-y-1">
+            {[
+              { color: "#22C55E", label: "VERDE",  regla: "HRV ≥ media 7d · Sleep >80 · Sin factores negativos → plan completo, PR permitido" },
+              { color: "#F59E0B", label: "ÁMBAR",  regla: "HRV cae 0-10% OR Sleep 60-80 OR Estrés >55 OR Body Battery <25 → cuidado" },
+              { color: "#EF4444", label: "ROJO",   regla: "HRV cae >10% OR Sleep <60 OR Sueño profundo <45min OR Estrés >75 → revisar sesión" },
+            ].map(r => (
+              <div key={r.label} className="flex items-start gap-2">
+                <span className="w-2.5 h-2.5 rounded-full mt-0.5 shrink-0" style={{ background: r.color }} />
+                <p className="text-[11px] text-[#8B949E]"><span className="font-bold" style={{ color: r.color }}>{r.label}:</span> {r.regla}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 5. ZONAS DE ENTRENAMIENTO ── */}
+      <div className="rounded-2xl p-6" style={{ background: "#161B22", border: "1px solid rgba(201,255,0,0.15)" }}>
+        <SectionH title="Zonas de entrenamiento (referencia FC)" />
+        <div className="space-y-2 mb-3">
+          {zonas.map(z => (
+            <div key={z.zona} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="w-3 h-8 rounded-full shrink-0" style={{ background: z.color }} />
+              <div className="flex-1">
+                <p className="text-xs font-bold text-white">{z.zona}</p>
+                <p className="text-[10px] text-[#8B949E]">{z.desc}</p>
+              </div>
+              <span className="text-xs font-mono font-bold" style={{ color: z.color }}>{z.fc}</span>
             </div>
           ))}
         </div>
+        <div className="rounded-xl px-4 py-3" style={{ background: "rgba(201,255,0,0.06)", border: "1px solid rgba(201,255,0,0.2)" }}>
+          <p className="text-xs text-white font-semibold">Regla de oro: el 80% del entrenamiento semanal total debe estar en Z1+Z2</p>
+          <p className="text-[10px] text-[#8B949E] mt-0.5">Solo el 20% puede ser Z3-Z5 (calidad, TL con bloques, intervalos)</p>
+        </div>
       </div>
 
-      {/* ANÁLISIS DE CARRERA */}
-      <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-          <span>🏃</span> ANÁLISIS DE CARRERA & RENDIMIENTO
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          <div className="rounded-xl p-4" style={{ background: "rgba(201,255,0,0.08)", border: "1px solid rgba(201,255,0,0.2)" }}>
-            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">CADENCIA MEDIA</p>
-            <p className="text-2xl font-black text-[#C9FF00]">175 spm</p>
-            <p className="text-[10px] text-green-400 mt-1">↑ Mejorando (+2 vs semana ant.)</p>
-          </div>
-          <div className="rounded-xl p-4" style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)" }}>
-            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">ACWR</p>
-            <p className="text-2xl font-black text-green-400">1.05</p>
-            <div className="flex items-center gap-1 mt-1">
-              <span className="w-2 h-2 rounded-full bg-green-400" />
-              <p className="text-[10px] text-green-400">Óptimo</p>
-            </div>
-          </div>
-          <div className="rounded-xl p-4" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
-            <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">VOLUMEN SEMANA</p>
-            <p className="text-3xl font-black text-green-400">36 km</p>
-          </div>
-        </div>
-        <p className="text-xs text-[#8B949E] mb-2">Últimas actividades de running</p>
-        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-[#30363D]" style={{ background: "rgba(255,255,255,0.03)" }}>
-                {["Fecha", "km", "Cadencia", "FC Media", "Ritmo Medio"].map((h) => (
-                  <th key={h} className="text-left text-[10px] font-bold text-[#8B949E] py-2.5 px-3 uppercase tracking-wider">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {lastRunningActivities.map((row, i) => (
-                <tr key={i} className="border-b border-[#30363D]/40 hover:bg-[#30363D]/20 transition-colors">
-                  <td className="text-xs text-white py-2.5 px-3">{row.fecha}</td>
-                  <td className="text-xs text-cyan-400 py-2.5 px-3">{row.km}</td>
-                  <td className="text-xs text-white py-2.5 px-3">{row.cadencia_media} spm</td>
-                  <td className="text-xs text-white py-2.5 px-3">{row.fc_media} bpm</td>
-                  <td className="text-xs text-[#C9FF00] py-2.5 px-3">{row.ritmo_medio}/km</td>
+      {/* ── 6. ÚLTIMAS ACTIVIDADES GARMIN ── */}
+      <div className="rounded-2xl p-6" style={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.15)" }}>
+        <SectionH title="Últimas actividades de running (Garmin)" />
+        {actRunning.length === 0 ? (
+          <p className="text-sm text-[#8B949E] italic">Sin actividades recientes — sincroniza Garmin desde Perfil.</p>
+        ) : (
+          <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#30363D]" style={{ background: "rgba(255,255,255,0.03)" }}>
+                  {["Fecha", "Distancia", "Cadencia", "FC Media", "Ritmo Medio", "Z2 objetivo"].map(h => (
+                    <th key={h} className="text-left text-[10px] font-bold text-[#8B949E] py-2.5 px-3 uppercase tracking-wider">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* FASE DEL MACROCICLO */}
-      <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-          <span className="text-blue-400">🔵</span> FASE DEL MACROCICLO
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-          {[
-            { label: "FASE ACTUAL", value: "Acondicionamiento", color: "#C9FF00" },
-            { label: "KM MÁX/SEMANA", value: "36 km", color: "#00D4FF" },
-            { label: "DÍAS FUERZA", value: "3 días", color: "#A855F7" },
-            { label: "DÍAS HASTA OBJETIVO", value: "290", color: "#F97316" },
-            { label: "SEMANAS HASTA OBJETIVO", value: "41", color: "#F43F5E" },
-          ].map((m) => (
-            <div key={m.label} className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <p className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider mb-2">{m.label}</p>
-              <p className="text-lg font-black" style={{ color: m.color }}>{m.value}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* SESIÓN DE FUERZA PROPUESTA */}
-      <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-          <span>💪</span> SESIÓN DE FUERZA PROPUESTA
-        </h3>
-        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(168,85,247,0.2)" }}>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-[#30363D]" style={{ background: "rgba(168,85,247,0.08)" }}>
-                {["Ejercicio", "Grupo", "Series", "Reps", "Peso (kg)", "Nota"].map((h) => (
-                  <th key={h} className="text-left text-[10px] font-bold text-[#8B949E] py-3 px-3 uppercase tracking-wider">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {fuerzaProuesta.map((row, i) => (
-                <tr key={i} className="border-b border-[#30363D]/40 hover:bg-[#30363D]/20 transition-colors">
-                  <td className="text-sm text-cyan-400 py-3 px-3 font-semibold">{row.ejercicio}</td>
-                  <td className="text-xs text-[#8B949E] py-3 px-3">{row.grupo}</td>
-                  <td className="text-sm text-white py-3 px-3">{row.series}</td>
-                  <td className="text-sm text-white py-3 px-3">{row.reps}</td>
-                  <td className="text-sm text-white py-3 px-3">{row.peso}</td>
-                  <td className="text-xs text-[#8B949E] py-3 px-3">{row.nota}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* SEMÁFORO DE RECUPERACIÓN */}
-      <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-          <span>🚦</span> SEMÁFORO DE RECUPERACIÓN
-        </h3>
-        <div className="rounded-xl p-5" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)" }}>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-4 h-4 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]" />
-            <span className="text-base font-black text-green-400">VERDE</span>
+              </thead>
+              <tbody>
+                {actRunning.slice(0, 6).map((a, i) => {
+                  const km = ((a.distancia_m ?? 0) / 1000).toFixed(1);
+                  const ritmoSec = a.ritmo_medio ?? 0;
+                  const ritmofmt = ritmoSec ? `${Math.floor(ritmoSec/60)}:${String(Math.round(ritmoSec%60)).padStart(2,"0")}/km` : "—";
+                  const enZ2 = a.fc_media ? (a.fc_media >= 130 && a.fc_media <= 150) : null;
+                  return (
+                    <tr key={i} className="border-b border-[#30363D]/40 hover:bg-[#30363D]/20">
+                      <td className="text-xs text-white py-2.5 px-3">{a.fecha}</td>
+                      <td className="text-xs text-cyan-400 py-2.5 px-3 font-bold">{km} km</td>
+                      <td className="text-xs text-white py-2.5 px-3">{a.cadencia_media ? `${a.cadencia_media} spm` : "—"}</td>
+                      <td className="text-xs py-2.5 px-3" style={{ color: enZ2 === true ? "#22C55E" : enZ2 === false ? "#F59E0B" : "#8B949E" }}>{a.fc_media ? `${a.fc_media} bpm` : "—"}</td>
+                      <td className="text-xs text-[#C9FF00] py-2.5 px-3">{ritmofmt}</td>
+                      <td className="text-[10px] py-2.5 px-3">
+                        {enZ2 === null ? <span className="text-[#8B949E]">—</span>
+                          : enZ2 ? <span className="text-green-400">✓ Z2</span>
+                          : <span className="text-orange-400">Fuera Z2</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          <p className="text-sm text-white mb-3">HRV estable · Sueño óptimo. Lista para carga normal o elevada.</p>
-          <div className="flex flex-wrap items-center gap-4 text-xs">
-            <span className="text-[#8B949E]">Multiplicador volumen: <span className="text-white font-bold">1.05x</span></span>
-            <span className="text-[#8B949E]">Calidad permitida: <span className="text-green-400 font-bold">Sí</span></span>
+        )}
+        <p className="text-[10px] text-[#8B949E] mt-2">Z2 objetivo: FC 130-150 ppm · Ritmo 6:20-6:30 min/km (Mac1)</p>
+      </div>
+
+      {/* ── 7. FUERZA EN ESTE MACROCICLO ── */}
+      <div className="rounded-2xl p-6" style={{ background: "#161B22", border: "1px solid rgba(168,85,247,0.15)" }}>
+        <SectionH title={`Fuerza — Macrociclo ${macNum}`} />
+        <div className="rounded-xl p-4 mb-3" style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)" }}>
+          <p className="text-xs text-white">{macInfo.fuerza}</p>
+        </div>
+        {sesFuerza.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {sesFuerza.map((s, i) => (
+              <div key={i} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(168,85,247,0.2)" }}>
+                <p className="text-xs font-bold text-purple-300">{s.sesion}</p>
+                <p className="text-[10px] text-[#8B949E] mt-1">{s.detalles?.split(",").slice(0,2).join(",")}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px] text-[#8B949E]">
+          <div className="rounded-xl px-3 py-2" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <span className="text-white font-semibold">Mac 1:</span> 3 días (Pull/Push/Pierna) · 65-70% 1RM · Hipertrofia base
+          </div>
+          <div className="rounded-xl px-3 py-2" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <span className="text-white font-semibold">Mac 2:</span> 2 días · 1 pierna pesado + 1 core/tren superior
+          </div>
+          <div className="rounded-xl px-3 py-2" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <span className="text-white font-semibold">Mac 3:</span> 1 día · Pierna ligero (pliometría/saltos)
           </div>
         </div>
       </div>
+
     </div>
   );
 }

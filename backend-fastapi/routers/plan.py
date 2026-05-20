@@ -1,3 +1,5 @@
+import sys
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -5,6 +7,16 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from database import get_db
+
+# Intentar importar reglas desde la carpeta src/ (que está un nivel arriba del backend)
+try:
+    _src_path = os.path.join(os.path.dirname(__file__), "..", "..", "src")
+    if _src_path not in sys.path:
+        sys.path.insert(0, _src_path)
+    from plan.reglas import calcular_semaforo, controlar_distribucion_intensidad
+    _REGLAS_DISPONIBLES = True
+except Exception:
+    _REGLAS_DISPONIBLES = False
 
 router = APIRouter(prefix="/plan", tags=["plan"])
 
@@ -191,7 +203,24 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         (usuario_id, fecha_inicio_str, fecha_fin),
     )
 
-    # ── 2. Calcular km semana anterior ──
+    # ── 2. Obtener perfil del usuario (fecha objetivo + lesiones) ──
+    perfil_row = conn.execute(
+        "SELECT objetivo_tipo, fecha_objetivo, fcmax FROM usuarios WHERE id = ?",
+        (usuario_id,),
+    ).fetchone()
+    fecha_objetivo_str = perfil_row[1] if perfil_row else None
+
+    # Verificar lesiones activas ANTES de calcular volumen
+    lesiones_activas_count = 0
+    try:
+        lesiones_activas_count = conn.execute(
+            "SELECT COUNT(*) FROM lesiones WHERE usuario_id = ? AND activa = 1",
+            (usuario_id,),
+        ).fetchone()[0] or 0
+    except Exception:
+        pass
+
+    # ── 3. Calcular km semana anterior ──
     semana_ant_inicio = (fecha_inicio - timedelta(days=7)).strftime("%Y-%m-%d")
     semana_ant_fin = (fecha_inicio - timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -213,23 +242,40 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
     if km_semana_ant < 1:
         km_semana_ant = 20.0  # arrancar con 20 km si no hay historial
 
-    # ── 3. Determinar si es semana de descarga (cada 4a semana del año) ──
+    # ── 4. Determinar si es semana de descarga (cada 4a semana del año) ──
     semana_iso = fecha_inicio.isocalendar()[1]
     es_descarga = (semana_iso % 4 == 0)
     semanas_desde_descarga = semana_iso % 4
+    volumen_congelado = False
 
     # Si el usuario ha especificado km_total manualmente, usarlo directamente
     if body.km_total is not None and body.km_total > 0:
         km_total = round(float(body.km_total), 1)
-        es_descarga = False  # No aplicar descarga cuando el usuario define el volumen
+        es_descarga = False
+    elif lesiones_activas_count > 0:
+        # Lesiones activas → congelar volumen en el nivel anterior
+        km_total = round(km_semana_ant, 1)
+        es_descarga = False
+        volumen_congelado = True
     elif es_descarga:
         km_total = round(km_semana_ant * 0.70, 1)
     else:
         km_total = round(km_semana_ant * 1.10, 1)
 
-    # ── 4. Macrociclo según mes ──
+    # ── 5. Macrociclo: primero comprobar tapering por fecha objetivo ──
     mes = fecha_inicio.month
-    if mes in [5, 6, 7, 8]:
+    dias_hasta_objetivo = None
+    if fecha_objetivo_str:
+        try:
+            dias_hasta_objetivo = (datetime.strptime(fecha_objetivo_str, "%Y-%m-%d") - fecha_inicio).days
+        except (ValueError, TypeError):
+            pass
+
+    if dias_hasta_objetivo is not None and 0 <= dias_hasta_objetivo <= 21:
+        macrociclo = 4
+        sesion_calidad_impar = "Fartlek"
+        sesion_calidad_par = "Progresiva"
+    elif mes in [5, 6, 7, 8]:
         macrociclo = 1
         sesion_calidad_impar = "Fartlek"
         sesion_calidad_par = "Progresiva"
@@ -241,35 +287,108 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         macrociclo = 3
         sesion_calidad_impar = "Intervalos_VO2max"
         sesion_calidad_par = "Tempo_Largo"
-    else:  # Feb-Abr
+    else:  # Feb-Abr (post-maratón o sin fecha objetivo)
         macrociclo = 1
         sesion_calidad_impar = "Fartlek"
         sesion_calidad_par = "Progresiva"
 
     tipo_calidad = sesion_calidad_impar if semana_iso % 2 != 0 else sesion_calidad_par
 
-    # ── 5. Distribución de km ──
-    km_tl = min(round(km_total * 0.33, 1), 32.0)
+    # ── 5b. Mac3: ciclo 2+1 (2 semanas carga + 1 descarga) en lugar del 3+1 genérico ──
+    if macrociclo == 3 and not volumen_congelado and body.km_total is None:
+        inicio_mac3 = datetime(
+            fecha_inicio.year if fecha_inicio.month == 12 else fecha_inicio.year - 1,
+            12, 1
+        )
+        semanas_en_mac3 = max(1, ((fecha_inicio - inicio_mac3).days // 7) + 1)
+        if semanas_en_mac3 % 3 == 0:  # cada 3ª semana = descarga
+            km_total = round(km_semana_ant * 0.70, 1)
+            es_descarga = True
+        else:
+            km_total = round(km_semana_ant * 1.10, 1)
+            es_descarga = False
+
+    # ── 6. Distribución de km ──
+    # Mac1: TL crece +1.75 km respecto a la TL de la semana anterior (PDF: +1.5-2 km)
+    km_tl_calculado = min(round(km_total * 0.33, 1), 32.0)
+    if macrociclo == 1:
+        km_tl_ant_row = conn.execute(
+            """SELECT km_planificados FROM plan_entrenamiento
+               WHERE usuario_id = ? AND fecha >= ? AND fecha <= ?
+                 AND (sesion LIKE 'Tirada%' OR sesion = 'Tirada Larga')
+               ORDER BY fecha DESC LIMIT 1""",
+            (usuario_id, semana_ant_inicio, semana_ant_fin),
+        ).fetchone()
+        if km_tl_ant_row and km_tl_ant_row[0]:
+            km_tl = min(round(float(km_tl_ant_row[0]) + 1.75, 1), 32.0)
+        else:
+            km_tl = km_tl_calculado
+    else:
+        km_tl = km_tl_calculado
     km_tl = max(km_tl, 8.0)
+
     km_rg = round(km_tl / 3, 1)
     km_calidad = round(km_total * 0.17, 1)
     km_rb = round(km_total - km_tl - km_rg - km_calidad, 1)
     if km_rb < 3:
         km_rb = 3.0
 
-    # ── 6. Ciclos de progresión para fartlek/progresiva ──
+    # ── 7. Ciclos de progresión para fartlek/progresiva ──
     # Reps de fartlek: 6 + 1 por cada 4 semanas completadas desde inicio
     ciclo_num = max(0, (semana_iso - 1) // 4)
     fartlek_reps = 6 + ciclo_num
     prog_bloque_min = 5 + ciclo_num * 2
 
-    # ── 7. Construir sesiones según distribución NORMAS ENTRENAMIENTO ──
+    # ── 8. Semáforo HRV (advisory) — añadir nota a sesiones de calidad si rojo ──
+    semaforo_info = {"color": "verde", "mensaje": "Sin datos biométricos.", "nota": None}
+    if _REGLAS_DISPONIBLES:
+        try:
+            bio_row = conn.execute(
+                """SELECT hrv_ms, sleep_score, estres_medio, body_battery
+                   FROM diario_biometrico
+                   WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 1""",
+                (usuario_id,),
+            ).fetchone()
+            if bio_row:
+                hrv_hoy = bio_row[0]
+                sleep_score_hoy = bio_row[1]
+                estres_hoy = bio_row[2]
+                bb_hoy = bio_row[3]
+                # Media HRV 7 días
+                hrv_media = conn.execute(
+                    """SELECT AVG(hrv_ms) FROM diario_biometrico
+                       WHERE usuario_id = ? AND fecha >= ? AND hrv_ms IS NOT NULL""",
+                    (usuario_id, (fecha_inicio - timedelta(days=7)).strftime("%Y-%m-%d")),
+                ).fetchone()[0]
+                semaforo_info = calcular_semaforo(
+                    hrv_actual=hrv_hoy, hrv_media_7d=hrv_media,
+                    sleep_score=sleep_score_hoy, estres_medio=estres_hoy,
+                    body_battery_min=bb_hoy,
+                )
+        except Exception:
+            pass
+
+    # ── 9. Construir sesiones ──
     sesiones_plan = _construir_sesiones(
         fecha_inicio, tipo_calidad, macrociclo, km_calidad, km_rb, km_rg, km_tl,
         fartlek_reps, prog_bloque_min
     )
 
-    # ── 8. Guardar en BD ──
+    # Si semáforo rojo en Mac3, añadir advertencia a sesiones de calidad
+    if semaforo_info.get("color") == "rojo":
+        for s in sesiones_plan:
+            if s["tipo"] == "Carrera" and s["intensidad"] == "Alta":
+                aviso = f"\n⚠️ HRV baja hoy ({semaforo_info['mensaje']}). Valora reducir intensidad a Z2."
+                s["detalles"] = (s["detalles"] or "") + aviso
+
+    # ── 10. Validar distribución 80/20 Z1+Z2 ──
+    distribucion_msg = None
+    if _REGLAS_DISPONIBLES:
+        try:
+            _, distribucion_msg = controlar_distribucion_intensidad(sesiones_plan)
+        except Exception:
+            pass
+
     ahora = datetime.now().isoformat()
     for s in sesiones_plan:
         conn.execute(
@@ -282,21 +401,32 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         )
     conn.commit()
 
-    # ── 9. Construir coach_tip ──
-    lesiones_activas = conn.execute(
-        """SELECT COUNT(*) FROM lesiones_activas WHERE usuario_id = ? AND activa = 1""",
-        (usuario_id,),
-    ).fetchone()
-    # La tabla puede no existir; ignorar errores
+    # ── 11. Construir coach_tip ──
     conn.close()
 
-    if es_descarga:
+    if volumen_congelado:
+        tipo_semana = "Semana Congelada (Lesión)"
+        tip_semana = (
+            f"Volumen congelado por {lesiones_activas_count} lesión(es) activa(s): {km_total:.0f} km. "
+            f"No aumentes el volumen. Prioriza recuperación y sesiones de bajo impacto."
+        )
+    elif macrociclo == 4:
+        sem_antes = (dias_hasta_objetivo // 7) + 1 if dias_hasta_objetivo is not None else "?"
+        tipo_semana = f"Tapering — {sem_antes} semana(s) para el maratón"
+        tip_semana = f"Tapering: reduce volumen, mantén algo de intensidad. Piernas frescas para el día D. {km_total:.0f} km esta semana."
+    elif es_descarga:
         tipo_semana = "Semana de Descarga"
         tip_semana = f"Descansa y asimila. Volumen reducido al 70%: {km_semana_ant:.0f} km → {km_total:.0f} km."
     else:
         n = semanas_desde_descarga
         tipo_semana = f"Semana de Aumento {n}"
         tip_semana = f"Progresión +10%: {km_semana_ant:.0f} km → {km_total:.0f} km. Macrociclo {macrociclo} — {tipo_calidad}."
+
+    # Añadir semáforo al tip si no está verde
+    if semaforo_info.get("color") in ("ambar", "rojo"):
+        tip_semana += f" | {semaforo_info['mensaje']}"
+    if distribucion_msg and "⚠️" in distribucion_msg:
+        tip_semana += f" | {distribucion_msg}"
 
     return {
         "ok": True,
@@ -305,6 +435,8 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         "tipo_semana": tipo_semana,
         "coach_tip": tip_semana,
         "macrociclo": macrociclo,
+        "semaforo": {"color": semaforo_info.get("color", "verde"), "mensaje": semaforo_info.get("mensaje", "")},
+        "distribucion_intensidad": distribucion_msg,
         "sesiones": [
             {
                 "fecha": s["fecha"],
@@ -350,27 +482,44 @@ def regenerar_total(usuario_id: int, body: RegenerarTotalRequest):
         ).fetchone()[0]
         km_base = float(km_plan_ant) if km_plan_ant > 5 else 20.0
 
-    # ── 2. Generar N semanas desde la semana actual ──
+    # ── 2. Obtener fecha objetivo del usuario ──
+    perfil_row_regen = conn.execute(
+        "SELECT fecha_objetivo FROM usuarios WHERE id = ?", (usuario_id,)
+    ).fetchone()
+    fecha_objetivo_regen = perfil_row_regen[0] if perfil_row_regen else None
+
+    # ── 3. Generar N semanas desde la semana actual ──
     semanas_generadas = []
-    # Inicio de la semana actual (lunes)
     dias_hasta_lunes = hoy.weekday()
     semana_actual = hoy - timedelta(days=dias_hasta_lunes)
 
     for n in range(body.semanas):
-        fecha_sem = (semana_actual + timedelta(weeks=n)).strftime("%Y-%m-%d")
-        semana_iso = (semana_actual + timedelta(weeks=n)).isocalendar()[1]
+        fecha_sem_dt = semana_actual + timedelta(weeks=n)
+        fecha_sem = fecha_sem_dt.strftime("%Y-%m-%d")
+        semana_iso = fecha_sem_dt.isocalendar()[1]
         es_descarga = (semana_iso % 4 == 0)
 
-        if es_descarga:
+        # Check tapering
+        dias_obj = None
+        if fecha_objetivo_regen:
+            try:
+                dias_obj = (datetime.strptime(fecha_objetivo_regen, "%Y-%m-%d") - fecha_sem_dt).days
+            except (ValueError, TypeError):
+                pass
+        es_tapering = dias_obj is not None and 0 <= dias_obj <= 21
+
+        if es_tapering:
+            km_sem = round(km_base * 0.50, 1)  # Tapering: 50% del volumen base
+        elif es_descarga:
             km_sem = round(km_base * 0.70, 1)
         elif n == 0:
-            km_sem = round(km_base, 1)  # semana actual: no subir, usar base real
+            km_sem = round(km_base, 1)
         else:
             km_sem = round(km_base * (1.10 ** n), 1)
 
-        km_sem = min(km_sem, 80.0)  # tope de seguridad
+        km_sem = min(km_sem, 80.0)
 
-        _generar_semana_interna(conn, usuario_id, fecha_sem, km_sem)
+        _generar_semana_interna(conn, usuario_id, fecha_sem, km_sem, fecha_objetivo_str=fecha_objetivo_regen)
         semanas_generadas.append({"semana_inicio": fecha_sem, "km_total": km_sem, "descarga": es_descarga})
 
     conn.commit()
@@ -384,7 +533,7 @@ def regenerar_total(usuario_id: int, body: RegenerarTotalRequest):
     }
 
 
-def _generar_semana_interna(conn, usuario_id: int, fecha_inicio_str: str, km_total: float):
+def _generar_semana_interna(conn, usuario_id: int, fecha_inicio_str: str, km_total: float, fecha_objetivo_str: str | None = None):
     """Genera y guarda las sesiones de una semana con km_total dado, sin commit."""
     fecha_inicio = datetime.strptime(fecha_inicio_str, "%Y-%m-%d")
     fecha_fin = (fecha_inicio + timedelta(days=6)).strftime("%Y-%m-%d")
@@ -398,7 +547,19 @@ def _generar_semana_interna(conn, usuario_id: int, fecha_inicio_str: str, km_tot
     semana_iso = fecha_inicio.isocalendar()[1]
     mes = fecha_inicio.month
 
-    if mes in [5, 6, 7, 8]:
+    # Detectar tapering por fecha objetivo
+    dias_hasta_objetivo = None
+    if fecha_objetivo_str:
+        try:
+            dias_hasta_objetivo = (datetime.strptime(fecha_objetivo_str, "%Y-%m-%d") - fecha_inicio).days
+        except (ValueError, TypeError):
+            pass
+
+    if dias_hasta_objetivo is not None and 0 <= dias_hasta_objetivo <= 21:
+        macrociclo = 4
+        sesion_calidad_impar = "Fartlek"
+        sesion_calidad_par = "Progresiva"
+    elif mes in [5, 6, 7, 8]:
         macrociclo = 1
         sesion_calidad_impar = "Fartlek"
         sesion_calidad_par = "Progresiva"
@@ -444,6 +605,126 @@ def _generar_semana_interna(conn, usuario_id: int, fecha_inicio_str: str, km_tot
         )
 
 
+def _detalles_calidad_mac1(tipo: str, km: float, reps: int, bloque_min: int) -> tuple[str, str]:
+    """Devuelve (sesion_nombre, detalles) para sesiones de calidad del Mac1."""
+    if tipo == "Fartlek":
+        return (
+            "Fartlek",
+            f"15' calentamiento Z2 + {reps}×(1'@4:55min/km + 2' Z1) + 5' Z1. Total ~{km} km. "
+            f"Progresión: comenzar con 6 reps, +1 rep cada ciclo de 4 semanas.",
+        )
+    else:  # Progresiva
+        return (
+            "Progresiva",
+            f"{km} km — 1er tercio Z1 · 2º tercio Z2 · 3er tercio Z4 ({bloque_min} min a 4:55min/km). "
+            f"Progresión: bloque Z4 empieza 5 min, +2 min por ciclo.",
+        )
+
+
+def _detalles_calidad_mac2(tipo: str, km: float, semana_iso: int) -> tuple[str, str]:
+    """Devuelve (sesion_nombre, detalles) para sesiones de calidad del Mac2.
+    Progressión series: sep=3×2000m, oct=4×2000m, nov=5×2000m
+    Progressión tempo: sep=6km, oct=8km, nov=10-12km
+    """
+    mes_est = 9 if semana_iso < 40 else (10 if semana_iso < 44 else 11)
+    if tipo == "Intervalos":
+        series = {9: 3, 10: 4, 11: 5}.get(mes_est, 3)
+        return (
+            "Intervalos Largos 2000m",
+            f"3 km calentamiento Z2 + {series}×(2000m @4:40-4:45min/km + 2' Z1) + 2 km Z1. "
+            f"Total ~{km} km. Ritmo Zona 5 — si la última serie es >5s más lenta que la 1ª, parar.",
+        )
+    else:  # Tempo
+        km_tempo = {9: 6, 10: 8, 11: 10}.get(mes_est, 6)
+        return (
+            "Tempo Run",
+            f"2 km Z2 calentamiento + {km_tempo} km @5:10-5:15min/km (justo sobre ritmo maratón, Z4) + 2 km Z1. "
+            f"Total ~{km} km. Objetivo: completar el bloque sin agotamiento máximo.",
+        )
+
+
+def _detalles_calidad_mac3(tipo: str, km: float) -> tuple[str, str]:
+    """Devuelve (sesion_nombre, detalles) para sesiones de calidad del Mac3."""
+    if tipo == "Intervalos_VO2max":
+        return (
+            "Intervalos VO2max",
+            f"3 km calentamiento Z2 + series de 800-1000m @4:25-4:35min/km (Z5 pura) + 90s-2' recuperación pasiva + 2 km Z1. "
+            f"Total ~{km} km. Objetivo: que 5:00/km se sienta mecánicamente 'lento'.",
+        )
+    else:  # Tempo_Largo
+        return (
+            "Tempo Largo",
+            f"Carrera continua {km} km @5:05-5:10min/km (Z4 sostenida). "
+            f"Sin calentamiento largo — ritmo desde el primer km. Resistencia al umbral de lactato.",
+        )
+
+
+def _detalles_tl(macrociclo: int, km_tl: float) -> str:
+    """Genera los detalles de la Tirada Larga según el macrociclo (normas PDF)."""
+    if macrociclo == 1:
+        return (
+            f"Tirada Larga Z2 — {km_tl} km. Ritmo 6:20-6:50min/km. FC 130-150 ppm. "
+            f"100% Z2 — base aeróbica. Toma nota de tu FC al levantarte al día siguiente."
+        )
+    elif macrociclo == 2:
+        z2_km = round(km_tl * 0.60, 1)
+        z4_km = round(km_tl * 0.20, 1)
+        return (
+            f"Tirada Larga con Bloque Maratón — {km_tl} km. "
+            f"Estructura: {z2_km} km Z2 + {z4_km} km @5:00min/km (Z4) + {round(km_tl - z2_km - z4_km, 1)} km Z2. "
+            f"La TL debe representar el 30-35% del volumen semanal. "
+            f"NUTRICIÓN: practica beber agua/bebida isotónica cada 20-25 min."
+        )
+    elif macrociclo == 3:
+        z2_ini = round(km_tl * 0.33, 1)
+        bloque_z4 = min(round(km_tl * 0.50, 1), 18.0)
+        z2_fin = round(km_tl - z2_ini - bloque_z4, 1)
+        return (
+            f"Tirada Larga Específica (Ensayo General) — {km_tl} km. "
+            f"Estructura: {z2_ini} km Z2 + {bloque_z4} km @4:55-5:00min/km + {z2_fin} km Z2. "
+            f"NUTRICIÓN OBLIGATORIA: 60-90g carbohidratos/hora. Ensaya los geles que usarás en el maratón. "
+            f"Si el bloque Z4 falla por fatiga: el objetivo sub-5:00 está en riesgo — priorizar descanso."
+        )
+    else:  # Tapering
+        return (
+            f"Rodaje Suave — {km_tl} km. Ritmo libre y cómodo, Z1-Z2. "
+            f"Tapering: el objetivo es llegar con piernas frescas al maratón."
+        )
+
+
+def _fuerza_por_macrociclo(macrociclo: int, fecha_dia: str, dia_semana: int) -> dict | None:
+    """Genera la sesión de fuerza correcta según el macrociclo y día.
+    Mac1: Pull(Lun) / Push(Mié) / Pierna(Vie)
+    Mac2: Pierna Pesada(Lun) / Core+TS(Mié) — sin viernes fuerza
+    Mac3: Pierna Ligera(Lun) — solo 1 día
+    Mac4: Sin fuerza
+    """
+    if macrociclo == 1:
+        if dia_semana == 0:  # Lunes
+            return {"sesion": "Fuerza Tren Superior Pull", "intensidad": "Moderada",
+                    "detalles": "Dominadas 4×6, Remo con barra 4×8, Curl bíceps 3×12, Face Pull 3×15. Mac1: 65-70% 1RM, hipertrofia base.", "duracion_min": 55}
+        if dia_semana == 2:  # Miércoles
+            return {"sesion": "Fuerza Tren Superior Push", "intensidad": "Moderada",
+                    "detalles": "Press banca 4×6, Press militar 4×8, Fondos 3×12, Extensión tríceps 3×15. Mac1: 65-70% 1RM.", "duracion_min": 55}
+        if dia_semana == 4:  # Viernes
+            return {"sesion": "Fuerza Pierna", "intensidad": "Alta",
+                    "detalles": "Sentadilla 4×8 @75%1RM, Peso muerto rumano 3×10, Zancada búlgara 3×12, Hip Thrust 3×15. Mac1: hipertrofia funcional.", "duracion_min": 65}
+    elif macrociclo == 2:
+        if dia_semana == 0:  # Lunes — único día de pierna pesado
+            return {"sesion": "Fuerza Pierna (Pesada)", "intensidad": "Alta",
+                    "detalles": "Sentadilla 4×6 @85% 1RM, Peso muerto 4×5 @85%, Prensa 45° 4×8. Mac2: 1 día pesado por semana — da prioridad a la recuperación de Intervalos y Tempo.", "duracion_min": 65}
+        if dia_semana == 2:  # Miércoles — Core + Tren Superior
+            return {"sesion": "Core + Tren Superior", "intensidad": "Moderada",
+                    "detalles": "Plancha 3×45s, Dead Bug 3×12, Jalón al pecho 4×8, Remo en polea 3×12, Press militar 3×10. Mac2: fuerza sin fatigar piernas.", "duracion_min": 50}
+        return None  # Viernes: sin fuerza en Mac2
+    elif macrociclo == 3:
+        if dia_semana == 0:  # Lunes — único día, pierna LIGERA
+            return {"sesion": "Fuerza Pierna Ligera (Pliometría)", "intensidad": "Moderada",
+                    "detalles": "Saltos al cajón 4×8, Skipping 3×20m, Zancadas con salto 3×8/pierna, Hip Thrust ligero 3×15. Mac3: velocidad de ejecución alta, cargas bajas — mantener chispa sin fatiga muscular.", "duracion_min": 40}
+        return None  # Resto días: sin fuerza en Mac3
+    return None  # Mac4: sin fuerza
+
+
 def _construir_sesiones(
     fecha_inicio: datetime,
     tipo_calidad: str,
@@ -456,81 +737,128 @@ def _construir_sesiones(
     prog_bloque_min: int,
 ) -> list:
     """Construye la lista de sesiones para una semana según las NORMAS DE ENTRENAMIENTO:
-    Lun=Pull · Mar=Calidad · Mié=Push · Jue=RB · Vie=Pierna · Sáb=RG · Dom=TL"""
+    Mac1: Lun=Pull · Mar=Calidad · Mié=Push · Jue=RB · Vie=Pierna · Sáb=TL · Dom=RG
+    Mac2: Lun=PiernaP · Mar=Intervalos · Mié=Core+TS · Jue=Tempo · Vie=RB · Sáb=TL · Dom=RG
+    Mac3: Lun=PiernaL · Mar=VO2max · Mié=RB · Jue=TempoL · Vie=— · Sáb=TL · Dom=RG
+    Mac4: Tapering — sesiones reducidas
+    """
+    semana_iso = fecha_inicio.isocalendar()[1]
     sesiones = []
+
     for offset in range(7):
         fecha_dia = (fecha_inicio + timedelta(days=offset)).strftime("%Y-%m-%d")
+        dia_semana = offset  # 0=Lun, 1=Mar, ..., 6=Dom
 
-        if offset == 0:  # Lunes — Fuerza Pull
-            sesiones.append({
-                "fecha": fecha_dia, "tipo": "Fuerza",
-                "sesion": "Fuerza Tren Superior Pull",
-                "detalles": "Dominadas 4×6, Remo con barra 4×8, Curl bíceps 3×12, Face Pull 3×15",
-                "duracion_min": 55, "intensidad": "Moderada", "km_planificados": None,
-            })
+        if macrociclo == 1:
+            # ── MAC 1: distribución fija estándar ──
+            if dia_semana == 0:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Fuerza", "sesion": "Fuerza Tren Superior Pull",
+                    "detalles": "Dominadas 4×6, Remo con barra 4×8, Curl bíceps 3×12, Face Pull 3×15. 65-70% 1RM.",
+                    "duracion_min": 55, "intensidad": "Moderada", "km_planificados": None})
+            elif dia_semana == 1:
+                nombre, det = _detalles_calidad_mac1(tipo_calidad, km_calidad, fartlek_reps, prog_bloque_min)
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre, "detalles": det,
+                    "duracion_min": 65, "intensidad": "Alta", "km_planificados": km_calidad})
+            elif dia_semana == 2:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Fuerza", "sesion": "Fuerza Tren Superior Push",
+                    "detalles": "Press banca 4×6, Press militar 4×8, Fondos 3×12, Extensión tríceps 3×15. 65-70% 1RM.",
+                    "duracion_min": 55, "intensidad": "Moderada", "km_planificados": None})
+            elif dia_semana == 3:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Rodaje Base Z2",
+                    "detalles": f"Rodaje Base Z2 — {km_rb} km. Ritmo 6:20-6:50min/km. FC 130-150 ppm.",
+                    "duracion_min": round(km_rb * 6.5), "intensidad": "Baja", "km_planificados": km_rb})
+            elif dia_semana == 4:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Fuerza", "sesion": "Fuerza Pierna",
+                    "detalles": "Sentadilla 4×8 @75%1RM, Peso muerto rumano 3×10, Zancada búlgara 3×12, Hip Thrust 3×15.",
+                    "duracion_min": 65, "intensidad": "Alta", "km_planificados": None})
+            elif dia_semana == 5:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Tirada Larga",
+                    "detalles": _detalles_tl(1, km_tl),
+                    "duracion_min": round(km_tl * 6.5), "intensidad": "Moderada-Alta", "km_planificados": km_tl})
+            elif dia_semana == 6:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Regenerativo Z1",
+                    "detalles": f"Regenerativo Z1 — {km_rg} km. Ritmo muy suave >7:00min/km. FC <130 ppm.",
+                    "duracion_min": round(km_rg * 7.5), "intensidad": "Muy baja", "km_planificados": km_rg})
 
-        elif offset == 1:  # Martes — Calidad
-            if tipo_calidad == "Fartlek":
-                sesion_nombre = f"Fartlek Mac{macrociclo}"
-                detalles = f"15' Z2 + {fartlek_reps}×(1'@4:55 + 2' Z1) + 5' Z1. Total ~{km_calidad} km"
-            elif tipo_calidad == "Progresiva":
-                sesion_nombre = f"Progresiva Mac{macrociclo}"
-                detalles = (f"{km_calidad} km — 1/3 Z1 / 1/3 Z2 / 1/3 Z4. "
-                            f"Último tercio: {prog_bloque_min} min a 4:55 min/km")
-            elif tipo_calidad == "Intervalos":
-                sesion_nombre = "Intervalos Umbral"
-                detalles = f"15' calentamiento + 5×(5' @umbral + 3' Z1) + 10' vuelta calma. ~{km_calidad} km"
-            elif tipo_calidad == "Tempo":
-                sesion_nombre = "Tempo Run"
-                detalles = f"10' Z1 + {km_calidad} km @ritmo umbral (5:00-5:10 min/km) + 10' Z1"
-            else:
-                sesion_nombre = tipo_calidad
-                detalles = f"Sesión de calidad — {km_calidad} km"
-            sesiones.append({
-                "fecha": fecha_dia, "tipo": "Carrera",
-                "sesion": sesion_nombre, "detalles": detalles,
-                "duracion_min": 65, "intensidad": "Alta", "km_planificados": km_calidad,
-            })
+        elif macrociclo == 2:
+            # ── MAC 2: 2 sesiones de calidad (Intervalos + Tempo) separadas 48h ──
+            nombre_int, det_int = _detalles_calidad_mac2("Intervalos", km_calidad, semana_iso)
+            nombre_tmp, det_tmp = _detalles_calidad_mac2("Tempo", km_calidad, semana_iso)
+            if dia_semana == 0:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Fuerza", "sesion": "Fuerza Pierna (Pesada)",
+                    "detalles": "Sentadilla 4×6 @85% 1RM, Peso muerto 4×5 @85%, Prensa 45° 4×8. Mac2: 1 día pesado.",
+                    "duracion_min": 65, "intensidad": "Alta", "km_planificados": None})
+            elif dia_semana == 1:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre_int, "detalles": det_int,
+                    "duracion_min": 70, "intensidad": "Alta", "km_planificados": km_calidad})
+            elif dia_semana == 2:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Fuerza", "sesion": "Core + Tren Superior",
+                    "detalles": "Plancha 3×45s, Dead Bug 3×12, Jalón 4×8, Remo en polea 3×12, Press militar 3×10.",
+                    "duracion_min": 50, "intensidad": "Moderada", "km_planificados": None})
+            elif dia_semana == 3:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre_tmp, "detalles": det_tmp,
+                    "duracion_min": 70, "intensidad": "Alta", "km_planificados": km_calidad})
+            elif dia_semana == 4:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Rodaje Base Z2",
+                    "detalles": f"Rodaje Base Z2 — {km_rb} km. Ritmo 6:10-6:40min/km. FC 130-150 ppm.",
+                    "duracion_min": round(km_rb * 6.2), "intensidad": "Baja", "km_planificados": km_rb})
+            elif dia_semana == 5:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Tirada Larga con Bloque Maratón",
+                    "detalles": _detalles_tl(2, km_tl),
+                    "duracion_min": round(km_tl * 6.2), "intensidad": "Moderada-Alta", "km_planificados": km_tl})
+            elif dia_semana == 6:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Regenerativo Z1",
+                    "detalles": f"Regenerativo Z1 — {km_rg} km. Ritmo muy suave >7:00min/km. FC <130 ppm.",
+                    "duracion_min": round(km_rg * 7.5), "intensidad": "Muy baja", "km_planificados": km_rg})
 
-        elif offset == 2:  # Miércoles — Fuerza Push
-            sesiones.append({
-                "fecha": fecha_dia, "tipo": "Fuerza",
-                "sesion": "Fuerza Tren Superior Push",
-                "detalles": "Press banca 4×6, Press militar 4×8, Fondos 3×12, Extensión tríceps 3×15",
-                "duracion_min": 55, "intensidad": "Moderada", "km_planificados": None,
-            })
+        elif macrociclo == 3:
+            # ── MAC 3: TL específica, VO2max + Tempo Largo, fuerza mínima ──
+            nombre_vo2, det_vo2 = _detalles_calidad_mac3("Intervalos_VO2max", km_calidad)
+            nombre_tl2, det_tl2 = _detalles_calidad_mac3("Tempo_Largo", round(km_calidad * 1.3, 1))
+            if dia_semana == 0:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Fuerza", "sesion": "Fuerza Pierna Ligera (Pliometría)",
+                    "detalles": "Saltos al cajón 4×8, Skipping 3×20m, Zancadas con salto 3×8/pierna, Hip Thrust 3×15 (ligero). Velocidad de ejecución alta.",
+                    "duracion_min": 40, "intensidad": "Moderada", "km_planificados": None})
+            elif dia_semana == 1:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre_vo2, "detalles": det_vo2,
+                    "duracion_min": 70, "intensidad": "Alta", "km_planificados": km_calidad})
+            elif dia_semana == 2:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Rodaje Base Z2",
+                    "detalles": f"Rodaje Base Z2 — {km_rb} km. Ritmo suave. FC 130-150 ppm. Recuperación activa entre sesiones de calidad.",
+                    "duracion_min": round(km_rb * 6.2), "intensidad": "Baja", "km_planificados": km_rb})
+            elif dia_semana == 3:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre_tl2, "detalles": det_tl2,
+                    "duracion_min": 90, "intensidad": "Alta", "km_planificados": round(km_calidad * 1.3, 1)})
+            elif dia_semana == 4:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Descanso", "sesion": "Descanso Activo",
+                    "detalles": "Descanso o movilidad/estiramientos 20-30 min. No correr. La TL específica requiere 72h de separación.",
+                    "duracion_min": 25, "intensidad": "Muy baja", "km_planificados": None})
+            elif dia_semana == 5:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Tirada Larga Específica",
+                    "detalles": _detalles_tl(3, km_tl),
+                    "duracion_min": round(km_tl * 6.0), "intensidad": "Alta", "km_planificados": km_tl})
+            elif dia_semana == 6:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Regenerativo Z1",
+                    "detalles": f"Regenerativo Z1 — {km_rg} km. Ritmo muy suave >7:00min/km. FC <130 ppm. Recuperación post-TL específica.",
+                    "duracion_min": round(km_rg * 7.5), "intensidad": "Muy baja", "km_planificados": km_rg})
 
-        elif offset == 3:  # Jueves — Rodaje Base Z2
-            sesiones.append({
-                "fecha": fecha_dia, "tipo": "Carrera",
-                "sesion": "Rodaje Base Z2",
-                "detalles": f"Rodaje Base Z2 — {km_rb} km. Ritmo 6:20-6:50 min/km. FC 130-150 ppm.",
-                "duracion_min": round(km_rb * 6.5), "intensidad": "Baja", "km_planificados": km_rb,
-            })
-
-        elif offset == 4:  # Viernes — Fuerza Pierna
-            sesiones.append({
-                "fecha": fecha_dia, "tipo": "Fuerza",
-                "sesion": "Fuerza Pierna",
-                "detalles": "Sentadilla 4×8 @75%1RM, Peso muerto rumano 3×10, Zancada búlgara 3×12, Hip Thrust 3×15",
-                "duracion_min": 65, "intensidad": "Alta", "km_planificados": None,
-            })
-
-        elif offset == 5:  # Sábado — Regenerativo (≈ 1/3 de TL)
-            sesiones.append({
-                "fecha": fecha_dia, "tipo": "Carrera",
-                "sesion": "Regenerativo Z1",
-                "detalles": f"Regenerativo Z1 — {km_rg} km. Ritmo muy suave >7:00 min/km. FC <130 ppm.",
-                "duracion_min": round(km_rg * 7.5), "intensidad": "Muy baja", "km_planificados": km_rg,
-            })
-
-        elif offset == 6:  # Domingo — Tirada Larga (30-35% volumen)
-            sesiones.append({
-                "fecha": fecha_dia, "tipo": "Carrera",
-                "sesion": "Tirada Larga Z2",
-                "detalles": f"Tirada Larga Z2 — {km_tl} km. Ritmo 6:20-6:50 min/km. FC 130-150 ppm.",
-                "duracion_min": round(km_tl * 6.5), "intensidad": "Moderada-Alta", "km_planificados": km_tl,
-            })
+        else:  # Mac4 — Tapering
+            if dia_semana == 1:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Intervalos Cortos Tapering",
+                    "detalles": f"15' Z2 + 4×(400m @ritmo 5K + 2' recuperación) + 10' Z1. ~{km_calidad} km. Mantener chispa sin fatiga.",
+                    "duracion_min": 45, "intensidad": "Alta", "km_planificados": km_calidad})
+            elif dia_semana == 3:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Rodaje Suave",
+                    "detalles": f"Rodaje suave — {km_rb} km. Z1-Z2. Sin esfuerzo. Piernas frescas.",
+                    "duracion_min": round(km_rb * 6.5), "intensidad": "Baja", "km_planificados": km_rb})
+            elif dia_semana == 5:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Rodaje con Bloque Ritmo",
+                    "detalles": f"20' Z2 + 5 km @5:00min/km (ritmo maratón) + 10' Z1. Confirmar sensaciones. Total ~{round(km_calidad * 0.8, 1)} km.",
+                    "duracion_min": 55, "intensidad": "Moderada", "km_planificados": round(km_calidad * 0.8, 1)})
+            elif dia_semana == 6:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Descanso", "sesion": "Descanso",
+                    "detalles": "Descanso total o caminata suave. Pies frescos para mañana.",
+                    "duracion_min": 0, "intensidad": "Muy baja", "km_planificados": None})
 
     return sesiones
 
