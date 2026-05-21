@@ -1,20 +1,7 @@
-name: Deploy Backend to Railway
-
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'backend-fastapi/**'
-      - '.github/workflows/backend-deploy.yml'
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Deploy to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          npx @railway/cli@latest up --service athlete-performance-api --path-as-root backend-fastapi
+# El backend se despliega automáticamente en Render desde GitHub push.
+# Render está conectado al repo athlete-app y auto-despliega en cada push a main.
+# Este workflow es solo documentación — no hace nada.
+# Ver: render.yaml en la raíz del proyecto.
+#
+# Si necesitas forzar un redeploy manual:
+# Render Dashboard → athlete-api → Manual Deploy → Deploy latest commit
