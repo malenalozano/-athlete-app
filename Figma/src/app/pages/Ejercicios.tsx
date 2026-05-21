@@ -54,7 +54,7 @@ function ModalEjercicio({
 
   const [nombre,    setNombre]    = useState(ejercicio?.nombre ?? "");
   const [grupo,     setGrupo]     = useState<GrupoFuerza>(ejercicio?.grupo_muscular as GrupoFuerza ?? grupoInicial);
-  const [alias,     setAlias]     = useState(ejercicio?.alias ?? "");
+  const [notas,     setNotas]     = useState(ejercicio?.alias ?? "");
   const [seriesObj, setSeriesObj] = useState(ejercicio?.series_objetivo?.toString() ?? "");
   const [repsObj,   setRepsObj]   = useState(ejercicio?.reps_objetivo?.toString() ?? "");
   const [pesoObj,   setPesoObj]   = useState(ejercicio?.peso_objetivo?.toString() ?? "");
@@ -68,7 +68,7 @@ function ModalEjercicio({
       const payload = {
         nombre:          nombre.trim(),
         grupo_muscular:  grupo,
-        alias:           alias.trim() || undefined,
+        alias:           notas.trim() || undefined,
         series_objetivo: seriesObj ? parseInt(seriesObj) : undefined,
         reps_objetivo:   repsObj   ? parseInt(repsObj)   : undefined,
         peso_objetivo:   pesoObj   ? parseFloat(pesoObj) : undefined,
@@ -156,11 +156,15 @@ function ModalEjercicio({
             </div>
           </div>
 
-          {/* Alias */}
+          {/* Notas */}
           <div>
-            <label className="text-xs text-[#8B949E] uppercase font-semibold mb-2 block">Alias / notas (opcional)</label>
-            <input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="Ej: BP, banco plano"
-              className="w-full px-3 py-2.5 rounded-lg text-sm text-white placeholder-[#30363D] outline-none"
+            <label className="text-xs text-[#8B949E] uppercase font-semibold mb-2 block">📝 Notas (opcional)</label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              placeholder="Recordatorios, técnica, sensaciones... Ej: Agarre cerrado, bajar controlado"
+              rows={3}
+              className="w-full px-3 py-2.5 rounded-lg text-sm text-white placeholder-[#30363D] outline-none resize-none"
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
             />
           </div>
@@ -229,7 +233,7 @@ function EjercicioCard({
             )}
           </div>
           {ejercicio.alias && (
-            <p className="text-[10px] text-[#8B949E] mt-0.5 truncate">{ejercicio.alias}</p>
+            <p className="text-[10px] mt-1 leading-tight" style={{ color: "#6B7280" }}>📝 {ejercicio.alias}</p>
           )}
         </div>
         {/* Botones acción */}

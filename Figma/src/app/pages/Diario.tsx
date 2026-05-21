@@ -818,6 +818,7 @@ function MiniModalEjercicio({
   ];
   const [nombre, setNombre] = useState(ejercicio?.nombre ?? "");
   const [grupo, setGrupo]   = useState<GrupoFuerza>(ejercicio?.grupo_muscular ?? grupoInicial);
+  const [notas, setNotas]   = useState(ejercicio?.alias ?? "");
   const [seriesObj, setSeriesObj] = useState(ejercicio?.series_objetivo?.toString() ?? "");
   const [repsObj,   setRepsObj]   = useState(ejercicio?.reps_objetivo?.toString() ?? "");
   const [pesoObj,   setPesoObj]   = useState(ejercicio?.peso_objetivo?.toString() ?? "");
@@ -832,6 +833,7 @@ function MiniModalEjercicio({
       const payload = {
         nombre: nombre.trim(),
         grupo_muscular: grupo,
+        alias: notas.trim() || undefined,
         series_objetivo: seriesObj ? parseInt(seriesObj) : undefined,
         reps_objetivo:   repsObj   ? parseInt(repsObj)   : undefined,
         peso_objetivo:   pesoObj   ? parseFloat(pesoObj) : undefined,
@@ -890,6 +892,17 @@ function MiniModalEjercicio({
                 />
               </div>
             ))}
+          </div>
+          <div>
+            <p className="text-[9px] text-[#8B949E] mb-1">📝 Notas (opcional)</p>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              placeholder="Técnica, recordatorios, sensaciones..."
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+            />
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
           <button onClick={handleSubmit} disabled={loading}
@@ -985,6 +998,9 @@ function Ejercicios() {
                             ? `${ej.ultimo_peso}kg · ${ej.ultima_series ?? "—"}×${ej.ultimas_reps ?? "—"}`
                             : (ej.series_objetivo ? `obj: ${ej.series_objetivo}×${ej.reps_objetivo ?? "—"}` : "Sin datos aún")}
                         </p>
+                        {ej.alias && (
+                          <p className="text-[10px] mt-0.5 leading-tight" style={{ color: "#6B7280" }}>📝 {ej.alias}</p>
+                        )}
                       </div>
                       {ej.subir_peso && (
                         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
