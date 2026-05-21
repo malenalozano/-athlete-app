@@ -10,7 +10,9 @@ import {
   generarPlanSemana, regenerarPlanTotal,
   getActividades, getDiarioBiometrico, getEjercicios, getDashboard,
   type PlanSemana, type SesionPlan, type ActividadGarmin, type EntradaBiometrica, type DashboardData,
+  type GrupoFuerza,
 } from "../api";
+import { ModalRegistroFuerza } from "../components/ModalRegistroFuerza";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import {
   Sparkles,
@@ -826,10 +828,22 @@ function RunningDetail({ session, onClose }: { session: Session; onClose: () => 
 
 // ── Day Detail Panel ───────────────────────────────────────────────────────────
 
+function detectarGrupoFuerza(activity: string): GrupoFuerza | null {
+  const s = activity.toLowerCase();
+  if (s.includes("push")) return "Push";
+  if (s.includes("pull")) return "Pull";
+  if (s.includes("pierna")) return "Pierna";
+  return null;
+}
+
 function DayDetailPanel({ day, session, onClose, onEdit }: { day: DayPlan; session: Session; onClose: () => void; onEdit?: () => void }) {
+  const { userId } = useUser();
+  const [showModalFuerza, setShowModalFuerza] = useState(false);
+  const [fuerzaGuardada, setFuerzaGuardada] = useState(false);
   const colors = TYPE_COLORS[session.type] ?? TYPE_COLORS.running;
   const typeLabel = session.type === "running" ? "Carrera" : "Fuerza";
   const typeColor = session.type === "running" ? "#00D4FF" : "#A855F7";
+  const grupoFuerza = session.type === "strength" ? detectarGrupoFuerza(session.activity) : null;
 
   return (
     <div
@@ -872,8 +886,41 @@ function DayDetailPanel({ day, session, onClose, onEdit }: { day: DayPlan; sessi
       {/* Body */}
       <div className="p-5">
         {session.type === "running" && <RunningDetail session={session} onClose={onClose} />}
-        {session.type === "strength" && <StrengthLogger session={session} />}
+        {session.type === "strength" && (
+          <div className="space-y-4">
+            {/* Botón registrar desde biblioteca */}
+            {grupoFuerza && (
+              <button
+                onClick={() => setShowModalFuerza(true)}
+                disabled={fuerzaGuardada}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all"
+                style={{
+                  background: fuerzaGuardada
+                    ? "rgba(34,197,94,0.12)"
+                    : "rgba(168,85,247,0.15)",
+                  border: fuerzaGuardada
+                    ? "1px solid rgba(34,197,94,0.35)"
+                    : "1px solid rgba(168,85,247,0.4)",
+                  color: fuerzaGuardada ? "#22C55E" : "#C084FC",
+                }}
+              >
+                {fuerzaGuardada ? "✓ Sesión registrada en biblioteca" : `Registrar ejercicios ${grupoFuerza} en biblioteca`}
+              </button>
+            )}
+            <StrengthLogger session={session} />
+          </div>
+        )}
       </div>
+
+      {/* Modal registro fuerza */}
+      {showModalFuerza && userId !== null && grupoFuerza && (
+        <ModalRegistroFuerza
+          usuarioId={userId}
+          grupo={grupoFuerza}
+          onClose={() => setShowModalFuerza(false)}
+          onGuardado={() => setFuerzaGuardada(true)}
+        />
+      )}
     </div>
   );
 }

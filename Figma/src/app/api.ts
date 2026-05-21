@@ -119,6 +119,44 @@ export function registrarSerie(s: {
   });
 }
 
+export function getSesionFuerzaHoy(usuarioId: number) {
+  return req<SesionFuerzaHoy>(`/ejercicios/${usuarioId}/sesion-fuerza-hoy`);
+}
+
+export function registrarSesionFuerza(
+  usuarioId: number,
+  registros: RegistroEjercicioInput[]
+) {
+  return req<{ ok: boolean }>(`/ejercicios/${usuarioId}/sesion`, {
+    method: "POST",
+    body: JSON.stringify({ registros }),
+  });
+}
+
+export function getHistorialEjercicio(usuarioId: number, ejercicioId: number) {
+  return req<HistorialEntrada[]>(
+    `/ejercicios/${usuarioId}/historial/${ejercicioId}`
+  );
+}
+
+export function editarEjercicio(
+  ejercicioId: number,
+  data: Partial<{
+    nombre: string;
+    grupo_muscular: string;
+    alias: string;
+    series_objetivo: number;
+    reps_objetivo: number;
+    peso_objetivo: number;
+    subir_peso: number;
+  }>
+) {
+  return req<{ ok: boolean }>(`/ejercicios/${ejercicioId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 // ── Diario ───────────────────────────────────────────────────────────────────
 
 export function getDiarioFisiologia(usuarioId: number) {
@@ -302,6 +340,43 @@ export interface EjercicioBiblioteca {
   ultimas_reps: number | null;
   ultima_fecha: string | null;
   mejor_peso: number | null;
+  subir_peso: boolean;
+}
+
+export interface EjercicioFuerzaHoy {
+  id: number;
+  nombre: string;
+  series_objetivo: number | null;
+  reps_objetivo: number | null;
+  peso_objetivo: number | null;
+  subir_peso: boolean;
+  ultimo_peso: number | null;
+  ultima_series: number | null;
+  ultimas_reps: number | null;
+}
+
+export interface SesionFuerzaHoy {
+  tiene_fuerza: boolean;
+  grupo: GrupoFuerza | null;
+  sesion_nombre: string | null;
+  ejercicios: EjercicioFuerzaHoy[];
+}
+
+export interface RegistroEjercicioInput {
+  ejercicio_id: number;
+  series: number;
+  repeticiones: number;
+  peso: number;
+  completado: boolean;
+}
+
+export interface HistorialEntrada {
+  fecha: string;
+  peso: number | null;
+  series: number | null;
+  repeticiones: number | null;
+  rpe: number | null;
+  notas: string | null;
 }
 
 export interface EjerciciosBiblioteca {

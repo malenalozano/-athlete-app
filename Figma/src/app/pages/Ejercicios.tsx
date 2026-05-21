@@ -1,6 +1,6 @@
 import { Header } from "../components/Header";
 import { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight, Plus, Archive, ArchiveRestore, X, Pencil } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Archive, ArchiveRestore, X, Pencil, ChevronUp } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import {
   getEjercicios,
@@ -10,6 +10,7 @@ import {
   type EjercicioBiblioteca,
   type GrupoFuerza,
 } from "../api";
+import { ModalHistorialEjercicio } from "../components/ModalHistorialEjercicio";
 
 // ── Tipos extendidos ───────────────────────────────────────────────────────────
 
@@ -183,11 +184,13 @@ function EjercicioCard({
   color,
   onArchivar,
   onEditar,
+  onVerHistorial,
 }: {
   ejercicio: EjercicioExtendido;
   color: string;
   onArchivar: (id: number, archivar: boolean) => void;
   onEditar: (ej: EjercicioExtendido) => void;
+  onVerHistorial: (ej: EjercicioExtendido) => void;
 }) {
   // Mostrar historial si existe, sino objetivo
   const series = ejercicio.ultima_series ?? ejercicio.series_objetivo;
@@ -196,17 +199,34 @@ function EjercicioCard({
   const esFuente = ejercicio.ultima_series ? "historial" : "objetivo";
 
   return (
-    <div className="rounded-xl p-4 transition-all"
+    <div
+      className="rounded-xl p-4 transition-all cursor-pointer hover:scale-[1.01]"
       style={{
         background: "rgba(22,27,34,0.95)",
-        border: `1px solid rgba(255,255,255,0.08)`,
+        border: ejercicio.subir_peso
+          ? `1px solid rgba(34,197,94,0.35)`
+          : `1px solid rgba(255,255,255,0.08)`,
+        boxShadow: ejercicio.subir_peso ? "0 0 12px rgba(34,197,94,0.12)" : "none",
       }}
+      onClick={() => onVerHistorial(ejercicio)}
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-3 gap-2">
         <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: color }} />
-        <h3 className="text-sm font-bold text-white flex-1">{ejercicio.nombre}</h3>
-        <div className="flex gap-1 shrink-0">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-bold text-white">{ejercicio.nombre}</h3>
+          {/* Badge subir peso */}
+          {ejercicio.subir_peso && (
+            <span
+              className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full mt-1"
+              style={{ background: "rgba(34,197,94,0.15)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.3)" }}
+            >
+              <ChevronUp className="h-2.5 w-2.5" />
+              SUBE PESO
+            </span>
+          )}
+        </div>
+        <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
           <button onClick={() => onEditar(ejercicio)} className="text-[#8B949E] hover:text-white transition-colors p-0.5" title="Editar">
             <Pencil className="h-3.5 w-3.5" />
           </button>
@@ -235,13 +255,13 @@ function EjercicioCard({
           </div>
         </div>
       ) : (
-        <p className="text-xs text-[#30363D] mb-2">Sin datos aún</p>
+        <p className="text-xs text-[#30363D] mb-2">Sin datos aún · toca para ver historial</p>
       )}
 
       {/* Fuente */}
       {(series || reps || peso) && (
         <p className="text-[10px] text-[#30363D]">
-          {esFuente === "historial" ? "↑ del historial" : "→ objetivo"}
+          {esFuente === "historial" ? "Del historial · toca para ver más" : "→ objetivo"}
         </p>
       )}
 
@@ -254,13 +274,14 @@ function EjercicioCard({
 // ── Sección de grupo (solo activos) ───────────────────────────────────────────
 
 function GrupoSection({
-  grupo, activos, onArchivar, onEditar, onAddClick,
+  grupo, activos, onArchivar, onEditar, onAddClick, onVerHistorial,
 }: {
   grupo: typeof GRUPOS[0];
   activos: EjercicioExtendido[];
   onArchivar: (id: number, archivar: boolean) => void;
   onEditar: (ej: EjercicioExtendido) => void;
   onAddClick: () => void;
+  onVerHistorial: (ej: EjercicioExtendido) => void;
 }) {
   const [expandido, setExpandido] = useState(true);
 
@@ -294,7 +315,7 @@ function GrupoSection({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
             {activos.map((ej) => (
               <EjercicioCard key={ej.id} ejercicio={ej} color={grupo.color}
-                onArchivar={onArchivar} onEditar={onEditar} />
+                onArchivar={onArchivar} onEditar={onEditar} onVerHistorial={onVerHistorial} />
             ))}
           </div>
         )
@@ -371,6 +392,7 @@ export function Ejercicios() {
   const [loading, setLoading]     = useState(false);
   const [modalGrupo, setModalGrupo] = useState<GrupoFuerza | null>(null);
   const [editando, setEditando]   = useState<EjercicioExtendido | null>(null);
+  const [verHistorial, setVerHistorial] = useState<EjercicioExtendido | null>(null);
 
   const cargar = () => {
     if (!userId) return;
@@ -417,6 +439,7 @@ export function Ejercicios() {
             onArchivar={handleArchivar}
             onEditar={setEditando}
             onAddClick={() => setModalGrupo(g.key)}
+            onVerHistorial={setVerHistorial}
           />
         ))}
 
@@ -445,6 +468,17 @@ export function Ejercicios() {
           usuarioId={userId}
           grupoInicial={editando.grupo_muscular as GrupoFuerza}
           ejercicio={editando}
+        />
+      )}
+
+      {/* Modal historial */}
+      {verHistorial !== null && userId !== null && (
+        <ModalHistorialEjercicio
+          usuarioId={userId}
+          ejercicioId={verHistorial.id}
+          ejercicioNombre={verHistorial.nombre}
+          color={COLOR_MAP[verHistorial.grupo_muscular] ?? "#C9FF00"}
+          onClose={() => setVerHistorial(null)}
         />
       )}
     </div>

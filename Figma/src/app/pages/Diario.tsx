@@ -20,7 +20,8 @@ import {
   Zap,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { crearEntradaDiario, getActividades, getEjercicios, getResumenEntrenador, type ActividadGarmin, type EjercicioBiblioteca } from "../api";
+import { crearEntradaDiario, getActividades, getEjercicios, getResumenEntrenador, getSesionFuerzaHoy, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy } from "../api";
+import { ModalRegistroFuerza } from "../components/ModalRegistroFuerza";
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
 
@@ -46,10 +47,16 @@ function EntrenoLibre() {
   const [nota, setNota] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [apiActividades, setApiActividades] = useState<ActividadGarmin[]>([]);
+  const [sesionFuerza, setSesionFuerza] = useState<SesionFuerzaHoy | null>(null);
+  const [showModalFuerza, setShowModalFuerza] = useState(false);
+  const [fuerzaGuardada, setFuerzaGuardada] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
     getActividades(userId, 60).then(setApiActividades).catch(() => null);
+    getSesionFuerzaHoy(userId)
+      .then((data) => { if (data.tiene_fuerza) setSesionFuerza(data); })
+      .catch(() => null);
   }, [userId]);
 
   const handleProcesar = async () => {
@@ -152,6 +159,9 @@ function EntrenoLibre() {
   const TODAY = new Date().getDate();
   const TODAY_MONTH = new Date().getMonth();
 
+  const GRUPO_COLOR_MAP: Record<string, string> = { Push: "#C9FF00", Pull: "#00D4FF", Pierna: "#A855F7" };
+  const grupoColor = sesionFuerza?.grupo ? GRUPO_COLOR_MAP[sesionFuerza.grupo] ?? "#C9FF00" : "#C9FF00";
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -167,6 +177,44 @@ function EntrenoLibre() {
           <p className="text-[#8B949E] text-sm">Registro de entrenamientos no programados</p>
         </div>
       </div>
+
+      {/* Banner sesión de fuerza de hoy */}
+      {sesionFuerza?.tiene_fuerza && sesionFuerza.grupo && (
+        <div
+          className="rounded-2xl p-5 flex items-center justify-between gap-4"
+          style={{
+            background: `${grupoColor}10`,
+            border: `1px solid ${grupoColor}35`,
+            boxShadow: `0 0 20px ${grupoColor}12`,
+          }}
+        >
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: grupoColor }}>
+              HOY TOCA FUERZA
+            </p>
+            <p className="text-lg font-black text-white">{sesionFuerza.sesion_nombre ?? sesionFuerza.grupo}</p>
+            <p className="text-sm text-[#8B949E] mt-0.5">
+              {sesionFuerza.ejercicios.length} ejercicio{sesionFuerza.ejercicios.length !== 1 ? "s" : ""}
+              {sesionFuerza.ejercicios.some(e => e.subir_peso) && (
+                <span className="ml-2 text-[#22C55E] font-semibold">↑ Sube peso en alguno</span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowModalFuerza(true)}
+            disabled={fuerzaGuardada}
+            className="flex-shrink-0 px-5 py-2.5 rounded-xl text-sm font-bold transition-all"
+            style={{
+              background: fuerzaGuardada
+                ? "rgba(34,197,94,0.15)"
+                : `linear-gradient(135deg, ${grupoColor}, ${grupoColor}cc)`,
+              color: fuerzaGuardada ? "#22C55E" : "#0E1117",
+            }}
+          >
+            {fuerzaGuardada ? "✓ Registrado" : "Registrar sesión"}
+          </button>
+        </div>
+      )}
 
       {/* Main layout: Note panel LEFT | Calendar RIGHT */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -332,6 +380,17 @@ function EntrenoLibre() {
           </div>
         </div>
       </div>
+
+      {/* Modal registro de fuerza */}
+      {showModalFuerza && userId !== null && sesionFuerza?.grupo && (
+        <ModalRegistroFuerza
+          usuarioId={userId}
+          grupo={sesionFuerza.grupo}
+          ejerciciosProp={sesionFuerza.ejercicios}
+          onClose={() => setShowModalFuerza(false)}
+          onGuardado={() => setFuerzaGuardada(true)}
+        />
+      )}
 
       {/* Modal de actividades del día */}
       <Dialog open={selectedDay !== null} onOpenChange={() => setSelectedDay(null)}>

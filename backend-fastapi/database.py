@@ -248,10 +248,24 @@ _SCHEMA = [
         tipo TEXT, grado INTEGER, fecha_inicio TEXT, fecha_fin TEXT,
         activa INTEGER DEFAULT 1, notas TEXT
     )""",
+    # ejercicios_catalogo (tabla nueva de biblioteca de ejercicios)
+    """CREATE TABLE IF NOT EXISTS ejercicios_catalogo (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER,
+        nombre TEXT NOT NULL, grupo_muscular TEXT, musculo_principal TEXT,
+        notas TEXT, archivado INTEGER DEFAULT 0,
+        series_objetivo INTEGER, reps_objetivo INTEGER, peso_objetivo REAL,
+        subir_peso INTEGER DEFAULT 0, creado_en TEXT,
+        UNIQUE(usuario_id, nombre)
+    )""",
     # Migrations
     "ALTER TABLE plan_entrenamiento ADD COLUMN completado INTEGER DEFAULT 0",
     "ALTER TABLE plan_entrenamiento ADD COLUMN km_planificados REAL",
     "ALTER TABLE plan_entrenamiento ADD COLUMN km_realizados REAL",
+    "ALTER TABLE ejercicios_catalogo ADD COLUMN series_objetivo INTEGER",
+    "ALTER TABLE ejercicios_catalogo ADD COLUMN reps_objetivo INTEGER",
+    "ALTER TABLE ejercicios_catalogo ADD COLUMN peso_objetivo REAL",
+    "ALTER TABLE ejercicios_catalogo ADD COLUMN archivado INTEGER DEFAULT 0",
+    "ALTER TABLE ejercicios_catalogo ADD COLUMN subir_peso INTEGER DEFAULT 0",
     # Indexes
     "CREATE INDEX IF NOT EXISTS idx_act_usuario_fecha ON actividades_garmin(usuario_id, fecha)",
     "CREATE INDEX IF NOT EXISTS idx_sueno_usuario_fecha ON datos_sueno(usuario_id, fecha)",

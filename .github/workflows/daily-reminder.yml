@@ -70,10 +70,10 @@ jobs:
             if "pierna" in s: return "Pierna"
             return None
 
-          # Consultar ejercicios activos de un grupo con su ultimo registro
+          # Consultar ejercicios activos de un grupo con su ultimo registro y subir_peso
           def get_ejercicios_grupo(grupo):
             sql2 = """
-              SELECT e.nombre, h.series, h.repeticiones, h.peso
+              SELECT e.nombre, h.series, h.repeticiones, h.peso, COALESCE(e.subir_peso, 0)
               FROM ejercicios_catalogo e
               LEFT JOIN historial_ejercicio h ON h.id = (
                 SELECT id FROM historial_ejercicio
@@ -90,12 +90,14 @@ jobs:
               d2 = json.loads(r2.read())
             resultado = []
             for r in d2["results"][0]["response"]["result"]["rows"]:
-              nombre, series, reps, peso = [val(c) for c in r]
+              nombre, series, reps, peso, subir_peso = [val(c) for c in r]
               if nombre:
+                linea = nombre
                 if series and reps and peso:
-                  resultado.append(f"{nombre} {int(float(series))}x{int(float(reps))} {float(peso):.0f}kg")
-                else:
-                  resultado.append(nombre)
+                  linea += f" {int(float(series))}x{int(float(reps))} {float(peso):.0f}kg"
+                if subir_peso and int(float(subir_peso)) == 1:
+                  linea += " ↑SUBE PESO"
+                resultado.append(linea)
             return resultado
 
           # Formatear mensaje
