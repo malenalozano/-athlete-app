@@ -2,33 +2,92 @@ name: Recordatorio diario entrenamiento
 
 on:
   schedule:
-    # 8:40 AM Madrid (verano UTC+2 → 6:40 UTC)
-    # En invierno (UTC+1) llegará a las 9:40 — ajusta a '40 7 * * *' en oct-mar
+    # 8:40 AM Madrid verano (UTC+2 → 6:40 UTC)
     - cron: '40 6 * * *'
-  workflow_dispatch:  # Permite lanzarlo manualmente desde GitHub para probar
+  workflow_dispatch: # Lanzar manualmente desde GitHub para probar
 
 jobs:
   notify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
 
     steps:
-      - name: Despertar Render y enviar notificacion
+      - name: Enviar sesion de hoy a ntfy
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
-          echo "Llamando al backend en Render..."
-          curl -X POST "https://athlete-api.onrender.com/notificaciones/test-hoy" \
-            --max-time 120 \
-            --retry 3 \
-            --retry-delay 20 \
-            --retry-all-errors \
-            -H "Content-Type: application/json" \
-            -w "\nHTTP status: %{http_code}\n" \
-            -s
+          python3 << 'EOF'
+          import os, urllib.request, urllib.parse, json
 
-      - name: Notificar si el job falla
-        if: failure()
-        run: |
-          curl -X POST "https://ntfy.sh/${{ secrets.NTFY_TOPIC }}" \
-            -H "Title: Error recordatorio" \
-            -H "Tags: warning,x" \
-            -d "El recordatorio diario de entrenamiento fallo hoy. Revisa GitHub Actions."
+          db_url   = os.environ["TURSO_DATABASE_URL"]
+          token    = os.environ["TURSO_AUTH_TOKEN"]
+          topic    = os.environ["NTFY_TOPIC"]
+
+          # Fecha de hoy en Madrid (UTC+2 verano / UTC+1 invierno)
+          from datetime import datetime, timezone, timedelta
+          ahora_madrid = datetime.now(timezone(timedelta(hours=2)))
+          hoy = ahora_madrid.strftime("%Y-%m-%d")
+          print(f"Consultando plan para: {hoy}")
+
+          # Consultar Turso via HTTP
+          api_url = db_url.replace("libsql://", "https://") + "/v2/pipeline"
+          sql = """
+            SELECT p.tipo, p.sesion, p.km_planificados, p.duracion_min, p.intensidad, p.detalles
+            FROM plan_entrenamiento p
+            WHERE p.fecha = ? AND p.usuario_id = 1
+            ORDER BY p.id
+          """
+          payload = json.dumps({
+            "requests": [{"type": "execute", "stmt": {"sql": sql, "args": [{"type":"text","value": hoy}]}}]
+          }).encode()
+
+          req = urllib.request.Request(api_url, data=payload,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+          with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+
+          rows = data["results"][0]["response"]["result"]["rows"]
+          print(f"Sesiones encontradas: {len(rows)}")
+
+          # Formatear mensaje
+          EMOJIS = {"fuerza": "💪", "carrera": "🏃", "cross": "🚴", "descanso": "😴"}
+
+          if not rows:
+            mensaje = "Sin sesiones hoy. Dia de descanso! 🛌"
+            title   = "Plan de hoy"
+            tags    = "calendar,zzz"
+          else:
+            lineas = []
+            for row in rows:
+              tipo, sesion, km, mins, intens, detalle = [c["value"] if c["value"] != "null" else None for c in row]
+              emoji = next((e for k,e in EMOJIS.items() if k in (tipo or "").lower()), "📋")
+              partes = [f"{emoji} {sesion or tipo}"]
+              if km:   partes.append(f"{km} km")
+              if mins:
+                h, m = int(float(mins))//60, int(float(mins))%60
+                partes.append(f"{h}h {m}min" if h else f"{m} min")
+              if intens: partes.append(intens)
+              lineas.append(" · ".join(partes))
+              if detalle and len(lineas) == 1:
+                det = detalle[:100] + "..." if len(detalle) > 100 else detalle
+                lineas.append(f"   {det}")
+            n = len(rows)
+            mensaje = "\n".join(lineas)
+            title   = f"Plan de hoy — {n} sesion" if n == 1 else f"Plan de hoy — {n} sesiones"
+            tags    = "calendar,runner"
+
+          print(f"Enviando a ntfy: {title}")
+          print(mensaje)
+
+          # Enviar a ntfy
+          ntfy_req = urllib.request.Request(
+            f"https://ntfy.sh/{topic}",
+            data=mensaje.encode("utf-8"),
+            headers={"Title": title, "Tags": tags, "Priority": "default"}
+          )
+          with urllib.request.urlopen(ntfy_req, timeout=10) as r:
+            print(f"ntfy status: {r.status}")
+
+          EOF
