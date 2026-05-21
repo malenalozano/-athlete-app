@@ -16,6 +16,19 @@ athlete.db
 # Archivos de build frontend
 Figma/dist/
 
+# Frontend: dependencias y caché (nunca subir)
+Figma/node_modules/
+Figma/.vite/
+Figma/.env.local
+Figma/,
+Figma/,+
+Figma/,+,
+
+# Archivos temporales de rutas
+str
+hace_30
+pace_objetivo_mac2
+
 # Logs
 *.log
 

@@ -631,20 +631,8 @@ function EditarPerfil({ userId, perfil, onSaved, open, onOpenChange }: { userId:
 
   return (
     <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
-      <CardHeader className="pb-0">
-        <button
-          type="button"
-          onClick={() => onOpenChange(!open)}
-          className="flex items-center justify-between w-full text-white font-semibold hover:text-[#C9FF00] transition-colors py-1"
-        >
-          <CardTitle className="text-white">Editar Perfil</CardTitle>
-          {open ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-        </button>
-      </CardHeader>
-
-      {open && (
-        <CardContent className="pt-6">
-          <form className="space-y-6" onSubmit={handleSave}>
+      <CardContent className="pt-6">
+        <form className="space-y-6" onSubmit={handleSave}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Columna Izquierda */}
               <div className="space-y-4">
@@ -864,9 +852,8 @@ function EditarPerfil({ userId, perfil, onSaved, open, onOpenChange }: { userId:
                 </Button>
               </div>
             </div>
-          </form>
-        </CardContent>
-      )}
+        </form>
+      </CardContent>
     </Card>
   );
 }
@@ -945,18 +932,20 @@ export function Profile() {
           </div>
         </button>
 
-        {/* Editar Perfil (desplegable) */}
-        <EditarPerfil
-          key={userId ?? 0}
-          userId={userId}
-          perfil={perfil}
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          onSaved={() => {
-            if (!userId) return;
-            getPerfil(userId).then(setPerfil).catch(() => null);
-          }}
-        />
+        {/* Editar Perfil (solo visible cuando el hero está abierto) */}
+        {editOpen && (
+          <EditarPerfil
+            key={userId ?? 0}
+            userId={userId}
+            perfil={perfil}
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            onSaved={() => {
+              if (!userId) return;
+              getPerfil(userId).then(setPerfil).catch(() => null);
+            }}
+          />
+        )}
 
         {/* Garmin content según subtab */}
         {tab === "sincronizacion" && (
