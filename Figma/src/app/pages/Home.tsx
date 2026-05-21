@@ -153,6 +153,16 @@ function SectionTitle({ icon, title, color }: { icon: React.ReactNode; title: st
   );
 }
 
+// Helper: decimal hours → "6h 15min"
+function fmtHorasSueno(h: number | null | undefined): string {
+  if (h == null || h <= 0) return "—";
+  const hrs = Math.floor(h);
+  const mins = Math.round((h - hrs) * 60);
+  if (mins === 0) return `${hrs}h`;
+  if (hrs === 0) return `${mins}min`;
+  return `${hrs}h ${mins}min`;
+}
+
 // Sleep Donut Card
 function SleepAnalysis({ score: scoreProp, hours: hoursProp }: { score?: number | null; hours?: number | null } = {}) {
   const score = scoreProp ?? null;
@@ -211,8 +221,7 @@ function SleepAnalysis({ score: scoreProp, hours: hoursProp }: { score?: number 
         {/* Right stats */}
         <div className="flex flex-col gap-1.5 flex-1">
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-black text-white">{totalHoras}</span>
-            <span className="text-xs text-[#8B949E]">h totales</span>
+            <span className="text-2xl font-black text-white">{fmtHorasSueno(totalHoras)}</span>
           </div>
           {phases.map((p) => (
             <div key={p.label} className="flex items-center gap-2">
@@ -220,8 +229,8 @@ function SleepAnalysis({ score: scoreProp, hours: hoursProp }: { score?: number 
               <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(48,54,61,0.6)" }}>
                 <div className="h-full rounded-full" style={{ width: `${p.pct}%`, background: p.color }} />
               </div>
-              <span className="text-[10px] font-bold w-8 text-right" style={{ color: p.color }}>
-                {p.hours}h
+              <span className="text-[10px] font-bold w-12 text-right" style={{ color: p.color }}>
+                {fmtHorasSueno(p.hours)}
               </span>
             </div>
           ))}
@@ -451,7 +460,7 @@ export function Home() {
       .filter((a) => a.tipo_deporte?.includes("running") || a.tipo_deporte?.includes("correr"))
       .filter((a) => (a.distancia_m ?? 0) >= distTarget * 0.9)
       .sort((a, b) => (a.ritmo_medio ?? 9999) - (b.ritmo_medio ?? 9999))[0];
-    const bestSec = bestAct ? (bestAct.ritmo_medio ?? 0) * ((bestAct.distancia_m ?? distTarget) / 1000) : null;
+    const bestSec = bestAct ? (bestAct.ritmo_medio ?? 0) * (distTarget / 1000) * 60 : null;
     const fmtTime = (sec: number) => {
       const h = Math.floor(sec / 3600);
       const m = Math.floor((sec % 3600) / 60);
@@ -1150,7 +1159,7 @@ export function Home() {
                     contentStyle={{ background: "#161B22", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 8 }}
                     labelStyle={{ color: "#fff" }}
                     formatter={(value: number, name: string) => {
-                      if (name === "Horas de sueño") return [`${value.toFixed(1)}h`, name];
+                      if (name === "Horas de sueño") return [fmtHorasSueno(value), name];
                       return [`${value}/100`, name];
                     }}
                   />

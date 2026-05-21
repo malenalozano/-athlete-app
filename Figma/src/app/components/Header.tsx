@@ -184,7 +184,7 @@ export function Header() {
       >
         {/* ── Main nav row ── */}
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16 gap-4">
+          <div className="flex items-center justify-between h-14 md:h-16 gap-2 md:gap-4">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-3 shrink-0 group">
               <div
@@ -215,8 +215,8 @@ export function Header() {
               </div>
             </Link>
 
-            {/* Main navigation */}
-            <nav className="flex items-center gap-1 flex-1 justify-center">
+            {/* Main navigation — desktop only */}
+            <nav className="hidden md:flex items-center gap-1 flex-1 justify-center">
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.path);
@@ -316,6 +316,47 @@ export function Header() {
               </Select>
             </div>
           </div>
+
+          {/* ── Mobile nav row (visible only on small screens) ── */}
+          <nav className="flex md:hidden items-center gap-1 pb-2 overflow-x-auto">
+            {NAV_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.path);
+              return (
+                <Link key={item.path} to={item.path} className="shrink-0">
+                  <button
+                    className={`
+                      relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold
+                      transition-all duration-200 border whitespace-nowrap
+                      ${
+                        active
+                          ? `${item.bgActive} ${item.borderActive} ${item.color}`
+                          : "text-[#8B949E] border-transparent hover:text-white hover:bg-white/5"
+                      }
+                    `}
+                    style={
+                      active
+                        ? { boxShadow: `0 0 16px ${item.glowColor}` }
+                        : {}
+                    }
+                  >
+                    {active && (
+                      <span
+                        className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${DOT_COLORS[item.path]} border-2 border-[#0E1117]`}
+                      />
+                    )}
+                    <Icon className="h-3.5 w-3.5" />
+                    <span>{item.label}</span>
+                    {item.subTabs && (
+                      <ChevronDown
+                        className={`h-3 w-3 transition-transform ${active ? "rotate-180" : ""}`}
+                      />
+                    )}
+                  </button>
+                </Link>
+              );
+            })}
+          </nav>
         </div>
 
         {/* ── Sub-tabs row (visible only when active section has sub-tabs) ── */}
