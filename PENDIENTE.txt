@@ -47,6 +47,43 @@ COMPLETADO ✓ (sesión 2026-05-21)
   - GitHub Actions: environment: TURSO_AUTH_TOKEN para acceder a secrets de entorno
 
 ======================================================================
+COMPLETADO ✓ (sesión 2026-05-21 — segundo bloque)
+======================================================================
+
+[EJ-PROG-1] Registro de ejercicios desde Diario > Entreno Libre
+  - GET /ejercicios/{uid}/sesion-fuerza-hoy detecta Push/Pull/Pierna del plan de hoy
+  - Banner amarillo/verde/morado en EntrenoLibre con botón "Registrar sesión"
+  - ModalRegistroFuerza.tsx: lista de ejercicios activos del grupo, campos series/reps/peso,
+    toggle "¿Todo?" (completado), guarda en historial_ejercicio y actualiza subir_peso
+
+[EJ-PROG-2] Badge "↑ SUBE PESO" en biblioteca de ejercicios
+  - subir_peso INTEGER DEFAULT 0 añadido a ejercicios_catalogo (migration en database.py)
+  - EjercicioCard en Ejercicios.tsx muestra badge verde con ChevronUp cuando subir_peso=1
+  - Lógica: completado=true + mismo peso → subir_peso=1; completado=true + subió peso → reset 0
+
+[EJ-PROG-3] Registro desde PlanSemanal al pulsar sesión de Fuerza
+  - DayDetailPanel en PlanSemanal.tsx detecta Push/Pull/Pierna del nombre de sesión
+  - Botón "Registrar ejercicios Push/Pull/Pierna en biblioteca" abre ModalRegistroFuerza
+  - ModalRegistroFuerza carga ejercicios activos del grupo (sin necesitar prop ejerciciosProp)
+
+[EJ-PROG-5] Notificación diaria incluye "↑SUBE PESO"
+  - daily-reminder.yml añade subir_peso a la query de ejercicios
+  - Si subir_peso=1 → el ejercicio aparece como "Press banca 4x6 40kg ↑SUBE PESO"
+
+[EJ-PROG-6] Historial y progresión visible por ejercicio
+  - ModalHistorialEjercicio.tsx: gráfica LineChart de peso + lista de últimas sesiones
+  - Click en tarjeta de ejercicio en /ejercicios abre el modal de historial
+
+PENDIENTE (cosas menores que pueden quedar para más adelante)
+----------------------------------------------------------------------
+[EJ-PROG-4] Notas "Subir peso" en Plan Semanal
+  - Estado: NO implementado
+  - Al renderizar sesión de Fuerza en PlanSemanal, consultar ejercicios del grupo
+  - Si alguno tiene subir_peso=1 → mostrar nota "↑ Subir peso: [nombre]"
+  - Requeriría llamada API por cada sesión de fuerza al cargar PlanSemanal (costoso)
+  - Alternativa: mostrar en DayDetailPanel cuando el usuario ya abrió el panel
+
+======================================================================
 PENDIENTE — Por hacer (TAREA PARA SIGUIENTE AGENTE)
 ======================================================================
 
@@ -58,11 +95,11 @@ Frontend: Vite+React+TypeScript en Vercel (Figma/src/app/)
 DB: Turso (libSQL) — tablas relevantes: ejercicios_catalogo, historial_ejercicio, plan_entrenamiento
 Remote git correcto: git push athlete-app main (NO origin)
 
-OBJETIVO PRINCIPAL
-------------------
+OBJETIVO PRINCIPAL (COMPLETADO — ver arriba)
 Implementar un sistema completo de registro y carga progresiva de fuerza,
 conectando la biblioteca de ejercicios con el diario de entrenamiento y el
 plan semanal, con recomendaciones automáticas de subida de peso.
+→ HECHO: EJ-PROG-1, 2, 3, 5, 6 implementados. Solo queda EJ-PROG-4 (baja prioridad).
 
 ----------------------------------------------------------------------
 [EJ-PROG-1] Sistema de registro de ejercicios desde Diario > Entreno Libre
