@@ -266,10 +266,11 @@ function EjercicioCard({
         <div
           {...attributes}
           {...listeners}
-          className="mt-0.5 shrink-0 cursor-grab active:cursor-grabbing touch-none text-[#30363D] hover:text-[#8B949E] transition-colors"
+          className="mt-1 shrink-0 cursor-grab active:cursor-grabbing touch-none transition-colors"
+          style={{ color: "#4B5563" }}
           title="Arrastrar para reordenar"
         >
-          <GripVertical className="h-4 w-4" />
+          <GripVertical className="h-5 w-5" />
         </div>
 
         {/* Contenido clickable */}
@@ -547,7 +548,7 @@ export function Ejercicios() {
           <div>
             <h1 className="text-2xl font-bold text-white">🏋️ Ejercicios</h1>
             <p className="text-sm text-[#8B949E] mt-0.5">
-              Arrastra <GripVertical className="inline h-3 w-3" /> para reordenar · toca para ver historial
+              Arrastra el icono <GripVertical className="inline h-3.5 w-3.5 align-text-bottom" style={{ color: "#4B5563" }} /> para reordenar
             </p>
           </div>
           {loading && <span className="text-xs text-[#8B949E]">Actualizando...</span>}
