@@ -252,7 +252,11 @@ function EjercicioCard({
             <Pencil className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={() => onArchivar(ejercicio.id, true)}
+            onClick={() => {
+              if (window.confirm(`¿Archivar "${ejercicio.nombre}"? Podrás restaurarlo después.`)) {
+                onArchivar(ejercicio.id, true);
+              }
+            }}
             className="p-1.5 rounded-lg transition-all hover:bg-white/10 text-[#8B949E] hover:text-[#F97316]"
             title="Archivar"
           >
@@ -368,19 +372,28 @@ function SeccionArchivados({
   return (
     <div className="mt-6 rounded-2xl overflow-hidden"
       style={{ background: "rgba(22,27,34,0.4)", border: "1px solid rgba(255,255,255,0.05)" }}>
-      <button
-        onClick={() => setExpandido(!expandido)}
-        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-white/5 transition-all"
-      >
-        {expandido ? <ChevronDown className="h-4 w-4 text-[#F97316]" /> : <ChevronRight className="h-4 w-4 text-[#F97316]" />}
-        <Archive className="h-4 w-4 text-[#F97316]" />
-        <span className="text-sm font-bold text-[#F97316] uppercase tracking-wider">Archivados</span>
-        <span className="ml-1 text-xs px-2 py-0.5 rounded-full font-bold"
-          style={{ background: "rgba(249,115,22,0.15)", color: "#F97316", border: "1px solid rgba(249,115,22,0.3)" }}>
-          {archivados.length}
-        </span>
-        <span className="text-xs text-[#8B949E] ml-1">— toca para restaurar</span>
-      </button>
+      <div className="flex items-center px-5 py-3 gap-3">
+        <button onClick={() => setExpandido(!expandido)} className="flex items-center gap-2 flex-1 text-left">
+          {expandido ? <ChevronDown className="h-4 w-4 text-[#F97316]" /> : <ChevronRight className="h-4 w-4 text-[#F97316]" />}
+          <Archive className="h-4 w-4 text-[#F97316]" />
+          <span className="text-sm font-bold text-[#F97316] uppercase tracking-wider">Archivados</span>
+          <span className="ml-1 text-xs px-2 py-0.5 rounded-full font-bold"
+            style={{ background: "rgba(249,115,22,0.15)", color: "#F97316", border: "1px solid rgba(249,115,22,0.3)" }}>
+            {archivados.length}
+          </span>
+        </button>
+        <button
+          onClick={() => {
+            if (window.confirm(`¿Restaurar todos los ${archivados.length} ejercicios archivados?`)) {
+              archivados.forEach((ej) => onDesarchivar(ej.id));
+            }
+          }}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:brightness-110 shrink-0"
+          style={{ background: "rgba(201,255,0,0.12)", color: "#C9FF00", border: "1px solid rgba(201,255,0,0.25)" }}
+        >
+          <ArchiveRestore className="h-3.5 w-3.5" /> Restaurar todos
+        </button>
+      </div>
 
       {expandido && (
         <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">

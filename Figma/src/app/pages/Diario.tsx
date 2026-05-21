@@ -1019,7 +1019,11 @@ function Ejercicios() {
                           className="p-1.5 rounded-lg text-[#8B949E] hover:text-white hover:bg-white/10 transition-all" title="Editar">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={async () => { await archivarEjercicio(ej.id, true); cargar(); }}
+                        <button onClick={async () => {
+                          if (window.confirm(`¿Archivar "${ej.nombre}"?`)) {
+                            await archivarEjercicio(ej.id, true); cargar();
+                          }
+                        }}
                           className="p-1.5 rounded-lg text-[#8B949E] hover:text-[#F97316] hover:bg-white/10 transition-all" title="Archivar">
                           <Archive className="h-3.5 w-3.5" />
                         </button>
@@ -1037,19 +1041,32 @@ function Ejercicios() {
       {todosArchivados.length > 0 && (
         <div className="rounded-2xl overflow-hidden"
           style={{ background: "rgba(22,27,34,0.4)", border: "1px solid rgba(255,255,255,0.05)" }}>
-          <button onClick={() => setArchivadosAbiertos(!archivadosAbiertos)}
-            className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-white/5 transition-all">
-            {archivadosAbiertos
-              ? <ChevronDown className="h-4 w-4 text-[#F97316]" />
-              : <ChevronRight className="h-4 w-4 text-[#F97316]" />}
-            <Archive className="h-4 w-4 text-[#F97316]" />
-            <span className="text-sm font-bold text-[#F97316] uppercase tracking-wider">Archivados</span>
-            <span className="ml-1 text-xs px-2 py-0.5 rounded-full font-bold"
-              style={{ background: "rgba(249,115,22,0.15)", color: "#F97316", border: "1px solid rgba(249,115,22,0.3)" }}>
-              {todosArchivados.length}
-            </span>
-            <span className="text-xs text-[#8B949E] ml-1">— pulsa Restaurar para activar</span>
-          </button>
+          <div className="flex items-center px-4 py-3 gap-2">
+            <button onClick={() => setArchivadosAbiertos(!archivadosAbiertos)}
+              className="flex items-center gap-2 flex-1 text-left">
+              {archivadosAbiertos
+                ? <ChevronDown className="h-4 w-4 text-[#F97316]" />
+                : <ChevronRight className="h-4 w-4 text-[#F97316]" />}
+              <Archive className="h-4 w-4 text-[#F97316]" />
+              <span className="text-sm font-bold text-[#F97316] uppercase tracking-wider">Archivados</span>
+              <span className="ml-1 text-xs px-2 py-0.5 rounded-full font-bold"
+                style={{ background: "rgba(249,115,22,0.15)", color: "#F97316", border: "1px solid rgba(249,115,22,0.3)" }}>
+                {todosArchivados.length}
+              </span>
+            </button>
+            <button
+              onClick={async () => {
+                if (window.confirm(`¿Restaurar todos los ${todosArchivados.length} ejercicios archivados?`)) {
+                  for (const ej of todosArchivados) { await archivarEjercicio(ej.id, false); }
+                  cargar();
+                }
+              }}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all hover:brightness-110 shrink-0"
+              style={{ background: "rgba(201,255,0,0.12)", color: "#C9FF00", border: "1px solid rgba(201,255,0,0.25)" }}
+            >
+              <ArchiveRestore className="h-3.5 w-3.5" /> Restaurar todos
+            </button>
+          </div>
           {archivadosAbiertos && (
             <div className="px-3 pb-3 space-y-1.5">
               {todosArchivados.map((ej) => {
