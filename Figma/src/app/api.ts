@@ -86,6 +86,25 @@ export function getEjercicios(usuarioId: number) {
   return req<EjerciciosBiblioteca>(`/ejercicios/${usuarioId}`);
 }
 
+export function archivarEjercicio(ejercicioId: number, archivar: boolean) {
+  return req<{ ok: boolean }>(`/ejercicios/${ejercicioId}/archivar?archivar=${archivar}`, {
+    method: "PATCH",
+  });
+}
+
+export function crearEjercicio(data: {
+  usuario_id: number;
+  nombre: string;
+  grupo_muscular: string;
+  musculo_principal?: string;
+  alias?: string;
+}) {
+  return req<{ ok: boolean }>("/ejercicios/crear", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function registrarSerie(s: {
   usuario_id: number;
   ejercicio_nombre: string;
@@ -266,22 +285,22 @@ export interface SleepEntry {
   sleep_rem_horas: number | null;
 }
 
-export interface EjerciciosBiblioteca {
-  grupos: {
-    nombre: string;
-    ejercicios: EjercicioBiblioteca[];
-  }[];
-}
+export type GrupoFuerza = "Push" | "Pull" | "Pierna";
 
 export interface EjercicioBiblioteca {
   id: number;
   nombre: string;
-  grupo_muscular: string;
+  grupo_muscular: GrupoFuerza;
   musculo_principal: string | null;
   alias: string | null;
+  archivado: boolean;
   ultimo_peso: number | null;
   ultima_fecha: string | null;
   mejor_peso: number | null;
+}
+
+export interface EjerciciosBiblioteca {
+  grupos: Record<GrupoFuerza, { activos: EjercicioBiblioteca[]; archivados: EjercicioBiblioteca[] }>;
 }
 
 export interface EntradaDiario {
