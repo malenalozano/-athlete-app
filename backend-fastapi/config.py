@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     turso_auth_token: str = ""
     local_db_path: str = "atleta.db"
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    ntfy_topic: str = ""  # Topic ntfy.sh para notificaciones iPhone. Ej: "athlete-malena-2026"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

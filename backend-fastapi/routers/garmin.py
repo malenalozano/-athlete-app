@@ -357,8 +357,34 @@ def get_stats(usuario_id: int):
 @router.post("/{usuario_id}/sync")
 def sync_garmin(usuario_id: int):
     """Sincroniza actividades y datos biométricos desde Garmin Connect."""
-    result = _do_sync(usuario_id)
-    return result
+    from notifications import send_notification
+    try:
+        result = _do_sync(usuario_id)
+        acts = result.get("actividades_importadas", 0)
+        advertencias = result.get("advertencias")
+        if advertencias:
+            send_notification(
+                f"Sync completada con advertencias: {', '.join(advertencias[:2])}",
+                title="🟡 Garmin sincronizado",
+                tags=["warning"],
+                priority="default",
+            )
+        else:
+            send_notification(
+                f"Garmin sync OK — {acts} actividad(es) importada(s). ✅",
+                title="Garmin sincronizado",
+                tags=["white_check_mark", "runner"],
+                priority="default",
+            )
+        return result
+    except Exception as e:
+        send_notification(
+            f"Error al sincronizar Garmin: {str(e)[:120]}",
+            title="❌ Error sync Garmin",
+            tags=["x", "warning"],
+            priority="high",
+        )
+        raise
 
 
 class TokensPayload(BaseModel):

@@ -12,3 +12,5 @@ services:
         sync: false
       - key: CORS_ORIGINS
         value: "https://athlete-app-kohl.vercel.app,http://localhost:5173"
+      - key: NTFY_TOPIC
+        sync: false
