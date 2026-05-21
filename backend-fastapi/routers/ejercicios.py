@@ -29,48 +29,40 @@ class EjercicioCreate(BaseModel):
     alias: Optional[str] = None
 
 
-def _ejercicio_row(conn, ej_id: int, nombre: str, grupo: str, musculo, alias, archivado, usuario_id: int) -> dict:
-    hist = conn.execute(
-        """SELECT peso, series, repeticiones, fecha
-           FROM historial_ejercicio
-           WHERE ejercicio_id = ? AND usuario_id = ?
-           ORDER BY fecha DESC, id DESC LIMIT 1""",
-        (ej_id, usuario_id),
-    ).fetchone()
-
-    best = conn.execute(
-        "SELECT MAX(peso) FROM historial_ejercicio WHERE ejercicio_id = ? AND usuario_id = ?",
-        (ej_id, usuario_id),
-    ).fetchone()
-
-    return {
-        "id": ej_id,
-        "nombre": nombre,
-        "grupo_muscular": grupo,
-        "musculo_principal": musculo,
-        "alias": alias,
-        "archivado": bool(archivado),
-        "ultimo_peso": hist[0] if hist else None,
-        "ultima_fecha": hist[3] if hist else None,
-        "mejor_peso": best[0] if best and best[0] else None,
-    }
-
-
 @router.get("/{usuario_id}")
 def get_ejercicios(usuario_id: int):
     """Devuelve ejercicios agrupados en Push / Pull / Pierna.
     Cada grupo tiene: activos[] y archivados[].
+    Una sola query con JOINs para máxima velocidad.
     """
     conn = get_db()
     rows = conn.execute(
-        """SELECT e.id, e.nombre, e.grupo_muscular, e.musculo_principal, e.notas, e.archivado
+        """SELECT e.id, e.nombre, e.grupo_muscular, e.musculo_principal, e.notas, e.archivado,
+                  h_last.peso, h_last.series, h_last.repeticiones, h_last.fecha,
+                  h_best.mejor_peso
            FROM ejercicios_catalogo e
+           LEFT JOIN (
+               SELECT h1.ejercicio_id, h1.peso, h1.series, h1.repeticiones, h1.fecha
+               FROM historial_ejercicio h1
+               WHERE h1.usuario_id = ?
+                 AND h1.id = (
+                     SELECT id FROM historial_ejercicio
+                     WHERE ejercicio_id = h1.ejercicio_id AND usuario_id = h1.usuario_id
+                     ORDER BY fecha DESC, id DESC LIMIT 1
+                 )
+           ) h_last ON h_last.ejercicio_id = e.id
+           LEFT JOIN (
+               SELECT ejercicio_id, MAX(peso) AS mejor_peso
+               FROM historial_ejercicio
+               WHERE usuario_id = ?
+               GROUP BY ejercicio_id
+           ) h_best ON h_best.ejercicio_id = e.id
            WHERE e.usuario_id = ?
            ORDER BY e.grupo_muscular, e.nombre""",
-        (usuario_id,),
+        (usuario_id, usuario_id, usuario_id),
     ).fetchall()
+    conn.close()
 
-    # Organizar en 3 grupos fijos
     grupos: dict[str, dict] = {
         "Push":   {"activos": [], "archivados": []},
         "Pull":   {"activos": [], "archivados": []},
@@ -78,19 +70,27 @@ def get_ejercicios(usuario_id: int):
     }
 
     for r in rows:
-        ej_id, nombre, grupo, musculo, alias, archivado = r
-        # Normalizar grupo al válido más cercano
+        ej_id, nombre, grupo, musculo, alias, archivado, u_peso, u_series, u_reps, u_fecha, mejor_peso = r
         grupo_norm = next((g for g in GRUPOS_VALIDOS if g.lower() in (grupo or "").lower()), None)
         if not grupo_norm:
-            continue  # Ignorar ejercicios con grupo desconocido
+            continue
 
-        ej = _ejercicio_row(conn, ej_id, nombre, grupo_norm, musculo, alias, archivado, usuario_id)
+        ej = {
+            "id": ej_id,
+            "nombre": nombre,
+            "grupo_muscular": grupo_norm,
+            "musculo_principal": musculo,
+            "alias": alias,
+            "archivado": bool(archivado),
+            "ultimo_peso": u_peso,
+            "ultima_fecha": u_fecha,
+            "mejor_peso": mejor_peso,
+        }
         if archivado:
             grupos[grupo_norm]["archivados"].append(ej)
         else:
             grupos[grupo_norm]["activos"].append(ej)
 
-    conn.close()
     return {"grupos": grupos}
 
 
@@ -105,21 +105,41 @@ def get_ejercicios_grupo(usuario_id: int, grupo: str):
 
     conn = get_db()
     rows = conn.execute(
-        """SELECT e.id, e.nombre, e.grupo_muscular, e.musculo_principal, e.notas, e.archivado
+        """SELECT e.id, e.nombre, e.musculo_principal, e.notas,
+                  h_last.peso, h_last.series, h_last.repeticiones,
+                  h_best.mejor_peso
            FROM ejercicios_catalogo e
+           LEFT JOIN (
+               SELECT h1.ejercicio_id, h1.peso, h1.series, h1.repeticiones
+               FROM historial_ejercicio h1
+               WHERE h1.usuario_id = ?
+                 AND h1.id = (
+                     SELECT id FROM historial_ejercicio
+                     WHERE ejercicio_id = h1.ejercicio_id AND usuario_id = h1.usuario_id
+                     ORDER BY fecha DESC, id DESC LIMIT 1
+                 )
+           ) h_last ON h_last.ejercicio_id = e.id
+           LEFT JOIN (
+               SELECT ejercicio_id, MAX(peso) AS mejor_peso
+               FROM historial_ejercicio WHERE usuario_id = ? GROUP BY ejercicio_id
+           ) h_best ON h_best.ejercicio_id = e.id
            WHERE e.usuario_id = ? AND LOWER(e.grupo_muscular) = LOWER(?)
              AND (e.archivado IS NULL OR e.archivado = 0)
            ORDER BY e.nombre""",
-        (usuario_id, grupo_norm),
+        (usuario_id, usuario_id, usuario_id, grupo_norm),
     ).fetchall()
+    conn.close()
 
     ejercicios = []
     for r in rows:
-        ej_id, nombre, grupo_r, musculo, alias, archivado = r
-        ej = _ejercicio_row(conn, ej_id, nombre, grupo_r, musculo, alias, archivado, usuario_id)
-        ejercicios.append(ej)
-
-    conn.close()
+        ej_id_or_nombre, nombre, musculo, alias, u_peso, u_series, u_reps, mejor_peso = r
+        ejercicios.append({
+            "nombre": nombre,
+            "ultimo_peso": u_peso,
+            "ultima_series": u_series,
+            "ultimas_reps": u_reps,
+            "mejor_peso": mejor_peso,
+        })
     return {"grupo": grupo_norm, "ejercicios": ejercicios}
 
 
