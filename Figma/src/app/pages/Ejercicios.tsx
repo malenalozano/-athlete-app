@@ -6,6 +6,7 @@ import {
   getEjercicios,
   archivarEjercicio,
   crearEjercicio,
+  editarEjercicio,
   type EjerciciosBiblioteca,
   type EjercicioBiblioteca,
   type GrupoFuerza,
@@ -74,19 +75,20 @@ function ModalEjercicio({
       };
 
       if (modoEdicion && ejercicio) {
-        await fetch(`${import.meta.env.VITE_API_URL}/ejercicios/${ejercicio.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        await editarEjercicio(ejercicio.id, payload);
       } else {
         await crearEjercicio({ usuario_id: usuarioId, ...payload });
       }
 
       onGuardado();
       onClose();
-    } catch {
-      setError("Error al guardar el ejercicio");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("409")) {
+        setError(`Ya existe un ejercicio con ese nombre`);
+      } else {
+        setError("Error al guardar el ejercicio. Inténtalo de nuevo.");
+      }
     } finally {
       setLoading(false);
     }

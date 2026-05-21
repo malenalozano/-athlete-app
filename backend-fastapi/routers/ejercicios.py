@@ -276,12 +276,25 @@ def crear_ejercicio(e: EjercicioCreate):
         raise HTTPException(status_code=400, detail=f"Grupo no válido. Usa: {', '.join(GRUPOS_VALIDOS)}")
 
     conn = get_db()
+    # Comprobar si ya existe
+    existe = conn.execute(
+        "SELECT id FROM ejercicios_catalogo WHERE usuario_id = ? AND LOWER(nombre) = LOWER(?)",
+        (e.usuario_id, e.nombre.strip()),
+    ).fetchone()
+    if existe:
+        conn.close()
+        raise HTTPException(status_code=409, detail=f"Ya existe un ejercicio llamado '{e.nombre}'")
+
     fecha = datetime.now().strftime("%Y-%m-%d")
     conn.execute(
-        """INSERT OR IGNORE INTO ejercicios_catalogo
-           (usuario_id, nombre, grupo_muscular, musculo_principal, notas, creado_en)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (e.usuario_id, e.nombre, grupo_norm, e.musculo_principal, e.alias, fecha),
+        """INSERT INTO ejercicios_catalogo
+           (usuario_id, nombre, grupo_muscular, musculo_principal, notas,
+            series_objetivo, reps_objetivo, peso_objetivo, creado_en)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            e.usuario_id, e.nombre.strip(), grupo_norm, e.musculo_principal, e.alias,
+            e.series_objetivo, e.reps_objetivo, e.peso_objetivo, fecha,
+        ),
     )
     conn.commit()
     conn.close()

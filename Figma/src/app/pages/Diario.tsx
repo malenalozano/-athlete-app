@@ -18,9 +18,13 @@ import {
   ChevronRight,
   Activity,
   Zap,
+  X,
+  Pencil,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { crearEntradaDiario, getActividades, getEjercicios, getResumenEntrenador, getSesionFuerzaHoy, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy } from "../api";
+import { crearEntradaDiario, getActividades, getEjercicios, getResumenEntrenador, getSesionFuerzaHoy, archivarEjercicio, crearEjercicio, editarEjercicio, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy, type GrupoFuerza } from "../api";
 import { ModalRegistroFuerza } from "../components/ModalRegistroFuerza";
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
@@ -792,13 +796,122 @@ function getGrupoColor(grupo: string): string {
   return "#C9FF00";
 }
 
+// Mini-modal crear/editar ejercicio (igual que en /ejercicios pero más simple)
+function MiniModalEjercicio({
+  usuarioId,
+  grupoInicial,
+  ejercicio,
+  onClose,
+  onGuardado,
+}: {
+  usuarioId: number;
+  grupoInicial: GrupoFuerza;
+  ejercicio?: EjercicioBiblioteca;
+  onClose: () => void;
+  onGuardado: () => void;
+}) {
+  const modoEdicion = !!ejercicio;
+  const GRUPOS_MINI: { key: GrupoFuerza; label: string; color: string }[] = [
+    { key: "Push",   label: "Push",   color: "#C9FF00" },
+    { key: "Pull",   label: "Pull",   color: "#00D4FF" },
+    { key: "Pierna", label: "Pierna", color: "#A855F7" },
+  ];
+  const [nombre, setNombre] = useState(ejercicio?.nombre ?? "");
+  const [grupo, setGrupo]   = useState<GrupoFuerza>(ejercicio?.grupo_muscular ?? grupoInicial);
+  const [seriesObj, setSeriesObj] = useState(ejercicio?.series_objetivo?.toString() ?? "");
+  const [repsObj,   setRepsObj]   = useState(ejercicio?.reps_objetivo?.toString() ?? "");
+  const [pesoObj,   setPesoObj]   = useState(ejercicio?.peso_objetivo?.toString() ?? "");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async () => {
+    if (!nombre.trim()) { setError("El nombre es obligatorio"); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const payload = {
+        nombre: nombre.trim(),
+        grupo_muscular: grupo,
+        series_objetivo: seriesObj ? parseInt(seriesObj) : undefined,
+        reps_objetivo:   repsObj   ? parseInt(repsObj)   : undefined,
+        peso_objetivo:   pesoObj   ? parseFloat(pesoObj) : undefined,
+      };
+      if (modoEdicion && ejercicio) {
+        await editarEjercicio(ejercicio.id, payload);
+      } else {
+        await crearEjercicio({ usuario_id: usuarioId, ...payload });
+      }
+      onGuardado();
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      setError(msg.includes("409") ? "Ya existe un ejercicio con ese nombre" : "Error al guardar");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.7)" }}>
+      <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: "#161B22", border: "1px solid rgba(255,255,255,0.1)" }}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-bold text-white">{modoEdicion ? "Editar ejercicio" : "Nuevo ejercicio"}</h3>
+          <button onClick={onClose} className="text-[#8B949E] hover:text-white"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            {GRUPOS_MINI.map((g) => (
+              <button key={g.key} onClick={() => setGrupo(g.key)}
+                className="flex-1 py-1.5 rounded-lg text-xs font-bold"
+                style={{
+                  background: grupo === g.key ? `${g.color}18` : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${grupo === g.key ? g.color : "rgba(255,255,255,0.08)"}`,
+                  color: grupo === g.key ? g.color : "#8B949E",
+                }}
+              >{g.label}</button>
+            ))}
+          </div>
+          <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del ejercicio *"
+            autoFocus className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          />
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: "Series", value: seriesObj, set: setSeriesObj, ph: "4" },
+              { label: "Reps",   value: repsObj,   set: setRepsObj,   ph: "8" },
+              { label: "Peso kg",value: pesoObj,   set: setPesoObj,   ph: "40" },
+            ].map(({ label, value, set, ph }) => (
+              <div key={label}>
+                <p className="text-[9px] text-[#8B949E] mb-1">{label} (opcional)</p>
+                <input type="number" value={value} onChange={(e) => set(e.target.value)} placeholder={ph}
+                  className="w-full px-2 py-1.5 rounded-lg text-sm text-white text-center outline-none"
+                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+                />
+              </div>
+            ))}
+          </div>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          <button onClick={handleSubmit} disabled={loading}
+            className="w-full py-2.5 rounded-xl text-sm font-bold"
+            style={{ background: "#C9FF00", color: "#0E1117", opacity: loading ? 0.6 : 1 }}
+          >
+            {loading ? "Guardando..." : modoEdicion ? "Guardar cambios" : "Añadir ejercicio"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Ejercicios() {
   const { userId } = useUser();
-  const navigate = useNavigate();
   const [ejerciciosData, setEjerciciosData] = useState<EjercicioBiblioteca[]>([]);
   const [loading, setLoading] = useState(false);
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [editando, setEditando] = useState<EjercicioBiblioteca | null>(null);
 
-  useEffect(() => {
+  const cargar = () => {
     if (!userId) return;
     setLoading(true);
     getEjercicios(userId)
@@ -808,7 +921,9 @@ function Ejercicios() {
       })
       .catch(() => setEjerciciosData([]))
       .finally(() => setLoading(false));
-  }, [userId]);
+  };
+
+  useEffect(() => { cargar(); }, [userId]);
 
   return (
     <div className="space-y-6">
@@ -823,10 +938,10 @@ function Ejercicios() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-white mb-1">Biblioteca de Ejercicios</h2>
-            <p className="text-[#8B949E] text-sm">{ejerciciosData.length} ejercicios registrados</p>
+            <p className="text-[#8B949E] text-sm">{ejerciciosData.filter(e => !e.archivado).length} activos · {ejerciciosData.filter(e => e.archivado).length} archivados</p>
           </div>
           <button
-            onClick={() => navigate("/ejercicios")}
+            onClick={() => { setEditando(null); setModalAbierto(true); }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-[#0E1117] transition-all hover:opacity-90"
             style={{
               background: "linear-gradient(135deg, #A855F7, #7C3AED)",
@@ -839,60 +954,87 @@ function Ejercicios() {
         </div>
       </div>
 
+      {/* Modal crear/editar */}
+      {(modalAbierto || editando) && userId !== null && (
+        <MiniModalEjercicio
+          usuarioId={userId}
+          grupoInicial="Push"
+          ejercicio={editando ?? undefined}
+          onClose={() => { setModalAbierto(false); setEditando(null); }}
+          onGuardado={cargar}
+        />
+      )}
+
       {/* Exercise list */}
       {loading ? (
         <div className="text-center text-[#8B949E] py-10 text-sm">Cargando ejercicios...</div>
-      ) : ejerciciosData.length === 0 ? (
-        <div className="text-center text-[#8B949E] py-10 text-sm">Sin ejercicios registrados aún.</div>
+      ) : ejerciciosData.filter(e => !e.archivado).length === 0 ? (
+        <div className="text-center text-[#8B949E] py-10 text-sm">Sin ejercicios activos. Pulsa "Añadir Ejercicio" para empezar.</div>
       ) : (
-        <div className="space-y-3">
-          {ejerciciosData.map((ej) => {
+        <div className="space-y-2">
+          {ejerciciosData.filter(e => !e.archivado).map((ej) => {
             const color = getGrupoColor(ej.grupo_muscular);
             return (
-              <Card
+              <div
                 key={ej.id}
-                className="rounded-xl transition-all hover:scale-[1.01]"
-                style={{ background: "#161B22", border: `1px solid ${color}25` }}
+                className="rounded-xl px-4 py-3 flex items-center gap-3"
+                style={{ background: "#161B22", border: `1px solid ${color}20` }}
               >
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="h-10 w-10 rounded-xl flex items-center justify-center"
-                        style={{ background: `${color}15`, border: `1px solid ${color}30` }}
-                      >
-                        <Dumbbell className="h-5 w-5" style={{ color }} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-white">{ej.nombre}</p>
-                        <p className="text-xs text-[#8B949E]">{ej.grupo_muscular}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4 text-right">
-                      {ej.ultimo_peso != null && (
-                        <div>
-                          <p className="text-xs text-[#8B949E]">Último peso</p>
-                          <p className="text-sm font-bold text-white">{ej.ultimo_peso} kg</p>
-                        </div>
-                      )}
-                      {ej.mejor_peso != null && (
-                        <div>
-                          <p className="text-xs text-[#8B949E]">Mejor</p>
-                          <p className="text-sm font-bold" style={{ color }}>{ej.mejor_peso} kg</p>
-                        </div>
-                      )}
-                      {ej.ultimo_peso == null && ej.mejor_peso == null && (
-                        <p className="text-xs text-[#8B949E]">Sin registros</p>
-                      )}
-                    </div>
-                  </div>
-                  {ej.ultima_fecha && (
-                    <p className="text-xs text-[#8B949E] mt-2">Última vez: {ej.ultima_fecha}</p>
-                  )}
-                </CardContent>
-              </Card>
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{ej.nombre}</p>
+                  <p className="text-xs text-[#8B949E]">
+                    {ej.grupo_muscular}
+                    {ej.ultimo_peso != null && ` · ${ej.ultimo_peso}kg`}
+                    {ej.ultima_series != null && ej.ultimas_reps != null && ` ${ej.ultima_series}×${ej.ultimas_reps}`}
+                  </p>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <button
+                    onClick={() => setEditando(ej)}
+                    className="p-1.5 rounded-lg text-[#8B949E] hover:text-white transition-colors"
+                    title="Editar"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={async () => { await archivarEjercicio(ej.id, true); cargar(); }}
+                    className="p-1.5 rounded-lg text-[#8B949E] hover:text-white transition-colors"
+                    title="Archivar"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
             );
           })}
+          {/* Archivados */}
+          {ejerciciosData.filter(e => e.archivado).length > 0 && (
+            <details className="mt-4">
+              <summary className="text-xs text-[#8B949E] cursor-pointer select-none py-2">
+                📦 {ejerciciosData.filter(e => e.archivado).length} archivados
+              </summary>
+              <div className="space-y-2 mt-2">
+                {ejerciciosData.filter(e => e.archivado).map((ej) => {
+                  const color = getGrupoColor(ej.grupo_muscular);
+                  return (
+                    <div key={ej.id} className="rounded-xl px-4 py-2.5 flex items-center gap-3 opacity-60"
+                      style={{ background: "#161B22", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                      <p className="text-sm text-white flex-1 truncate">{ej.nombre}</p>
+                      <button
+                        onClick={async () => { await archivarEjercicio(ej.id, false); cargar(); }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-[#8B949E] hover:text-white transition-colors"
+                        style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+                      >
+                        <ArchiveRestore className="h-3 w-3" /> Restaurar
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          )}
         </div>
       )}
     </div>
