@@ -1,6 +1,6 @@
 import { Header } from "../components/Header";
 import { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight, Plus, Archive, ArchiveRestore, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Archive, ArchiveRestore, X, Pencil } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import {
   getEjercicios,
@@ -11,6 +11,16 @@ import {
   type GrupoFuerza,
 } from "../api";
 
+// ── Tipos extendidos ───────────────────────────────────────────────────────────
+
+interface EjercicioExtendido extends EjercicioBiblioteca {
+  series_objetivo?: number | null;
+  reps_objetivo?: number | null;
+  peso_objetivo?: number | null;
+  ultima_series?: number | null;
+  ultimas_reps?: number | null;
+}
+
 // ── Configuración de grupos ────────────────────────────────────────────────────
 
 const GRUPOS: { key: GrupoFuerza; label: string; color: string; bg: string; descripcion: string }[] = [
@@ -19,34 +29,63 @@ const GRUPOS: { key: GrupoFuerza; label: string; color: string; bg: string; desc
   { key: "Pierna", label: "PIERNA", color: "#A855F7", bg: "rgba(168,85,247,0.08)", descripcion: "Sentadilla, Peso muerto, Hip thrust..." },
 ];
 
-// ── Modal Añadir Ejercicio ─────────────────────────────────────────────────────
+const COLOR_MAP: Record<string, string> = {
+  Push: "#C9FF00", Pull: "#00D4FF", Pierna: "#A855F7",
+};
 
-function ModalNuevoEjercicio({
+// ── Modal Añadir / Editar Ejercicio ────────────────────────────────────────────
+
+function ModalEjercicio({
   onClose,
-  onCreado,
+  onGuardado,
   usuarioId,
   grupoInicial,
+  ejercicio,          // Si viene → modo edición
 }: {
   onClose: () => void;
-  onCreado: () => void;
+  onGuardado: () => void;
   usuarioId: number;
   grupoInicial: GrupoFuerza;
+  ejercicio?: EjercicioExtendido;
 }) {
-  const [nombre, setNombre] = useState("");
-  const [grupo, setGrupo] = useState<GrupoFuerza>(grupoInicial);
-  const [alias, setAlias] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const modoEdicion = !!ejercicio;
+
+  const [nombre,        setNombre]        = useState(ejercicio?.nombre ?? "");
+  const [grupo,         setGrupo]         = useState<GrupoFuerza>(ejercicio?.grupo_muscular as GrupoFuerza ?? grupoInicial);
+  const [alias,         setAlias]         = useState(ejercicio?.alias ?? "");
+  const [seriesObj,     setSeriesObj]     = useState(ejercicio?.series_objetivo?.toString() ?? "");
+  const [repsObj,       setRepsObj]       = useState(ejercicio?.reps_objetivo?.toString() ?? "");
+  const [pesoObj,       setPesoObj]       = useState(ejercicio?.peso_objetivo?.toString() ?? "");
+  const [loading,       setLoading]       = useState(false);
+  const [error,         setError]         = useState("");
 
   const handleSubmit = async () => {
     if (!nombre.trim()) { setError("El nombre es obligatorio"); return; }
     setLoading(true);
     try {
-      await crearEjercicio({ usuario_id: usuarioId, nombre: nombre.trim(), grupo_muscular: grupo, alias: alias.trim() || undefined });
-      onCreado();
+      const payload = {
+        nombre:          nombre.trim(),
+        grupo_muscular:  grupo,
+        alias:           alias.trim() || undefined,
+        series_objetivo: seriesObj ? parseInt(seriesObj) : undefined,
+        reps_objetivo:   repsObj   ? parseInt(repsObj)   : undefined,
+        peso_objetivo:   pesoObj   ? parseFloat(pesoObj) : undefined,
+      };
+
+      if (modoEdicion && ejercicio) {
+        await fetch(`${import.meta.env.VITE_API_URL}/ejercicios/${ejercicio.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await crearEjercicio({ usuario_id: usuarioId, ...payload });
+      }
+
+      onGuardado();
       onClose();
     } catch {
-      setError("Error al crear el ejercicio");
+      setError("Error al guardar el ejercicio");
     } finally {
       setLoading(false);
     }
@@ -56,8 +95,12 @@ function ModalNuevoEjercicio({
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.7)" }}>
       <div className="w-full max-w-md rounded-2xl p-6" style={{ background: "#161B22", border: "1px solid rgba(255,255,255,0.1)" }}>
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-white">Nuevo ejercicio</h2>
-          <button onClick={onClose} className="text-[#8B949E] hover:text-white transition-colors"><X className="h-5 w-5" /></button>
+          <h2 className="text-lg font-bold text-white">
+            {modoEdicion ? "Editar ejercicio" : "Nuevo ejercicio"}
+          </h2>
+          <button onClick={onClose} className="text-[#8B949E] hover:text-white transition-colors">
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         <div className="space-y-4">
@@ -66,18 +109,14 @@ function ModalNuevoEjercicio({
             <label className="text-xs text-[#8B949E] uppercase font-semibold mb-2 block">Grupo</label>
             <div className="flex gap-2">
               {GRUPOS.map((g) => (
-                <button
-                  key={g.key}
-                  onClick={() => setGrupo(g.key)}
+                <button key={g.key} onClick={() => setGrupo(g.key)}
                   className="flex-1 py-2 rounded-lg text-sm font-bold transition-all"
                   style={{
                     background: grupo === g.key ? g.bg : "rgba(255,255,255,0.04)",
                     border: `1px solid ${grupo === g.key ? g.color : "rgba(255,255,255,0.08)"}`,
                     color: grupo === g.key ? g.color : "#8B949E",
                   }}
-                >
-                  {g.label}
-                </button>
+                >{g.label}</button>
               ))}
             </div>
           </div>
@@ -85,24 +124,39 @@ function ModalNuevoEjercicio({
           {/* Nombre */}
           <div>
             <label className="text-xs text-[#8B949E] uppercase font-semibold mb-2 block">Nombre *</label>
-            <input
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              placeholder="Ej: Press banca"
+            <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Press banca"
               className="w-full px-3 py-2.5 rounded-lg text-sm text-white placeholder-[#30363D] outline-none"
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
-              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()} autoFocus={!modoEdicion}
             />
+          </div>
+
+          {/* Series, Reps, Peso objetivo */}
+          <div>
+            <label className="text-xs text-[#8B949E] uppercase font-semibold mb-2 block">
+              Objetivo <span className="normal-case font-normal">(opcional — si lo dejas en blanco usa el historial)</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: "Series", value: seriesObj, set: setSeriesObj, placeholder: "4" },
+                { label: "Reps",   value: repsObj,   set: setRepsObj,   placeholder: "8" },
+                { label: "Peso kg",value: pesoObj,   set: setPesoObj,   placeholder: "40" },
+              ].map(({ label, value, set, placeholder }) => (
+                <div key={label}>
+                  <p className="text-[10px] text-[#8B949E] mb-1">{label}</p>
+                  <input value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} type="number"
+                    className="w-full px-2 py-2 rounded-lg text-sm text-white placeholder-[#30363D] outline-none text-center"
+                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Alias */}
           <div>
             <label className="text-xs text-[#8B949E] uppercase font-semibold mb-2 block">Alias / notas (opcional)</label>
-            <input
-              value={alias}
-              onChange={(e) => setAlias(e.target.value)}
-              placeholder="Ej: BP, banco plano"
+            <input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="Ej: BP, banco plano"
               className="w-full px-3 py-2.5 rounded-lg text-sm text-white placeholder-[#30363D] outline-none"
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
             />
@@ -110,13 +164,11 @@ function ModalNuevoEjercicio({
 
           {error && <p className="text-xs text-red-400">{error}</p>}
 
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
+          <button onClick={handleSubmit} disabled={loading}
             className="w-full py-3 rounded-xl text-sm font-bold transition-all"
             style={{ background: "#C9FF00", color: "#0E1117", opacity: loading ? 0.6 : 1 }}
           >
-            {loading ? "Guardando..." : "Añadir ejercicio"}
+            {loading ? "Guardando..." : modoEdicion ? "Guardar cambios" : "Añadir ejercicio"}
           </button>
         </div>
       </div>
@@ -130,83 +182,90 @@ function EjercicioCard({
   ejercicio,
   color,
   onArchivar,
+  onEditar,
 }: {
-  ejercicio: EjercicioBiblioteca;
+  ejercicio: EjercicioExtendido;
   color: string;
   onArchivar: (id: number, archivar: boolean) => void;
+  onEditar: (ej: EjercicioExtendido) => void;
 }) {
-  const archivado = ejercicio.archivado;
+  // Mostrar historial si existe, sino objetivo
+  const series = ejercicio.ultima_series ?? ejercicio.series_objetivo;
+  const reps   = ejercicio.ultimas_reps  ?? ejercicio.reps_objetivo;
+  const peso   = ejercicio.ultimo_peso   ?? ejercicio.peso_objetivo;
+  const esFuente = ejercicio.ultima_series ? "historial" : "objetivo";
 
   return (
-    <div
-      className="rounded-xl p-4 transition-all"
+    <div className="rounded-xl p-4 transition-all"
       style={{
-        background: archivado ? "rgba(22,27,34,0.5)" : "rgba(22,27,34,0.95)",
-        border: `1px solid ${archivado ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.08)"}`,
-        opacity: archivado ? 0.6 : 1,
+        background: "rgba(22,27,34,0.95)",
+        border: `1px solid rgba(255,255,255,0.08)`,
       }}
     >
-      {/* Nombre */}
-      <div className="flex items-start justify-between mb-3">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-3 gap-2">
         <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: color }} />
-        <h3 className="text-sm font-bold text-white flex-1 mx-2">{ejercicio.nombre}</h3>
-        <button
-          onClick={() => onArchivar(ejercicio.id, !archivado)}
-          className="text-[#8B949E] hover:text-white transition-colors shrink-0"
-          title={archivado ? "Desarchivar" : "Archivar"}
-        >
-          {archivado
-            ? <ArchiveRestore className="h-4 w-4" />
-            : <Archive className="h-4 w-4" />
-          }
-        </button>
+        <h3 className="text-sm font-bold text-white flex-1">{ejercicio.nombre}</h3>
+        <div className="flex gap-1 shrink-0">
+          <button onClick={() => onEditar(ejercicio)} className="text-[#8B949E] hover:text-white transition-colors p-0.5" title="Editar">
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={() => onArchivar(ejercicio.id, true)} className="text-[#8B949E] hover:text-white transition-colors p-0.5" title="Archivar">
+            <Archive className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col items-center">
-          <span className="text-[10px] text-[#8B949E] uppercase mb-1">Último</span>
-          <span className="text-base font-black" style={{ color: ejercicio.ultimo_peso ? "#22C55E" : "#30363D" }}>
-            {ejercicio.ultimo_peso ? `${ejercicio.ultimo_peso} kg` : "—"}
-          </span>
+      {(series || reps || peso) ? (
+        <div className="grid grid-cols-3 gap-2 mb-2">
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] text-[#8B949E] uppercase mb-0.5">Series</span>
+            <span className="text-base font-black" style={{ color }}>{series ?? "—"}</span>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] text-[#8B949E] uppercase mb-0.5">Reps</span>
+            <span className="text-base font-black" style={{ color }}>{reps ?? "—"}</span>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] text-[#8B949E] uppercase mb-0.5">Peso</span>
+            <span className="text-base font-black" style={{ color: ejercicio.ultimo_peso ? "#22C55E" : "#8B949E" }}>
+              {peso ? `${peso}kg` : "—"}
+            </span>
+          </div>
         </div>
-        <div className="flex flex-col items-center">
-          <span className="text-[10px] text-[#8B949E] uppercase mb-1">Mejor</span>
-          <span className="text-base font-black" style={{ color: ejercicio.mejor_peso ? "#F97316" : "#30363D" }}>
-            {ejercicio.mejor_peso ? `${ejercicio.mejor_peso} kg` : "—"}
-          </span>
-        </div>
-      </div>
+      ) : (
+        <p className="text-xs text-[#30363D] mb-2">Sin datos aún</p>
+      )}
+
+      {/* Fuente */}
+      {(series || reps || peso) && (
+        <p className="text-[10px] text-[#30363D]">
+          {esFuente === "historial" ? "↑ del historial" : "→ objetivo"}
+        </p>
+      )}
 
       {/* Alias */}
-      {ejercicio.alias && (
-        <p className="text-[10px] text-[#30363D] mt-2 truncate">{ejercicio.alias}</p>
-      )}
+      {ejercicio.alias && <p className="text-[10px] text-[#30363D] mt-1 truncate">{ejercicio.alias}</p>}
     </div>
   );
 }
 
-// ── Sección de grupo ───────────────────────────────────────────────────────────
+// ── Sección de grupo (solo activos) ───────────────────────────────────────────
 
 function GrupoSection({
-  grupo,
-  activos,
-  archivados,
-  onArchivar,
-  onAddClick,
+  grupo, activos, onArchivar, onEditar, onAddClick,
 }: {
   grupo: typeof GRUPOS[0];
-  activos: EjercicioBiblioteca[];
-  archivados: EjercicioBiblioteca[];
+  activos: EjercicioExtendido[];
   onArchivar: (id: number, archivar: boolean) => void;
+  onEditar: (ej: EjercicioExtendido) => void;
   onAddClick: () => void;
 }) {
   const [expandido, setExpandido] = useState(true);
-  const [verArchivados, setVerArchivados] = useState(false);
 
   return (
     <div className="mb-6">
-      {/* Header del grupo */}
       <div className="flex items-center gap-3 mb-3">
         <button onClick={() => setExpandido(!expandido)} className="flex items-center gap-2 flex-1 text-left">
           {expandido
@@ -214,64 +273,91 @@ function GrupoSection({
             : <ChevronRight className="h-4 w-4" style={{ color: grupo.color }} />
           }
           <div className="w-2 h-2 rounded-full" style={{ background: grupo.color }} />
-          <span className="text-sm font-bold uppercase tracking-wider" style={{ color: grupo.color }}>
-            {grupo.label}
-          </span>
-          <span className="text-xs text-[#8B949E]">({activos.length} activos)</span>
+          <span className="text-sm font-bold uppercase tracking-wider" style={{ color: grupo.color }}>{grupo.label}</span>
+          <span className="text-xs text-[#8B949E]">({activos.length})</span>
         </button>
-
-        {/* Botón añadir */}
-        <button
-          onClick={onAddClick}
+        <button onClick={onAddClick}
           className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all hover:opacity-80"
           style={{ background: grupo.bg, border: `1px solid ${grupo.color}30`, color: grupo.color }}
         >
-          <Plus className="h-3 w-3" />
-          Añadir
+          <Plus className="h-3 w-3" /> Añadir
         </button>
       </div>
 
       {expandido && (
-        <>
-          {/* Activos */}
-          {activos.length === 0 ? (
-            <div
-              className="rounded-xl p-4 text-center mb-3"
-              style={{ background: grupo.bg, border: `1px dashed ${grupo.color}40` }}
-            >
-              <p className="text-xs text-[#8B949E]">
-                Sin ejercicios activos · {grupo.descripcion}
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-              {activos.map((ej) => (
-                <EjercicioCard key={ej.id} ejercicio={ej} color={grupo.color} onArchivar={onArchivar} />
-              ))}
-            </div>
-          )}
+        activos.length === 0 ? (
+          <div className="rounded-xl p-4 text-center mb-3"
+            style={{ background: grupo.bg, border: `1px dashed ${grupo.color}40` }}>
+            <p className="text-xs text-[#8B949E]">Sin ejercicios activos · {grupo.descripcion}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+            {activos.map((ej) => (
+              <EjercicioCard key={ej.id} ejercicio={ej} color={grupo.color}
+                onArchivar={onArchivar} onEditar={onEditar} />
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
 
-          {/* Archivados (desplegable) */}
-          {archivados.length > 0 && (
-            <div>
-              <button
-                onClick={() => setVerArchivados(!verArchivados)}
-                className="flex items-center gap-1.5 text-xs text-[#8B949E] hover:text-white transition-colors mb-2"
+// ── Sección Archivados ─────────────────────────────────────────────────────────
+
+function SeccionArchivados({
+  archivados, onDesarchivar, onEditar,
+}: {
+  archivados: EjercicioExtendido[];
+  onDesarchivar: (id: number) => void;
+  onEditar: (ej: EjercicioExtendido) => void;
+}) {
+  const [expandido, setExpandido] = useState(true);
+  if (archivados.length === 0) return null;
+
+  return (
+    <div className="mt-8 pt-6" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <button onClick={() => setExpandido(!expandido)} className="flex items-center gap-2 mb-4 w-full text-left">
+        {expandido ? <ChevronDown className="h-4 w-4 text-[#8B949E]" /> : <ChevronRight className="h-4 w-4 text-[#8B949E]" />}
+        <Archive className="h-4 w-4 text-[#8B949E]" />
+        <span className="text-sm font-bold text-[#8B949E] uppercase tracking-wider">Archivados</span>
+        <span className="text-xs text-[#30363D]">({archivados.length})</span>
+      </button>
+
+      {expandido && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {archivados.map((ej) => {
+            const color = COLOR_MAP[ej.grupo_muscular] ?? "#8B949E";
+            return (
+              <div key={ej.id} className="rounded-xl p-4 transition-all"
+                style={{ background: "rgba(22,27,34,0.5)", border: "1px solid rgba(255,255,255,0.04)", opacity: 0.7 }}
               >
-                {verArchivados ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                <Archive className="h-3 w-3" />
-                {archivados.length} archivado{archivados.length > 1 ? "s" : ""}
-              </button>
-              {verArchivados && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-                  {archivados.map((ej) => (
-                    <EjercicioCard key={ej.id} ejercicio={ej} color={grupo.color} onArchivar={onArchivar} />
-                  ))}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{ej.nombre}</p>
+                      <p className="text-xs" style={{ color }}>{ej.grupo_muscular}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => onEditar(ej)} className="text-[#8B949E] hover:text-white transition-colors p-0.5" title="Editar">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => onDesarchivar(ej.id)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all hover:opacity-80"
+                      style={{ background: "rgba(255,255,255,0.06)", color: "#8B949E", border: "1px solid rgba(255,255,255,0.08)" }}
+                      title="Desarchivar"
+                    >
+                      <ArchiveRestore className="h-3.5 w-3.5" />
+                      Restaurar
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
-        </>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -281,9 +367,10 @@ function GrupoSection({
 
 export function Ejercicios() {
   const { userId } = useUser();
-  const [data, setData] = useState<EjerciciosBiblioteca | null>(null);
-  const [loading, setLoading] = useState(false);  // false: los grupos se muestran aunque userId tarde en inicializarse
+  const [data, setData]           = useState<EjerciciosBiblioteca | null>(null);
+  const [loading, setLoading]     = useState(false);
   const [modalGrupo, setModalGrupo] = useState<GrupoFuerza | null>(null);
+  const [editando, setEditando]   = useState<EjercicioExtendido | null>(null);
 
   const cargar = () => {
     if (!userId) return;
@@ -296,52 +383,68 @@ export function Ejercicios() {
 
   useEffect(() => { cargar(); }, [userId]);
 
-  const handleArchivar = async (ejercicioId: number, archivar: boolean) => {
-    await archivarEjercicio(ejercicioId, archivar);
-    cargar(); // Recargar para reflejar el cambio
+  const handleArchivar = async (id: number, archivar: boolean) => {
+    await archivarEjercicio(id, archivar);
+    cargar();
   };
 
-  const grupos = data?.grupos ?? {
+  const grupos = (data?.grupos as unknown as Record<GrupoFuerza, { activos: EjercicioExtendido[]; archivados: EjercicioExtendido[] }>) ?? {
     Push:   { activos: [], archivados: [] },
     Pull:   { activos: [], archivados: [] },
     Pierna: { activos: [], archivados: [] },
   };
+
+  const todosArchivados = GRUPOS.flatMap((g) => grupos[g.key]?.archivados ?? []);
 
   return (
     <div className="min-h-screen bg-[#0E1117]">
       <Header />
       <main className="container mx-auto px-4 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            🏋️ Ejercicios
-          </h1>
+          <h1 className="text-2xl font-bold text-white">🏋️ Ejercicios</h1>
           <p className="text-sm text-[#8B949E] mt-1">
-            Los ejercicios activos de cada grupo se incluyen en la notificación del día de entreno.
+            Los ejercicios activos de cada grupo aparecen en tu notificación diaria.
           </p>
         </div>
 
-        {loading ? (
-          <div className="text-center py-12 text-[#8B949E] text-sm">Cargando...</div>
-        ) : (
-          GRUPOS.map((g) => (
-            <GrupoSection
-              key={g.key}
-              grupo={g}
-              activos={grupos[g.key]?.activos ?? []}
-              archivados={grupos[g.key]?.archivados ?? []}
-              onArchivar={handleArchivar}
-              onAddClick={() => setModalGrupo(g.key)}
-            />
-          ))
-        )}
+        {loading && <div className="text-center py-4 text-[#8B949E] text-sm">Actualizando...</div>}
+
+        {GRUPOS.map((g) => (
+          <GrupoSection
+            key={g.key}
+            grupo={g}
+            activos={grupos[g.key]?.activos ?? []}
+            onArchivar={handleArchivar}
+            onEditar={setEditando}
+            onAddClick={() => setModalGrupo(g.key)}
+          />
+        ))}
+
+        <SeccionArchivados
+          archivados={todosArchivados}
+          onDesarchivar={(id) => handleArchivar(id, false)}
+          onEditar={setEditando}
+        />
       </main>
 
+      {/* Modal crear */}
       {modalGrupo !== null && userId !== null && (
-        <ModalNuevoEjercicio
+        <ModalEjercicio
           onClose={() => setModalGrupo(null)}
-          onCreado={cargar}
+          onGuardado={cargar}
           usuarioId={userId}
           grupoInicial={modalGrupo}
+        />
+      )}
+
+      {/* Modal editar */}
+      {editando !== null && userId !== null && (
+        <ModalEjercicio
+          onClose={() => setEditando(null)}
+          onGuardado={cargar}
+          usuarioId={userId}
+          grupoInicial={editando.grupo_muscular as GrupoFuerza}
+          ejercicio={editando}
         />
       )}
     </div>

@@ -27,6 +27,18 @@ class EjercicioCreate(BaseModel):
     grupo_muscular: str   # Push | Pull | Pierna
     musculo_principal: Optional[str] = None
     alias: Optional[str] = None
+    series_objetivo: Optional[int] = None
+    reps_objetivo: Optional[int] = None
+    peso_objetivo: Optional[float] = None
+
+
+class EjercicioEdit(BaseModel):
+    nombre: Optional[str] = None
+    grupo_muscular: Optional[str] = None
+    alias: Optional[str] = None
+    series_objetivo: Optional[int] = None
+    reps_objetivo: Optional[int] = None
+    peso_objetivo: Optional[float] = None
 
 
 @router.get("/{usuario_id}")
@@ -38,6 +50,7 @@ def get_ejercicios(usuario_id: int):
     conn = get_db()
     rows = conn.execute(
         """SELECT e.id, e.nombre, e.grupo_muscular, e.musculo_principal, e.notas, e.archivado,
+                  e.series_objetivo, e.reps_objetivo, e.peso_objetivo,
                   h_last.peso, h_last.series, h_last.repeticiones, h_last.fecha,
                   h_best.mejor_peso
            FROM ejercicios_catalogo e
@@ -70,7 +83,7 @@ def get_ejercicios(usuario_id: int):
     }
 
     for r in rows:
-        ej_id, nombre, grupo, musculo, alias, archivado, u_peso, u_series, u_reps, u_fecha, mejor_peso = r
+        ej_id, nombre, grupo, musculo, alias, archivado, series_obj, reps_obj, peso_obj, u_peso, u_series, u_reps, u_fecha, mejor_peso = r
         grupo_norm = next((g for g in GRUPOS_VALIDOS if g.lower() in (grupo or "").lower()), None)
         if not grupo_norm:
             continue
@@ -82,7 +95,12 @@ def get_ejercicios(usuario_id: int):
             "musculo_principal": musculo,
             "alias": alias,
             "archivado": bool(archivado),
+            "series_objetivo": series_obj,
+            "reps_objetivo": reps_obj,
+            "peso_objetivo": peso_obj,
             "ultimo_peso": u_peso,
+            "ultima_series": u_series,
+            "ultimas_reps": u_reps,
             "ultima_fecha": u_fecha,
             "mejor_peso": mejor_peso,
         }
@@ -156,6 +174,37 @@ def get_historial(usuario_id: int, ejercicio_id: int):
     conn.close()
     cols = ["fecha", "peso", "series", "repeticiones", "rpe", "notas"]
     return [dict(zip(cols, r)) for r in rows]
+
+
+@router.patch("/{ejercicio_id}")
+def editar_ejercicio(ejercicio_id: int, e: EjercicioEdit):
+    """Edita nombre, alias, series/reps/peso objetivo de un ejercicio."""
+    conn = get_db()
+    fields: dict = {}
+    if e.nombre is not None:
+        fields["nombre"] = e.nombre
+    if e.grupo_muscular is not None:
+        grupo_norm = next((g for g in GRUPOS_VALIDOS if g.lower() == e.grupo_muscular.lower()), None)
+        if grupo_norm:
+            fields["grupo_muscular"] = grupo_norm
+    if e.alias is not None:
+        fields["notas"] = e.alias
+    if e.series_objetivo is not None:
+        fields["series_objetivo"] = e.series_objetivo
+    if e.reps_objetivo is not None:
+        fields["reps_objetivo"] = e.reps_objetivo
+    if e.peso_objetivo is not None:
+        fields["peso_objetivo"] = e.peso_objetivo
+
+    if fields:
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        conn.execute(
+            f"UPDATE ejercicios_catalogo SET {set_clause} WHERE id = ?",
+            (*fields.values(), ejercicio_id),
+        )
+        conn.commit()
+    conn.close()
+    return {"ok": True}
 
 
 @router.patch("/{ejercicio_id}/archivar")

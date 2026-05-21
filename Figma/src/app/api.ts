@@ -294,7 +294,12 @@ export interface EjercicioBiblioteca {
   musculo_principal: string | null;
   alias: string | null;
   archivado: boolean;
+  series_objetivo: number | null;
+  reps_objetivo: number | null;
+  peso_objetivo: number | null;
   ultimo_peso: number | null;
+  ultima_series: number | null;
+  ultimas_reps: number | null;
   ultima_fecha: string | null;
   mejor_peso: number | null;
 }
