@@ -282,7 +282,7 @@ function GrupoSection({
 export function Ejercicios() {
   const { userId } = useUser();
   const [data, setData] = useState<EjerciciosBiblioteca | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);  // false: los grupos se muestran aunque userId tarde en inicializarse
   const [modalGrupo, setModalGrupo] = useState<GrupoFuerza | null>(null);
 
   const cargar = () => {
@@ -336,7 +336,7 @@ export function Ejercicios() {
         )}
       </main>
 
-      {modalGrupo && userId && (
+      {modalGrupo !== null && userId !== null && (
         <ModalNuevoEjercicio
           onClose={() => setModalGrupo(null)}
           onCreado={cargar}
