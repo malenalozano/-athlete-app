@@ -77,7 +77,13 @@ function ModalEjercicio({
       if (modoEdicion && ejercicio) {
         await editarEjercicio(ejercicio.id, payload);
       } else {
-        await crearEjercicio({ usuario_id: usuarioId, ...payload });
+        const res = await crearEjercicio({ usuario_id: usuarioId, ...payload });
+        if (res.restaurado) {
+          // Estaba archivado, el backend lo restauró automáticamente
+          onGuardado();
+          onClose();
+          return;
+        }
       }
 
       onGuardado();
@@ -85,7 +91,7 @@ function ModalEjercicio({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
       if (msg.includes("409")) {
-        setError("Ya existe un ejercicio con ese nombre");
+        setError("Ya existe un ejercicio activo con ese nombre");
       } else {
         setError("Error al guardar. Inténtalo de nuevo.");
       }

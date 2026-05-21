@@ -276,14 +276,36 @@ def crear_ejercicio(e: EjercicioCreate):
         raise HTTPException(status_code=400, detail=f"Grupo no válido. Usa: {', '.join(GRUPOS_VALIDOS)}")
 
     conn = get_db()
-    # Comprobar si ya existe
+    # Comprobar si ya existe (activo o archivado)
     existe = conn.execute(
-        "SELECT id FROM ejercicios_catalogo WHERE usuario_id = ? AND LOWER(nombre) = LOWER(?)",
+        "SELECT id, archivado FROM ejercicios_catalogo WHERE usuario_id = ? AND LOWER(nombre) = LOWER(?)",
         (e.usuario_id, e.nombre.strip()),
     ).fetchone()
     if existe:
+        ej_id, archivado = existe
+        if archivado:
+            # Estaba archivado → restaurar automáticamente y actualizar grupo/objetivos si se pasaron
+            fields: dict = {"archivado": 0, "grupo_muscular": grupo_norm}
+            if e.musculo_principal is not None:
+                fields["musculo_principal"] = e.musculo_principal
+            if e.alias is not None:
+                fields["notas"] = e.alias
+            if e.series_objetivo is not None:
+                fields["series_objetivo"] = e.series_objetivo
+            if e.reps_objetivo is not None:
+                fields["reps_objetivo"] = e.reps_objetivo
+            if e.peso_objetivo is not None:
+                fields["peso_objetivo"] = e.peso_objetivo
+            set_clause = ", ".join(f"{k} = ?" for k in fields)
+            conn.execute(
+                f"UPDATE ejercicios_catalogo SET {set_clause} WHERE id = ?",
+                (*fields.values(), ej_id),
+            )
+            conn.commit()
+            conn.close()
+            return {"ok": True, "restaurado": True, "mensaje": f"'{e.nombre}' estaba archivado y ha sido restaurado"}
         conn.close()
-        raise HTTPException(status_code=409, detail=f"Ya existe un ejercicio llamado '{e.nombre}'")
+        raise HTTPException(status_code=409, detail=f"Ya existe un ejercicio activo llamado '{e.nombre}'")
 
     fecha = datetime.now().strftime("%Y-%m-%d")
     conn.execute(

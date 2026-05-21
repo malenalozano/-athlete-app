@@ -98,8 +98,11 @@ export function crearEjercicio(data: {
   grupo_muscular: string;
   musculo_principal?: string;
   alias?: string;
+  series_objetivo?: number;
+  reps_objetivo?: number;
+  peso_objetivo?: number;
 }) {
-  return req<{ ok: boolean }>("/ejercicios/crear", {
+  return req<{ ok: boolean; restaurado?: boolean; mensaje?: string }>("/ejercicios/crear", {
     method: "POST",
     body: JSON.stringify(data),
   });

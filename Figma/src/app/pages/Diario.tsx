@@ -842,13 +842,18 @@ function MiniModalEjercicio({
       if (modoEdicion && ejercicio) {
         await editarEjercicio(ejercicio.id, payload);
       } else {
-        await crearEjercicio({ usuario_id: usuarioId, ...payload });
+        const res = await crearEjercicio({ usuario_id: usuarioId, ...payload });
+        if (res.restaurado) {
+          onGuardado();
+          onClose();
+          return;
+        }
       }
       onGuardado();
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
-      setError(msg.includes("409") ? "Ya existe un ejercicio con ese nombre" : "Error al guardar");
+      setError(msg.includes("409") ? "Ya existe un ejercicio activo con ese nombre" : "Error al guardar");
     } finally {
       setLoading(false);
     }
