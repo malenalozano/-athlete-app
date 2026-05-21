@@ -438,7 +438,6 @@ export interface ResumenEntrenador {
   sesiones_fuerza: number;
   actividades_count: number;
   biometrico: Record<string, number | string | null>;
-  lesiones_activas: { tipo: string; grado: number }[];
   recomendaciones: string[];
 }
 

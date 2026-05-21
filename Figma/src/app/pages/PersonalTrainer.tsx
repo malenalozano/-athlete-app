@@ -1,7 +1,7 @@
 import { Header } from "../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Brain, HeartPulse, MessageSquare } from "lucide-react";
+import { Brain, MessageSquare } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
@@ -12,8 +12,7 @@ import { getResumenEntrenador, getPerfil, generarPlanSemana, type ResumenEntrena
 
 export function PersonalTrainer() {
   const { userId } = useUser();
-  const [injuryDate, setInjuryDate] = useState("");
-  const [resumen, setResumen] = useState<ResumenEntrenador | null>(null);
+const [resumen, setResumen] = useState<ResumenEntrenador | null>(null);
   const [perfil, setPerfil] = useState<PerfilUsuario | null>(null);
   const [generando, setGenerando] = useState(false);
   const [planGenerado, setPlanGenerado] = useState<PlanGenerado | null>(null);
@@ -52,8 +51,7 @@ export function PersonalTrainer() {
     { label: "Objetivo", value: perfil?.objetivo_tipo || "--" },
     { label: "Días disponibles", value: "--" },
     { label: "Nivel actual", value: perfil?.nivel || "--" },
-    { label: "Lesiones activas", value: resumen ? String(resumen.lesiones_activas.length) : "--" },
-    { label: "HRV promedio", value: b?.hrv_ms != null ? `${b.hrv_ms} ms` : "--" },
+{ label: "HRV promedio", value: b?.hrv_ms != null ? `${b.hrv_ms} ms` : "--" },
     { label: "Nivel de estrés", value: b?.estres_medio != null ? `${b.estres_medio}/100` : "--" },
     { label: "Calidad del sueño", value: b?.sleep_score != null ? `${b.sleep_score}/100` : "--" },
     { label: "RPE última semana", value: "--" },
@@ -74,13 +72,6 @@ export function PersonalTrainer() {
             >
               <Brain className="h-4 w-4 mr-2" />
               Generar Plan Semanal
-            </TabsTrigger>
-            <TabsTrigger
-              value="lesiones"
-              className="data-[state=active]:bg-[#C9FF00]/20 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-[#C9FF00]/60 text-[#8B949E] rounded-lg"
-            >
-              <HeartPulse className="h-4 w-4 mr-2" />
-              Lesiones y Prevención
             </TabsTrigger>
             <TabsTrigger
               value="asistente"
@@ -234,64 +225,6 @@ export function PersonalTrainer() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Tab: Lesiones y Prevención */}
-          <TabsContent value="lesiones" className="space-y-6">
-            <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
-              <CardHeader>
-                <CardTitle className="text-white">Historial y prevención de lesiones</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-[#8B949E] text-sm mb-6">
-                  Las lesiones activas modifican automáticamente el plan: sustituye carreras, elimina cargas de impacto y añade trabajo preventivo.
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Formulario de registro */}
-                  <div className="space-y-4">
-                    <div>
-                      <Label className="text-white mb-2 block text-sm">Zona lesionada</Label>
-                      <Input 
-                        placeholder="Ej: rodilla izquierda, fascia plantar, isquio derecho"
-                        className="bg-[#0E1117] border-[#C9FF00]/30 text-white"
-                      />
-                    </div>
-
-                    <div>
-                      <Label className="text-white mb-2 block text-sm">Fecha inicio</Label>
-                      <Input 
-                        type="date"
-                        value={injuryDate}
-                        onChange={(e) => setInjuryDate(e.target.value)}
-                        className="bg-[#0E1117] border-[#C9FF00]/30 text-white"
-                      />
-                    </div>
-
-                    <div>
-                      <Label className="text-white mb-2 block text-sm">Notas / contexto</Label>
-                      <Textarea 
-                        placeholder="Describe cómo ocurrió, síntomas, etc."
-                        rows={4}
-                        className="bg-[#0E1117] border-[#C9FF00]/30 text-white resize-none"
-                      />
-                    </div>
-
-                    <Button className="w-full bg-gradient-to-r from-[#C9FF00] to-[#a8d600] text-[#0E1117] hover:from-[#a8d600] hover:to-[#C9FF00] font-bold">
-                      2. Registrar lesión
-                    </Button>
-                  </div>
-
-                  {/* Estado actual */}
-                  <div className="bg-[#0E1117] rounded-lg p-6 border border-[#30363D]">
-                    <p className="text-white font-semibold mb-4">Sin lesiones registradas.</p>
-                    <p className="text-[#8B949E] text-sm">
-                      No hay lesiones activas en este momento. El plan de entrenamiento se genera sin restricciones.
-                    </p>
-                  </div>
-                </div>
               </CardContent>
             </Card>
           </TabsContent>

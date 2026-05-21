@@ -8,12 +8,9 @@ import {
   Dumbbell,
   Heart,
   BookOpen,
-  AlertTriangle,
   Plus,
   Clock,
   Flame,
-  CheckCircle2,
-  Circle,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -26,7 +23,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { crearEntradaDiario, getActividades, getEjercicios, getResumenEntrenador, getSesionFuerzaHoy, archivarEjercicio, eliminarEjercicio, crearEjercicio, editarEjercicio, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy, type GrupoFuerza } from "../api";
+import { crearEntradaDiario, getActividades, getEjercicios, getSesionFuerzaHoy, archivarEjercicio, eliminarEjercicio, crearEjercicio, editarEjercicio, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy, type GrupoFuerza } from "../api";
 import { ModalRegistroFuerza } from "../components/ModalRegistroFuerza";
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
@@ -1118,132 +1115,6 @@ function Ejercicios() {
   );
 }
 
-function Lesiones() {
-  const { userId } = useUser();
-  const [lesionesActivas, setLesionesActivas] = useState<{ tipo: string; grado: number }[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!userId) return;
-    setLoading(true);
-    getResumenEntrenador(userId)
-      .then((r) => setLesionesActivas(r.lesiones_activas || []))
-      .catch(() => setLesionesActivas([]))
-      .finally(() => setLoading(false));
-  }, [userId]);
-
-  const preventionTips = [
-    { check: true, tip: "Calentamiento dinámico 10min antes de cada carrera" },
-    { check: true, tip: "Estiramientos post-entreno (cadera, gemelos, isquios)" },
-    { check: false, tip: "Baño frío o contraste 3x semana" },
-    { check: true, tip: "Rodillo de espuma 5min diarios" },
-    { check: false, tip: "Ejercicios de pie descalzo (fortalecimiento plantar)" },
-  ];
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div
-        className="rounded-2xl p-6"
-        style={{
-          background: "linear-gradient(135deg, rgba(249,115,22,0.12), rgba(244,63,94,0.05))",
-          border: "1px solid rgba(249,115,22,0.25)",
-        }}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-orange-400" />
-              Lesiones y Prevención
-            </h2>
-            <p className="text-[#8B949E] text-sm">Seguimiento activo y protocolo preventivo</p>
-          </div>
-          <button
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-[#0E1117] transition-all"
-            style={{
-              background: "linear-gradient(135deg, #F97316, #EA580C)",
-              boxShadow: "0 0 20px rgba(249,115,22,0.4)",
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Registrar Lesión
-          </button>
-        </div>
-      </div>
-
-      {/* Active injuries */}
-      <div>
-        <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-orange-400" />
-          Lesiones activas
-        </h3>
-        {loading ? (
-          <p className="text-[#8B949E] text-sm">Cargando...</p>
-        ) : lesionesActivas.length === 0 ? (
-          <div
-            className="rounded-xl p-4"
-            style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)" }}
-          >
-            <p className="text-sm text-[#22C55E] font-semibold">Sin lesiones activas</p>
-            <p className="text-xs text-[#8B949E] mt-1">El plan se genera sin restricciones de lesión.</p>
-          </div>
-        ) : (
-          lesionesActivas.map((l, i) => (
-            <Card
-              key={i}
-              className="rounded-2xl mb-3"
-              style={{
-                background: "linear-gradient(135deg, rgba(249,115,22,0.1), rgba(22,27,34,1))",
-                border: "1px solid rgba(249,115,22,0.25)",
-              }}
-            >
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-base font-bold text-white mb-1">{l.tipo}</p>
-                    <Badge className="bg-orange-400/15 text-orange-300 border-orange-500/30 text-xs">
-                      Activa
-                    </Badge>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-[#8B949E]">Grado</p>
-                    <p className="text-2xl font-bold text-orange-400">{l.grado}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
-
-      {/* Prevention checklist */}
-      <Card
-        className="rounded-2xl"
-        style={{ background: "#161B22", border: "1px solid rgba(201,255,0,0.15)" }}
-      >
-        <CardHeader>
-          <CardTitle className="text-white text-base flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-[#C9FF00]" />
-            Protocolo de Prevención
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {preventionTips.map((t, i) => (
-            <div key={i} className="flex items-center gap-3">
-              {t.check ? (
-                <CheckCircle2 className="h-4 w-4 text-[#C9FF00] shrink-0" />
-              ) : (
-                <Circle className="h-4 w-4 text-[#30363D] shrink-0" />
-              )}
-              <p className={`text-sm ${t.check ? "text-white" : "text-[#8B949E]"}`}>{t.tip}</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export function Diario() {
@@ -1262,7 +1133,6 @@ export function Diario() {
         {safeTab === "libre" && <EntrenoLibre />}
         {safeTab === "ciclo" && <CicloMenstrualDiario />}
         {safeTab === "ejercicios" && <Ejercicios />}
-        {safeTab === "lesiones" && <Lesiones />}
       </main>
     </div>
   );
