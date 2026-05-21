@@ -79,17 +79,34 @@ def crear_entrada(e: EntradaDiario):
 @router.get("/biometrico/{usuario_id}")
 def get_biometrico(usuario_id: int, limit: int = 30):
     conn = get_db()
+    # UNION: días con biométrico (con o sin sueño) + días con sólo sueño
+    # Así nunca se pierde un día que tiene sueño pero no tiene HRV/stats.
     rows = conn.execute(
-        """SELECT b.fecha, b.hrv_ms, b.fc_reposo,
-                  COALESCE(b.sleep_score, s.score) as sleep_score,
+        """SELECT b.fecha,
+                  b.hrv_ms, b.fc_reposo,
+                  COALESCE(b.sleep_score, s.score) AS sleep_score,
                   b.carga_aguda, b.carga_cronica,
-                  b.estres_medio, b.body_battery, b.training_readiness, b.training_status, b.vo2max,
+                  b.estres_medio, b.body_battery,
+                  b.training_readiness, b.training_status, b.vo2max,
                   s.horas_totales, s.sleep_profundo_horas, s.sleep_rem_horas
            FROM datos_biometricos_premium b
-           LEFT JOIN datos_sueno s ON b.usuario_id = s.usuario_id AND b.fecha = s.fecha
+           LEFT JOIN datos_sueno s
+             ON b.usuario_id = s.usuario_id AND b.fecha = s.fecha
            WHERE b.usuario_id = ?
-           ORDER BY b.fecha DESC LIMIT ?""",
-        (usuario_id, limit),
+
+           UNION
+
+           SELECT s.fecha,
+                  NULL, NULL, s.score,
+                  NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                  s.horas_totales, s.sleep_profundo_horas, s.sleep_rem_horas
+           FROM datos_sueno s
+           LEFT JOIN datos_biometricos_premium b
+             ON b.usuario_id = s.usuario_id AND b.fecha = s.fecha
+           WHERE s.usuario_id = ? AND b.fecha IS NULL
+
+           ORDER BY fecha DESC LIMIT ?""",
+        (usuario_id, usuario_id, limit),
     ).fetchall()
     conn.close()
     cols = ["fecha", "hrv_ms", "fc_reposo", "sleep_score", "carga_aguda", "carga_cronica",

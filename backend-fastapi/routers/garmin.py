@@ -184,7 +184,7 @@ def _do_sync(usuario_id: int) -> dict:
             profundo = round(daily.get("deepSleepSeconds", 0) / 3600, 2) if daily.get("deepSleepSeconds") else None
             rem = round(daily.get("remSleepSeconds", 0) / 3600, 2) if daily.get("remSleepSeconds") else None
             if horas or score:
-                result["sueno"] = {"horas_totales": horas, "score": score, "profundo": profundo, "rem": rem}
+                result["sueno"] = {"horas_totales": horas, "score": score, "sleep_profundo_horas": profundo, "sleep_rem_horas": rem}
         except Exception:
             pass
         try:
@@ -253,6 +253,10 @@ def _do_sync(usuario_id: int) -> dict:
                 if day["sueno"]:
                     _upsert_sueno(conn, usuario_id, dia_str, **day["sueno"])
                     sueno_ok += 1
+                    # Guardar sleep_score en biometrico para que el LEFT JOIN
+                    # del endpoint /diario/biometrico siempre devuelva esta fila
+                    if day["sueno"].get("score"):
+                        _upsert_biometrico(conn, usuario_id, dia_str, sleep_score=day["sueno"]["score"])
                 if day["hrv"]:
                     _upsert_biometrico(conn, usuario_id, dia_str, hrv_ms=day["hrv"])
                     biometrico_ok += 1
