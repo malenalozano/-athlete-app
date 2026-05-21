@@ -16,6 +16,7 @@ import {
   Circle,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Activity,
   Zap,
   X,
