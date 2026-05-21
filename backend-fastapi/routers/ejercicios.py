@@ -237,6 +237,17 @@ def toggle_archivar(ejercicio_id: int, archivar: bool = True):
     return {"ok": True, "mensaje": f"Ejercicio {accion}"}
 
 
+@router.delete("/{ejercicio_id}")
+def eliminar_ejercicio(ejercicio_id: int):
+    """Elimina permanentemente un ejercicio y todo su historial."""
+    conn = get_db()
+    conn.execute("DELETE FROM historial_ejercicio WHERE ejercicio_id = ?", (ejercicio_id,))
+    conn.execute("DELETE FROM ejercicios_catalogo WHERE id = ?", (ejercicio_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
 @router.post("/serie")
 def registrar_serie(s: SerieCreate):
     conn = get_db()

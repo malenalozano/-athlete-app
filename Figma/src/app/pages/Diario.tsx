@@ -1019,11 +1019,7 @@ function Ejercicios() {
                           className="p-1.5 rounded-lg text-[#8B949E] hover:text-white hover:bg-white/10 transition-all" title="Editar">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={async () => {
-                          if (window.confirm(`¿Archivar "${ej.nombre}"?`)) {
-                            await archivarEjercicio(ej.id, true); cargar();
-                          }
-                        }}
+                        <button onClick={async () => { await archivarEjercicio(ej.id, true); cargar(); }}
                           className="p-1.5 rounded-lg text-[#8B949E] hover:text-[#F97316] hover:bg-white/10 transition-all" title="Archivar">
                           <Archive className="h-3.5 w-3.5" />
                         </button>

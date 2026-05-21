@@ -1,10 +1,11 @@
 import { Header } from "../components/Header";
 import { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight, Plus, Archive, ArchiveRestore, X, Pencil, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Archive, ArchiveRestore, X, Pencil, ChevronUp, Trash2 } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import {
   getEjercicios,
   archivarEjercicio,
+  eliminarEjercicio,
   crearEjercicio,
   editarEjercicio,
   type EjerciciosBiblioteca,
@@ -252,11 +253,7 @@ function EjercicioCard({
             <Pencil className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={() => {
-              if (window.confirm(`¿Archivar "${ejercicio.nombre}"? Podrás restaurarlo después.`)) {
-                onArchivar(ejercicio.id, true);
-              }
-            }}
+            onClick={() => onArchivar(ejercicio.id, true)}
             className="p-1.5 rounded-lg transition-all hover:bg-white/10 text-[#8B949E] hover:text-[#F97316]"
             title="Archivar"
           >
@@ -360,11 +357,12 @@ function ColumnaGrupo({
 // ── Sección Archivados ─────────────────────────────────────────────────────────
 
 function SeccionArchivados({
-  archivados, onDesarchivar, onEditar,
+  archivados, onDesarchivar, onEditar, onEliminar,
 }: {
   archivados: EjercicioExtendido[];
   onDesarchivar: (id: number) => void;
   onEditar: (ej: EjercicioExtendido) => void;
+  onEliminar: (id: number, nombre: string) => void;
 }) {
   const [expandido, setExpandido] = useState(true);
   if (archivados.length === 0) return null;
@@ -383,11 +381,7 @@ function SeccionArchivados({
           </span>
         </button>
         <button
-          onClick={() => {
-            if (window.confirm(`¿Restaurar todos los ${archivados.length} ejercicios archivados?`)) {
-              archivados.forEach((ej) => onDesarchivar(ej.id));
-            }
-          }}
+          onClick={() => archivados.forEach((ej) => onDesarchivar(ej.id))}
           className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:brightness-110 shrink-0"
           style={{ background: "rgba(201,255,0,0.12)", color: "#C9FF00", border: "1px solid rgba(201,255,0,0.25)" }}
         >
@@ -420,12 +414,19 @@ function SeccionArchivados({
                   </button>
                   <button
                     onClick={() => onDesarchivar(ej.id)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:brightness-110"
+                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold transition-all hover:brightness-110"
                     style={{ background: "rgba(201,255,0,0.1)", color: "#C9FF00", border: "1px solid rgba(201,255,0,0.2)" }}
                     title="Restaurar"
                   >
-                    <ArchiveRestore className="h-3.5 w-3.5" />
+                    <ArchiveRestore className="h-3 w-3" />
                     Restaurar
+                  </button>
+                  <button
+                    onClick={() => onEliminar(ej.id, ej.nombre)}
+                    className="p-1.5 rounded-lg text-[#8B949E] hover:text-red-400 hover:bg-red-500/10 transition-all"
+                    title="Eliminar permanentemente"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
@@ -460,6 +461,12 @@ export function Ejercicios() {
 
   const handleArchivar = async (id: number, archivar: boolean) => {
     await archivarEjercicio(id, archivar);
+    cargar();
+  };
+
+  const handleEliminar = async (id: number, nombre: string) => {
+    if (!window.confirm(`¿Eliminar "${nombre}" permanentemente? Se borrará también todo su historial. Esta acción no se puede deshacer.`)) return;
+    await eliminarEjercicio(id);
     cargar();
   };
 
@@ -507,6 +514,7 @@ export function Ejercicios() {
           archivados={todosArchivados}
           onDesarchivar={(id) => handleArchivar(id, false)}
           onEditar={setEditando}
+          onEliminar={handleEliminar}
         />
       </main>
 

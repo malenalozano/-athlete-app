@@ -142,6 +142,10 @@ export function getHistorialEjercicio(usuarioId: number, ejercicioId: number) {
   );
 }
 
+export function eliminarEjercicio(ejercicioId: number) {
+  return req<{ ok: boolean }>(`/ejercicios/${ejercicioId}`, { method: "DELETE" });
+}
+
 export function editarEjercicio(
   ejercicioId: number,
   data: Partial<{
