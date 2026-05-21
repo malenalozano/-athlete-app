@@ -1,0 +1,34 @@
+name: Recordatorio diario entrenamiento
+
+on:
+  schedule:
+    # 8:40 AM Madrid (verano UTC+2 → 6:40 UTC)
+    # En invierno (UTC+1) llegará a las 9:40 — ajusta a '40 7 * * *' en oct-mar
+    - cron: '40 6 * * *'
+  workflow_dispatch:  # Permite lanzarlo manualmente desde GitHub para probar
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Despertar Render y enviar notificacion
+        run: |
+          echo "Llamando al backend en Render..."
+          curl -X POST "https://athlete-api.onrender.com/notificaciones/test-hoy" \
+            --max-time 120 \
+            --retry 3 \
+            --retry-delay 20 \
+            --retry-all-errors \
+            -H "Content-Type: application/json" \
+            -w "\nHTTP status: %{http_code}\n" \
+            -s
+
+      - name: Notificar si el job falla
+        if: failure()
+        run: |
+          curl -X POST "https://ntfy.sh/${{ secrets.NTFY_TOPIC }}" \
+            -H "Title: Error recordatorio" \
+            -H "Tags: warning,x" \
+            -d "El recordatorio diario de entrenamiento fallo hoy. Revisa GitHub Actions."
