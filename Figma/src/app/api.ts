@@ -142,6 +142,13 @@ export function getHistorialEjercicio(usuarioId: number, ejercicioId: number) {
   );
 }
 
+export function reordenarEjercicios(usuarioId: number, items: { id: number; orden: number }[]) {
+  return req<{ ok: boolean }>(`/ejercicios/${usuarioId}/reordenar`, {
+    method: "POST",
+    body: JSON.stringify(items),
+  });
+}
+
 export function eliminarEjercicio(ejercicioId: number) {
   return req<{ ok: boolean }>(`/ejercicios/${ejercicioId}`, { method: "DELETE" });
 }

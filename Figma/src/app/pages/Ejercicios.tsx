@@ -1,11 +1,28 @@
 import { Header } from "../components/Header";
-import { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight, Plus, Archive, ArchiveRestore, X, Pencil, ChevronUp, Trash2 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ChevronDown, ChevronRight, Plus, Archive, ArchiveRestore, X, Pencil, ChevronUp, Trash2, GripVertical } from "lucide-react";
 import { useUser } from "../context/UserContext";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   getEjercicios,
   archivarEjercicio,
   eliminarEjercicio,
+  reordenarEjercicios,
   crearEjercicio,
   editarEjercicio,
   type EjerciciosBiblioteca,
@@ -195,7 +212,7 @@ function ModalEjercicio({
   );
 }
 
-// ── Tarjeta de ejercicio ───────────────────────────────────────────────────────
+// ── Tarjeta de ejercicio (sortable) ───────────────────────────────────────────
 
 function EjercicioCard({
   ejercicio,
@@ -210,6 +227,22 @@ function EjercicioCard({
   onEditar: (ej: EjercicioExtendido) => void;
   onVerHistorial: (ej: EjercicioExtendido) => void;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: ejercicio.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : "auto",
+  };
+
   const series = ejercicio.ultima_series ?? ejercicio.series_objetivo;
   const reps   = ejercicio.ultimas_reps  ?? ejercicio.reps_objetivo;
   const peso   = ejercicio.ultimo_peso   ?? ejercicio.peso_objetivo;
@@ -217,84 +250,87 @@ function EjercicioCard({
 
   return (
     <div
-      className="rounded-xl p-3.5 transition-all cursor-pointer hover:brightness-110"
+      ref={setNodeRef}
       style={{
+        ...style,
         background: "#161B22",
         border: ejercicio.subir_peso
           ? "1px solid rgba(34,197,94,0.4)"
           : "1px solid rgba(255,255,255,0.07)",
-        boxShadow: ejercicio.subir_peso ? "0 0 10px rgba(34,197,94,0.1)" : "none",
+        boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.5)" : ejercicio.subir_peso ? "0 0 10px rgba(34,197,94,0.1)" : "none",
       }}
-      onClick={() => onVerHistorial(ejercicio)}
+      className="rounded-xl p-3.5 transition-shadow"
     >
-      {/* Header: nombre + botones */}
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <h3 className="text-sm font-bold text-white leading-tight">{ejercicio.nombre}</h3>
-            {ejercicio.subir_peso && (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
-                style={{ background: "rgba(34,197,94,0.15)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.3)" }}>
-                <ChevronUp className="h-2.5 w-2.5" />↑ SUBE PESO
-              </span>
-            )}
-          </div>
-          {ejercicio.alias && (
-            <p className="text-[10px] mt-1 leading-tight" style={{ color: "#6B7280" }}>📝 {ejercicio.alias}</p>
-          )}
+      <div className="flex items-start gap-2">
+        {/* Handle de arrastre */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="mt-0.5 shrink-0 cursor-grab active:cursor-grabbing touch-none text-[#30363D] hover:text-[#8B949E] transition-colors"
+          title="Arrastrar para reordenar"
+        >
+          <GripVertical className="h-4 w-4" />
         </div>
-        {/* Botones acción */}
-        <div className="flex gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button
-            onClick={() => onEditar(ejercicio)}
-            className="p-1.5 rounded-lg transition-all hover:bg-white/10 text-[#8B949E] hover:text-white"
-            title="Editar"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => onArchivar(ejercicio.id, true)}
-            className="p-1.5 rounded-lg transition-all hover:bg-white/10 text-[#8B949E] hover:text-[#F97316]"
-            title="Archivar"
-          >
-            <Archive className="h-3.5 w-3.5" />
-          </button>
+
+        {/* Contenido clickable */}
+        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onVerHistorial(ejercicio)}>
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h3 className="text-sm font-bold text-white leading-tight">{ejercicio.nombre}</h3>
+                {ejercicio.subir_peso && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                    style={{ background: "rgba(34,197,94,0.15)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.3)" }}>
+                    <ChevronUp className="h-2.5 w-2.5" />↑ SUBE PESO
+                  </span>
+                )}
+              </div>
+              {ejercicio.alias && (
+                <p className="text-[10px] mt-0.5 leading-tight" style={{ color: "#6B7280" }}>📝 {ejercicio.alias}</p>
+              )}
+            </div>
+            {/* Botones */}
+            <div className="flex gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => onEditar(ejercicio)}
+                className="p-1.5 rounded-lg transition-all hover:bg-white/10 text-[#8B949E] hover:text-white" title="Editar">
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <button onClick={() => onArchivar(ejercicio.id, true)}
+                className="p-1.5 rounded-lg transition-all hover:bg-white/10 text-[#8B949E] hover:text-[#F97316]" title="Archivar">
+                <Archive className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Stats */}
+          {(series || reps || peso) ? (
+            <div className="flex gap-3 items-baseline">
+              {series && <div className="text-center">
+                <span className="text-lg font-black" style={{ color }}>{series}</span>
+                <span className="text-[9px] text-[#8B949E] block">series</span>
+              </div>}
+              {reps && <div className="text-center">
+                <span className="text-lg font-black" style={{ color }}>{reps}</span>
+                <span className="text-[9px] text-[#8B949E] block">reps</span>
+              </div>}
+              {peso && <div className="text-center">
+                <span className="text-lg font-black" style={{ color: delHistorial ? "#22C55E" : "#8B949E" }}>{peso}kg</span>
+                <span className="text-[9px] text-[#8B949E] block">{delHistorial ? "último" : "objetivo"}</span>
+              </div>}
+            </div>
+          ) : (
+            <p className="text-xs text-[#30363D]">Sin datos · toca para ver</p>
+          )}
         </div>
       </div>
-
-      {/* Stats */}
-      {(series || reps || peso) ? (
-        <div className="flex gap-3 items-baseline">
-          {series && (
-            <div className="text-center">
-              <span className="text-lg font-black" style={{ color }}>{series}</span>
-              <span className="text-[9px] text-[#8B949E] block">series</span>
-            </div>
-          )}
-          {reps && (
-            <div className="text-center">
-              <span className="text-lg font-black" style={{ color }}>{reps}</span>
-              <span className="text-[9px] text-[#8B949E] block">reps</span>
-            </div>
-          )}
-          {peso && (
-            <div className="text-center">
-              <span className="text-lg font-black" style={{ color: delHistorial ? "#22C55E" : "#8B949E" }}>{peso}kg</span>
-              <span className="text-[9px] text-[#8B949E] block">{delHistorial ? "último" : "objetivo"}</span>
-            </div>
-          )}
-        </div>
-      ) : (
-        <p className="text-xs text-[#30363D]">Sin datos · toca para ver</p>
-      )}
     </div>
   );
 }
 
-// ── Columna de grupo ───────────────────────────────────────────────────────────
+// ── Columna de grupo con DnD ──────────────────────────────────────────────────
 
 function ColumnaGrupo({
-  grupo, activos, onArchivar, onEditar, onAddClick, onVerHistorial,
+  grupo, activos, onArchivar, onEditar, onAddClick, onVerHistorial, onReorder,
 }: {
   grupo: typeof GRUPOS[0];
   activos: EjercicioExtendido[];
@@ -302,52 +338,68 @@ function ColumnaGrupo({
   onEditar: (ej: EjercicioExtendido) => void;
   onAddClick: () => void;
   onVerHistorial: (ej: EjercicioExtendido) => void;
+  onReorder: (nuevos: EjercicioExtendido[]) => void;
 }) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = activos.findIndex((e) => e.id === active.id);
+    const newIdx = activos.findIndex((e) => e.id === over.id);
+    if (oldIdx !== -1 && newIdx !== -1) {
+      onReorder(arrayMove(activos, oldIdx, newIdx));
+    }
+  };
+
   return (
     <div className="flex flex-col rounded-2xl overflow-hidden"
       style={{ background: "rgba(22,27,34,0.6)", border: `1px solid ${grupo.color}25` }}>
-      {/* Cabecera de columna */}
+      {/* Cabecera */}
       <div className="px-4 py-3 flex items-center justify-between"
         style={{ background: grupo.bg, borderBottom: `1px solid ${grupo.color}30` }}>
-        <div>
+        <div className="flex items-center gap-2">
           <span className="text-sm font-black tracking-wider uppercase" style={{ color: grupo.color }}>
             {grupo.label}
           </span>
-          <span className="text-xs text-[#8B949E] ml-2">({activos.length})</span>
+          <span className="text-xs text-[#8B949E]">({activos.length})</span>
         </div>
-        <button
-          onClick={onAddClick}
+        <button onClick={onAddClick}
           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all hover:brightness-110"
-          style={{ background: grupo.color, color: "#0E1117" }}
-        >
+          style={{ background: grupo.color, color: "#0E1117" }}>
           <Plus className="h-3.5 w-3.5" /> Añadir
         </button>
       </div>
 
-      {/* Lista de ejercicios */}
+      {/* Lista ordenable */}
       <div className="flex-1 p-3 space-y-2.5 overflow-y-auto" style={{ maxHeight: "calc(100vh - 280px)" }}>
         {activos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <p className="text-xs text-[#30363D]">{grupo.descripcion}</p>
-            <button
-              onClick={onAddClick}
-              className="mt-3 text-xs font-semibold flex items-center gap-1 transition-all hover:brightness-110"
-              style={{ color: grupo.color }}
-            >
+            <button onClick={onAddClick}
+              className="mt-3 text-xs font-semibold flex items-center gap-1"
+              style={{ color: grupo.color }}>
               <Plus className="h-3 w-3" /> Añadir el primero
             </button>
           </div>
         ) : (
-          activos.map((ej) => (
-            <EjercicioCard
-              key={ej.id}
-              ejercicio={ej}
-              color={grupo.color}
-              onArchivar={onArchivar}
-              onEditar={onEditar}
-              onVerHistorial={onVerHistorial}
-            />
-          ))
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={activos.map((e) => e.id)} strategy={verticalListSortingStrategy}>
+              {activos.map((ej) => (
+                <EjercicioCard
+                  key={ej.id}
+                  ejercicio={ej}
+                  color={grupo.color}
+                  onArchivar={onArchivar}
+                  onEditar={onEditar}
+                  onVerHistorial={onVerHistorial}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         )}
       </div>
     </div>
@@ -442,22 +494,26 @@ function SeccionArchivados({
 
 export function Ejercicios() {
   const { userId } = useUser();
-  const [data, setData]               = useState<EjerciciosBiblioteca | null>(null);
   const [loading, setLoading]         = useState(false);
   const [modalGrupo, setModalGrupo]   = useState<GrupoFuerza | null>(null);
   const [editando, setEditando]       = useState<EjercicioExtendido | null>(null);
   const [verHistorial, setVerHistorial] = useState<EjercicioExtendido | null>(null);
+  const [grupos, setGrupos]           = useState<Record<GrupoFuerza, { activos: EjercicioExtendido[]; archivados: EjercicioExtendido[] }>>({
+    Push:   { activos: [], archivados: [] },
+    Pull:   { activos: [], archivados: [] },
+    Pierna: { activos: [], archivados: [] },
+  });
 
-  const cargar = () => {
+  const cargar = useCallback(() => {
     if (!userId) return;
     setLoading(true);
     getEjercicios(userId)
-      .then(setData)
+      .then((data) => setGrupos(data.grupos as unknown as typeof grupos))
       .catch(() => null)
       .finally(() => setLoading(false));
-  };
+  }, [userId]);
 
-  useEffect(() => { cargar(); }, [userId]);
+  useEffect(() => { cargar(); }, [cargar]);
 
   const handleArchivar = async (id: number, archivar: boolean) => {
     await archivarEjercicio(id, archivar);
@@ -470,11 +526,14 @@ export function Ejercicios() {
     cargar();
   };
 
-  const grupos = (data?.grupos as unknown as Record<GrupoFuerza, { activos: EjercicioExtendido[]; archivados: EjercicioExtendido[] }>) ?? {
-    Push:   { activos: [], archivados: [] },
-    Pull:   { activos: [], archivados: [] },
-    Pierna: { activos: [], archivados: [] },
-  };
+  const handleReorder = useCallback(async (grupo: GrupoFuerza, nuevos: EjercicioExtendido[]) => {
+    // Actualizar estado local inmediatamente (optimista)
+    setGrupos((prev) => ({ ...prev, [grupo]: { ...prev[grupo], activos: nuevos } }));
+    // Persistir en backend
+    if (userId) {
+      await reordenarEjercicios(userId, nuevos.map((e, i) => ({ id: e.id, orden: i })));
+    }
+  }, [userId]);
 
   const todosArchivados = GRUPOS.flatMap((g) => grupos[g.key]?.archivados ?? []);
 
@@ -488,7 +547,7 @@ export function Ejercicios() {
           <div>
             <h1 className="text-2xl font-bold text-white">🏋️ Ejercicios</h1>
             <p className="text-sm text-[#8B949E] mt-0.5">
-              Pulsa una tarjeta para ver historial · ✏️ editar · 📦 archivar
+              Arrastra <GripVertical className="inline h-3 w-3" /> para reordenar · toca para ver historial
             </p>
           </div>
           {loading && <span className="text-xs text-[#8B949E]">Actualizando...</span>}
@@ -505,6 +564,7 @@ export function Ejercicios() {
               onEditar={setEditando}
               onAddClick={() => setModalGrupo(g.key)}
               onVerHistorial={setVerHistorial}
+              onReorder={(nuevos) => handleReorder(g.key, nuevos)}
             />
           ))}
         </div>

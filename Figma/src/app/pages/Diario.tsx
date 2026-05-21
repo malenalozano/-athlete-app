@@ -23,9 +23,10 @@ import {
   Pencil,
   Archive,
   ArchiveRestore,
+  Trash2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { crearEntradaDiario, getActividades, getEjercicios, getResumenEntrenador, getSesionFuerzaHoy, archivarEjercicio, crearEjercicio, editarEjercicio, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy, type GrupoFuerza } from "../api";
+import { crearEntradaDiario, getActividades, getEjercicios, getResumenEntrenador, getSesionFuerzaHoy, archivarEjercicio, eliminarEjercicio, crearEjercicio, editarEjercicio, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy, type GrupoFuerza } from "../api";
 import { ModalRegistroFuerza } from "../components/ModalRegistroFuerza";
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
@@ -1084,6 +1085,15 @@ function Ejercicios() {
                         className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:brightness-110"
                         style={{ background: "rgba(201,255,0,0.1)", color: "#C9FF00", border: "1px solid rgba(201,255,0,0.2)" }}>
                         <ArchiveRestore className="h-3 w-3" /> Restaurar
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (window.confirm(`¿Eliminar "${ej.nombre}" permanentemente? No se puede deshacer.`)) {
+                            await eliminarEjercicio(ej.id); cargar();
+                          }
+                        }}
+                        className="p-1.5 rounded-lg text-[#8B949E] hover:text-red-400 hover:bg-red-500/10 transition-all" title="Eliminar">
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </div>

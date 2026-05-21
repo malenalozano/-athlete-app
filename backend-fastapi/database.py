@@ -266,6 +266,7 @@ _SCHEMA = [
     "ALTER TABLE ejercicios_catalogo ADD COLUMN peso_objetivo REAL",
     "ALTER TABLE ejercicios_catalogo ADD COLUMN archivado INTEGER DEFAULT 0",
     "ALTER TABLE ejercicios_catalogo ADD COLUMN subir_peso INTEGER DEFAULT 0",
+    "ALTER TABLE ejercicios_catalogo ADD COLUMN orden INTEGER DEFAULT 0",
     # Indexes
     "CREATE INDEX IF NOT EXISTS idx_act_usuario_fecha ON actividades_garmin(usuario_id, fecha)",
     "CREATE INDEX IF NOT EXISTS idx_sueno_usuario_fecha ON datos_sueno(usuario_id, fecha)",

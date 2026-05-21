@@ -42,6 +42,11 @@ class EjercicioEdit(BaseModel):
     subir_peso: Optional[int] = None
 
 
+class OrdenItem(BaseModel):
+    id: int
+    orden: int
+
+
 class RegistroEjercicio(BaseModel):
     ejercicio_id: int
     series: int
@@ -84,7 +89,7 @@ def get_ejercicios(usuario_id: int):
                GROUP BY ejercicio_id
            ) h_best ON h_best.ejercicio_id = e.id
            WHERE e.usuario_id = ?
-           ORDER BY e.grupo_muscular, e.nombre""",
+           ORDER BY e.grupo_muscular, COALESCE(e.orden, 0), e.nombre""",
         (usuario_id, usuario_id, usuario_id),
     ).fetchall()
     conn.close()
@@ -219,6 +224,20 @@ def editar_ejercicio(ejercicio_id: int, e: EjercicioEdit):
             (*fields.values(), ejercicio_id),
         )
         conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@router.post("/{usuario_id}/reordenar")
+def reordenar_ejercicios(usuario_id: int, items: List[OrdenItem]):
+    """Actualiza el campo orden de los ejercicios para reflejar el nuevo orden."""
+    conn = get_db()
+    for item in items:
+        conn.execute(
+            "UPDATE ejercicios_catalogo SET orden = ? WHERE id = ? AND usuario_id = ?",
+            (item.orden, item.id, usuario_id),
+        )
+    conn.commit()
     conn.close()
     return {"ok": True}
 
