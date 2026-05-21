@@ -1,3 +1,4 @@
+// v2026-05-21
 import React, { useState, useEffect } from "react";
 import { Header } from "../components/Header";
 import { MacrocicloCard } from "../components/MacrocicloCard";
