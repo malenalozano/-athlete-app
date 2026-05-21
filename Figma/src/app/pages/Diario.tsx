@@ -743,7 +743,7 @@ function Ejercicios() {
     setLoading(true);
     getEjercicios(userId)
       .then((data) => {
-        const todos = data.grupos.flatMap((g) => g.ejercicios);
+        const todos = Object.values(data.grupos).flatMap((g) => [...g.activos, ...g.archivados]);
         setEjerciciosData(todos);
       })
       .catch(() => setEjerciciosData([]))
