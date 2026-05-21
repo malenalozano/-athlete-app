@@ -239,6 +239,32 @@ def borrar_sesion(sesion_id: int):
     return {"ok": True}
 
 
+def _calcular_semanas_en_macro(fecha: datetime, macrociclo: int) -> int:
+    """Calcula semanas transcurridas desde el INICIO del macrociclo actual.
+
+    Mac1 (May-Ago):  inicio = 1 mayo del año en curso
+    Mac2 (Sep-Nov):  inicio = 1 septiembre del año en curso
+    Mac3 (Dic-Ene):  inicio = 1 diciembre del año anterior (si estamos en enero)
+                              o 1 diciembre del año en curso (si estamos en diciembre)
+    Mac4 (Tapering): no tiene progresión de reps → devuelve 1
+
+    IMPORTANTE: esto garantiza que en la 1ª semana de Mac1 tengamos siempre 6 reps,
+    independientemente del número de semana ISO del año.
+    """
+    año = fecha.year
+    if macrociclo == 1:
+        inicio = datetime(año, 5, 1)
+    elif macrociclo == 2:
+        inicio = datetime(año, 9, 1)
+    elif macrociclo == 3:
+        # Mac3 cruza año: si estamos en enero, el inicio fue el 1 dic del año anterior
+        inicio = datetime(año - 1 if fecha.month == 1 else año, 12, 1)
+    else:
+        return 1  # Tapering: sin progresión, reps fijas en mínimo
+    semanas = max(1, (fecha - inicio).days // 7 + 1)
+    return semanas
+
+
 @router.post("/{usuario_id}/generar-semana")
 def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
     """Genera y guarda las 7 sesiones de la semana siguiendo las NORMAS DE ENTRENAMIENTO."""
@@ -388,9 +414,13 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         km_rb = 3.0
 
     # ── 7. Ciclos de progresión para fartlek/progresiva ──
-    # Reps de fartlek: 6 + 1 por cada 4 semanas completadas desde inicio
-    ciclo_num = max(0, (semana_iso - 1) // 4)
-    fartlek_reps = 6 + ciclo_num
+    # Reps de fartlek: 6 + 1 por cada 4 semanas desde el INICIO del macrociclo actual.
+    # CORRECCIÓN: se usa semanas desde inicio de Mac (no semana ISO del año, que daba 11 reps
+    # en semana 21 del año cuando la deportista llevaba solo 3 semanas de entrenamiento).
+    # Cap de seguridad: máximo 10 reps para prevenir sobrecarga.
+    semanas_en_macro = _calcular_semanas_en_macro(fecha_inicio, macrociclo)
+    ciclo_num = max(0, (semanas_en_macro - 1) // 4)
+    fartlek_reps = min(6 + ciclo_num, 10)  # NORMA: empezar en 6 reps, +1 rep/ciclo, máx 10
     prog_bloque_min = 5 + ciclo_num * 2
 
     # ── 8. Semáforo HRV (advisory) — añadir nota a sesiones de calidad si rojo ──
@@ -718,8 +748,9 @@ def _generar_semana_interna(conn, usuario_id: int, fecha_inicio_str: str, km_tot
     km_calidad = round(km_total * 0.17, 1)
     km_rb = max(round(km_total - km_tl - km_rg - km_calidad, 1), 3.0)
 
-    ciclo_num = max(0, (semana_iso - 1) // 4)
-    fartlek_reps = 6 + ciclo_num
+    semanas_en_macro = _calcular_semanas_en_macro(fecha_inicio, macrociclo)
+    ciclo_num = max(0, (semanas_en_macro - 1) // 4)
+    fartlek_reps = min(6 + ciclo_num, 10)  # NORMA: empezar en 6 reps, +1 rep/ciclo, máx 10
     prog_bloque_min = 5 + ciclo_num * 2
 
     sesiones_plan = _construir_sesiones(
@@ -881,7 +912,8 @@ def _construir_sesiones(
 ) -> list:
     """Construye la lista de sesiones para una semana según las NORMAS DE ENTRENAMIENTO:
     Mac1: Lun=Pull · Mar=Calidad · Mié=Push · Jue=RB · Vie=Pierna · Sáb=TL · Dom=RG
-    Mac2: Lun=PiernaP · Mar=Intervalos · Mié=Core+TS · Jue=Tempo · Vie=RB · Sáb=TL · Dom=RG
+    Mac2: Lun=PiernaP · Mar=Core+TS · Mié=Intervalos · Jue=Tempo · Vie=RB · Sáb=TL · Dom=RG
+          (NORMA: Pierna Lun → Core+TS Mar (no calidad ✓) → Intervalos Mié (48h ✓))
     Mac3: Lun=PiernaL · Mar=VO2max · Mié=RB · Jue=TempoL · Vie=— · Sáb=TL · Dom=RG
     Mac4: Tapering — sesiones reducidas
     """
@@ -924,7 +956,10 @@ def _construir_sesiones(
                     "duracion_min": round(km_rg * 7.5), "intensidad": "Muy baja", "km_planificados": km_rg})
 
         elif macrociclo == 2:
-            # ── MAC 2: 2 sesiones de calidad (Intervalos + Tempo) separadas 48h ──
+            # ── MAC 2: 2 sesiones de calidad (Intervalos + Tempo) ──
+            # NORMA: Pierna → día siguiente NO puede ser Fartlek/Tempo/Intervalos.
+            # FIX: Pierna(Lun) → Core+TS(Mar, NO es calidad ✓) → Intervalos(Mié, 48h ✓)
+            # Distribución: Lun=PiernaP · Mar=Core+TS · Mié=Intervalos · Jue=Tempo · Vie=RB · Sáb=TL · Dom=RG
             nombre_int, det_int = _detalles_calidad_mac2("Intervalos", km_calidad, semana_iso)
             nombre_tmp, det_tmp = _detalles_calidad_mac2("Tempo", km_calidad, semana_iso)
             if dia_semana == 0:
@@ -932,12 +967,14 @@ def _construir_sesiones(
                     "detalles": "Sentadilla 4×6 @85% 1RM, Peso muerto 4×5 @85%, Prensa 45° 4×8. Mac2: 1 día pesado.",
                     "duracion_min": 65, "intensidad": "Alta", "km_planificados": None})
             elif dia_semana == 1:
+                # ANTES aquí iban Intervalos (violaba la norma Pierna→día siguiente calidad)
+                sesiones.append({"fecha": fecha_dia, "tipo": "Fuerza", "sesion": "Core + Tren Superior",
+                    "detalles": "Plancha 3×45s, Dead Bug 3×12, Jalón 4×8, Remo en polea 3×12, Press militar 3×10. Recuperación activa tras Pierna.",
+                    "duracion_min": 50, "intensidad": "Moderada", "km_planificados": None})
+            elif dia_semana == 2:
+                # Intervalos a 48h de Pierna ✓
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre_int, "detalles": det_int,
                     "duracion_min": 70, "intensidad": "Alta", "km_planificados": km_calidad})
-            elif dia_semana == 2:
-                sesiones.append({"fecha": fecha_dia, "tipo": "Fuerza", "sesion": "Core + Tren Superior",
-                    "detalles": "Plancha 3×45s, Dead Bug 3×12, Jalón 4×8, Remo en polea 3×12, Press militar 3×10.",
-                    "duracion_min": 50, "intensidad": "Moderada", "km_planificados": None})
             elif dia_semana == 3:
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre_tmp, "detalles": det_tmp,
                     "duracion_min": 70, "intensidad": "Alta", "km_planificados": km_calidad})
