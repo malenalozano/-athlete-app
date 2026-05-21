@@ -55,7 +55,6 @@ class RegenerarTotalRequest(BaseModel):
     semanas: int = 4  # Cuántas semanas futuras regenerar (incluye la actual)
 
 
-@router.get("/{usuario_id}/semana/{fecha_inicio}")
 def _migrar_fartlek_legacy(conn, sesiones: list) -> list:
     """Detecta sesiones Fartlek con nombres o km_planificados antiguos (código viejo)
     y los corrige en la BD + en la lista devuelta, sin regenerar el plan completo.
@@ -106,6 +105,7 @@ def _migrar_fartlek_legacy(conn, sesiones: list) -> list:
     return sesiones
 
 
+@router.get("/{usuario_id}/semana/{fecha_inicio}")
 def get_plan_semana(usuario_id: int, fecha_inicio: str):
     """Devuelve el plan de la semana. Si no hay sesiones genera un plan básico."""
     conn = get_db()
