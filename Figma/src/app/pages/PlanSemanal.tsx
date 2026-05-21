@@ -8,11 +8,10 @@ import { DndProvider, useDrag, useDrop } from "react-dnd";
 import {
   getPlanSemana, actualizarSesion, actualizarSesionCompleta, crearSesion, borrarSesion,
   generarPlanSemana, regenerarPlanTotal,
-  getActividades, getDiarioBiometrico, getEjercicios, getDashboard,
+  getActividades, getDiarioBiometrico, getEjercicios, getDashboard, registrarSesionFuerza,
   type PlanSemana, type SesionPlan, type ActividadGarmin, type EntradaBiometrica, type DashboardData,
-  type GrupoFuerza,
+  type GrupoFuerza, type EjercicioBiblioteca, type RegistroEjercicioInput,
 } from "../api";
-import { ModalRegistroFuerza } from "../components/ModalRegistroFuerza";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import {
   Sparkles,
@@ -43,6 +42,7 @@ import {
   Pencil,
   Save,
   AlertTriangle,
+  Check,
 } from "lucide-react";
 import {
   BarChart,
@@ -836,10 +836,212 @@ function detectarGrupoFuerza(activity: string): GrupoFuerza | null {
   return null;
 }
 
+// ── Logger inline de biblioteca (colapsable) ───────────────────────────────────
+
+const GRUPO_COLOR_PLAN: Record<GrupoFuerza, string> = {
+  Push: "#C9FF00", Pull: "#00D4FF", Pierna: "#A855F7",
+};
+const GRUPO_BG_PLAN: Record<GrupoFuerza, string> = {
+  Push: "rgba(201,255,0,0.08)", Pull: "rgba(0,212,255,0.08)", Pierna: "rgba(168,85,247,0.08)",
+};
+
+interface RegistroRowPlan {
+  ejercicio_id: number;
+  series: string;
+  repeticiones: string;
+  peso: string;
+  completado: boolean;
+}
+
+function BibliotecaLoggerInline({
+  usuarioId,
+  grupo,
+  onGuardado,
+}: {
+  usuarioId: number;
+  grupo: GrupoFuerza;
+  onGuardado: () => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [ejercicios, setEjercicios] = useState<EjercicioBiblioteca[]>([]);
+  const [rows, setRows] = useState<RegistroRowPlan[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [guardado, setGuardado] = useState(false);
+  const [error, setError] = useState("");
+
+  const color = GRUPO_COLOR_PLAN[grupo];
+  const bg = GRUPO_BG_PLAN[grupo];
+
+  const cargar = useCallback(async () => {
+    if (ejercicios.length > 0) return; // ya cargado
+    setLoading(true);
+    try {
+      const data = await getEjercicios(usuarioId);
+      const activos = data.grupos[grupo]?.activos ?? [];
+      setEjercicios(activos);
+      setRows(activos.map((ej) => ({
+        ejercicio_id: ej.id,
+        series: ej.ultima_series?.toString() ?? ej.series_objetivo?.toString() ?? "",
+        repeticiones: ej.ultimas_reps?.toString() ?? ej.reps_objetivo?.toString() ?? "",
+        peso: ej.ultimo_peso?.toString() ?? ej.peso_objetivo?.toString() ?? "",
+        completado: false,
+      })));
+    } catch {
+      setError("Error cargando ejercicios");
+    } finally {
+      setLoading(false);
+    }
+  }, [usuarioId, grupo, ejercicios.length]);
+
+  const toggleAbierto = () => {
+    if (!abierto) cargar();
+    setAbierto((v) => !v);
+  };
+
+  const handleGuardar = async () => {
+    const registros: RegistroEjercicioInput[] = rows
+      .filter((r) => r.peso && r.series && r.repeticiones)
+      .map((r) => ({
+        ejercicio_id: r.ejercicio_id,
+        series: parseInt(r.series),
+        repeticiones: parseInt(r.repeticiones),
+        peso: parseFloat(r.peso),
+        completado: r.completado,
+      }));
+    if (registros.length === 0) { setError("Introduce al menos un ejercicio con series, reps y peso."); return; }
+    setSaving(true); setError("");
+    try {
+      await registrarSesionFuerza(usuarioId, registros);
+      setGuardado(true);
+      onGuardado();
+    } catch {
+      setError("Error al guardar. Inténtalo de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${color}25` }}>
+      {/* Cabecera colapsable */}
+      <button
+        onClick={toggleAbierto}
+        className="w-full flex items-center justify-between px-4 py-3 transition-all"
+        style={{ background: bg }}
+        disabled={guardado}
+      >
+        <div className="flex items-center gap-2">
+          <Dumbbell className="h-4 w-4" style={{ color }} />
+          <span className="text-sm font-bold" style={{ color }}>
+            {guardado ? "✓ Sesión guardada" : `Logger · ${grupo}`}
+          </span>
+          {!abierto && !guardado && ejercicios.length > 0 && (
+            <span className="text-xs text-[#8B949E]">({ejercicios.length} ejercicios)</span>
+          )}
+        </div>
+        {!guardado && (
+          <ChevronDown
+            className="h-4 w-4 transition-transform"
+            style={{ color, transform: abierto ? "rotate(180deg)" : "rotate(0deg)" }}
+          />
+        )}
+      </button>
+
+      {/* Contenido expandible */}
+      {abierto && !guardado && (
+        <div className="px-4 pb-4 pt-3 space-y-3" style={{ background: "rgba(14,17,23,0.6)" }}>
+          {loading && <p className="text-center text-[#8B949E] text-sm py-4">Cargando ejercicios...</p>}
+
+          {!loading && ejercicios.length === 0 && (
+            <div className="rounded-lg p-4 text-center" style={{ background: bg, border: `1px dashed ${color}40` }}>
+              <p className="text-sm text-[#8B949E]">Sin ejercicios activos en {grupo}.</p>
+              <p className="text-xs text-[#30363D] mt-1">Añade ejercicios en la pestaña Ejercicios.</p>
+            </div>
+          )}
+
+          {!loading && ejercicios.map((ej, i) => {
+            const row = rows[i] ?? { ejercicio_id: ej.id, series: "", repeticiones: "", peso: "", completado: false };
+            const hint = ej.ultima_series && ej.ultimas_reps && ej.ultimo_peso
+              ? `${ej.ultima_series}×${ej.ultimas_reps} · ${ej.ultimo_peso}kg`
+              : ej.series_objetivo && ej.reps_objetivo
+              ? `obj: ${ej.series_objetivo}×${ej.reps_objetivo}${ej.peso_objetivo ? ` ${ej.peso_objetivo}kg` : ""}`
+              : null;
+            return (
+              <div key={ej.id} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                {/* Nombre */}
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
+                  <span className="text-sm font-semibold text-white flex-1">{ej.nombre}</span>
+                  {ej.subir_peso && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(34,197,94,0.15)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.3)" }}>
+                      ↑ Sube peso
+                    </span>
+                  )}
+                  {hint && <span className="text-[10px] text-[#8B949E] shrink-0">{hint}</span>}
+                </div>
+                {/* Inputs */}
+                <div className="grid grid-cols-4 gap-2 items-end">
+                  {([
+                    { label: "Series", key: "series" as const, ph: ej.ultima_series?.toString() ?? ej.series_objetivo?.toString() ?? "4" },
+                    { label: "Reps",   key: "repeticiones" as const, ph: ej.ultimas_reps?.toString() ?? ej.reps_objetivo?.toString() ?? "8" },
+                    { label: "Peso kg",key: "peso" as const, ph: ej.ultimo_peso?.toString() ?? ej.peso_objetivo?.toString() ?? "0" },
+                  ] as const).map(({ label, key, ph }) => (
+                    <div key={key}>
+                      <p className="text-[9px] text-[#8B949E] uppercase mb-1">{label}</p>
+                      <input
+                        type="number"
+                        value={row[key]}
+                        placeholder={ph}
+                        onChange={(e) => setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [key]: e.target.value } : r))}
+                        className="w-full px-2 py-1.5 rounded-lg text-sm text-white text-center outline-none"
+                        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+                      />
+                    </div>
+                  ))}
+                  {/* Toggle completado */}
+                  <div>
+                    <p className="text-[9px] text-[#8B949E] uppercase mb-1">¿Todo?</p>
+                    <button
+                      onClick={() => setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, completado: !r.completado } : r))}
+                      className="w-full py-1.5 rounded-lg text-xs font-bold transition-all"
+                      style={row.completado
+                        ? { background: "rgba(34,197,94,0.2)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.4)" }
+                        : { background: "rgba(255,255,255,0.04)", color: "#8B949E", border: "1px solid rgba(255,255,255,0.1)" }}
+                    >
+                      {row.completado ? <Check className="h-4 w-4 mx-auto" /> : "—"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+
+          {!loading && ejercicios.length > 0 && (
+            <>
+              <p className="text-[10px] text-[#8B949E]">
+                Marca ✓ en "¿Todo?" si completaste todas las series → subirá peso la próxima vez.
+              </p>
+              <button
+                onClick={handleGuardar}
+                disabled={saving}
+                className="w-full py-2.5 rounded-xl text-sm font-bold transition-all"
+                style={{ background: `linear-gradient(135deg, ${color}, ${color}cc)`, color: "#0E1117", opacity: saving ? 0.7 : 1 }}
+              >
+                {saving ? "Guardando..." : "Guardar sesión"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DayDetailPanel({ day, session, onClose, onEdit }: { day: DayPlan; session: Session; onClose: () => void; onEdit?: () => void }) {
   const { userId } = useUser();
-  const [showModalFuerza, setShowModalFuerza] = useState(false);
-  const [fuerzaGuardada, setFuerzaGuardada] = useState(false);
   const colors = TYPE_COLORS[session.type] ?? TYPE_COLORS.running;
   const typeLabel = session.type === "running" ? "Carrera" : "Fuerza";
   const typeColor = session.type === "running" ? "#00D4FF" : "#A855F7";
@@ -888,39 +1090,18 @@ function DayDetailPanel({ day, session, onClose, onEdit }: { day: DayPlan; sessi
         {session.type === "running" && <RunningDetail session={session} onClose={onClose} />}
         {session.type === "strength" && (
           <div className="space-y-4">
-            {/* Botón registrar desde biblioteca */}
-            {grupoFuerza && (
-              <button
-                onClick={() => setShowModalFuerza(true)}
-                disabled={fuerzaGuardada}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all"
-                style={{
-                  background: fuerzaGuardada
-                    ? "rgba(34,197,94,0.12)"
-                    : "rgba(168,85,247,0.15)",
-                  border: fuerzaGuardada
-                    ? "1px solid rgba(34,197,94,0.35)"
-                    : "1px solid rgba(168,85,247,0.4)",
-                  color: fuerzaGuardada ? "#22C55E" : "#C084FC",
-                }}
-              >
-                {fuerzaGuardada ? "✓ Sesión registrada en biblioteca" : `Registrar ejercicios ${grupoFuerza} en biblioteca`}
-              </button>
+            {/* Logger inline colapsable desde biblioteca */}
+            {grupoFuerza && userId !== null && (
+              <BibliotecaLoggerInline
+                usuarioId={userId}
+                grupo={grupoFuerza}
+                onGuardado={() => setFuerzaGuardada(true)}
+              />
             )}
             <StrengthLogger session={session} />
           </div>
         )}
       </div>
-
-      {/* Modal registro fuerza */}
-      {showModalFuerza && userId !== null && grupoFuerza && (
-        <ModalRegistroFuerza
-          usuarioId={userId}
-          grupo={grupoFuerza}
-          onClose={() => setShowModalFuerza(false)}
-          onGuardado={() => setFuerzaGuardada(true)}
-        />
-      )}
     </div>
   );
 }
