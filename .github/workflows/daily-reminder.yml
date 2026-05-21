@@ -69,7 +69,9 @@ jobs:
           else:
             lineas = []
             for row in rows:
-              tipo, sesion, km, mins, intens, detalle = [c["value"] if c["value"] != "null" else None for c in row]
+              # Turso devuelve {"type":"null"} sin clave "value" para NULLs de BD
+              def val(c): return c.get("value") if c.get("type") != "null" else None
+              tipo, sesion, km, mins, intens, detalle = [val(c) for c in row]
               emoji = next((e for k,e in EMOJIS.items() if k in (tipo or "").lower()), "📋")
               partes = [f"{emoji} {sesion or tipo}"]
               if km:   partes.append(f"{km} km")
