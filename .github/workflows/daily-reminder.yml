@@ -19,11 +19,18 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           python3 << 'EOF'
-          import os, urllib.request, urllib.parse, json
+          import os, urllib.request, urllib.parse, json, sys
 
-          db_url   = os.environ["TURSO_DATABASE_URL"]
-          token    = os.environ["TURSO_AUTH_TOKEN"]
-          topic    = os.environ["NTFY_TOPIC"]
+          db_url   = os.environ.get("TURSO_DATABASE_URL", "")
+          token    = os.environ.get("TURSO_AUTH_TOKEN", "")
+          topic    = os.environ.get("NTFY_TOPIC", "")
+
+          # Validar secretos antes de empezar
+          missing = [k for k,v in [("TURSO_DATABASE_URL",db_url),("TURSO_AUTH_TOKEN",token),("NTFY_TOPIC",topic)] if not v]
+          if missing:
+              print(f"ERROR: faltan secretos en GitHub Actions: {', '.join(missing)}", file=sys.stderr)
+              print("Ve a GitHub → Settings → Secrets and variables → Actions y añádelos.")
+              sys.exit(1)
 
           # Fecha de hoy en Madrid (UTC+2 verano / UTC+1 invierno)
           from datetime import datetime, timezone, timedelta
