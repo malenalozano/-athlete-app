@@ -904,138 +904,167 @@ function MiniModalEjercicio({
   );
 }
 
+const GRUPOS_EJ = [
+  { key: "Push"   as GrupoFuerza, label: "PUSH",   color: "#C9FF00", bg: "rgba(201,255,0,0.08)",   desc: "Press banca, Press militar..." },
+  { key: "Pull"   as GrupoFuerza, label: "PULL",   color: "#00D4FF", bg: "rgba(0,212,255,0.08)",   desc: "Dominadas, Remo..." },
+  { key: "Pierna" as GrupoFuerza, label: "PIERNA", color: "#A855F7", bg: "rgba(168,85,247,0.08)", desc: "Sentadilla, Peso muerto..." },
+] as const;
+
 function Ejercicios() {
   const { userId } = useUser();
-  const [ejerciciosData, setEjerciciosData] = useState<EjercicioBiblioteca[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [modalAbierto, setModalAbierto] = useState(false);
-  const [editando, setEditando] = useState<EjercicioBiblioteca | null>(null);
+  const [grupos, setGrupos] = useState<Record<string, { activos: EjercicioBiblioteca[]; archivados: EjercicioBiblioteca[] }>>({
+    Push: { activos: [], archivados: [] },
+    Pull: { activos: [], archivados: [] },
+    Pierna: { activos: [], archivados: [] },
+  });
+  const [loading, setLoading]         = useState(false);
+  const [modalGrupo, setModalGrupo]   = useState<GrupoFuerza | null>(null);
+  const [editando, setEditando]       = useState<EjercicioBiblioteca | null>(null);
+  const [archivadosAbiertos, setArchivadosAbiertos] = useState(false);
 
   const cargar = () => {
     if (!userId) return;
     setLoading(true);
     getEjercicios(userId)
-      .then((data) => {
-        const todos = Object.values(data.grupos).flatMap((g) => [...g.activos, ...g.archivados]);
-        setEjerciciosData(todos);
-      })
-      .catch(() => setEjerciciosData([]))
+      .then((data) => setGrupos(data.grupos as unknown as Record<string, { activos: EjercicioBiblioteca[]; archivados: EjercicioBiblioteca[] }>))
+      .catch(() => null)
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { cargar(); }, [userId]);
 
+  const todosArchivados = GRUPOS_EJ.flatMap((g) => grupos[g.key]?.archivados ?? []);
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div
-        className="rounded-2xl p-6"
-        style={{
-          background: "linear-gradient(135deg, rgba(168,85,247,0.12), rgba(201,255,0,0.05))",
-          border: "1px solid rgba(168,85,247,0.25)",
-        }}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-white mb-1">Biblioteca de Ejercicios</h2>
-            <p className="text-[#8B949E] text-sm">{ejerciciosData.filter(e => !e.archivado).length} activos · {ejerciciosData.filter(e => e.archivado).length} archivados</p>
-          </div>
-          <button
-            onClick={() => { setEditando(null); setModalAbierto(true); }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-[#0E1117] transition-all hover:opacity-90"
-            style={{
-              background: "linear-gradient(135deg, #A855F7, #7C3AED)",
-              boxShadow: "0 0 20px rgba(168,85,247,0.4)",
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Añadir Ejercicio
-          </button>
-        </div>
+    <div className="space-y-4">
+      {/* 3 columnas */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {GRUPOS_EJ.map((g) => {
+          const activos = grupos[g.key]?.activos ?? [];
+          return (
+            <div key={g.key} className="flex flex-col rounded-2xl overflow-hidden"
+              style={{ background: "rgba(22,27,34,0.6)", border: `1px solid ${g.color}25` }}>
+              {/* Cabecera columna */}
+              <div className="px-3 py-2.5 flex items-center justify-between"
+                style={{ background: g.bg, borderBottom: `1px solid ${g.color}30` }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black tracking-wider uppercase" style={{ color: g.color }}>{g.label}</span>
+                  <span className="text-[10px] text-[#8B949E]">({activos.length})</span>
+                </div>
+                <button onClick={() => { setEditando(null); setModalGrupo(g.key); }}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all hover:brightness-110"
+                  style={{ background: g.color, color: "#0E1117" }}>
+                  <Plus className="h-3 w-3" /> Añadir
+                </button>
+              </div>
+
+              {/* Ejercicios */}
+              <div className="flex-1 p-2 space-y-1.5">
+                {loading && activos.length === 0 ? (
+                  <p className="text-[11px] text-[#30363D] p-2">Cargando...</p>
+                ) : activos.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <p className="text-[11px] text-[#30363D]">{g.desc}</p>
+                    <button onClick={() => { setEditando(null); setModalGrupo(g.key); }}
+                      className="mt-2 text-[11px] font-semibold flex items-center gap-1 mx-auto"
+                      style={{ color: g.color }}>
+                      <Plus className="h-3 w-3" /> Añadir el primero
+                    </button>
+                  </div>
+                ) : (
+                  activos.map((ej) => (
+                    <div key={ej.id} className="rounded-xl px-3 py-2.5 flex items-center gap-2"
+                      style={{
+                        background: "#161B22",
+                        border: ej.subir_peso ? "1px solid rgba(34,197,94,0.35)" : "1px solid rgba(255,255,255,0.07)"
+                      }}>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{ej.nombre}</p>
+                        <p className="text-[10px] text-[#8B949E]">
+                          {ej.ultimo_peso != null
+                            ? `${ej.ultimo_peso}kg · ${ej.ultima_series ?? "—"}×${ej.ultimas_reps ?? "—"}`
+                            : (ej.series_objetivo ? `obj: ${ej.series_objetivo}×${ej.reps_objetivo ?? "—"}` : "Sin datos aún")}
+                        </p>
+                      </div>
+                      {ej.subir_peso && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                          style={{ background: "rgba(34,197,94,0.15)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.3)" }}>
+                          ↑
+                        </span>
+                      )}
+                      <div className="flex gap-0.5 shrink-0">
+                        <button onClick={() => setEditando(ej)}
+                          className="p-1.5 rounded-lg text-[#8B949E] hover:text-white hover:bg-white/10 transition-all" title="Editar">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={async () => { await archivarEjercicio(ej.id, true); cargar(); }}
+                          className="p-1.5 rounded-lg text-[#8B949E] hover:text-[#F97316] hover:bg-white/10 transition-all" title="Archivar">
+                          <Archive className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Modal crear/editar */}
-      {(modalAbierto || editando) && userId !== null && (
-        <MiniModalEjercicio
-          usuarioId={userId}
-          grupoInicial="Push"
-          ejercicio={editando ?? undefined}
-          onClose={() => { setModalAbierto(false); setEditando(null); }}
-          onGuardado={cargar}
-        />
-      )}
-
-      {/* Exercise list */}
-      {loading ? (
-        <div className="text-center text-[#8B949E] py-10 text-sm">Cargando ejercicios...</div>
-      ) : ejerciciosData.filter(e => !e.archivado).length === 0 ? (
-        <div className="text-center text-[#8B949E] py-10 text-sm">Sin ejercicios activos. Pulsa "Añadir Ejercicio" para empezar.</div>
-      ) : (
-        <div className="space-y-2">
-          {ejerciciosData.filter(e => !e.archivado).map((ej) => {
-            const color = getGrupoColor(ej.grupo_muscular);
-            return (
-              <div
-                key={ej.id}
-                className="rounded-xl px-4 py-3 flex items-center gap-3"
-                style={{ background: "#161B22", border: `1px solid ${color}20` }}
-              >
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white truncate">{ej.nombre}</p>
-                  <p className="text-xs text-[#8B949E]">
-                    {ej.grupo_muscular}
-                    {ej.ultimo_peso != null && ` · ${ej.ultimo_peso}kg`}
-                    {ej.ultima_series != null && ej.ultimas_reps != null && ` ${ej.ultima_series}×${ej.ultimas_reps}`}
-                  </p>
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <button
-                    onClick={() => setEditando(ej)}
-                    className="p-1.5 rounded-lg text-[#8B949E] hover:text-white transition-colors"
-                    title="Editar"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={async () => { await archivarEjercicio(ej.id, true); cargar(); }}
-                    className="p-1.5 rounded-lg text-[#8B949E] hover:text-white transition-colors"
-                    title="Archivar"
-                  >
-                    <Archive className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          {/* Archivados */}
-          {ejerciciosData.filter(e => e.archivado).length > 0 && (
-            <details className="mt-4">
-              <summary className="text-xs text-[#8B949E] cursor-pointer select-none py-2">
-                📦 {ejerciciosData.filter(e => e.archivado).length} archivados
-              </summary>
-              <div className="space-y-2 mt-2">
-                {ejerciciosData.filter(e => e.archivado).map((ej) => {
-                  const color = getGrupoColor(ej.grupo_muscular);
-                  return (
-                    <div key={ej.id} className="rounded-xl px-4 py-2.5 flex items-center gap-3 opacity-60"
-                      style={{ background: "#161B22", border: "1px solid rgba(255,255,255,0.06)" }}>
-                      <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
-                      <p className="text-sm text-white flex-1 truncate">{ej.nombre}</p>
-                      <button
-                        onClick={async () => { await archivarEjercicio(ej.id, false); cargar(); }}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-[#8B949E] hover:text-white transition-colors"
-                        style={{ border: "1px solid rgba(255,255,255,0.1)" }}
-                      >
+      {/* Archivados */}
+      {todosArchivados.length > 0 && (
+        <div className="rounded-2xl overflow-hidden"
+          style={{ background: "rgba(22,27,34,0.4)", border: "1px solid rgba(255,255,255,0.05)" }}>
+          <button onClick={() => setArchivadosAbiertos(!archivadosAbiertos)}
+            className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-white/5 transition-all">
+            {archivadosAbiertos
+              ? <ChevronDown className="h-4 w-4 text-[#8B949E]" />
+              : <ChevronRight className="h-4 w-4 text-[#8B949E]" />}
+            <Archive className="h-4 w-4 text-[#8B949E]" />
+            <span className="text-sm font-bold text-[#8B949E] uppercase tracking-wider">Archivados</span>
+            <span className="ml-1 text-xs px-2 py-0.5 rounded-full text-[#8B949E]"
+              style={{ background: "rgba(255,255,255,0.06)" }}>{todosArchivados.length}</span>
+          </button>
+          {archivadosAbiertos && (
+            <div className="px-3 pb-3 space-y-1.5">
+              {todosArchivados.map((ej) => {
+                const color = getGrupoColor(ej.grupo_muscular);
+                return (
+                  <div key={ej.id} className="rounded-xl px-3 py-2.5 flex items-center gap-2 opacity-70"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{ej.nombre}</p>
+                      <p className="text-[10px]" style={{ color }}>{ej.grupo_muscular}</p>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button onClick={() => setEditando(ej)}
+                        className="p-1.5 rounded-lg text-[#8B949E] hover:text-white hover:bg-white/10 transition-all" title="Editar">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={async () => { await archivarEjercicio(ej.id, false); cargar(); }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:brightness-110"
+                        style={{ background: "rgba(201,255,0,0.1)", color: "#C9FF00", border: "1px solid rgba(201,255,0,0.2)" }}>
                         <ArchiveRestore className="h-3 w-3" /> Restaurar
                       </button>
                     </div>
-                  );
-                })}
-              </div>
-            </details>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
+      )}
+
+      {/* Modal crear/editar */}
+      {(modalGrupo !== null || editando) && userId !== null && (
+        <MiniModalEjercicio
+          usuarioId={userId}
+          grupoInicial={editando?.grupo_muscular ?? modalGrupo ?? "Push"}
+          ejercicio={editando ?? undefined}
+          onClose={() => { setModalGrupo(null); setEditando(null); }}
+          onGuardado={cargar}
+        />
       )}
     </div>
   );
