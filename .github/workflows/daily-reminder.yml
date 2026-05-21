@@ -10,6 +10,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    environment: TURSO_AUTH_TOKEN  # Entorno donde están los secrets
 
     steps:
       - name: Enviar sesion de hoy a ntfy
