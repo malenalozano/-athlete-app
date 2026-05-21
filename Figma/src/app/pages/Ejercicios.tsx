@@ -13,7 +13,7 @@ import {
 } from "../api";
 import { ModalHistorialEjercicio } from "../components/ModalHistorialEjercicio";
 
-// ── Tipos extendidos ───────────────────────────────────────────────────────────
+// ── Tipos ──────────────────────────────────────────────────────────────────────
 
 interface EjercicioExtendido extends EjercicioBiblioteca {
   series_objetivo?: number | null;
@@ -25,10 +25,10 @@ interface EjercicioExtendido extends EjercicioBiblioteca {
 
 // ── Configuración de grupos ────────────────────────────────────────────────────
 
-const GRUPOS: { key: GrupoFuerza; label: string; color: string; bg: string; descripcion: string }[] = [
-  { key: "Push",   label: "PUSH",   color: "#C9FF00", bg: "rgba(201,255,0,0.08)",   descripcion: "Press banca, Press militar, Fondos..." },
-  { key: "Pull",   label: "PULL",   color: "#00D4FF", bg: "rgba(0,212,255,0.08)",   descripcion: "Dominadas, Remo, Jalones..." },
-  { key: "Pierna", label: "PIERNA", color: "#A855F7", bg: "rgba(168,85,247,0.08)", descripcion: "Sentadilla, Peso muerto, Hip thrust..." },
+const GRUPOS: { key: GrupoFuerza; label: string; emoji: string; color: string; bg: string; descripcion: string }[] = [
+  { key: "Push",   label: "PUSH",   emoji: "🟢", color: "#C9FF00", bg: "rgba(201,255,0,0.08)",   descripcion: "Press banca, Press militar, Fondos..." },
+  { key: "Pull",   label: "PULL",   emoji: "🔵", color: "#00D4FF", bg: "rgba(0,212,255,0.08)",   descripcion: "Dominadas, Remo, Jalones..." },
+  { key: "Pierna", label: "PIERNA", emoji: "🟣", color: "#A855F7", bg: "rgba(168,85,247,0.08)", descripcion: "Sentadilla, Peso muerto, Hip thrust..." },
 ];
 
 const COLOR_MAP: Record<string, string> = {
@@ -42,7 +42,7 @@ function ModalEjercicio({
   onGuardado,
   usuarioId,
   grupoInicial,
-  ejercicio,          // Si viene → modo edición
+  ejercicio,
 }: {
   onClose: () => void;
   onGuardado: () => void;
@@ -52,14 +52,14 @@ function ModalEjercicio({
 }) {
   const modoEdicion = !!ejercicio;
 
-  const [nombre,        setNombre]        = useState(ejercicio?.nombre ?? "");
-  const [grupo,         setGrupo]         = useState<GrupoFuerza>(ejercicio?.grupo_muscular as GrupoFuerza ?? grupoInicial);
-  const [alias,         setAlias]         = useState(ejercicio?.alias ?? "");
-  const [seriesObj,     setSeriesObj]     = useState(ejercicio?.series_objetivo?.toString() ?? "");
-  const [repsObj,       setRepsObj]       = useState(ejercicio?.reps_objetivo?.toString() ?? "");
-  const [pesoObj,       setPesoObj]       = useState(ejercicio?.peso_objetivo?.toString() ?? "");
-  const [loading,       setLoading]       = useState(false);
-  const [error,         setError]         = useState("");
+  const [nombre,    setNombre]    = useState(ejercicio?.nombre ?? "");
+  const [grupo,     setGrupo]     = useState<GrupoFuerza>(ejercicio?.grupo_muscular as GrupoFuerza ?? grupoInicial);
+  const [alias,     setAlias]     = useState(ejercicio?.alias ?? "");
+  const [seriesObj, setSeriesObj] = useState(ejercicio?.series_objetivo?.toString() ?? "");
+  const [repsObj,   setRepsObj]   = useState(ejercicio?.reps_objetivo?.toString() ?? "");
+  const [pesoObj,   setPesoObj]   = useState(ejercicio?.peso_objetivo?.toString() ?? "");
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState("");
 
   const handleSubmit = async () => {
     if (!nombre.trim()) { setError("El nombre es obligatorio"); return; }
@@ -85,9 +85,9 @@ function ModalEjercicio({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
       if (msg.includes("409")) {
-        setError(`Ya existe un ejercicio con ese nombre`);
+        setError("Ya existe un ejercicio con ese nombre");
       } else {
-        setError("Error al guardar el ejercicio. Inténtalo de nuevo.");
+        setError("Error al guardar. Inténtalo de nuevo.");
       }
     } finally {
       setLoading(false);
@@ -95,11 +95,11 @@ function ModalEjercicio({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.7)" }}>
-      <div className="w-full max-w-md rounded-2xl p-6" style={{ background: "#161B22", border: "1px solid rgba(255,255,255,0.1)" }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.75)" }}>
+      <div className="w-full max-w-md rounded-2xl p-6" style={{ background: "#161B22", border: "1px solid rgba(255,255,255,0.12)" }}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-white">
-            {modoEdicion ? "Editar ejercicio" : "Nuevo ejercicio"}
+            {modoEdicion ? "✏️ Editar ejercicio" : "➕ Nuevo ejercicio"}
           </h2>
           <button onClick={onClose} className="text-[#8B949E] hover:text-white transition-colors">
             <X className="h-5 w-5" />
@@ -109,14 +109,14 @@ function ModalEjercicio({
         <div className="space-y-4">
           {/* Grupo */}
           <div>
-            <label className="text-xs text-[#8B949E] uppercase font-semibold mb-2 block">Grupo</label>
+            <label className="text-xs text-[#8B949E] uppercase font-semibold mb-2 block">Grupo muscular</label>
             <div className="flex gap-2">
               {GRUPOS.map((g) => (
                 <button key={g.key} onClick={() => setGrupo(g.key)}
-                  className="flex-1 py-2 rounded-lg text-sm font-bold transition-all"
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
                   style={{
                     background: grupo === g.key ? g.bg : "rgba(255,255,255,0.04)",
-                    border: `1px solid ${grupo === g.key ? g.color : "rgba(255,255,255,0.08)"}`,
+                    border: `2px solid ${grupo === g.key ? g.color : "rgba(255,255,255,0.08)"}`,
                     color: grupo === g.key ? g.color : "#8B949E",
                   }}
                 >{g.label}</button>
@@ -137,7 +137,7 @@ function ModalEjercicio({
           {/* Series, Reps, Peso objetivo */}
           <div>
             <label className="text-xs text-[#8B949E] uppercase font-semibold mb-2 block">
-              Objetivo <span className="normal-case font-normal">(opcional — si lo dejas en blanco usa el historial)</span>
+              Objetivo <span className="normal-case font-normal">(opcional)</span>
             </label>
             <div className="grid grid-cols-3 gap-2">
               {[
@@ -165,14 +165,19 @@ function ModalEjercicio({
             />
           </div>
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-lg">{error}</p>}
 
-          <button onClick={handleSubmit} disabled={loading}
-            className="w-full py-3 rounded-xl text-sm font-bold transition-all"
-            style={{ background: "#C9FF00", color: "#0E1117", opacity: loading ? 0.6 : 1 }}
-          >
-            {loading ? "Guardando..." : modoEdicion ? "Guardar cambios" : "Añadir ejercicio"}
-          </button>
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose} className="flex-1 py-3 rounded-xl text-sm font-semibold text-[#8B949E] transition-all hover:text-white"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              Cancelar
+            </button>
+            <button onClick={handleSubmit} disabled={loading}
+              className="flex-1 py-3 rounded-xl text-sm font-bold transition-all"
+              style={{ background: "#C9FF00", color: "#0E1117", opacity: loading ? 0.6 : 1 }}>
+              {loading ? "Guardando..." : modoEdicion ? "Guardar cambios" : "Añadir"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -194,45 +199,53 @@ function EjercicioCard({
   onEditar: (ej: EjercicioExtendido) => void;
   onVerHistorial: (ej: EjercicioExtendido) => void;
 }) {
-  // Mostrar historial si existe, sino objetivo
   const series = ejercicio.ultima_series ?? ejercicio.series_objetivo;
   const reps   = ejercicio.ultimas_reps  ?? ejercicio.reps_objetivo;
   const peso   = ejercicio.ultimo_peso   ?? ejercicio.peso_objetivo;
-  const esFuente = ejercicio.ultima_series ? "historial" : "objetivo";
+  const delHistorial = !!ejercicio.ultima_series;
 
   return (
     <div
-      className="rounded-xl p-4 transition-all cursor-pointer hover:scale-[1.01]"
+      className="rounded-xl p-3.5 transition-all cursor-pointer hover:brightness-110"
       style={{
-        background: "rgba(22,27,34,0.95)",
+        background: "#161B22",
         border: ejercicio.subir_peso
-          ? `1px solid rgba(34,197,94,0.35)`
-          : `1px solid rgba(255,255,255,0.08)`,
-        boxShadow: ejercicio.subir_peso ? "0 0 12px rgba(34,197,94,0.12)" : "none",
+          ? "1px solid rgba(34,197,94,0.4)"
+          : "1px solid rgba(255,255,255,0.07)",
+        boxShadow: ejercicio.subir_peso ? "0 0 10px rgba(34,197,94,0.1)" : "none",
       }}
       onClick={() => onVerHistorial(ejercicio)}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3 gap-2">
-        <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: color }} />
+      {/* Header: nombre + botones */}
+      <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-bold text-white">{ejercicio.nombre}</h3>
-          {/* Badge subir peso */}
-          {ejercicio.subir_peso && (
-            <span
-              className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full mt-1"
-              style={{ background: "rgba(34,197,94,0.15)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.3)" }}
-            >
-              <ChevronUp className="h-2.5 w-2.5" />
-              SUBE PESO
-            </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <h3 className="text-sm font-bold text-white leading-tight">{ejercicio.nombre}</h3>
+            {ejercicio.subir_peso && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                style={{ background: "rgba(34,197,94,0.15)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.3)" }}>
+                <ChevronUp className="h-2.5 w-2.5" />↑ SUBE PESO
+              </span>
+            )}
+          </div>
+          {ejercicio.alias && (
+            <p className="text-[10px] text-[#8B949E] mt-0.5 truncate">{ejercicio.alias}</p>
           )}
         </div>
-        <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => onEditar(ejercicio)} className="text-[#8B949E] hover:text-white transition-colors p-0.5" title="Editar">
+        {/* Botones acción */}
+        <div className="flex gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => onEditar(ejercicio)}
+            className="p-1.5 rounded-lg transition-all hover:bg-white/10 text-[#8B949E] hover:text-white"
+            title="Editar"
+          >
             <Pencil className="h-3.5 w-3.5" />
           </button>
-          <button onClick={() => onArchivar(ejercicio.id, true)} className="text-[#8B949E] hover:text-white transition-colors p-0.5" title="Archivar">
+          <button
+            onClick={() => onArchivar(ejercicio.id, true)}
+            className="p-1.5 rounded-lg transition-all hover:bg-white/10 text-[#8B949E] hover:text-[#F97316]"
+            title="Archivar"
+          >
             <Archive className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -240,42 +253,36 @@ function EjercicioCard({
 
       {/* Stats */}
       {(series || reps || peso) ? (
-        <div className="grid grid-cols-3 gap-2 mb-2">
-          <div className="flex flex-col items-center">
-            <span className="text-[10px] text-[#8B949E] uppercase mb-0.5">Series</span>
-            <span className="text-base font-black" style={{ color }}>{series ?? "—"}</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="text-[10px] text-[#8B949E] uppercase mb-0.5">Reps</span>
-            <span className="text-base font-black" style={{ color }}>{reps ?? "—"}</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="text-[10px] text-[#8B949E] uppercase mb-0.5">Peso</span>
-            <span className="text-base font-black" style={{ color: ejercicio.ultimo_peso ? "#22C55E" : "#8B949E" }}>
-              {peso ? `${peso}kg` : "—"}
-            </span>
-          </div>
+        <div className="flex gap-3 items-baseline">
+          {series && (
+            <div className="text-center">
+              <span className="text-lg font-black" style={{ color }}>{series}</span>
+              <span className="text-[9px] text-[#8B949E] block">series</span>
+            </div>
+          )}
+          {reps && (
+            <div className="text-center">
+              <span className="text-lg font-black" style={{ color }}>{reps}</span>
+              <span className="text-[9px] text-[#8B949E] block">reps</span>
+            </div>
+          )}
+          {peso && (
+            <div className="text-center">
+              <span className="text-lg font-black" style={{ color: delHistorial ? "#22C55E" : "#8B949E" }}>{peso}kg</span>
+              <span className="text-[9px] text-[#8B949E] block">{delHistorial ? "último" : "objetivo"}</span>
+            </div>
+          )}
         </div>
       ) : (
-        <p className="text-xs text-[#30363D] mb-2">Sin datos aún · toca para ver historial</p>
+        <p className="text-xs text-[#30363D]">Sin datos · toca para ver</p>
       )}
-
-      {/* Fuente */}
-      {(series || reps || peso) && (
-        <p className="text-[10px] text-[#30363D]">
-          {esFuente === "historial" ? "Del historial · toca para ver más" : "→ objetivo"}
-        </p>
-      )}
-
-      {/* Alias */}
-      {ejercicio.alias && <p className="text-[10px] text-[#30363D] mt-1 truncate">{ejercicio.alias}</p>}
     </div>
   );
 }
 
-// ── Sección de grupo (solo activos) ───────────────────────────────────────────
+// ── Columna de grupo ───────────────────────────────────────────────────────────
 
-function GrupoSection({
+function ColumnaGrupo({
   grupo, activos, onArchivar, onEditar, onAddClick, onVerHistorial,
 }: {
   grupo: typeof GRUPOS[0];
@@ -285,43 +292,53 @@ function GrupoSection({
   onAddClick: () => void;
   onVerHistorial: (ej: EjercicioExtendido) => void;
 }) {
-  const [expandido, setExpandido] = useState(true);
-
   return (
-    <div className="mb-6">
-      <div className="flex items-center gap-3 mb-3">
-        <button onClick={() => setExpandido(!expandido)} className="flex items-center gap-2 flex-1 text-left">
-          {expandido
-            ? <ChevronDown className="h-4 w-4" style={{ color: grupo.color }} />
-            : <ChevronRight className="h-4 w-4" style={{ color: grupo.color }} />
-          }
-          <div className="w-2 h-2 rounded-full" style={{ background: grupo.color }} />
-          <span className="text-sm font-bold uppercase tracking-wider" style={{ color: grupo.color }}>{grupo.label}</span>
-          <span className="text-xs text-[#8B949E]">({activos.length})</span>
-        </button>
-        <button onClick={onAddClick}
-          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all hover:opacity-80"
-          style={{ background: grupo.bg, border: `1px solid ${grupo.color}30`, color: grupo.color }}
+    <div className="flex flex-col rounded-2xl overflow-hidden"
+      style={{ background: "rgba(22,27,34,0.6)", border: `1px solid ${grupo.color}25` }}>
+      {/* Cabecera de columna */}
+      <div className="px-4 py-3 flex items-center justify-between"
+        style={{ background: grupo.bg, borderBottom: `1px solid ${grupo.color}30` }}>
+        <div>
+          <span className="text-sm font-black tracking-wider uppercase" style={{ color: grupo.color }}>
+            {grupo.label}
+          </span>
+          <span className="text-xs text-[#8B949E] ml-2">({activos.length})</span>
+        </div>
+        <button
+          onClick={onAddClick}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all hover:brightness-110"
+          style={{ background: grupo.color, color: "#0E1117" }}
         >
-          <Plus className="h-3 w-3" /> Añadir
+          <Plus className="h-3.5 w-3.5" /> Añadir
         </button>
       </div>
 
-      {expandido && (
-        activos.length === 0 ? (
-          <div className="rounded-xl p-4 text-center mb-3"
-            style={{ background: grupo.bg, border: `1px dashed ${grupo.color}40` }}>
-            <p className="text-xs text-[#8B949E]">Sin ejercicios activos · {grupo.descripcion}</p>
+      {/* Lista de ejercicios */}
+      <div className="flex-1 p-3 space-y-2.5 overflow-y-auto" style={{ maxHeight: "calc(100vh - 280px)" }}>
+        {activos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <p className="text-xs text-[#30363D]">{grupo.descripcion}</p>
+            <button
+              onClick={onAddClick}
+              className="mt-3 text-xs font-semibold flex items-center gap-1 transition-all hover:brightness-110"
+              style={{ color: grupo.color }}
+            >
+              <Plus className="h-3 w-3" /> Añadir el primero
+            </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-            {activos.map((ej) => (
-              <EjercicioCard key={ej.id} ejercicio={ej} color={grupo.color}
-                onArchivar={onArchivar} onEditar={onEditar} onVerHistorial={onVerHistorial} />
-            ))}
-          </div>
-        )
-      )}
+          activos.map((ej) => (
+            <EjercicioCard
+              key={ej.id}
+              ejercicio={ej}
+              color={grupo.color}
+              onArchivar={onArchivar}
+              onEditar={onEditar}
+              onVerHistorial={onVerHistorial}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -335,47 +352,57 @@ function SeccionArchivados({
   onDesarchivar: (id: number) => void;
   onEditar: (ej: EjercicioExtendido) => void;
 }) {
-  const [expandido, setExpandido] = useState(true);
+  const [expandido, setExpandido] = useState(false);
   if (archivados.length === 0) return null;
 
   return (
-    <div className="mt-8 pt-6" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-      <button onClick={() => setExpandido(!expandido)} className="flex items-center gap-2 mb-4 w-full text-left">
+    <div className="mt-6 rounded-2xl overflow-hidden"
+      style={{ background: "rgba(22,27,34,0.4)", border: "1px solid rgba(255,255,255,0.05)" }}>
+      <button
+        onClick={() => setExpandido(!expandido)}
+        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-white/5 transition-all"
+      >
         {expandido ? <ChevronDown className="h-4 w-4 text-[#8B949E]" /> : <ChevronRight className="h-4 w-4 text-[#8B949E]" />}
         <Archive className="h-4 w-4 text-[#8B949E]" />
         <span className="text-sm font-bold text-[#8B949E] uppercase tracking-wider">Archivados</span>
-        <span className="text-xs text-[#30363D]">({archivados.length})</span>
+        <span className="ml-1 text-xs px-2 py-0.5 rounded-full text-[#8B949E]"
+          style={{ background: "rgba(255,255,255,0.06)" }}>
+          {archivados.length}
+        </span>
       </button>
 
       {expandido && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
           {archivados.map((ej) => {
             const color = COLOR_MAP[ej.grupo_muscular] ?? "#8B949E";
             return (
-              <div key={ej.id} className="rounded-xl p-4 transition-all"
-                style={{ background: "rgba(22,27,34,0.5)", border: "1px solid rgba(255,255,255,0.04)", opacity: 0.7 }}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{ej.nombre}</p>
-                      <p className="text-xs" style={{ color }}>{ej.grupo_muscular}</p>
-                    </div>
+              <div key={ej.id}
+                className="rounded-xl px-4 py-3 flex items-center justify-between gap-3"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", opacity: 0.75 }}>
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{ej.nombre}</p>
+                    <p className="text-[11px]" style={{ color }}>{ej.grupo_muscular}</p>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <button onClick={() => onEditar(ej)} className="text-[#8B949E] hover:text-white transition-colors p-0.5" title="Editar">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button onClick={() => onDesarchivar(ej.id)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all hover:opacity-80"
-                      style={{ background: "rgba(255,255,255,0.06)", color: "#8B949E", border: "1px solid rgba(255,255,255,0.08)" }}
-                      title="Desarchivar"
-                    >
-                      <ArchiveRestore className="h-3.5 w-3.5" />
-                      Restaurar
-                    </button>
-                  </div>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <button
+                    onClick={() => onEditar(ej)}
+                    className="p-1.5 rounded-lg text-[#8B949E] hover:text-white hover:bg-white/10 transition-all"
+                    title="Editar"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => onDesarchivar(ej.id)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:brightness-110"
+                    style={{ background: "rgba(201,255,0,0.1)", color: "#C9FF00", border: "1px solid rgba(201,255,0,0.2)" }}
+                    title="Restaurar"
+                  >
+                    <ArchiveRestore className="h-3.5 w-3.5" />
+                    Restaurar
+                  </button>
                 </div>
               </div>
             );
@@ -390,10 +417,10 @@ function SeccionArchivados({
 
 export function Ejercicios() {
   const { userId } = useUser();
-  const [data, setData]           = useState<EjerciciosBiblioteca | null>(null);
-  const [loading, setLoading]     = useState(false);
-  const [modalGrupo, setModalGrupo] = useState<GrupoFuerza | null>(null);
-  const [editando, setEditando]   = useState<EjercicioExtendido | null>(null);
+  const [data, setData]               = useState<EjerciciosBiblioteca | null>(null);
+  const [loading, setLoading]         = useState(false);
+  const [modalGrupo, setModalGrupo]   = useState<GrupoFuerza | null>(null);
+  const [editando, setEditando]       = useState<EjercicioExtendido | null>(null);
   const [verHistorial, setVerHistorial] = useState<EjercicioExtendido | null>(null);
 
   const cargar = () => {
@@ -423,28 +450,35 @@ export function Ejercicios() {
   return (
     <div className="min-h-screen bg-[#0E1117]">
       <Header />
-      <main className="container mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">🏋️ Ejercicios</h1>
-          <p className="text-sm text-[#8B949E] mt-1">
-            Los ejercicios activos de cada grupo aparecen en tu notificación diaria.
-          </p>
+      <main className="container mx-auto px-4 py-6">
+
+        {/* Título */}
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-white">🏋️ Ejercicios</h1>
+            <p className="text-sm text-[#8B949E] mt-0.5">
+              Pulsa una tarjeta para ver historial · ✏️ editar · 📦 archivar
+            </p>
+          </div>
+          {loading && <span className="text-xs text-[#8B949E]">Actualizando...</span>}
         </div>
 
-        {loading && <div className="text-center py-4 text-[#8B949E] text-sm">Actualizando...</div>}
+        {/* 3 columnas — una por grupo */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {GRUPOS.map((g) => (
+            <ColumnaGrupo
+              key={g.key}
+              grupo={g}
+              activos={grupos[g.key]?.activos ?? []}
+              onArchivar={handleArchivar}
+              onEditar={setEditando}
+              onAddClick={() => setModalGrupo(g.key)}
+              onVerHistorial={setVerHistorial}
+            />
+          ))}
+        </div>
 
-        {GRUPOS.map((g) => (
-          <GrupoSection
-            key={g.key}
-            grupo={g}
-            activos={grupos[g.key]?.activos ?? []}
-            onArchivar={handleArchivar}
-            onEditar={setEditando}
-            onAddClick={() => setModalGrupo(g.key)}
-            onVerHistorial={setVerHistorial}
-          />
-        ))}
-
+        {/* Archivados */}
         <SeccionArchivados
           archivados={todosArchivados}
           onDesarchivar={(id) => handleArchivar(id, false)}
