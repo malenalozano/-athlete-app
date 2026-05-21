@@ -1,23 +1,7 @@
 import { Header } from "../components/Header";
 import { useState, useEffect, useCallback } from "react";
-import { ChevronDown, ChevronRight, Plus, Archive, ArchiveRestore, X, Pencil, ChevronUp, Trash2, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Archive, ArchiveRestore, X, Pencil, ChevronUp, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import { useUser } from "../context/UserContext";
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
-  arrayMove,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import {
   getEjercicios,
   archivarEjercicio,
@@ -212,7 +196,7 @@ function ModalEjercicio({
   );
 }
 
-// ── Tarjeta de ejercicio (sortable) ───────────────────────────────────────────
+// ── Tarjeta de ejercicio ───────────────────────────────────────────────────────
 
 function EjercicioCard({
   ejercicio,
@@ -220,29 +204,21 @@ function EjercicioCard({
   onArchivar,
   onEditar,
   onVerHistorial,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
 }: {
   ejercicio: EjercicioExtendido;
   color: string;
   onArchivar: (id: number, archivar: boolean) => void;
   onEditar: (ej: EjercicioExtendido) => void;
   onVerHistorial: (ej: EjercicioExtendido) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: ejercicio.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 50 : "auto",
-  };
-
   const series = ejercicio.ultima_series ?? ejercicio.series_objetivo;
   const reps   = ejercicio.ultimas_reps  ?? ejercicio.reps_objetivo;
   const peso   = ejercicio.ultimo_peso   ?? ejercicio.peso_objetivo;
@@ -250,27 +226,36 @@ function EjercicioCard({
 
   return (
     <div
-      ref={setNodeRef}
+      className="rounded-xl p-3.5"
       style={{
-        ...style,
         background: "#161B22",
         border: ejercicio.subir_peso
           ? "1px solid rgba(34,197,94,0.4)"
           : "1px solid rgba(255,255,255,0.07)",
-        boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.5)" : ejercicio.subir_peso ? "0 0 10px rgba(34,197,94,0.1)" : "none",
+        boxShadow: ejercicio.subir_peso ? "0 0 10px rgba(34,197,94,0.1)" : "none",
       }}
-      className="rounded-xl p-3.5 transition-shadow"
     >
-      <div className="flex items-start gap-2">
-        {/* Handle de arrastre */}
-        <div
-          {...attributes}
-          {...listeners}
-          className="mt-1 shrink-0 cursor-grab active:cursor-grabbing touch-none transition-colors"
-          style={{ color: "#4B5563" }}
-          title="Arrastrar para reordenar"
-        >
-          <GripVertical className="h-5 w-5" />
+      <div className="flex items-start gap-1.5">
+        {/* Botones orden ↑/↓ */}
+        <div className="flex flex-col gap-0.5 shrink-0 mt-0.5">
+          <button
+            onClick={onMoveUp}
+            disabled={isFirst}
+            className="p-1 rounded-md transition-all disabled:opacity-20"
+            style={{ color: "#4B5563" }}
+            title="Subir"
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={onMoveDown}
+            disabled={isLast}
+            className="p-1 rounded-md transition-all disabled:opacity-20"
+            style={{ color: "#4B5563" }}
+            title="Bajar"
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+          </button>
         </div>
 
         {/* Contenido clickable */}
@@ -290,7 +275,7 @@ function EjercicioCard({
                 <p className="text-[10px] mt-0.5 leading-tight" style={{ color: "#6B7280" }}>📝 {ejercicio.alias}</p>
               )}
             </div>
-            {/* Botones */}
+            {/* Botones editar/archivar */}
             <div className="flex gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
               <button onClick={() => onEditar(ejercicio)}
                 className="p-1.5 rounded-lg transition-all hover:bg-white/10 text-[#8B949E] hover:text-white" title="Editar">
@@ -328,7 +313,7 @@ function EjercicioCard({
   );
 }
 
-// ── Columna de grupo con DnD ──────────────────────────────────────────────────
+// ── Columna de grupo ──────────────────────────────────────────────────────────
 
 function ColumnaGrupo({
   grupo, activos, onArchivar, onEditar, onAddClick, onVerHistorial, onReorder,
@@ -341,19 +326,12 @@ function ColumnaGrupo({
   onVerHistorial: (ej: EjercicioExtendido) => void;
   onReorder: (nuevos: EjercicioExtendido[]) => void;
 }) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }),
-  );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIdx = activos.findIndex((e) => e.id === active.id);
-    const newIdx = activos.findIndex((e) => e.id === over.id);
-    if (oldIdx !== -1 && newIdx !== -1) {
-      onReorder(arrayMove(activos, oldIdx, newIdx));
-    }
+  const mover = (idx: number, dir: -1 | 1) => {
+    const nuevos = [...activos];
+    const tmp = nuevos[idx];
+    nuevos[idx] = nuevos[idx + dir];
+    nuevos[idx + dir] = tmp;
+    onReorder(nuevos);
   };
 
   return (
@@ -375,7 +353,7 @@ function ColumnaGrupo({
         </button>
       </div>
 
-      {/* Lista ordenable */}
+      {/* Lista */}
       <div className="flex-1 p-3 space-y-2.5 overflow-y-auto" style={{ maxHeight: "calc(100vh - 280px)" }}>
         {activos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -387,20 +365,20 @@ function ColumnaGrupo({
             </button>
           </div>
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={activos.map((e) => e.id)} strategy={verticalListSortingStrategy}>
-              {activos.map((ej) => (
-                <EjercicioCard
-                  key={ej.id}
-                  ejercicio={ej}
-                  color={grupo.color}
-                  onArchivar={onArchivar}
-                  onEditar={onEditar}
-                  onVerHistorial={onVerHistorial}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
+          activos.map((ej, idx) => (
+            <EjercicioCard
+              key={ej.id}
+              ejercicio={ej}
+              color={grupo.color}
+              onArchivar={onArchivar}
+              onEditar={onEditar}
+              onVerHistorial={onVerHistorial}
+              onMoveUp={() => mover(idx, -1)}
+              onMoveDown={() => mover(idx, 1)}
+              isFirst={idx === 0}
+              isLast={idx === activos.length - 1}
+            />
+          ))
         )}
       </div>
     </div>
@@ -417,7 +395,7 @@ function SeccionArchivados({
   onEditar: (ej: EjercicioExtendido) => void;
   onEliminar: (id: number, nombre: string) => void;
 }) {
-  const [expandido, setExpandido] = useState(true);
+  const [expandido, setExpandido] = useState(false);
   if (archivados.length === 0) return null;
 
   return (
@@ -548,7 +526,7 @@ export function Ejercicios() {
           <div>
             <h1 className="text-2xl font-bold text-white">🏋️ Ejercicios</h1>
             <p className="text-sm text-[#8B949E] mt-0.5">
-              Arrastra el icono <GripVertical className="inline h-3.5 w-3.5 align-text-bottom" style={{ color: "#4B5563" }} /> para reordenar
+              Usa ↑↓ para reordenar · toca para ver historial
             </p>
           </div>
           {loading && <span className="text-xs text-[#8B949E]">Actualizando...</span>}

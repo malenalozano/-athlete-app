@@ -940,7 +940,7 @@ function Ejercicios() {
   const [loading, setLoading]         = useState(false);
   const [modalGrupo, setModalGrupo]   = useState<GrupoFuerza | null>(null);
   const [editando, setEditando]       = useState<EjercicioBiblioteca | null>(null);
-  const [archivadosAbiertos, setArchivadosAbiertos] = useState(true);
+  const [archivadosAbiertos, setArchivadosAbiertos] = useState(false);
 
   const cargar = () => {
     if (!userId) return;
