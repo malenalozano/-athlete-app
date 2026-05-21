@@ -2079,8 +2079,8 @@ function Datos() {
               <tbody>
                 {actRunning.slice(0, 6).map((a, i) => {
                   const km = ((a.distancia_m ?? 0) / 1000).toFixed(1);
-                  const ritmoSec = a.ritmo_medio ?? 0;
-                  const ritmofmt = ritmoSec ? `${Math.floor(ritmoSec/60)}:${String(Math.round(ritmoSec%60)).padStart(2,"0")}/km` : "—";
+                  const ritmo = a.ritmo_medio ?? 0;   // decimal min/km  e.g. 5.5 = 5:30/km
+                  const ritmofmt = ritmo ? `${Math.floor(ritmo)}:${String(Math.round((ritmo % 1) * 60)).padStart(2,"0")}/km` : "—";
                   const enZ2 = a.fc_media ? (a.fc_media >= 130 && a.fc_media <= 150) : null;
                   return (
                     <tr key={i} className="border-b border-[#30363D]/40 hover:bg-[#30363D]/20">

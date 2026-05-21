@@ -864,9 +864,9 @@ export function Home() {
                   <div className="space-y-2.5">
                     {actRecientes.slice(0, 5).map((act, i) => {
                       const km = ((act.distancia_m || 0) / 1000).toFixed(1);
-                      const ritmoSec = act.ritmo_medio;
-                      const ritmofmt = ritmoSec
-                        ? `${Math.floor(ritmoSec / 60)}:${String(Math.round(ritmoSec % 60)).padStart(2, "0")}/km`
+                      const ritmo = act.ritmo_medio;   // decimal min/km  e.g. 5.5 = 5:30/km
+                      const ritmofmt = ritmo
+                        ? `${Math.floor(ritmo)}:${String(Math.round((ritmo % 1) * 60)).padStart(2, "0")}/km`
                         : "—";
                       return (
                         <div key={i} className="flex items-center justify-between py-1.5 border-b border-[#30363D]/40 last:border-0">

@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -55,6 +56,56 @@ class RegenerarTotalRequest(BaseModel):
 
 
 @router.get("/{usuario_id}/semana/{fecha_inicio}")
+def _migrar_fartlek_legacy(conn, sesiones: list) -> list:
+    """Detecta sesiones Fartlek con nombres o km_planificados antiguos (código viejo)
+    y los corrige en la BD + en la lista devuelta, sin regenerar el plan completo.
+
+    Señales de sesión vieja:
+    - sesion contiene 'Mac' (e.g. 'Fartlek Mac1')
+    - km_planificados <= 3.0 (< mínimo posible con la fórmula correcta, que da ≥ 6 km con 6 reps)
+    """
+    km_warmup  = round(15 / 6.33, 1)          # ~2.4 km
+    km_per_rep = round(1 / 4.917 + 2 / 6.5, 2)  # ~0.51 km/rep
+    km_cool    = round(5 / 7.0, 1)             # ~0.7 km
+
+    for s in sesiones:
+        if s.get("tipo") != "Carrera":
+            continue
+        sesion_name = s.get("sesion", "") or ""
+        if "Fartlek" not in sesion_name:
+            continue
+        km_actual = s.get("km_planificados") or 0
+        is_legacy_name = "Mac" in sesion_name or "mac" in sesion_name
+        is_low_km = km_actual > 0 and km_actual < 5.0
+
+        if not (is_legacy_name or is_low_km):
+            continue  # sesión moderna, nada que hacer
+
+        # Extraer número de reps del texto de detalles: "11×(1'@4:55"
+        detalles = s.get("detalles", "") or ""
+        match = re.search(r"(\d+)[×x]\(", detalles)
+        reps = int(match.group(1)) if match else 6  # fallback 6 reps
+
+        km_real = round(km_warmup + reps * km_per_rep + km_cool, 1)
+        nuevos_detalles = (
+            f"15' calentamiento Z2 + {reps}×(1'@4:55min/km + 2' Z1) + 5' Z1. "
+            f"Total ~{km_real} km. Progresión: comenzar con 6 reps, +1 rep cada ciclo de 4 semanas."
+        )
+
+        # Actualizar BD
+        conn.execute(
+            "UPDATE plan_entrenamiento SET sesion='Fartlek', detalles=?, km_planificados=? WHERE id=?",
+            (nuevos_detalles, km_real, s["id"]),
+        )
+        # Actualizar objeto en memoria
+        s["sesion"] = "Fartlek"
+        s["detalles"] = nuevos_detalles
+        s["km_planificados"] = km_real
+
+    conn.commit()
+    return sesiones
+
+
 def get_plan_semana(usuario_id: int, fecha_inicio: str):
     """Devuelve el plan de la semana. Si no hay sesiones genera un plan básico."""
     conn = get_db()
@@ -77,6 +128,9 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
     cols = ["id", "fecha", "tipo", "sesion", "detalles", "duracion_min", "intensidad",
             "completado", "km_planificados", "km_realizados", "semana_inicio"]
     sesiones = [dict(zip(cols, r)) for r in rows]
+
+    # Auto-migrar sesiones Fartlek antiguas (nombre "Fartlek MacX" o km erróneo)
+    sesiones = _migrar_fartlek_legacy(conn, sesiones)
 
     # Estadísticas semana
     km_plan = sum(s["km_planificados"] or 0 for s in sesiones)
