@@ -933,7 +933,7 @@ function Ejercicios() {
   const [loading, setLoading]         = useState(false);
   const [modalGrupo, setModalGrupo]   = useState<GrupoFuerza | null>(null);
   const [editando, setEditando]       = useState<EjercicioBiblioteca | null>(null);
-  const [archivadosAbiertos, setArchivadosAbiertos] = useState(false);
+  const [archivadosAbiertos, setArchivadosAbiertos] = useState(true);
 
   const cargar = () => {
     if (!userId) return;
@@ -1034,12 +1034,15 @@ function Ejercicios() {
           <button onClick={() => setArchivadosAbiertos(!archivadosAbiertos)}
             className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-white/5 transition-all">
             {archivadosAbiertos
-              ? <ChevronDown className="h-4 w-4 text-[#8B949E]" />
-              : <ChevronRight className="h-4 w-4 text-[#8B949E]" />}
-            <Archive className="h-4 w-4 text-[#8B949E]" />
-            <span className="text-sm font-bold text-[#8B949E] uppercase tracking-wider">Archivados</span>
-            <span className="ml-1 text-xs px-2 py-0.5 rounded-full text-[#8B949E]"
-              style={{ background: "rgba(255,255,255,0.06)" }}>{todosArchivados.length}</span>
+              ? <ChevronDown className="h-4 w-4 text-[#F97316]" />
+              : <ChevronRight className="h-4 w-4 text-[#F97316]" />}
+            <Archive className="h-4 w-4 text-[#F97316]" />
+            <span className="text-sm font-bold text-[#F97316] uppercase tracking-wider">Archivados</span>
+            <span className="ml-1 text-xs px-2 py-0.5 rounded-full font-bold"
+              style={{ background: "rgba(249,115,22,0.15)", color: "#F97316", border: "1px solid rgba(249,115,22,0.3)" }}>
+              {todosArchivados.length}
+            </span>
+            <span className="text-xs text-[#8B949E] ml-1">— pulsa Restaurar para activar</span>
           </button>
           {archivadosAbiertos && (
             <div className="px-3 pb-3 space-y-1.5">

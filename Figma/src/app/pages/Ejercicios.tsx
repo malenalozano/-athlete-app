@@ -356,7 +356,7 @@ function SeccionArchivados({
   onDesarchivar: (id: number) => void;
   onEditar: (ej: EjercicioExtendido) => void;
 }) {
-  const [expandido, setExpandido] = useState(false);
+  const [expandido, setExpandido] = useState(true);
   if (archivados.length === 0) return null;
 
   return (
@@ -366,13 +366,14 @@ function SeccionArchivados({
         onClick={() => setExpandido(!expandido)}
         className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-white/5 transition-all"
       >
-        {expandido ? <ChevronDown className="h-4 w-4 text-[#8B949E]" /> : <ChevronRight className="h-4 w-4 text-[#8B949E]" />}
-        <Archive className="h-4 w-4 text-[#8B949E]" />
-        <span className="text-sm font-bold text-[#8B949E] uppercase tracking-wider">Archivados</span>
-        <span className="ml-1 text-xs px-2 py-0.5 rounded-full text-[#8B949E]"
-          style={{ background: "rgba(255,255,255,0.06)" }}>
+        {expandido ? <ChevronDown className="h-4 w-4 text-[#F97316]" /> : <ChevronRight className="h-4 w-4 text-[#F97316]" />}
+        <Archive className="h-4 w-4 text-[#F97316]" />
+        <span className="text-sm font-bold text-[#F97316] uppercase tracking-wider">Archivados</span>
+        <span className="ml-1 text-xs px-2 py-0.5 rounded-full font-bold"
+          style={{ background: "rgba(249,115,22,0.15)", color: "#F97316", border: "1px solid rgba(249,115,22,0.3)" }}>
           {archivados.length}
         </span>
+        <span className="text-xs text-[#8B949E] ml-1">— toca para restaurar</span>
       </button>
 
       {expandido && (
