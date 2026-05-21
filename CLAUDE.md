@@ -3,6 +3,18 @@
 > Este archivo es la fuente de verdad del proyecto. Léelo siempre antes de editar cualquier archivo.
 > User instructions always override this file.
 
+## ⚠️ GIT REMOTES — LEE ANTES DE HACER PUSH
+
+Este repo tiene TRES remotes. Usa SIEMPRE `athlete-app`:
+
+```
+git push athlete-app main   ✅ CORRECTO — github.com/malenalozano/-athlete-app
+git push origin main        ❌ MAL — va a athlete-performance-tracker (repo equivocado)
+git push backend-origin     ❌ Solo para el backend API por separado
+```
+
+**NUNCA hacer push a `origin`** — es un repo antiguo que ya no se usa.
+
 ---
 
 ## 1. Estructura del Proyecto (ÚNICA fuente de verdad)
