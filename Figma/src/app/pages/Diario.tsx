@@ -1,4 +1,4 @@
-import { useLocation } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { Header } from "../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -735,8 +735,9 @@ function getGrupoColor(grupo: string): string {
 
 function Ejercicios() {
   const { userId } = useUser();
+  const navigate = useNavigate();
   const [ejerciciosData, setEjerciciosData] = useState<EjercicioBiblioteca[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -766,7 +767,8 @@ function Ejercicios() {
             <p className="text-[#8B949E] text-sm">{ejerciciosData.length} ejercicios registrados</p>
           </div>
           <button
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-[#0E1117] transition-all"
+            onClick={() => navigate("/ejercicios")}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-[#0E1117] transition-all hover:opacity-90"
             style={{
               background: "linear-gradient(135deg, #A855F7, #7C3AED)",
               boxShadow: "0 0 20px rgba(168,85,247,0.4)",
