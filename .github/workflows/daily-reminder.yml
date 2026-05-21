@@ -85,7 +85,7 @@ jobs:
                 lineas.append(f"   {det}")
             n = len(rows)
             mensaje = "\n".join(lineas)
-            title   = f"Plan de hoy — {n} sesion" if n == 1 else f"Plan de hoy — {n} sesiones"
+            title   = f"Plan de hoy - {n} sesion" if n == 1 else f"Plan de hoy - {n} sesiones"
             tags    = "calendar,runner"
 
           print(f"Enviando a ntfy: {title}")
