@@ -1,7 +1,0 @@
-# El backend se despliega automáticamente en Render desde GitHub push.
-# Render está conectado al repo athlete-app y auto-despliega en cada push a main.
-# Este workflow es solo documentación — no hace nada.
-# Ver: render.yaml en la raíz del proyecto.
-#
-# Si necesitas forzar un redeploy manual:
-# Render Dashboard → athlete-api → Manual Deploy → Deploy latest commit
