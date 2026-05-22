@@ -988,7 +988,10 @@ function BibliotecaLoggerInline({
                   )}
                   {hint && <span className="text-[10px] text-[#8B949E] shrink-0">{hint}</span>}
                   <button
-                    onClick={() => setRows((prev) => prev.filter((_, idx) => idx !== i))}
+                    onClick={() => {
+                      setEjercicios((prev) => prev.filter((_, idx) => idx !== i));
+                      setRows((prev) => prev.filter((_, idx) => idx !== i));
+                    }}
                     className="ml-1 p-1 rounded-lg opacity-40 hover:opacity-100 transition-opacity"
                     title="Quitar este ejercicio de la sesión de hoy"
                     style={{ color: "#ef4444" }}
