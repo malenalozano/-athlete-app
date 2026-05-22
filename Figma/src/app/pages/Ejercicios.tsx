@@ -238,25 +238,25 @@ function EjercicioCard({
         border: ejercicio.subir_peso ? "1px solid rgba(34,197,94,0.4)" : "1px solid rgba(255,255,255,0.07)",
         boxShadow: isDragging ? "0 12px 32px rgba(0,0,0,0.6)" : ejercicio.subir_peso ? "0 0 10px rgba(34,197,94,0.1)" : "none",
       }}
-      className="rounded-xl overflow-hidden"
+      className="rounded-xl overflow-hidden flex"
     >
-      {/* ═══ DRAG HANDLE — solo icono de grip ═══ */}
+      {/* ═══ DRAG HANDLE — lateral izquierdo ═══ */}
       <div
         {...attributes}
         {...listeners}
-        className="flex items-center justify-center py-1.5 cursor-grab active:cursor-grabbing select-none"
+        className="flex items-center justify-center px-2 cursor-grab active:cursor-grabbing select-none shrink-0"
         style={{
-          background: `${color}12`,
-          borderBottom: `1px solid ${color}20`,
+          background: `${color}10`,
+          borderRight: `1px solid ${color}20`,
           touchAction: "none",
         }}
       >
         {/* 6 puntos en 2 columnas (icono grip clásico) */}
-        <div className="flex gap-[5px]">
+        <div className="flex gap-[4px]">
           {[0, 1].map((col) => (
             <div key={col} className="flex flex-col gap-[3px]">
               {[0, 1, 2].map((row) => (
-                <div key={row} className="w-[3px] h-[3px] rounded-full" style={{ background: color, opacity: 0.5 }} />
+                <div key={row} className="w-[3px] h-[3px] rounded-full" style={{ background: color, opacity: 0.45 }} />
               ))}
             </div>
           ))}
@@ -264,7 +264,7 @@ function EjercicioCard({
       </div>
 
       {/* Contenido */}
-      <div className="p-3.5">
+      <div className="p-3.5 flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onVerHistorial(ejercicio)}>
             <div className="flex items-center gap-1.5 flex-wrap">
