@@ -2,8 +2,6 @@
 import React, { useState, useEffect } from "react";
 import { Header } from "../components/Header";
 import { MacrocicloCard } from "../components/MacrocicloCard";
-import { Card, CardContent } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
 import { useUser } from "../context/UserContext";
 import { getDashboard, type DashboardData } from "../api";
 import {
@@ -452,9 +450,7 @@ function buildSevenDayMetrics(data?: DashboardData | null) {
   return [
     { label: "KM TOTALES", value: km !== null ? km.toFixed(1) : "—", unit: "km", color: "#00D4FF", bg: "rgba(0,212,255,0.08)", border: "rgba(0,212,255,0.2)", icon: Footprints, delta: "—", up: null },
     { label: "SESIONES FUERZA", value: fuerza !== null ? String(fuerza) : "—", unit: "sesiones", color: "#A855F7", bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.2)", icon: Dumbbell, delta: "—", up: null },
-    { label: "SLEEP SCORE", value: sleepAvg !== null ? String(sleepAvg) : "—", unit: "/100", color: "#6366F1", bg: "rgba(99,102,241,0.08)", border: "rgba(99,102,241,0.2)", icon: Moon, delta: "—", up: null },
     { label: "SCORE ESTRÉS", value: estres !== null ? String(Math.round(estres)) : "—", unit: "/100", color: "#22C55E", bg: "rgba(34,197,94,0.08)", border: "rgba(34,197,94,0.2)", icon: Wind, delta: "—", up: null },
-    { label: "CADENCIA MEDIA", value: cadenciaVal !== null ? String(cadenciaVal) : "—", unit: "spm", color: "#C9FF00", bg: "rgba(201,255,0,0.08)", border: "rgba(201,255,0,0.2)", icon: Activity, delta: "—", up: null },
     { label: "HRV", value: hrv !== null ? Math.round(hrv).toString() : "—", unit: "ms", color: "#F43F5E", bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.2)", icon: Brain, delta: "—", up: null },
     { label: "FC REPOSO", value: fcReposo !== null ? String(fcReposo) : "—", unit: "bpm", color: "#F97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.2)", icon: Heart, delta: "—", up: null },
   ];
@@ -537,9 +533,6 @@ export function Home() {
     const status: CheckpointStatus = (bestSec !== null && bestSec < targetSec) ? "completed" : "pending";
     return { ...cp, bestMark: bestSec ? fmtTime(bestSec) : null, status, bestSec, targetSec };
   });
-  const completedCheckpoints = checkpoints.filter((c) => c.status === "completed").length;
-  const progressPercentage = (completedCheckpoints / checkpoints.length) * 100;
-
   // Countdown to race date from perfil
   const raceDate = new Date(fechaObj);
   const today = new Date();
@@ -554,69 +547,47 @@ export function Home() {
 
         {/* ── Hero ──────────────────────────────────────────────────────────── */}
         <section
-          className="relative rounded-2xl p-8 overflow-hidden"
+          className="relative rounded-2xl px-5 py-4 overflow-hidden"
           style={{
-            background: "linear-gradient(135deg, rgba(201,255,0,0.06) 0%, rgba(0,212,255,0.05) 40%, rgba(168,85,247,0.07) 100%)",
-            border: "1px solid rgba(201,255,0,0.15)",
+            background: "linear-gradient(135deg, rgba(201,255,0,0.05) 0%, rgba(0,212,255,0.04) 100%)",
+            border: "1px solid rgba(201,255,0,0.12)",
           }}
         >
-          <div className="absolute -top-16 -right-16 w-64 h-64 rounded-full opacity-10 blur-3xl pointer-events-none" style={{ background: "radial-gradient(circle, #C9FF00, transparent)" }} />
-          <div className="absolute -bottom-16 -left-16 w-48 h-48 rounded-full opacity-8 blur-3xl pointer-events-none" style={{ background: "radial-gradient(circle, #00D4FF, transparent)" }} />
-
-          <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
-              <h1 className="text-4xl font-bold text-white mb-1">
+              <h1 className="text-2xl font-bold text-white leading-tight">
                 {getGreeting()},{" "}
                 <span style={{ background: "linear-gradient(90deg, #C9FF00, #00D4FF)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                   {userName}
                 </span>{" "}
                 👋
               </h1>
-              <p className="text-[#8B949E] text-sm mb-4">{getCurrentDate()}</p>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/30">
-                  ⚡ {fase}
-                </Badge>
-                {semanaNum !== null && (
-                  <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">
-                    🗓 Semana {semanaNum} de entrenamiento
-                  </Badge>
-                )}
-              </div>
+              <p className="text-[#8B949E] text-xs mt-0.5">{getCurrentDate()}</p>
+              {semanaNum !== null && (
+                <p className="text-xs text-blue-300 mt-1">🗓 Semana {semanaNum} de entrenamiento</p>
+              )}
             </div>
 
-            {/* Objetivo Principal — Maratón de Sevilla */}
+            {/* Objetivo compacto */}
             <div
-              className="flex flex-col items-center justify-center rounded-2xl px-8 py-5 shrink-0 relative overflow-hidden"
+              className="flex items-center gap-3 rounded-xl px-4 py-2.5 shrink-0"
               style={{
-                background: "linear-gradient(135deg, rgba(201,255,0,0.12), rgba(0,212,255,0.08))",
-                border: "1px solid rgba(201,255,0,0.35)",
-                boxShadow: "0 0 30px rgba(201,255,0,0.1)",
+                background: "rgba(201,255,0,0.08)",
+                border: "1px solid rgba(201,255,0,0.25)",
               }}
             >
-              <div className="flex items-center gap-2 mb-1">
-                <MapPin className="h-3.5 w-3.5 text-[#C9FF00]" />
-                <p className="text-[10px] text-[#8B949E] uppercase tracking-wider font-bold">Objetivo Principal</p>
-              </div>
-              <p className="text-base font-bold text-white mb-2">🏆 {objetivo}</p>
-              <div className="flex items-center gap-4">
-                <div className="text-center">
-                  <p
-                    className="text-3xl font-black"
-                    style={{ background: "linear-gradient(90deg, #C9FF00, #00D4FF)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
-                  >
-                    {daysLeft}
-                  </p>
-                  <p className="text-[10px] text-[#8B949E]">días</p>
-                </div>
-                <div className="w-px h-8" style={{ background: "rgba(255,255,255,0.1)" }} />
-                <div className="text-center">
-                  <p className="text-3xl font-black text-white">{weeksLeft}</p>
-                  <p className="text-[10px] text-[#8B949E]">semanas</p>
+              <MapPin className="h-3.5 w-3.5 text-[#C9FF00] shrink-0" />
+              <div className="text-left">
+                <p className="text-[10px] text-[#8B949E] uppercase tracking-wider font-bold">🏆 {objetivo}</p>
+                <div className="flex items-center gap-3 mt-0.5">
+                  <span className="text-base font-black" style={{ background: "linear-gradient(90deg, #C9FF00, #00D4FF)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                    {daysLeft} días
+                  </span>
+                  <span className="text-[10px] text-[#8B949E]">·</span>
+                  <span className="text-sm font-bold text-white">{weeksLeft} sem</span>
+                  {fechaObjFmt && <span className="text-[10px] text-[#8B949E] hidden sm:inline">{fechaObjFmt}</span>}
                 </div>
               </div>
-              {fechaObjFmt && <p className="text-[10px] text-[#8B949E] mt-2">{fechaObjFmt}</p>}
             </div>
           </div>
         </section>
@@ -642,7 +613,7 @@ export function Home() {
             title="Métricas — Últimos 7 Días"
             color="#00D4FF"
           />
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {sevenDayMetrics.map((m) => {
               const Icon = m.icon;
               return (
@@ -690,33 +661,6 @@ export function Home() {
         {/* ── Checkpoints de Rendimiento ────────────────────────────────────── */}
         <section>
           <SectionTitle icon={<Target className="h-4 w-4 text-[#C9FF00]" />} title="Checkpoints de Rendimiento" color="#C9FF00" />
-
-          {/* Progress bar */}
-          <div
-            className="rounded-2xl p-5 mb-5"
-            style={{
-              background: "linear-gradient(135deg, rgba(201,255,0,0.06), rgba(0,212,255,0.04))",
-              border: "1px solid rgba(201,255,0,0.2)",
-            }}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-white">
-                <span className="font-bold text-[#C9FF00]">{completedCheckpoints}</span> de{" "}
-                <span className="font-bold">{checkpoints.length}</span> checkpoints completados
-              </p>
-              <span className="text-sm font-bold text-[#C9FF00]">{progressPercentage.toFixed(0)}%</span>
-            </div>
-            <div className="h-3 rounded-full overflow-hidden" style={{ background: "rgba(48,54,61,0.8)" }}>
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${progressPercentage}%`,
-                  background: "linear-gradient(90deg, #C9FF00, #00D4FF)",
-                  boxShadow: "0 0 10px rgba(201,255,0,0.5)",
-                }}
-              />
-            </div>
-          </div>
 
           {/* Checkpoint Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
