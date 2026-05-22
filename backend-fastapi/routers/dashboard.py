@@ -213,6 +213,64 @@ def dashboard(usuario_id: int):
         for i, r in enumerate(cadencia_rows)
     ]
 
+    # ── Sesión de hoy (plan_entrenamiento) ──────────────────────────────────
+    plan_hoy_row = conn.execute(
+        """SELECT tipo, sesion, detalles, km_planificados
+           FROM plan_entrenamiento
+           WHERE usuario_id = ? AND fecha = ?
+           ORDER BY id LIMIT 1""",
+        (usuario_id, hoy.isoformat()),
+    ).fetchone()
+
+    sesion_hoy = None
+    if plan_hoy_row:
+        tipo_hoy, sesion_nombre, detalles_hoy, km_hoy = plan_hoy_row
+        sesion_hoy = {
+            "tipo": tipo_hoy,
+            "sesion": sesion_nombre,
+            "detalles": detalles_hoy,
+            "km_planificados": km_hoy,
+            "ejercicios_subir_peso": [],
+        }
+
+        # Si es fuerza, buscar ejercicios con subir_peso=1 del grupo correspondiente
+        if tipo_hoy and "fuerza" in tipo_hoy.lower():
+            grupo_hoy = None
+            if sesion_nombre:
+                sn = sesion_nombre.lower()
+                if "push" in sn:
+                    grupo_hoy = "Push"
+                elif "pull" in sn:
+                    grupo_hoy = "Pull"
+                elif "pierna" in sn:
+                    grupo_hoy = "Pierna"
+
+            filtro_grupo = "AND LOWER(ec.grupo_muscular) = LOWER(?)" if grupo_hoy else ""
+            params_subir = (usuario_id, usuario_id, grupo_hoy) if grupo_hoy else (usuario_id, usuario_id)
+            ejs_rows = conn.execute(
+                f"""SELECT ec.nombre, ec.grupo_muscular, h_last.peso
+                    FROM ejercicios_catalogo ec
+                    LEFT JOIN (
+                        SELECT h1.ejercicio_id, h1.peso
+                        FROM historial_ejercicio h1
+                        WHERE h1.usuario_id = ?
+                          AND h1.id = (
+                              SELECT id FROM historial_ejercicio
+                              WHERE ejercicio_id = h1.ejercicio_id AND usuario_id = h1.usuario_id
+                              ORDER BY fecha DESC, id DESC LIMIT 1
+                          )
+                    ) h_last ON h_last.ejercicio_id = ec.id
+                    WHERE ec.usuario_id = ? AND ec.subir_peso = 1
+                      AND (ec.archivado IS NULL OR ec.archivado = 0)
+                      {filtro_grupo}
+                    ORDER BY ec.orden, ec.nombre""",
+                params_subir,
+            ).fetchall()
+            sesion_hoy["ejercicios_subir_peso"] = [
+                {"nombre": r[0], "grupo": r[1], "peso_anterior": r[2]}
+                for r in ejs_rows
+            ]
+
     conn.close()
 
     return {
@@ -232,6 +290,7 @@ def dashboard(usuario_id: int):
         "ritmo_trend": ritmo_trend,
         "fuerza_reciente": fuerza_reciente,
         "cadencia_trend": cadencia_trend,
+        "sesion_hoy": sesion_hoy,
     }
 
 

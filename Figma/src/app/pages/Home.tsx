@@ -16,7 +16,6 @@ import {
   Footprints,
   Zap,
   Brain,
-  BatteryMedium,
   Wind,
   MapPin,
   CheckCircle2,
@@ -301,73 +300,137 @@ function ReadinessCard({ hrv: hrvProp }: { hrv?: number | null } = {}) {
   );
 }
 
-// Stress & Battery Card
-function StressBatteryCard({ stress: stressProp, battery: batteryProp, fcReposo: fcRepProp }: { stress?: number | null; battery?: number | null; fcReposo?: number | null } = {}) {
-  const stress = stressProp ?? null;
-  const battery = batteryProp ?? null;
-  const fcReposo = fcRepProp ?? null;
-  if (stress === null && battery === null && fcReposo === null) {
+// ── Sesión de Hoy Card ────────────────────────────────────────────────────────
+
+function SesionHoyCard({ sesion }: { sesion?: DashboardData["sesion_hoy"] }) {
+  if (!sesion) {
     return (
-      <div className="rounded-2xl p-5 flex flex-col gap-4 items-center justify-center text-center" style={{ background: "rgba(22,27,34,0.9)", border: "1px solid rgba(249,115,22,0.2)", minHeight: 160 }}>
-        <Zap className="h-8 w-8 text-[#30363D]" />
-        <p className="text-xs text-[#8B949E]">Estrés & Energía</p>
-        <p className="text-[#30363D] text-xs">Sin datos · Sincroniza Garmin</p>
+      <div
+        className="rounded-2xl p-5 flex flex-col gap-3 items-center justify-center text-center"
+        style={{ background: "rgba(22,27,34,0.9)", border: "1px solid rgba(255,255,255,0.07)", minHeight: 160 }}
+      >
+        <span className="text-3xl">🌙</span>
+        <p className="text-sm font-bold text-white">Día de descanso</p>
+        <p className="text-xs text-[#8B949E]">Sin sesión planificada hoy · recupera bien</p>
       </div>
     );
   }
+
+  const tipo = sesion.tipo?.toLowerCase() ?? "";
+  const esFuerza = tipo.includes("fuerza") || tipo.includes("gym") || tipo.includes("strength");
+  const esCarrera = tipo.includes("carrera") || tipo.includes("running") || tipo.includes("trail") ||
+                    tipo.includes("fartlek") || tipo.includes("tempo") || tipo.includes("intervalo") ||
+                    tipo.includes("rodaje") || tipo.includes("tl") || tipo.includes("rb") || tipo.includes("rg");
+
+  const color  = esFuerza ? "#A855F7" : esCarrera ? "#00D4FF" : "#C9FF00";
+  const border = esFuerza ? "rgba(168,85,247,0.3)" : esCarrera ? "rgba(0,212,255,0.3)" : "rgba(201,255,0,0.2)";
+  const bg     = esFuerza ? "rgba(168,85,247,0.06)" : esCarrera ? "rgba(0,212,255,0.06)" : "rgba(201,255,0,0.05)";
+  const bgChip = esFuerza ? "rgba(168,85,247,0.12)" : esCarrera ? "rgba(0,212,255,0.12)" : "rgba(201,255,0,0.08)";
+
   return (
     <div
       className="rounded-2xl p-5 flex flex-col gap-4"
-      style={{ background: "rgba(22,27,34,0.9)", border: "1px solid rgba(249,115,22,0.2)" }}
+      style={{ background: "rgba(22,27,34,0.9)", border: `1px solid ${border}` }}
     >
-      <div className="flex items-center gap-2">
-        <Zap className="h-4 w-4 text-orange-400" />
-        <span className="text-xs font-bold text-[#8B949E] uppercase tracking-widest">Estrés & Energía</span>
-      </div>
-
-      {/* Stress */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center gap-1.5">
-            <Wind className="h-3.5 w-3.5 text-green-400" />
-            <span className="text-xs text-[#8B949E]">Score de Estrés</span>
-          </div>
-          <span className="text-sm font-bold text-green-400">{stress !== null ? `${Math.round(stress)}/100` : "—"}</span>
-        </div>
-        <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "rgba(48,54,61,0.7)" }}>
-          <div
-            className="h-full rounded-full"
-            style={{ width: `${stress ?? 0}%`, background: "linear-gradient(90deg, #22C55E, #86EFAC)" }}
-          />
-        </div>
-        <p className="text-[10px] text-green-400 mt-1">{stress !== null && stress < 30 ? "Muy bajo · Óptimo" : stress !== null ? `${Math.round(stress)}/100` : "Sin datos"}</p>
-      </div>
-
-      {/* Body Battery */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center gap-1.5">
-            <BatteryMedium className="h-3.5 w-3.5 text-cyan-400" />
-            <span className="text-xs text-[#8B949E]">Body Battery</span>
-          </div>
-          <span className="text-sm font-bold text-cyan-400">{battery !== null ? `${battery}/100` : "—"}</span>
-        </div>
-        <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "rgba(48,54,61,0.7)" }}>
-          <div
-            className="h-full rounded-full"
-            style={{ width: `${battery ?? 0}%`, background: "linear-gradient(90deg, #00D4FF, #0EA5E9)" }}
-          />
-        </div>
-        <p className="text-[10px] text-cyan-400 mt-1">{battery !== null && battery >= 75 ? "Cargada · Buena recuperación" : battery !== null ? `${battery}/100` : "Sin datos"}</p>
-      </div>
-
-      {/* FC Reposo */}
-      <div className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{ background: "rgba(244,63,94,0.08)", border: "1px solid rgba(244,63,94,0.2)" }}>
+      {/* Cabecera */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Heart className="h-3.5 w-3.5 text-pink-400" />
-          <span className="text-xs text-[#8B949E]">FC Reposo</span>
+          {esFuerza ? (
+            <Dumbbell className="h-4 w-4" style={{ color }} />
+          ) : esCarrera ? (
+            <Footprints className="h-4 w-4" style={{ color }} />
+          ) : (
+            <Zap className="h-4 w-4" style={{ color }} />
+          )}
+          <span className="text-xs font-bold text-[#8B949E] uppercase tracking-widest">Sesión de Hoy</span>
         </div>
-        <span className="text-sm font-bold text-pink-400">{fcReposo !== null ? `${fcReposo} bpm` : "—"}</span>
+        {/* Icono grande */}
+        <span className="text-2xl select-none">
+          {esFuerza ? "🏋️" : esCarrera ? "🏃" : "⚡"}
+        </span>
+      </div>
+
+      {/* Nombre de la sesión */}
+      <div>
+        <p className="text-base font-black" style={{ color }}>{sesion.sesion ?? sesion.tipo}</p>
+        {sesion.km_planificados != null && sesion.km_planificados > 0 && (
+          <p className="text-xs mt-0.5" style={{ color: "#8B949E" }}>
+            📍 {sesion.km_planificados} km planificados
+          </p>
+        )}
+      </div>
+
+      {/* Detalles de la sesión */}
+      {sesion.detalles && (
+        <div
+          className="rounded-xl px-3 py-2.5 text-xs leading-relaxed"
+          style={{ background: bgChip, border: `1px solid ${border}`, color: "#D1D5DB" }}
+        >
+          {sesion.detalles}
+        </div>
+      )}
+
+      {/* Fuerza: ejercicios que deben subir de peso */}
+      {esFuerza && sesion.ejercicios_subir_peso.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-2">
+            <ArrowUp className="h-3.5 w-3.5 text-green-400" />
+            <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider">
+              Subir peso hoy ({sesion.ejercicios_subir_peso.length})
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {sesion.ejercicios_subir_peso.map((ej) => (
+              <div
+                key={ej.nombre}
+                className="flex items-center justify-between px-3 py-2 rounded-lg"
+                style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)" }}
+              >
+                <span className="text-xs font-semibold text-white truncate pr-2">{ej.nombre}</span>
+                <div className="flex items-center gap-1 shrink-0">
+                  {ej.peso_anterior != null ? (
+                    <>
+                      <span className="text-xs text-[#8B949E]">{ej.peso_anterior} kg</span>
+                      <ArrowUp className="h-3 w-3 text-green-400" />
+                    </>
+                  ) : (
+                    <span className="text-xs text-green-400">↑ subir</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Fuerza: sin ejercicios para subir peso */}
+      {esFuerza && sesion.ejercicios_subir_peso.length === 0 && (
+        <div
+          className="rounded-xl px-3 py-2 text-xs text-center"
+          style={{ background: bgChip, border: `1px solid ${border}` }}
+        >
+          <span style={{ color }}>✓ Mantén los pesos de la última sesión</span>
+        </div>
+      )}
+
+      {/* Carrera: tag de tipo */}
+      {esCarrera && !sesion.detalles && (
+        <div
+          className="rounded-xl px-3 py-2 text-xs text-center font-semibold"
+          style={{ background: bgChip, border: `1px solid ${border}`, color }}
+        >
+          Revisa el Plan Semanal para ver los detalles
+        </div>
+      )}
+
+      {/* Badge tipo */}
+      <div className="flex justify-end">
+        <span
+          className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"
+          style={{ background: bg, color, border: `1px solid ${border}` }}
+        >
+          {esFuerza ? "Fuerza" : esCarrera ? "Carrera" : sesion.tipo}
+        </span>
       </div>
     </div>
   );
@@ -568,7 +631,7 @@ export function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <SleepAnalysis score={latestSleep?.score} hours={latestSleep?.horas_totales} />
             <ReadinessCard hrv={latestHrv?.hrv_ms} />
-            <StressBatteryCard stress={(todayHrv ?? latestHrv)?.estres_medio} battery={(todayHrv ?? latestHrv)?.body_battery} fcReposo={(todayHrv ?? latestHrv)?.fc_reposo} />
+            <SesionHoyCard sesion={dashData?.sesion_hoy} />
           </div>
         </section>
 

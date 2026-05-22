@@ -280,6 +280,13 @@ export interface DashboardData {
     proxima_fecha: string;
     energia: string;
   } | null;
+  sesion_hoy: {
+    tipo: string;
+    sesion: string;
+    detalles: string | null;
+    km_planificados: number | null;
+    ejercicios_subir_peso: { nombre: string; grupo: string; peso_anterior: number | null }[];
+  } | null;
 }
 
 export interface PlanSemana {
