@@ -767,7 +767,7 @@ export function Home() {
 
         {/* ── Progresión de Fuerza ──────────────────────────────────────────── */}
         <section>
-          <SectionTitle icon={<Dumbbell className="h-4 w-4 text-purple-400" />} title="Progresión de Fuerza — Últimas Sesiones" color="#A855F7" />
+          <SectionTitle icon={<Dumbbell className="h-4 w-4 text-purple-400" />} title="Progresión de Fuerza — Subidas de Peso" color="#A855F7" />
           <div
             className="rounded-2xl p-6"
             style={{
@@ -775,38 +775,79 @@ export function Home() {
               border: "1px solid rgba(168,85,247,0.25)"
             }}
           >
+            {/* Leyenda */}
+            <div className="flex items-center gap-4 mb-4 text-xs text-[#8B949E]">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-green-400" />
+                <span>Subiste peso recientemente</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                <span>Subir en la próxima sesión</span>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
               {fuerzaData.length === 0 ? (
                 <div className="col-span-3 text-center py-8 text-[#8B949E] text-sm">
-                  Sin datos de fuerza registrados aún. Registra una sesión en el Diario.
+                  Sin progresiones aún. Cuando completes series y subas peso aparecerán aquí.
                 </div>
-              ) : fuerzaData.map((exercise, idx) => (
-                <div
-                  key={idx}
-                  className="rounded-xl p-4 relative overflow-hidden group hover:scale-[1.02] transition-all cursor-default"
-                  style={{
-                    background: "rgba(22,27,34,0.9)",
-                    border: "1px solid rgba(168,85,247,0.2)",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.2)"
-                  }}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h4 className="text-sm font-bold text-white mb-0.5">{exercise.ejercicio}</h4>
-                      <p className="text-xs text-[#8B949E]">{exercise.series}x{exercise.repeticiones}</p>
+              ) : fuerzaData.map((exercise, idx) => {
+                const subioAhora = !exercise.debe_subir && exercise.peso_anterior != null && (exercise.peso_actual ?? 0) > exercise.peso_anterior;
+                const debeSubir  = exercise.debe_subir;
+                const borderColor = subioAhora ? "rgba(34,197,94,0.35)" : "rgba(234,179,8,0.35)";
+                const bgColor     = subioAhora ? "rgba(34,197,94,0.07)" : "rgba(234,179,8,0.07)";
+                const accentColor = subioAhora ? "#22C55E" : "#EAB308";
+                const tagText     = subioAhora ? "↑ Subiste peso" : "↑ Subir próxima sesión";
+
+                return (
+                  <div
+                    key={idx}
+                    className="rounded-xl p-4 flex flex-col gap-3 hover:scale-[1.02] transition-all cursor-default"
+                    style={{ background: bgColor, border: `1px solid ${borderColor}` }}
+                  >
+                    {/* Nombre + tag */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-bold text-white truncate">{exercise.ejercicio}</h4>
+                        {exercise.grupo && (
+                          <p className="text-[10px] text-[#8B949E] mt-0.5 uppercase tracking-wide">{exercise.grupo}</p>
+                        )}
+                      </div>
+                      <span
+                        className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full shrink-0"
+                        style={{ background: `${accentColor}20`, color: accentColor, border: `1px solid ${accentColor}40` }}
+                      >
+                        {tagText}
+                      </span>
                     </div>
-                  </div>
-                  <div className="flex items-end justify-between">
-                    <div>
-                      <p className="text-xs text-[#8B949E] mb-1">Carga</p>
-                      <p className="text-2xl font-black text-purple-300">
-                        {exercise.peso ?? "—"}
-                        {exercise.peso != null && <span className="text-sm text-[#8B949E]"> kg</span>}
+
+                    {/* Peso actual y anterior */}
+                    <div className="flex items-end gap-3">
+                      <div>
+                        <p className="text-[10px] text-[#8B949E] mb-0.5">{subioAhora ? "Nuevo peso" : "Último peso"}</p>
+                        <p className="text-2xl font-black leading-none" style={{ color: accentColor }}>
+                          {exercise.peso_actual ?? "—"}
+                          {exercise.peso_actual != null && <span className="text-sm text-[#8B949E]"> kg</span>}
+                        </p>
+                      </div>
+                      {exercise.peso_anterior != null && (
+                        <div className="pb-0.5">
+                          <p className="text-[10px] text-[#8B949E] mb-0.5">Antes</p>
+                          <p className="text-base font-bold text-[#8B949E] leading-none">{exercise.peso_anterior} kg</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Series × reps */}
+                    {(exercise.series || exercise.repeticiones) && (
+                      <p className="text-xs text-[#8B949E]">
+                        {exercise.series}×{exercise.repeticiones} reps
                       </p>
-                    </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <button
@@ -831,29 +872,39 @@ export function Home() {
             {/* Ritmo medio semanal */}
             <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.2)" }}>
               <div className="px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-                <h3 className="text-sm font-bold text-white">Ritmo Medio — Evolución</h3>
-                <p className="text-xs text-[#8B949E] mt-0.5">Min/km media semanal en running</p>
+                <h3 className="text-sm font-bold text-white">Ritmo Medio Z2 — Evolución</h3>
+                <p className="text-xs text-[#8B949E] mt-0.5">Media semanal · solo carreras con FC &lt; 150 ppm</p>
               </div>
               <div className="p-4 flex-1 flex flex-col">
                 <div className="flex-1">
                   {ritmoTrend.length === 0 ? (
-                    <div className="h-[220px] flex items-center justify-center text-[#8B949E] text-sm">Sin datos — sincroniza Garmin</div>
+                    <div className="h-[220px] flex items-center justify-center text-[#8B949E] text-sm">Sin datos Z2 — sincroniza Garmin</div>
                   ) : (
                     <ResponsiveContainer width="100%" height={220}>
-                      <LineChart data={ritmoTrend} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+                      <LineChart data={ritmoTrend} margin={{ top: 5, right: 5, left: 10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                         <XAxis dataKey="semana" stroke="#8B949E" fontSize={11} />
-                        <YAxis stroke="#8B949E" fontSize={11} tickFormatter={(v) => `${Math.floor(v)}:${String(Math.round((v % 1) * 60)).padStart(2,"0")}`} />
+                        <YAxis
+                          stroke="#8B949E"
+                          fontSize={11}
+                          reversed
+                          tickFormatter={(v: number) => {
+                            const mins = Math.floor(v);
+                            const secs = Math.round((v % 1) * 60);
+                            return `${mins}:${String(secs).padStart(2, "0")}`;
+                          }}
+                          label={{ value: "min/km", angle: -90, position: "insideLeft", offset: -5, style: { fill: "#8B949E", fontSize: 10 } }}
+                        />
                         <Tooltip
                           contentStyle={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 8, fontSize: 12 }}
                           labelStyle={{ color: "#fff" }}
                           formatter={(value: number) => {
                             const mins = Math.floor(value);
                             const secs = Math.round((value % 1) * 60);
-                            return [`${mins}:${String(secs).padStart(2, "0")}/km`, "Ritmo"];
+                            return [`${mins}:${String(secs).padStart(2, "0")}/km`, "Ritmo Z2"];
                           }}
                         />
-                        <Line type="monotone" dataKey="ritmo" name="Ritmo" stroke="#00D4FF" strokeWidth={3}
+                        <Line type="monotone" dataKey="ritmo" name="Ritmo Z2" stroke="#00D4FF" strokeWidth={3}
                           dot={{ fill: "#00D4FF", r: 4, strokeWidth: 2, stroke: "#0E1117" }} activeDot={{ r: 6 }} />
                       </LineChart>
                     </ResponsiveContainer>
@@ -861,7 +912,7 @@ export function Home() {
                 </div>
                 <div className="mt-3 pt-3 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-[#8B949E]">Semanas con datos</span>
+                    <span className="text-[#8B949E]">Semanas con datos Z2</span>
                     <span className="font-bold text-cyan-400">{ritmoTrend.length}</span>
                   </div>
                 </div>

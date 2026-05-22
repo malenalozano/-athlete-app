@@ -270,7 +270,15 @@ export interface DashboardData {
   sleep_data: SleepEntry[];
   running_trend: { semana: string; km: number }[];
   ritmo_trend: { semana: string; ritmo: number }[];
-  fuerza_reciente: { ejercicio: string; peso: number; series: number; repeticiones: number }[];
+  fuerza_reciente: {
+    ejercicio: string;
+    grupo: string | null;
+    peso_actual: number | null;
+    peso_anterior: number | null;
+    debe_subir: boolean;
+    series: number | null;
+    repeticiones: number | null;
+  }[];
   cadencia_trend: { semana: string; cadencia: number }[];
   ciclo: {
     fase: string;

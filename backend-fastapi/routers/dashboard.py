@@ -125,18 +125,63 @@ def dashboard(usuario_id: int):
     ).fetchall()
     running_trend = [{"semana": f"S{i+1}", "km": round(r[1] or 0, 1)} for i, r in enumerate(running_trend)]
 
-    # Última sesión fuerza (ejercicios)
-    last_fuerza = conn.execute(
-        """SELECT ef.ejercicio, ef.peso, ef.series, ef.repeticiones
-           FROM ejercicios_fuerza ef
-           JOIN sesiones_fuerza sf ON sf.id = ef.sesion_id
-           WHERE sf.usuario_id = ?
-           ORDER BY sf.fecha DESC, sf.id DESC LIMIT 6""",
-        (usuario_id,),
+    # Progresión de fuerza: ejercicios que subieron peso recientemente o que deben subir.
+    # Fuente: historial_ejercicio + ejercicios_catalogo (sistema moderno con subir_peso).
+    # Muestra solo los que:
+    #   a) subir_peso = 1  → completaron la sesión anterior y deben subir carga
+    #   b) último peso > penúltimo peso → acaban de subir en la sesión más reciente
+    progresion_rows = conn.execute(
+        """SELECT
+               ec.nombre,
+               ec.grupo_muscular,
+               h_last.peso         AS peso_actual,
+               h_prev.peso         AS peso_anterior,
+               COALESCE(ec.subir_peso, 0) AS debe_subir,
+               h_last.series,
+               h_last.repeticiones
+           FROM ejercicios_catalogo ec
+           LEFT JOIN (
+               SELECT h1.ejercicio_id, h1.peso, h1.series, h1.repeticiones
+               FROM historial_ejercicio h1
+               WHERE h1.usuario_id = ?
+                 AND h1.id = (
+                     SELECT id FROM historial_ejercicio
+                     WHERE ejercicio_id = h1.ejercicio_id AND usuario_id = h1.usuario_id
+                     ORDER BY fecha DESC, id DESC LIMIT 1
+                 )
+           ) h_last ON h_last.ejercicio_id = ec.id
+           LEFT JOIN (
+               SELECT h2.ejercicio_id, h2.peso
+               FROM historial_ejercicio h2
+               WHERE h2.usuario_id = ?
+                 AND h2.id = (
+                     SELECT id FROM historial_ejercicio
+                     WHERE ejercicio_id = h2.ejercicio_id AND usuario_id = h2.usuario_id
+                     ORDER BY fecha DESC, id DESC LIMIT 1 OFFSET 1
+                 )
+           ) h_prev ON h_prev.ejercicio_id = ec.id
+           WHERE ec.usuario_id = ?
+             AND (ec.archivado IS NULL OR ec.archivado = 0)
+             AND h_last.peso IS NOT NULL
+             AND (
+                 ec.subir_peso = 1
+                 OR (h_prev.peso IS NOT NULL AND h_last.peso > h_prev.peso)
+             )
+           ORDER BY ec.orden, ec.nombre
+           LIMIT 9""",
+        (usuario_id, usuario_id, usuario_id),
     ).fetchall()
     fuerza_reciente = [
-        {"ejercicio": r[0], "peso": r[1], "series": r[2], "repeticiones": r[3]}
-        for r in last_fuerza
+        {
+            "ejercicio":      r[0],
+            "grupo":          r[1],
+            "peso_actual":    r[2],
+            "peso_anterior":  r[3],
+            "debe_subir":     bool(r[4]),
+            "series":         r[5],
+            "repeticiones":   r[6],
+        }
+        for r in progresion_rows
     ]
 
     # Ciclo menstrual (solo mujeres / usuario 1)
@@ -181,19 +226,23 @@ def dashboard(usuario_id: int):
     except Exception:
         pass
 
-    # Ritmo medio semanal running (últimas 8 semanas), en min/km
+    # Ritmo medio semanal running (últimas 8 semanas), en min/km.
+    # Solo carreras con FC < 150 ppm (Zona 2) para medir evolución aeróbica.
+    # ritmo_medio ya está en decimal min/km (calculado en _upsert_actividad como
+    # (duracion_seg/60) / (distancia_m/1000)), NO dividir de nuevo.
     ritmo_rows = conn.execute(
         """SELECT strftime('%W', fecha) as semana, AVG(ritmo_medio) as ritmo
            FROM actividades_garmin
            WHERE usuario_id = ? AND fecha >= ?
              AND tipo_deporte IN ('running','trail_running','correr','carrera')
              AND ritmo_medio IS NOT NULL AND ritmo_medio > 0
+             AND fc_media IS NOT NULL AND fc_media < 150
            GROUP BY strftime('%W', fecha)
            ORDER BY semana ASC LIMIT 8""",
         (usuario_id, (hoy - timedelta(days=56)).isoformat()),
     ).fetchall()
     ritmo_trend = [
-        {"semana": f"S{i+1}", "ritmo": round((r[1] or 0) / 60, 2)}
+        {"semana": f"S{i+1}", "ritmo": round(r[1] or 0, 2)}
         for i, r in enumerate(ritmo_rows)
     ]
 
