@@ -2,9 +2,9 @@ name: Recordatorio diario entrenamiento
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # 8:00 AM Madrid verano (CEST, UTC+2)
-    - cron: '0 7 * * *'   # 8:00 AM Madrid invierno (CET, UTC+1)
-  workflow_dispatch:       # Lanzar manualmente para probar — ignora la hora
+    - cron: '0 6 * * *'   # 8:00 AM Madrid verano  (CEST UTC+2)
+    - cron: '0 7 * * *'   # 8:00 AM Madrid invierno (CET  UTC+1)
+  workflow_dispatch:       # Lanzar manualmente — ignora la hora, siempre envia
 
 jobs:
   notify:
@@ -19,161 +19,146 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
-          python3 - << 'PYEOF'
-import os, urllib.request, json, sys
-from datetime import datetime, timezone, timedelta
+          python3 << 'EOF'
+          import os, urllib.request, json, sys, calendar
+          from datetime import datetime, timezone, timedelta
 
-db_url     = os.environ.get("TURSO_DATABASE_URL", "")
-token      = os.environ.get("TURSO_AUTH_TOKEN", "")
-topic      = os.environ.get("NTFY_TOPIC", "")
-event_name = os.environ.get("GITHUB_EVENT_NAME", "")
-es_manual  = event_name == "workflow_dispatch"
+          db_url     = os.environ.get("TURSO_DATABASE_URL", "")
+          token      = os.environ.get("TURSO_AUTH_TOKEN", "")
+          topic      = os.environ.get("NTFY_TOPIC", "")
+          es_manual  = os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
 
-print(f"Evento: {event_name} | Manual: {es_manual}")
+          print(f"Evento manual: {es_manual}")
 
-# Validar secrets
-missing = [k for k, v in [("TURSO_DATABASE_URL", db_url), ("TURSO_AUTH_TOKEN", token), ("NTFY_TOPIC", topic)] if not v]
-if missing:
-    print(f"ERROR: faltan secrets en GitHub: {', '.join(missing)}")
-    print("Ve a: GitHub repo -> Settings -> Secrets and variables -> Actions")
-    sys.exit(1)
+          # Validar secrets
+          missing = [k for k,v in [("TURSO_DATABASE_URL",db_url),("TURSO_AUTH_TOKEN",token),("NTFY_TOPIC",topic)] if not v]
+          if missing:
+              print(f"ERROR: faltan secrets en GitHub: {', '.join(missing)}")
+              print("Ve a: GitHub repo -> Settings -> Secrets and variables -> Actions")
+              sys.exit(1)
 
-# Hora Madrid
-now_utc = datetime.now(timezone.utc)
-year = now_utc.year
+          # Hora Madrid con DST automatico
+          now_utc = datetime.now(timezone.utc)
+          year = now_utc.year
+          def ultimo_domingo(y, mes):
+              ultimo_dia = calendar.monthrange(y, mes)[1]
+              d = datetime(y, mes, ultimo_dia)
+              while d.weekday() != 6:
+                  d -= timedelta(days=1)
+              return d
+          inicio_verano = ultimo_domingo(year, 3).replace(hour=1, tzinfo=timezone.utc)
+          fin_verano    = ultimo_domingo(year, 10).replace(hour=1, tzinfo=timezone.utc)
+          es_verano     = inicio_verano <= now_utc < fin_verano
+          ahora_madrid  = now_utc + timedelta(hours=2 if es_verano else 1)
+          hora_madrid   = ahora_madrid.hour
+          hoy           = ahora_madrid.strftime("%Y-%m-%d")
 
-def ultimo_domingo(y, mes):
-    import calendar
-    ultimo_dia = calendar.monthrange(y, mes)[1]
-    d = datetime(y, mes, ultimo_dia)
-    while d.weekday() != 6:
-        d -= timedelta(days=1)
-    return d
+          print(f"Hora Madrid: {ahora_madrid.strftime('%H:%M')} ({'CEST' if es_verano else 'CET'})")
+          print(f"Fecha: {hoy}")
 
-inicio_verano = ultimo_domingo(year, 3).replace(hour=1, tzinfo=timezone.utc)
-fin_verano    = ultimo_domingo(year, 10).replace(hour=1, tzinfo=timezone.utc)
-es_verano     = inicio_verano <= now_utc < fin_verano
-offset        = timedelta(hours=2 if es_verano else 1)
-ahora_madrid  = now_utc + offset
-hora_madrid   = ahora_madrid.hour
-hoy           = ahora_madrid.strftime("%Y-%m-%d")
+          # Si es cron y no son las 8 AM, salir sin enviar
+          if not es_manual and hora_madrid != 8:
+              print(f"Cron fuera de hora ({hora_madrid}h Madrid). Nada que hacer.")
+              sys.exit(0)
 
-print(f"Hora Madrid: {ahora_madrid.strftime('%H:%M')} ({'verano CEST' if es_verano else 'invierno CET'})")
-print(f"Fecha hoy: {hoy}")
+          # Consultar Turso
+          api_url = db_url.replace("libsql://", "https://") + "/v2/pipeline"
 
-# Si es cron y no son las 8 AM, salir sin hacer nada
-if not es_manual and hora_madrid != 8:
-    print(f"Cron disparado fuera de hora ({hora_madrid}:XX Madrid). Saltando.")
-    sys.exit(0)
+          def turso(sql, args=None):
+              stmt = {"sql": sql}
+              if args:
+                  stmt["args"] = args
+              payload = json.dumps({"requests": [{"type": "execute", "stmt": stmt}]}).encode()
+              req = urllib.request.Request(
+                  api_url, data=payload,
+                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+              with urllib.request.urlopen(req, timeout=15) as r:
+                  data = json.loads(r.read())
+              res = data["results"][0]
+              if res.get("type") == "error":
+                  raise Exception(f"Turso error: {res}")
+              return res["response"]["result"]["rows"]
 
-# Consultar plan de hoy en Turso
-api_url = db_url.replace("libsql://", "https://") + "/v2/pipeline"
+          def val(c):
+              return c.get("value") if c.get("type") != "null" else None
 
-def turso_query(sql, args=None):
-    stmt = {"sql": sql}
-    if args:
-        stmt["args"] = args
-    payload = json.dumps({"requests": [{"type": "execute", "stmt": stmt}]}).encode()
-    req = urllib.request.Request(
-        api_url, data=payload,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(req, timeout=15) as r:
-        data = json.loads(r.read())
-    result = data["results"][0]
-    if result.get("type") == "error":
-        raise Exception(f"Turso error: {result}")
-    return result["response"]["result"]["rows"]
+          print("Consultando plan...")
+          rows = turso(
+              "SELECT tipo, sesion, km_planificados, duracion_min, intensidad, detalles "
+              "FROM plan_entrenamiento WHERE fecha = ? AND usuario_id = 1 ORDER BY id",
+              [{"type": "text", "value": hoy}]
+          )
+          print(f"Sesiones: {len(rows)}")
 
-def val(c):
-    return c.get("value") if c.get("type") != "null" else None
+          def detectar_grupo(sesion_nombre):
+              if not sesion_nombre: return None
+              s = sesion_nombre.lower()
+              if "push" in s: return "Push"
+              if "pull" in s: return "Pull"
+              if "pierna" in s: return "Pierna"
+              return None
 
-print("Consultando plan en Turso...")
-rows = turso_query(
-    "SELECT tipo, sesion, km_planificados, duracion_min, intensidad, detalles FROM plan_entrenamiento WHERE fecha = ? AND usuario_id = 1 ORDER BY id",
-    [{"type": "text", "value": hoy}]
-)
-print(f"Sesiones encontradas: {len(rows)}")
+          def get_ejercicios(grupo):
+              ej_rows = turso(
+                  "SELECT e.nombre, h.series, h.repeticiones, h.peso, COALESCE(e.subir_peso,0) "
+                  "FROM ejercicios_catalogo e "
+                  "LEFT JOIN historial_ejercicio h ON h.id = ("
+                  "  SELECT id FROM historial_ejercicio "
+                  "  WHERE ejercicio_id = e.id AND usuario_id = e.usuario_id "
+                  "  ORDER BY fecha DESC, id DESC LIMIT 1) "
+                  "WHERE e.usuario_id = 1 AND LOWER(e.grupo_muscular) = LOWER(?) "
+                  "AND (e.archivado IS NULL OR e.archivado = 0) "
+                  "ORDER BY COALESCE(e.orden,0), e.nombre",
+                  [{"type": "text", "value": grupo}]
+              )
+              result = []
+              for r in ej_rows:
+                  nombre, series, reps, peso, subir = [val(c) for c in r]
+                  if not nombre: continue
+                  linea = nombre
+                  if series and reps and peso:
+                      linea += f" {int(float(series))}x{int(float(reps))} {float(peso):.0f}kg"
+                  if subir and int(float(subir)) == 1:
+                      linea += " SUBE PESO"
+                  result.append(linea)
+              return result
 
-def detectar_grupo(sesion_nombre):
-    if not sesion_nombre:
-        return None
-    s = sesion_nombre.lower()
-    if "push" in s: return "Push"
-    if "pull" in s: return "Pull"
-    if "pierna" in s: return "Pierna"
-    return None
+          EMOJIS = {"fuerza": "💪", "carrera": "🏃", "cross": "🚴", "descanso": "😴"}
 
-def get_ejercicios_grupo(grupo):
-    ej_rows = turso_query(
-        """SELECT e.nombre, h.series, h.repeticiones, h.peso, COALESCE(e.subir_peso, 0)
-           FROM ejercicios_catalogo e
-           LEFT JOIN historial_ejercicio h ON h.id = (
-             SELECT id FROM historial_ejercicio
-             WHERE ejercicio_id = e.id AND usuario_id = e.usuario_id
-             ORDER BY fecha DESC, id DESC LIMIT 1
-           )
-           WHERE e.usuario_id = 1 AND LOWER(e.grupo_muscular) = LOWER(?)
-             AND (e.archivado IS NULL OR e.archivado = 0)
-           ORDER BY COALESCE(e.orden, 0), e.nombre""",
-        [{"type": "text", "value": grupo}]
-    )
-    result = []
-    for r in ej_rows:
-        nombre, series, reps, peso, subir = [val(c) for c in r]
-        if not nombre:
-            continue
-        linea = nombre
-        if series and reps and peso:
-            linea += f" {int(float(series))}x{int(float(reps))} {float(peso):.0f}kg"
-        if subir and int(float(subir)) == 1:
-            linea += " SUBE PESO"
-        result.append(linea)
-    return result
+          if not rows:
+              mensaje = "Sin sesiones hoy. Dia de descanso 🛌"
+              title   = "Plan de hoy — Descanso"
+              tags    = "calendar,zzz"
+          else:
+              lineas = []
+              for row in rows:
+                  tipo, sesion, km, mins, intens, detalle = [val(c) for c in row]
+                  emoji = next((e for k,e in EMOJIS.items() if k in (tipo or "").lower()), "📋")
+                  partes = [f"{emoji} {sesion or tipo}"]
+                  if km:   partes.append(f"{float(km):.1f} km")
+                  if mins:
+                      h, m = int(float(mins))//60, int(float(mins))%60
+                      partes.append(f"{h}h {m}min" if h else f"{m} min")
+                  if intens: partes.append(intens)
+                  lineas.append(" · ".join(partes))
+                  if detalle: lineas.append(f"  {detalle}")
+                  if (tipo or "").lower() == "fuerza":
+                      grupo = detectar_grupo(sesion)
+                      if grupo:
+                          ejs = get_ejercicios(grupo)
+                          if ejs: lineas.append("  " + " | ".join(ejs))
+              n = len(rows)
+              mensaje = "\n".join(lineas)
+              title   = f"Plan de hoy — {n} sesion" if n == 1 else f"Plan de hoy — {n} sesiones"
+              tags    = "calendar,runner"
 
-EMOJIS = {"fuerza": "💪", "carrera": "🏃", "cross": "🚴", "descanso": "😴"}
+          print(f"Titulo: {title}")
+          print(f"Mensaje:\n{mensaje}")
 
-if not rows:
-    mensaje = "Sin sesiones hoy. Dia de descanso 🛌"
-    title   = "Plan de hoy — Descanso"
-    tags    = "calendar,zzz"
-else:
-    lineas = []
-    for row in rows:
-        tipo, sesion, km, mins, intens, detalle = [val(c) for c in row]
-        emoji = next((e for k, e in EMOJIS.items() if k in (tipo or "").lower()), "📋")
-        partes = [f"{emoji} {sesion or tipo}"]
-        if km:
-            partes.append(f"{float(km):.1f} km")
-        if mins:
-            h, m = int(float(mins)) // 60, int(float(mins)) % 60
-            partes.append(f"{h}h {m}min" if h else f"{m} min")
-        if intens:
-            partes.append(intens)
-        lineas.append(" · ".join(partes))
-        if detalle:
-            lineas.append(f"  {detalle}")
-        if (tipo or "").lower() == "fuerza":
-            grupo = detectar_grupo(sesion)
-            if grupo:
-                ejercicios = get_ejercicios_grupo(grupo)
-                if ejercicios:
-                    lineas.append("  " + " | ".join(ejercicios))
-    n = len(rows)
-    mensaje = "\n".join(lineas)
-    title   = f"Plan de hoy — {n} sesion" if n == 1 else f"Plan de hoy — {n} sesiones"
-    tags    = "calendar,runner"
-
-print(f"\nTitulo: {title}")
-print(f"Mensaje:\n{mensaje}")
-
-# Enviar a ntfy
-ntfy_req = urllib.request.Request(
-    f"https://ntfy.sh/{topic}",
-    data=mensaje.encode("utf-8"),
-    headers={"Title": title, "Tags": tags, "Priority": "default"}
-)
-with urllib.request.urlopen(ntfy_req, timeout=10) as r:
-    print(f"\nntfy OK — status {r.status}")
-
-PYEOF
+          ntfy_req = urllib.request.Request(
+              f"https://ntfy.sh/{topic}",
+              data=mensaje.encode("utf-8"),
+              headers={"Title": title, "Tags": tags, "Priority": "default"})
+          with urllib.request.urlopen(ntfy_req, timeout=10) as r:
+              print(f"ntfy OK — status {r.status}")
+          EOF
