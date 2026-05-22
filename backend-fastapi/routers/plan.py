@@ -55,13 +55,18 @@ class RegenerarTotalRequest(BaseModel):
     semanas: int = 4  # Cuántas semanas futuras regenerar (incluye la actual)
 
 
-def _migrar_fartlek_legacy(conn, sesiones: list) -> list:
-    """Detecta sesiones Fartlek con nombres o km_planificados antiguos (código viejo)
-    y los corrige en la BD + en la lista devuelta, sin regenerar el plan completo.
+FARTLEK_REPS_MAX = 10  # Máximo absoluto de reps según NORMAS ENTRENAMIENTO.pdf
 
-    Señales de sesión vieja:
-    - sesion contiene 'Mac' (e.g. 'Fartlek Mac1')
-    - km_planificados <= 3.0 (< mínimo posible con la fórmula correcta, que da ≥ 6 km con 6 reps)
+
+def _migrar_fartlek_legacy(conn, sesiones: list) -> list:
+    """Detecta sesiones Fartlek con reps incorrectas (código viejo o por encima del cap)
+    y las corrige en la BD + en la lista devuelta, sin regenerar el plan completo.
+
+    Señales de sesión incorrecta:
+    - sesion contiene 'Mac' (e.g. 'Fartlek Mac1') → nombre antiguo
+    - km_planificados < 5.0 → km muy bajos (formato viejo)
+    - reps extraídas de detalles > FARTLEK_REPS_MAX → reps por encima del cap de seguridad
+      (esto captura sesiones generadas antes de que se aplicara el cap, e.g. 11 reps)
     """
     km_warmup  = round(15 / 6.33, 1)          # ~2.4 km
     km_per_rep = round(1 / 4.917 + 2 / 6.5, 2)  # ~0.51 km/rep
@@ -73,17 +78,27 @@ def _migrar_fartlek_legacy(conn, sesiones: list) -> list:
         sesion_name = s.get("sesion", "") or ""
         if "Fartlek" not in sesion_name:
             continue
+
         km_actual = s.get("km_planificados") or 0
         is_legacy_name = "Mac" in sesion_name or "mac" in sesion_name
         is_low_km = km_actual > 0 and km_actual < 5.0
 
-        if not (is_legacy_name or is_low_km):
-            continue  # sesión moderna, nada que hacer
-
-        # Extraer número de reps del texto de detalles: "11×(1'@4:55"
+        # Extraer reps ANTES del filtro para poder verificar el cap
         detalles = s.get("detalles", "") or ""
         match = re.search(r"(\d+)[×x]\(", detalles)
-        reps = int(match.group(1)) if match else 6  # fallback 6 reps
+        reps_extraidas = int(match.group(1)) if match else None
+        is_reps_over_cap = reps_extraidas is not None and reps_extraidas > FARTLEK_REPS_MAX
+
+        if not (is_legacy_name or is_low_km or is_reps_over_cap):
+            continue  # sesión moderna y dentro del rango permitido, nada que hacer
+
+        # Determinar reps correctas:
+        # - Si las reps estaban por encima del cap → capear a FARTLEK_REPS_MAX
+        # - Si el formato era legacy sin reps → arrancar en 6 (inicio de progresión)
+        if reps_extraidas is not None:
+            reps = min(reps_extraidas, FARTLEK_REPS_MAX)
+        else:
+            reps = 6  # valor de inicio según NORMAS ENTRENAMIENTO.pdf
 
         km_real = round(km_warmup + reps * km_per_rep + km_cool, 1)
         nuevos_detalles = (
@@ -320,7 +335,11 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
 
     km_semana_ant = float(km_ant_garmin) if km_ant_garmin > 0 else float(km_ant_plan)
     if km_semana_ant < 1:
-        km_semana_ant = 20.0  # arrancar con 20 km si no hay historial
+        # Sin historial: usar 15 km como base conservadora de inicio.
+        # 20 km era demasiado alto para alguien que acaba de empezar a correr
+        # (la TL resultante sería ~6.6 km + calidad + 3 sesiones más = riesgo de lesión).
+        # Con 15 km: TL ~5 km, RB ~5.6 km, RG ~1.7 km, Fartlek ~6.2 km (6 reps).
+        km_semana_ant = 15.0
 
     # ── 4. Determinar si es semana de descarga (cada 4a semana del año) ──
     semana_iso = fecha_inicio.isocalendar()[1]
@@ -405,7 +424,10 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
             km_tl = km_tl_calculado
     else:
         km_tl = km_tl_calculado
-    km_tl = max(km_tl, 8.0)
+    # Mínimo TL proporcional al volumen total: no forzar 8 km si el volumen es bajo.
+    # Para km_total=15 → TL_min = 4.5 km (30%). Para km_total≥24 → mínimo 8 km.
+    km_tl_min = max(round(km_total * 0.30, 1), 4.0)
+    km_tl = max(km_tl, km_tl_min)
 
     km_rg = round(km_tl / 3, 1)
     km_calidad = round(km_total * 0.17, 1)
@@ -420,7 +442,7 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
     # Cap de seguridad: máximo 10 reps para prevenir sobrecarga.
     semanas_en_macro = _calcular_semanas_en_macro(fecha_inicio, macrociclo)
     ciclo_num = max(0, (semanas_en_macro - 1) // 4)
-    fartlek_reps = min(6 + ciclo_num, 10)  # NORMA: empezar en 6 reps, +1 rep/ciclo, máx 10
+    fartlek_reps = min(6 + ciclo_num, FARTLEK_REPS_MAX)  # NORMA: empezar en 6 reps, +1 rep/ciclo, máx 10
     prog_bloque_min = 5 + ciclo_num * 2
 
     # ── 8. Semáforo HRV (advisory) — añadir nota a sesiones de calidad si rojo ──
@@ -743,14 +765,15 @@ def _generar_semana_interna(conn, usuario_id: int, fecha_inicio_str: str, km_tot
     tipo_calidad = sesion_calidad_impar if semana_iso % 2 != 0 else sesion_calidad_par
 
     km_tl = min(round(km_total * 0.33, 1), 32.0)
-    km_tl = max(km_tl, 8.0)
+    km_tl_min = max(round(km_total * 0.30, 1), 4.0)
+    km_tl = max(km_tl, km_tl_min)
     km_rg = round(km_tl / 3, 1)
     km_calidad = round(km_total * 0.17, 1)
     km_rb = max(round(km_total - km_tl - km_rg - km_calidad, 1), 3.0)
 
     semanas_en_macro = _calcular_semanas_en_macro(fecha_inicio, macrociclo)
     ciclo_num = max(0, (semanas_en_macro - 1) // 4)
-    fartlek_reps = min(6 + ciclo_num, 10)  # NORMA: empezar en 6 reps, +1 rep/ciclo, máx 10
+    fartlek_reps = min(6 + ciclo_num, FARTLEK_REPS_MAX)  # NORMA: empezar en 6 reps, +1 rep/ciclo, máx 10
     prog_bloque_min = 5 + ciclo_num * 2
 
     sesiones_plan = _construir_sesiones(
