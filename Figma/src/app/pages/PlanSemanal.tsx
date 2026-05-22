@@ -1007,17 +1007,18 @@ function BibliotecaLoggerInline({
                       />
                     </div>
                   ))}
-                  {/* Toggle completado */}
+                  {/* Toggle subir peso */}
                   <div>
-                    <p className="text-[9px] text-[#8B949E] uppercase mb-1">¿Todo?</p>
+                    <p className="text-[9px] text-[#8B949E] uppercase mb-1">↑ Subir</p>
                     <button
                       onClick={() => setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, completado: !r.completado } : r))}
                       className="w-full py-1.5 rounded-lg text-xs font-bold transition-all"
+                      title={row.completado ? "Próxima sesión: subir peso" : "Marcar para subir peso la próxima vez"}
                       style={row.completado
                         ? { background: "rgba(34,197,94,0.2)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.4)" }
                         : { background: "rgba(255,255,255,0.04)", color: "#8B949E", border: "1px solid rgba(255,255,255,0.1)" }}
                     >
-                      {row.completado ? <Check className="h-4 w-4 mx-auto" /> : "—"}
+                      {row.completado ? <ArrowUp className="h-4 w-4 mx-auto" /> : "—"}
                     </button>
                   </div>
                 </div>
@@ -1030,7 +1031,7 @@ function BibliotecaLoggerInline({
           {!loading && ejercicios.length > 0 && (
             <>
               <p className="text-[10px] text-[#8B949E]">
-                Marca ✓ en "¿Todo?" si completaste todas las series → subirá peso la próxima vez.
+                Pulsa <span style={{ color: "#22C55E" }}>↑ Subir</span> en los ejercicios que quieras progresar → la próxima sesión te aparecerá el badge <span style={{ color: "#22C55E" }}>↑ Sube peso</span>.
               </p>
               <button
                 onClick={handleGuardar}
