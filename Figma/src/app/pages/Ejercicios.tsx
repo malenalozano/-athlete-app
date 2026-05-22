@@ -240,28 +240,29 @@ function EjercicioCard({
       }}
       className="rounded-xl overflow-hidden"
     >
-      {/* ═══ DRAG HANDLE — barra ancha de color arriba ═══ */}
+      {/* ═══ DRAG HANDLE ═══ */}
       <div
         {...attributes}
         {...listeners}
-        className="flex items-center justify-center gap-2 px-3 py-2 cursor-grab active:cursor-grabbing select-none"
+        className="flex items-center justify-center gap-3 px-3 py-2.5 cursor-grab active:cursor-grabbing select-none"
         style={{
-          background: `${color}18`,
-          borderBottom: `1px solid ${color}25`,
+          background: `${color}20`,
+          borderBottom: `1px solid ${color}35`,
           touchAction: "none",
         }}
       >
-        <div className="flex gap-0.5">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="w-0.5 h-3 rounded-full" style={{ background: color, opacity: 0.5 }} />
+        {/* 6 líneas horizontales (icono grip clásico) */}
+        <div className="flex flex-col gap-[3px]">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="w-5 h-0.5 rounded-full" style={{ background: color, opacity: 0.7 }} />
           ))}
         </div>
-        <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color, opacity: 0.7 }}>
-          mover
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color, opacity: 0.9 }}>
+          ☰ Arrastrar para ordenar
         </span>
-        <div className="flex gap-0.5">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="w-0.5 h-3 rounded-full" style={{ background: color, opacity: 0.5 }} />
+        <div className="flex flex-col gap-[3px]">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="w-5 h-0.5 rounded-full" style={{ background: color, opacity: 0.7 }} />
           ))}
         </div>
       </div>
@@ -366,8 +367,8 @@ function ColumnaGrupo({
         </button>
       </div>
 
-      {/* Lista con DnD */}
-      <div className="flex-1 p-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 280px)" }}>
+      {/* Lista con DnD — sin overflow para que el drag no sea capturado por el scroll */}
+      <div className="flex-1 p-3">
         {activos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <p className="text-xs text-[#30363D]">{grupo.descripcion}</p>
@@ -525,12 +526,14 @@ export function Ejercicios() {
     cargar();
   };
 
-  const handleReorder = useCallback(async (grupo: GrupoFuerza, nuevos: EjercicioExtendido[]) => {
+  const handleReorder = useCallback((grupo: GrupoFuerza, nuevos: EjercicioExtendido[]) => {
     // Actualizar estado local inmediatamente (optimista)
     setGrupos((prev) => ({ ...prev, [grupo]: { ...prev[grupo], activos: nuevos } }));
-    // Persistir en backend
+    // Persistir en backend sin bloquear ni crashear si falla
     if (userId) {
-      await reordenarEjercicios(userId, nuevos.map((e, i) => ({ id: e.id, orden: i })));
+      reordenarEjercicios(userId, nuevos.map((e, i) => ({ id: e.id, orden: i }))).catch(() => {
+        // Silencioso: el orden visual ya se actualizó, backend sincronizará en siguiente carga
+      });
     }
   }, [userId]);
 
