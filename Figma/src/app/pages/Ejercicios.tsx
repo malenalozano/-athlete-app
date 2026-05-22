@@ -240,29 +240,25 @@ function EjercicioCard({
       }}
       className="rounded-xl overflow-hidden"
     >
-      {/* ═══ DRAG HANDLE ═══ */}
+      {/* ═══ DRAG HANDLE — solo icono de grip ═══ */}
       <div
         {...attributes}
         {...listeners}
-        className="flex items-center justify-center gap-3 px-3 py-2.5 cursor-grab active:cursor-grabbing select-none"
+        className="flex items-center justify-center py-1.5 cursor-grab active:cursor-grabbing select-none"
         style={{
-          background: `${color}20`,
-          borderBottom: `1px solid ${color}35`,
+          background: `${color}12`,
+          borderBottom: `1px solid ${color}20`,
           touchAction: "none",
         }}
       >
-        {/* 6 líneas horizontales (icono grip clásico) */}
-        <div className="flex flex-col gap-[3px]">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="w-5 h-0.5 rounded-full" style={{ background: color, opacity: 0.7 }} />
-          ))}
-        </div>
-        <span className="text-xs font-bold uppercase tracking-widest" style={{ color, opacity: 0.9 }}>
-          ☰ Arrastrar para ordenar
-        </span>
-        <div className="flex flex-col gap-[3px]">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="w-5 h-0.5 rounded-full" style={{ background: color, opacity: 0.7 }} />
+        {/* 6 puntos en 2 columnas (icono grip clásico) */}
+        <div className="flex gap-[5px]">
+          {[0, 1].map((col) => (
+            <div key={col} className="flex flex-col gap-[3px]">
+              {[0, 1, 2].map((row) => (
+                <div key={row} className="w-[3px] h-[3px] rounded-full" style={{ background: color, opacity: 0.5 }} />
+              ))}
+            </div>
           ))}
         </div>
       </div>
