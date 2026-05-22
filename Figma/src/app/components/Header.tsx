@@ -25,6 +25,7 @@ interface SubTab {
   key: string;
   label: string;
   onlyMalena?: boolean;
+  overridePath?: string; // Si se define, navega aquí en vez de ?tab=key
 }
 
 interface NavItem {
@@ -75,7 +76,7 @@ const NAV_ITEMS: NavItem[] = [
     subTabs: [
       { key: "libre", label: "Entreno Libre" },
       { key: "ciclo", label: "Ciclo Menstrual", onlyMalena: true },
-      { key: "ejercicios", label: "Ejercicios" },
+      { key: "ejercicios", label: "Ejercicios", overridePath: "/ejercicios" },
     ],
   },
   {
@@ -139,6 +140,8 @@ export function Header() {
 
   const activeNav = NAV_ITEMS.find((item) => {
     if (item.path === "/") return location.pathname === "/";
+    // Comprobar si algún subtab con overridePath coincide con la ruta actual
+    if (item.subTabs?.some((t) => t.overridePath && location.pathname === t.overridePath)) return true;
     return location.pathname.startsWith(item.path);
   });
 
@@ -160,6 +163,11 @@ export function Header() {
 
   const handleSubTabClick = (key: string) => {
     if (!activeNav) return;
+    const subTab = activeNav.subTabs?.find((t) => t.key === key);
+    if (subTab?.overridePath) {
+      navigate(subTab.overridePath);
+      return;
+    }
     navigate(`${activeNav.path}?tab=${key}`);
   };
 
@@ -367,11 +375,13 @@ export function Header() {
             <div className="container mx-auto px-4">
               <div className="flex items-center gap-1 py-2">
                 {activeSubTabs.map((tab) => {
-                  const isSubActive = activeSubTab === tab.key;
                   const navColor = activeNav?.color ?? "text-white";
                   const navBg = activeNav?.bgActive ?? "bg-white/10";
                   const navBorder = activeNav?.borderActive ?? "border-white/30";
                   const navGlow = activeNav?.glowColor ?? "rgba(255,255,255,0.2)";
+                  const isSubActive =
+                    activeSubTab === tab.key ||
+                    (!!tab.overridePath && location.pathname === tab.overridePath);
 
                   return (
                     <button
