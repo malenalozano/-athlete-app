@@ -977,7 +977,7 @@ function BibliotecaLoggerInline({
               : null;
             return (
               <div key={ej.id} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                {/* Nombre */}
+                {/* Nombre + botón borrar */}
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
                   <span className="text-sm font-semibold text-white flex-1">{ej.nombre}</span>
@@ -987,6 +987,14 @@ function BibliotecaLoggerInline({
                     </span>
                   )}
                   {hint && <span className="text-[10px] text-[#8B949E] shrink-0">{hint}</span>}
+                  <button
+                    onClick={() => setRows((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="ml-1 p-1 rounded-lg opacity-40 hover:opacity-100 transition-opacity"
+                    title="Quitar este ejercicio de la sesión de hoy"
+                    style={{ color: "#ef4444" }}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 {/* Inputs */}
                 <div className="grid grid-cols-4 gap-2 items-end">
