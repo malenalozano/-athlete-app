@@ -857,12 +857,14 @@ function BibliotecaLoggerInline({
   usuarioId,
   grupo,
   onGuardado,
+  autoOpen = false,
 }: {
   usuarioId: number;
   grupo: GrupoFuerza;
   onGuardado: () => void;
+  autoOpen?: boolean;
 }) {
-  const [abierto, setAbierto] = useState(false);
+  const [abierto, setAbierto] = useState(autoOpen);
   const [ejercicios, setEjercicios] = useState<EjercicioBiblioteca[]>([]);
   const [rows, setRows] = useState<RegistroRowPlan[]>([]);
   const [loading, setLoading] = useState(false);
@@ -893,6 +895,12 @@ function BibliotecaLoggerInline({
       setLoading(false);
     }
   }, [usuarioId, grupo, ejercicios.length]);
+
+  // Auto-cargar ejercicios cuando se abre automáticamente
+  useEffect(() => {
+    if (autoOpen) cargar();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleAbierto = () => {
     if (!abierto) cargar();
@@ -1042,6 +1050,7 @@ function BibliotecaLoggerInline({
 
 function DayDetailPanel({ day, session, onClose, onEdit }: { day: DayPlan; session: Session; onClose: () => void; onEdit?: () => void }) {
   const { userId } = useUser();
+  const [fuerzaGuardada, setFuerzaGuardada] = useState(false);
   const colors = TYPE_COLORS[session.type] ?? TYPE_COLORS.running;
   const typeLabel = session.type === "running" ? "Carrera" : "Fuerza";
   const typeColor = session.type === "running" ? "#00D4FF" : "#A855F7";
@@ -1090,15 +1099,31 @@ function DayDetailPanel({ day, session, onClose, onEdit }: { day: DayPlan; sessi
         {session.type === "running" && <RunningDetail session={session} onClose={onClose} />}
         {session.type === "strength" && (
           <div className="space-y-4">
-            {/* Logger inline colapsable desde biblioteca */}
-            {grupoFuerza && userId !== null && (
-              <BibliotecaLoggerInline
-                usuarioId={userId}
-                grupo={grupoFuerza}
-                onGuardado={() => setFuerzaGuardada(true)}
-              />
+            {/* Logger de ejercicios desde biblioteca — abierto por defecto */}
+            {grupoFuerza && userId !== null ? (
+              <>
+                {fuerzaGuardada && (
+                  <div
+                    className="rounded-xl px-4 py-3 flex items-center gap-3"
+                    style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.35)" }}
+                  >
+                    <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />
+                    <p className="text-sm font-semibold text-green-300">Sesión de fuerza guardada correctamente ✓</p>
+                  </div>
+                )}
+                {!fuerzaGuardada && (
+                  <BibliotecaLoggerInline
+                    usuarioId={userId}
+                    grupo={grupoFuerza}
+                    autoOpen={true}
+                    onGuardado={() => setFuerzaGuardada(true)}
+                  />
+                )}
+              </>
+            ) : (
+              /* Fallback si no se detecta grupo: logger manual */
+              <StrengthLogger session={session} />
             )}
-            <StrengthLogger session={session} />
           </div>
         )}
       </div>
