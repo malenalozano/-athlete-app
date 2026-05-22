@@ -871,6 +871,11 @@ function BibliotecaLoggerInline({
   const [saving, setSaving] = useState(false);
   const [guardado, setGuardado] = useState(false);
   const [error, setError] = useState("");
+  // Panel añadir ejercicio
+  const [mostrarAnadir, setMostrarAnadir] = useState(false);
+  const [filtroGrupo, setFiltroGrupo] = useState<GrupoFuerza>(grupo);
+  const [todosEjercicios, setTodosEjercicios] = useState<Record<GrupoFuerza, EjercicioBiblioteca[]>>({ Push: [], Pull: [], Pierna: [] });
+  const [loadingTodos, setLoadingTodos] = useState(false);
 
   const color = GRUPO_COLOR_PLAN[grupo];
   const bg = GRUPO_BG_PLAN[grupo];
@@ -905,6 +910,38 @@ function BibliotecaLoggerInline({
   const toggleAbierto = () => {
     if (!abierto) cargar();
     setAbierto((v) => !v);
+  };
+
+  const cargarTodos = useCallback(async () => {
+    if (todosEjercicios.Push.length > 0 || todosEjercicios.Pull.length > 0 || todosEjercicios.Pierna.length > 0) return;
+    setLoadingTodos(true);
+    try {
+      const data = await getEjercicios(usuarioId);
+      setTodosEjercicios({
+        Push: data.grupos.Push?.activos ?? [],
+        Pull: data.grupos.Pull?.activos ?? [],
+        Pierna: data.grupos.Pierna?.activos ?? [],
+      });
+    } catch { /* ignore */ } finally { setLoadingTodos(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usuarioId, todosEjercicios]);
+
+  const handleAbrirAnadir = () => {
+    if (!mostrarAnadir) { cargarTodos(); setFiltroGrupo(grupo); }
+    setMostrarAnadir((v) => !v);
+  };
+
+  const handleAnadirEjercicio = (ej: EjercicioBiblioteca) => {
+    if (ejercicios.some((e) => e.id === ej.id)) return; // ya está
+    setEjercicios((prev) => [...prev, ej]);
+    setRows((prev) => [...prev, {
+      ejercicio_id: ej.id,
+      series: ej.ultima_series?.toString() ?? ej.series_objetivo?.toString() ?? "",
+      repeticiones: ej.ultimas_reps?.toString() ?? ej.reps_objetivo?.toString() ?? "",
+      peso: ej.ultimo_peso?.toString() ?? ej.peso_objetivo?.toString() ?? "",
+      completado: false,
+    }]);
+    setMostrarAnadir(false);
   };
 
   const handleGuardar = async () => {
@@ -1038,6 +1075,79 @@ function BibliotecaLoggerInline({
           })}
 
           {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+
+          {/* ── Botón + panel añadir ejercicio ── */}
+          {!loading && (
+            <div className="rounded-xl overflow-hidden" style={{ border: `1px dashed ${color}35` }}>
+              <button
+                onClick={handleAbrirAnadir}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold transition-all"
+                style={{ background: mostrarAnadir ? `${color}15` : "transparent", color: mostrarAnadir ? color : "#8B949E" }}
+              >
+                {mostrarAnadir ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                {mostrarAnadir ? "Cerrar" : "Añadir ejercicio"}
+              </button>
+
+              {mostrarAnadir && (
+                <div className="px-3 pb-3 pt-1 space-y-2" style={{ background: "rgba(14,17,23,0.5)" }}>
+                  {/* Filtro Pull / Push / Pierna */}
+                  <div className="flex gap-1.5">
+                    {(["Push", "Pull", "Pierna"] as GrupoFuerza[]).map((g) => (
+                      <button
+                        key={g}
+                        onClick={() => setFiltroGrupo(g)}
+                        className="flex-1 py-1 rounded-lg text-[10px] font-bold transition-all"
+                        style={filtroGrupo === g
+                          ? { background: GRUPO_COLOR_PLAN[g] + "22", color: GRUPO_COLOR_PLAN[g], border: `1px solid ${GRUPO_COLOR_PLAN[g]}55` }
+                          : { background: "rgba(255,255,255,0.04)", color: "#8B949E", border: "1px solid rgba(255,255,255,0.08)" }}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Lista de ejercicios del grupo seleccionado */}
+                  {loadingTodos && <p className="text-center text-[#8B949E] text-xs py-2">Cargando...</p>}
+                  {!loadingTodos && (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {(todosEjercicios[filtroGrupo] ?? [])
+                        .filter((ej) => !ejercicios.some((e) => e.id === ej.id))
+                        .length === 0 && (
+                        <p className="text-[11px] text-[#8B949E] text-center py-2">
+                          {ejercicios.some((e) => (todosEjercicios[filtroGrupo] ?? []).some((t) => t.id === e.id))
+                            ? "Ya tienes todos los ejercicios de este grupo"
+                            : `Sin ejercicios activos en ${filtroGrupo}`}
+                        </p>
+                      )}
+                      {(todosEjercicios[filtroGrupo] ?? [])
+                        .filter((ej) => !ejercicios.some((e) => e.id === ej.id))
+                        .map((ej) => {
+                          const hint = ej.ultimo_peso
+                            ? `${ej.ultima_series ?? ""}×${ej.ultimas_reps ?? ""} · ${ej.ultimo_peso}kg`
+                            : ej.series_objetivo
+                            ? `obj: ${ej.series_objetivo}×${ej.reps_objetivo ?? ""}${ej.peso_objetivo ? ` ${ej.peso_objetivo}kg` : ""}`
+                            : null;
+                          return (
+                            <button
+                              key={ej.id}
+                              onClick={() => handleAnadirEjercicio(ej)}
+                              className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all hover:opacity-90"
+                              style={{ background: GRUPO_COLOR_PLAN[filtroGrupo] + "12", border: `1px solid ${GRUPO_COLOR_PLAN[filtroGrupo]}25` }}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Plus className="h-3 w-3 shrink-0" style={{ color: GRUPO_COLOR_PLAN[filtroGrupo] }} />
+                                <span className="text-xs font-semibold text-white">{ej.nombre}</span>
+                              </div>
+                              {hint && <span className="text-[10px] text-[#8B949E] shrink-0">{hint}</span>}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {!loading && ejercicios.length > 0 && (
             <>
