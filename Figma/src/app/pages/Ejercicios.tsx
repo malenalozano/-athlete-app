@@ -489,6 +489,7 @@ function SeccionArchivados({
 export function Ejercicios() {
   const { userId } = useUser();
   const [loading, setLoading]         = useState(false);
+  const [errorCarga, setErrorCarga]   = useState(false);
   const [modalGrupo, setModalGrupo]   = useState<GrupoFuerza | null>(null);
   const [editando, setEditando]       = useState<EjercicioExtendido | null>(null);
   const [verHistorial, setVerHistorial] = useState<EjercicioExtendido | null>(null);
@@ -501,9 +502,13 @@ export function Ejercicios() {
   const cargar = useCallback(() => {
     if (!userId) return;
     setLoading(true);
+    setErrorCarga(false);
     getEjercicios(userId)
-      .then((data) => setGrupos(data.grupos as unknown as typeof grupos))
-      .catch(() => null)
+      .then((data) => {
+        setGrupos(data.grupos as unknown as typeof grupos);
+        setErrorCarga(false);
+      })
+      .catch(() => setErrorCarga(true))
       .finally(() => setLoading(false));
   }, [userId]);
 
@@ -546,6 +551,28 @@ export function Ejercicios() {
           </div>
           {loading && <span className="text-xs text-[#8B949E]">Actualizando...</span>}
         </div>
+
+        {/* Banner de error cuando el backend no responde */}
+        {errorCarga && !loading && (
+          <div
+            className="rounded-xl px-4 py-3 flex items-center justify-between gap-3 mb-4"
+            style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)" }}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="text-base">⚠️</span>
+              <p className="text-sm text-red-400">
+                No se pudieron cargar los ejercicios. El servidor puede estar arrancando (hasta 60 seg en la primera carga).
+              </p>
+            </div>
+            <button
+              onClick={cargar}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all hover:brightness-110"
+              style={{ background: "rgba(239,68,68,0.15)", color: "#F87171", border: "1px solid rgba(239,68,68,0.35)" }}
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
 
         {/* 3 columnas — una por grupo */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
