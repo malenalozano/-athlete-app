@@ -26,7 +26,11 @@ import {
   Thermometer,
   Wind,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import {
+  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
+  ReferenceLine, ResponsiveContainer, Label,
+} from "recharts";
 import { crearEntradaDiario, getActividades, getEjercicios, getSesionFuerzaHoy, archivarEjercicio, eliminarEjercicio, crearEjercicio, editarEjercicio, getSweatRateTests, crearSweatRateTest, eliminarSweatRateTest, getIntraEntrenoTests, crearIntraEntrenoTest, eliminarIntraEntrenoTest, getIntraEntrenoAnalisis, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy, type GrupoFuerza, type SweatRateTest, type IntraEntrenoTest, type IntraEntrenoAnalisis } from "../api";
 import { ModalRegistroFuerza } from "../components/ModalRegistroFuerza";
 
@@ -1119,6 +1123,378 @@ function Ejercicios() {
   );
 }
 
+// ── Chart helpers ─────────────────────────────────────────────────────────────
+
+/** Linear regression → returns slope + intercept */
+function linearRegression(pts: { x: number; y: number }[]) {
+  const n = pts.length;
+  if (n < 2) return null;
+  const sx = pts.reduce((a, p) => a + p.x, 0);
+  const sy = pts.reduce((a, p) => a + p.y, 0);
+  const sxy = pts.reduce((a, p) => a + p.x * p.y, 0);
+  const sx2 = pts.reduce((a, p) => a + p.x * p.x, 0);
+  const denom = n * sx2 - sx * sx;
+  if (denom === 0) return null;
+  const slope = (n * sxy - sx * sy) / denom;
+  const intercept = (sy - slope * sx) / n;
+  return { slope, intercept };
+}
+
+// ── 1. SweatRate – Scatter Plot (Temp vs Tasa, color=Humedad) ─────────────────
+
+function SweatRateScatter({ historial }: { historial: SweatRateTest[] }) {
+  const pts = useMemo(() =>
+    historial
+      .filter(t => t.temperatura_c != null)
+      .map(t => ({
+        x: t.temperatura_c as number,
+        y: t.tasa_sudoracion_lh,
+        hum: t.humedad_pct ?? 50,
+        label: `${t.fecha} — ${t.tasa_sudoracion_lh.toFixed(2)} L/h`,
+      })),
+    [historial]
+  );
+
+  const reg = useMemo(() => linearRegression(pts.map(p => ({ x: p.x, y: p.y }))), [pts]);
+
+  // Build trend line points from xMin to xMax
+  const trendPts = useMemo(() => {
+    if (!reg || pts.length < 2) return [];
+    const xs = pts.map(p => p.x);
+    const xMin = Math.min(...xs) - 1;
+    const xMax = Math.max(...xs) + 1;
+    return [
+      { x: xMin, y: parseFloat((reg.slope * xMin + reg.intercept).toFixed(3)) },
+      { x: xMax, y: parseFloat((reg.slope * xMax + reg.intercept).toFixed(3)) },
+    ];
+  }, [reg, pts]);
+
+  if (pts.length === 0) {
+    return (
+      <div className="rounded-2xl p-6 text-center space-y-1"
+        style={{ background: "rgba(0,212,255,0.04)", border: "1px solid rgba(0,212,255,0.15)" }}>
+        <p className="text-2xl">🌡️</p>
+        <p className="text-sm font-semibold text-white">Scatter plot temperatura → sudoración</p>
+        <p className="text-xs text-[#8B949E]">Añade tests con temperatura para ver el gráfico predictivo.</p>
+      </div>
+    );
+  }
+
+  // Color dot by humidity: low hum = light blue, high hum = deep blue
+  const dotColor = (hum: number) => {
+    const t = Math.min(Math.max((hum - 20) / 80, 0), 1);
+    const r = Math.round(0   + t * 30);
+    const g = Math.round(180 - t * 80);
+    const b = Math.round(255);
+    return `rgb(${r},${g},${b})`;
+  };
+
+  // Custom dot renders humidity-based color
+  const CustomDot = (props: { cx?: number; cy?: number; payload?: typeof pts[0] }) => {
+    const { cx = 0, cy = 0, payload } = props;
+    if (!payload) return null;
+    const col = dotColor(payload.hum);
+    return (
+      <circle cx={cx} cy={cy} r={6} fill={col} stroke="#0E1117" strokeWidth={1.5}
+        style={{ filter: `drop-shadow(0 0 4px ${col}90)` }} />
+    );
+  };
+
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: typeof pts[0] }> }) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div className="rounded-xl px-3 py-2 text-xs"
+        style={{ background: "#1C2128", border: "1px solid rgba(0,212,255,0.3)" }}>
+        <p className="font-bold text-white">{d.y.toFixed(2)} L/h</p>
+        <p style={{ color: "#00D4FF" }}>🌡 {d.x}°C</p>
+        <p style={{ color: dotColor(d.hum) }}>💧 {d.hum}% humedad</p>
+        <p className="text-[#8B949E] mt-0.5">{d.label.split(" — ")[0]}</p>
+      </div>
+    );
+  };
+
+  return (
+    <div className="rounded-2xl p-4 space-y-2"
+      style={{ background: "rgba(0,212,255,0.04)", border: "1px solid rgba(0,212,255,0.2)" }}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-bold text-white">Sudoración vs Temperatura</p>
+          <p className="text-[10px] text-[#8B949E]">Color del punto = humedad · línea = tendencia predictiva</p>
+        </div>
+        {/* Leyenda humedad */}
+        <div className="flex items-center gap-1.5 text-[10px] text-[#8B949E]">
+          <div className="w-3 h-3 rounded-full" style={{ background: dotColor(20) }} />
+          <span>Seco</span>
+          <div className="w-3 h-3 rounded-full ml-1" style={{ background: dotColor(100) }} />
+          <span>Húmedo</span>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <ScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+          <XAxis
+            dataKey="x" type="number" name="Temperatura"
+            domain={["auto", "auto"]}
+            stroke="#30363D" tick={{ fill: "#8B949E", fontSize: 11 }}
+          >
+            <Label value="Temperatura (°C)" position="insideBottom" offset={-15} fill="#8B949E" fontSize={10} />
+          </XAxis>
+          <YAxis
+            dataKey="y" type="number" name="Tasa"
+            domain={[0, "auto"]}
+            stroke="#30363D" tick={{ fill: "#8B949E", fontSize: 11 }}
+            width={38}
+          >
+            <Label value="L/h" angle={-90} position="insideLeft" offset={10} fill="#8B949E" fontSize={10} />
+          </YAxis>
+          <RTooltip content={<CustomTooltip />} />
+          {/* Puntos reales */}
+          <Scatter data={pts} shape={<CustomDot />} />
+          {/* Línea de tendencia */}
+          {trendPts.length === 2 && (
+            <Scatter
+              data={trendPts}
+              line={{ stroke: "#00D4FF", strokeWidth: 1.5, strokeDasharray: "6 3" }}
+              shape={() => null as unknown as React.ReactElement}
+              legendType="none"
+            />
+          )}
+        </ScatterChart>
+      </ResponsiveContainer>
+      {reg && (
+        <p className="text-[10px] text-[#8B949E] text-center">
+          Tendencia: <span className="text-[#00D4FF] font-semibold">+{(reg.slope * 10).toFixed(2)} L/h cada 10°C</span>
+          {" "}· Predice tu necesidad: y = {reg.slope.toFixed(3)}·T + {reg.intercept.toFixed(2)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── 2. IntraEntreno – Heatmap de tolerancia ──────────────────────────────────
+
+const CHO_BINS = [
+  { label: "≤40", min: 0, max: 40 },
+  { label: "41–60", min: 40, max: 60 },
+  { label: "61–80", min: 60, max: 80 },
+  { label: "81–100", min: 80, max: 100 },
+  { label: ">100", min: 100, max: Infinity },
+];
+
+const FUENTE_ROWS: TipoFuente[] = ["gel", "liquido", "mixto", "solido"];
+
+function heatmapColor(malestar: number | null): { bg: string; text: string; label: string } {
+  if (malestar === null) return { bg: "rgba(48,54,61,0.4)", text: "#4B5563", label: "—" };
+  if (malestar <= 3) return { bg: "rgba(34,197,94,0.25)", text: "#22C55E", label: `${malestar.toFixed(1)}` };
+  if (malestar <= 6) return { bg: "rgba(234,179,8,0.25)", text: "#EAB308", label: `${malestar.toFixed(1)}` };
+  return { bg: "rgba(244,63,94,0.3)", text: "#F43F5E", label: `${malestar.toFixed(1)}` };
+}
+
+function IntraHeatmap({ historial }: { historial: IntraEntrenoTest[] }) {
+  // Build matrix: for each (fuente, bin) → avg malestar
+  const matrix = useMemo(() => {
+    const map: Record<string, number[]> = {};
+    historial.forEach(t => {
+      const bin = CHO_BINS.find(b => t.cho_g_hora > b.min && t.cho_g_hora <= b.max);
+      if (!bin) return;
+      const key = `${t.tipo_fuente}__${bin.label}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(t.malestar);
+    });
+    const result: Record<string, number | null> = {};
+    Object.entries(map).forEach(([k, vals]) => {
+      result[k] = parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1));
+    });
+    return result;
+  }, [historial]);
+
+  const hasData = historial.length > 0;
+
+  return (
+    <div className="rounded-2xl p-4 space-y-3"
+      style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.2)" }}>
+      <div>
+        <p className="text-xs font-bold text-white">Mapa de calor — Tolerancia digestiva</p>
+        <p className="text-[10px] text-[#8B949E]">Media de malestar por fuente × g/h · Verde &lt;4 · Amarillo 4-6 · Rojo &gt;6</p>
+      </div>
+
+      {!hasData ? (
+        <div className="py-6 text-center">
+          <p className="text-xs text-[#8B949E]">Sin datos aún. Registra tus tiradas largas para ver el heatmap.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr>
+                <th className="text-left text-[10px] text-[#8B949E] font-semibold pb-2 pr-3 whitespace-nowrap">Fuente</th>
+                {CHO_BINS.map(b => (
+                  <th key={b.label} className="text-center text-[10px] text-[#8B949E] font-semibold pb-2 px-1 whitespace-nowrap">
+                    {b.label}g/h
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {FUENTE_ROWS.map(fuente => {
+                const meta = FUENTE_META[fuente];
+                return (
+                  <tr key={fuente}>
+                    <td className="pr-3 py-1 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span>{meta.emoji}</span>
+                        <span className="font-semibold" style={{ color: meta.color }}>{meta.label}</span>
+                      </div>
+                    </td>
+                    {CHO_BINS.map(bin => {
+                      const key = `${fuente}__${bin.label}`;
+                      const val = matrix[key] ?? null;
+                      const style = heatmapColor(val);
+                      return (
+                        <td key={bin.label} className="px-1 py-1">
+                          <div
+                            className="w-full h-10 rounded-lg flex items-center justify-center font-black text-sm transition-all"
+                            style={{ background: style.bg, color: style.text, minWidth: "52px",
+                              boxShadow: val !== null ? `0 0 8px ${style.bg}` : "none" }}
+                            title={val !== null ? `${meta.label} · ${bin.label}g/h · malestar ${val}/10` : "Sin datos"}
+                          >
+                            {style.label}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Leyenda */}
+      <div className="flex items-center gap-4 text-[10px] text-[#8B949E]">
+        {[
+          { col: "rgba(34,197,94,0.35)", label: "1–3 Perfecto", text: "#22C55E" },
+          { col: "rgba(234,179,8,0.35)", label: "4–6 Regular", text: "#EAB308" },
+          { col: "rgba(244,63,94,0.4)",  label: "7–10 Mal",    text: "#F43F5E" },
+        ].map(({ col, label, text }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <div className="w-4 h-4 rounded" style={{ background: col }} />
+            <span style={{ color: text }}>{label}</span>
+          </div>
+        ))}
+        <span className="ml-auto italic">Valor = media de malestar</span>
+      </div>
+    </div>
+  );
+}
+
+// ── 3. IntraEntreno – Bubble Chart de desgaste (hora × g/h × malestar) ──────
+
+function IntraBubbleChart({ historial }: { historial: IntraEntrenoTest[] }) {
+  const pts = useMemo(() =>
+    historial.map(t => ({
+      x: parseFloat((t.duracion_min / 60).toFixed(2)),   // horas
+      y: t.cho_g_hora,
+      z: t.malestar,                                       // tamaño burbuja
+      fuente: t.tipo_fuente,
+      label: `${t.alimentos.slice(0, 30)}${t.alimentos.length > 30 ? "…" : ""}`,
+      fecha: t.fecha,
+    })),
+    [historial]
+  );
+
+  const BubbleDot = (props: { cx?: number; cy?: number; payload?: typeof pts[0] }) => {
+    const { cx = 0, cy = 0, payload } = props;
+    if (!payload) return null;
+    const r = 5 + payload.z * 1.8;   // radio proporcional al malestar
+    const col = malestarColor(payload.z);
+    const fm = FUENTE_META[payload.fuente as TipoFuente] ?? FUENTE_META.mixto;
+    return (
+      <g>
+        <circle cx={cx} cy={cy} r={r} fill={col} fillOpacity={0.25}
+          stroke={col} strokeWidth={1.5} style={{ filter: `drop-shadow(0 0 ${payload.z}px ${col}60)` }} />
+        <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle"
+          fontSize={9} fill={col} fontWeight="bold">
+          {fm.emoji}
+        </text>
+      </g>
+    );
+  };
+
+  const BubbleTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: typeof pts[0] }> }) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    const col = malestarColor(d.z);
+    const fm = FUENTE_META[d.fuente as TipoFuente] ?? FUENTE_META.mixto;
+    return (
+      <div className="rounded-xl px-3 py-2 text-xs space-y-0.5"
+        style={{ background: "#1C2128", border: "1px solid rgba(249,115,22,0.3)" }}>
+        <p className="font-bold text-white">{fm.emoji} {fm.label}</p>
+        <p style={{ color: "#F97316" }}>⏱ {d.x.toFixed(1)}h de entreno</p>
+        <p style={{ color: "#C9FF00" }}>🍞 {d.y.toFixed(0)} g/h</p>
+        <p style={{ color: col }}>😣 Malestar {d.z}/10 — {malestarLabel(d.z)}</p>
+        <p className="text-[#8B949E] mt-0.5 italic">{d.label}</p>
+        <p className="text-[#6B7280]">{d.fecha}</p>
+      </div>
+    );
+  };
+
+  if (pts.length === 0) {
+    return (
+      <div className="rounded-2xl p-6 text-center space-y-1"
+        style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.15)" }}>
+        <p className="text-2xl">🫧</p>
+        <p className="text-sm font-semibold text-white">Gráfico de burbujas — Desgaste por duración</p>
+        <p className="text-xs text-[#8B949E]">Aparece cuando añadas registros.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl p-4 space-y-2"
+      style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.2)" }}>
+      <div>
+        <p className="text-xs font-bold text-white">Desgaste digestivo por duración</p>
+        <p className="text-[10px] text-[#8B949E]">Burbuja más grande = más malestar · X = duración del entreno · Y = g/h</p>
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <ScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+          <XAxis dataKey="x" type="number" name="Horas" domain={[0, "auto"]}
+            stroke="#30363D" tick={{ fill: "#8B949E", fontSize: 11 }}>
+            <Label value="Duración (horas)" position="insideBottom" offset={-15} fill="#8B949E" fontSize={10} />
+          </XAxis>
+          <YAxis dataKey="y" type="number" name="g/h" domain={[0, "auto"]}
+            stroke="#30363D" tick={{ fill: "#8B949E", fontSize: 11 }} width={38}>
+            <Label value="g/h CHO" angle={-90} position="insideLeft" offset={10} fill="#8B949E" fontSize={10} />
+          </YAxis>
+          <RTooltip content={<BubbleTooltip />} cursor={{ strokeDasharray: "3 3" }} />
+          <Scatter data={pts} shape={<BubbleDot />} />
+          {/* Referencia 90g/h objetivo */}
+          <ReferenceLine y={90} stroke="#C9FF00" strokeDasharray="5 3" strokeWidth={1}
+            label={{ value: "90g/h objetivo", fill: "#C9FF00", fontSize: 9, position: "right" }} />
+        </ScatterChart>
+      </ResponsiveContainer>
+      <div className="flex items-center gap-4 text-[10px] text-[#8B949E] flex-wrap">
+        <span>Tamaño = gravedad del malestar</span>
+        {[1,5,10].map(n => (
+          <div key={n} className="flex items-center gap-1">
+            <div className="rounded-full" style={{
+              width: `${8 + n * 1.8}px`, height: `${8 + n * 1.8}px`,
+              background: malestarColor(n), opacity: 0.4,
+              minWidth: `${8 + n * 1.8}px`
+            }} />
+            <span>{n}/10</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
 // ── Intra-Entreno ─────────────────────────────────────────────────────────────
 
 type TipoFuente = "gel" | "solido" | "liquido" | "mixto";
@@ -1470,6 +1846,10 @@ function IntraEntreno() {
 
         {/* ── Historial ── */}
         <div className="lg:col-span-3 space-y-4">
+          {/* Heatmap tolerancia */}
+          <IntraHeatmap historial={historial} />
+          {/* Bubble chart desgaste */}
+          <IntraBubbleChart historial={historial} />
 
           {/* Flash resultado */}
           {flashResult && (
@@ -1941,6 +2321,9 @@ function SweatRate() {
 
         {/* ── Historial ── */}
         <div className="lg:col-span-3 space-y-4">
+          {/* Scatter plot temperatura → sudoración */}
+          <SweatRateScatter historial={historial} />
+
           {/* Resultado flash tras guardar */}
           {resultadoLocal !== null && (
             <div
