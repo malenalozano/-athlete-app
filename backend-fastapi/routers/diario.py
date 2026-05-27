@@ -115,6 +115,71 @@ def get_biometrico(usuario_id: int, limit: int = 30):
     return [dict(zip(cols, r)) for r in rows]
 
 
+class SweatRateTest(BaseModel):
+    usuario_id: int
+    fecha: Optional[str] = None
+    peso_inicial_kg: float
+    peso_final_kg: float
+    liquidos_ml: float
+    tiempo_min: float
+    temperatura_c: Optional[float] = None
+    humedad_pct: Optional[float] = None
+    notas: Optional[str] = None
+
+
+@router.get("/sweat-rate/{usuario_id}")
+def get_sweat_rate(usuario_id: int, limit: int = 50):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT id, fecha, peso_inicial_kg, peso_final_kg, liquidos_ml,
+                  tiempo_min, temperatura_c, humedad_pct, tasa_sudoracion_lh, notas, creado_en
+           FROM sweat_rate_tests
+           WHERE usuario_id = ?
+           ORDER BY fecha DESC LIMIT ?""",
+        (usuario_id, limit),
+    ).fetchall()
+    conn.close()
+    cols = ["id", "fecha", "peso_inicial_kg", "peso_final_kg", "liquidos_ml",
+            "tiempo_min", "temperatura_c", "humedad_pct", "tasa_sudoracion_lh", "notas", "creado_en"]
+    return [dict(zip(cols, r)) for r in rows]
+
+
+@router.post("/sweat-rate")
+def crear_sweat_rate(e: SweatRateTest):
+    # Cálculo: Tasa (L/h) = (peso_inicial - peso_final + liquidos_ml/1000) / (tiempo_min/60)
+    perdida_kg = e.peso_inicial_kg - e.peso_final_kg
+    liquidos_l = e.liquidos_ml / 1000.0
+    tiempo_h = e.tiempo_min / 60.0
+    if tiempo_h <= 0:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="El tiempo debe ser mayor que 0")
+    tasa = (perdida_kg + liquidos_l) / tiempo_h
+
+    conn = get_db()
+    fecha = e.fecha or datetime.now().strftime("%Y-%m-%d")
+    conn.execute(
+        """INSERT INTO sweat_rate_tests
+           (usuario_id, fecha, peso_inicial_kg, peso_final_kg, liquidos_ml,
+            tiempo_min, temperatura_c, humedad_pct, tasa_sudoracion_lh, notas, creado_en)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (e.usuario_id, fecha, e.peso_inicial_kg, e.peso_final_kg,
+         e.liquidos_ml, e.tiempo_min, e.temperatura_c, e.humedad_pct,
+         round(tasa, 3), e.notas, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True, "fecha": fecha, "tasa_sudoracion_lh": round(tasa, 3)}
+
+
+@router.delete("/sweat-rate/{test_id}")
+def eliminar_sweat_rate(test_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM sweat_rate_tests WHERE id = ?", (test_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
 @router.post("/biometrico")
 def crear_biometrico(e: EntradaBiometrica):
     conn = get_db()

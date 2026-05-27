@@ -21,9 +21,13 @@ import {
   Archive,
   ArchiveRestore,
   Trash2,
+  Droplets,
+  Info,
+  Thermometer,
+  Wind,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { crearEntradaDiario, getActividades, getEjercicios, getSesionFuerzaHoy, archivarEjercicio, eliminarEjercicio, crearEjercicio, editarEjercicio, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy, type GrupoFuerza } from "../api";
+import { crearEntradaDiario, getActividades, getEjercicios, getSesionFuerzaHoy, archivarEjercicio, eliminarEjercicio, crearEjercicio, editarEjercicio, getSweatRateTests, crearSweatRateTest, eliminarSweatRateTest, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy, type GrupoFuerza, type SweatRateTest } from "../api";
 import { ModalRegistroFuerza } from "../components/ModalRegistroFuerza";
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
@@ -1115,6 +1119,466 @@ function Ejercicios() {
   );
 }
 
+// ── Sweat Rate ────────────────────────────────────────────────────────────────
+
+function SweatRate() {
+  const { userId } = useUser();
+
+  // Formulario
+  const [fecha, setFecha] = useState(() => new Date().toISOString().split("T")[0]);
+  const [pesoInicial, setPesoInicial] = useState("");
+  const [pesoFinal, setPesoFinal] = useState("");
+  const [liquidos, setLiquidos] = useState("");
+  const [tiempo, setTiempo] = useState("");
+  const [temperatura, setTemperatura] = useState("");
+  const [humedad, setHumedad] = useState("");
+  const [notas, setNotas] = useState("");
+
+  // UI
+  const [showProtocolo, setShowProtocolo] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [resultadoLocal, setResultadoLocal] = useState<number | null>(null);
+
+  // Historial
+  const [historial, setHistorial] = useState<SweatRateTest[]>([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
+
+  const cargarHistorial = () => {
+    if (!userId) return;
+    setLoadingHistorial(true);
+    getSweatRateTests(userId)
+      .then(setHistorial)
+      .catch(() => null)
+      .finally(() => setLoadingHistorial(false));
+  };
+
+  useEffect(() => { cargarHistorial(); }, [userId]);
+
+  // Cálculo en tiempo real
+  const tasaPreview = (() => {
+    const pi = parseFloat(pesoInicial);
+    const pf = parseFloat(pesoFinal);
+    const liq = parseFloat(liquidos);
+    const t = parseFloat(tiempo);
+    if (!isNaN(pi) && !isNaN(pf) && !isNaN(liq) && !isNaN(t) && t > 0) {
+      return ((pi - pf) + liq / 1000) / (t / 60);
+    }
+    return null;
+  })();
+
+  const handleGuardar = async () => {
+    if (!userId) return;
+    const pi = parseFloat(pesoInicial);
+    const pf = parseFloat(pesoFinal);
+    const liq = parseFloat(liquidos);
+    const t = parseFloat(tiempo);
+    if (isNaN(pi) || isNaN(pf) || isNaN(liq) || isNaN(t) || t <= 0) {
+      setError("Rellena todos los campos obligatorios con valores válidos.");
+      return;
+    }
+    setError("");
+    setSubmitting(true);
+    try {
+      const res = await crearSweatRateTest({
+        usuario_id: userId,
+        fecha,
+        peso_inicial_kg: pi,
+        peso_final_kg: pf,
+        liquidos_ml: liq,
+        tiempo_min: t,
+        temperatura_c: temperatura ? parseFloat(temperatura) : null,
+        humedad_pct: humedad ? parseFloat(humedad) : null,
+        notas: notas.trim() || undefined,
+      });
+      setResultadoLocal(res.tasa_sudoracion_lh);
+      // Reset form
+      setPesoInicial(""); setPesoFinal(""); setLiquidos("");
+      setTiempo(""); setTemperatura(""); setHumedad(""); setNotas("");
+      cargarHistorial();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEliminar = async (id: number) => {
+    if (!window.confirm("¿Eliminar este test?")) return;
+    await eliminarSweatRateTest(id);
+    cargarHistorial();
+  };
+
+  const tasaColor = (tasa: number) => {
+    if (tasa < 0.5) return "#60A5FA";
+    if (tasa < 1.0) return "#C9FF00";
+    if (tasa < 1.5) return "#F97316";
+    return "#F43F5E";
+  };
+
+  const tasaLabel = (tasa: number) => {
+    if (tasa < 0.5) return "Baja";
+    if (tasa < 1.0) return "Normal";
+    if (tasa < 1.5) return "Alta";
+    return "Muy alta";
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* ── Header ── */}
+      <div
+        className="rounded-2xl p-6 relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, rgba(0,212,255,0.12), rgba(96,165,250,0.08))",
+          border: "1px solid rgba(0,212,255,0.25)",
+        }}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Droplets className="h-5 w-5" style={{ color: "#00D4FF" }} />
+              <h2 className="text-xl font-bold text-white">Sweat Rate</h2>
+            </div>
+            <p className="text-[#8B949E] text-sm">
+              Calcula tu tasa de sudoración por hora para optimizar la hidratación en carrera.
+            </p>
+          </div>
+          {/* Botón protocolo */}
+          <button
+            onClick={() => setShowProtocolo(!showProtocolo)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold shrink-0 transition-all"
+            style={{
+              background: showProtocolo ? "rgba(0,212,255,0.15)" : "rgba(255,255,255,0.05)",
+              border: showProtocolo ? "1px solid rgba(0,212,255,0.5)" : "1px solid rgba(255,255,255,0.1)",
+              color: showProtocolo ? "#00D4FF" : "#8B949E",
+            }}
+          >
+            <Info className="h-3.5 w-3.5" />
+            Protocolo
+          </button>
+        </div>
+
+        {/* Panel de protocolo — colapsable */}
+        {showProtocolo && (
+          <div
+            className="mt-4 rounded-xl p-4 space-y-3 text-sm"
+            style={{ background: "rgba(0,212,255,0.06)", border: "1px solid rgba(0,212,255,0.2)" }}
+          >
+            <p className="font-bold text-white flex items-center gap-2">
+              <span>📋</span> Cómo hacer la prueba correctamente
+            </p>
+            <div className="space-y-2 text-[#8B949E]">
+              <div className="flex gap-2">
+                <span className="font-bold shrink-0" style={{ color: "#00D4FF" }}>ANTES</span>
+                <span>Ve al baño. Pésate completamente desnudo/a (la ropa mojada de sudor suma peso falso).</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="font-bold shrink-0" style={{ color: "#C9FF00" }}>DURANTE</span>
+                <span>Entrena al ritmo e intensidad objetivo (1–2 h de volumen aeróbico). Si bebes agua, mide exactamente los mililitros. <strong className="text-white">No vayas al baño</strong> durante la prueba.</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="font-bold shrink-0" style={{ color: "#A855F7" }}>DESPUÉS</span>
+                <span>Sécate bien el sudor con una toalla. Pésate de nuevo completamente desnudo/a.</span>
+              </div>
+            </div>
+            <div
+              className="rounded-lg p-3 text-xs"
+              style={{ background: "rgba(201,255,0,0.07)", border: "1px solid rgba(201,255,0,0.2)", color: "#8B949E" }}
+            >
+              <p className="font-bold text-white mb-1">💡 Fórmula</p>
+              <p>Tasa (L/h) = (Peso inicial − Peso final + Líquidos bebidos en L) ÷ Tiempo en horas</p>
+              <p className="mt-1">
+                Guarda también la temperatura y humedad del día.
+                Así la app podrá cruzar la previsión meteorológica con tus datos
+                y decirte exactamente cuánto beber en tu próxima carrera.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* ── Formulario ── */}
+        <div className="lg:col-span-2">
+          <div
+            className="rounded-2xl p-5 space-y-4"
+            style={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.2)" }}
+          >
+            <p className="text-xs font-bold text-[#8B949E] uppercase tracking-widest">Nueva prueba</p>
+
+            {/* Fecha */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "#00D4FF" }}>Fecha</p>
+              <input
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 text-sm text-white bg-[#0E1117] border focus:outline-none"
+                style={{ borderColor: "rgba(0,212,255,0.3)" }}
+              />
+            </div>
+
+            {/* Pesos */}
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "Peso Inicial", unit: "kg", value: pesoInicial, set: setPesoInicial, placeholder: "58.2", color: "#C9FF00" },
+                { label: "Peso Final", unit: "kg", value: pesoFinal, set: setPesoFinal, placeholder: "57.5", color: "#F43F5E" },
+              ].map(({ label, unit, value, set, placeholder, color }) => (
+                <div key={label}>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color }}>{label} ({unit})</p>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={value}
+                    onChange={(e) => set(e.target.value)}
+                    placeholder={placeholder}
+                    className="w-full rounded-xl px-3 py-2 text-sm text-white bg-[#0E1117] border focus:outline-none text-center font-bold"
+                    style={{ borderColor: `${color}40` }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Líquidos y tiempo */}
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "Líquidos bebidos", unit: "mL", value: liquidos, set: setLiquidos, placeholder: "500", color: "#60A5FA" },
+                { label: "Duración", unit: "min", value: tiempo, set: setTiempo, placeholder: "60", color: "#A855F7" },
+              ].map(({ label, unit, value, set, placeholder, color }) => (
+                <div key={label}>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color }}>{label} ({unit})</p>
+                  <input
+                    type="number"
+                    step="1"
+                    value={value}
+                    onChange={(e) => set(e.target.value)}
+                    placeholder={placeholder}
+                    className="w-full rounded-xl px-3 py-2 text-sm text-white bg-[#0E1117] border focus:outline-none text-center font-bold"
+                    style={{ borderColor: `${color}40` }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Temperatura y humedad — opcionales */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 flex items-center gap-1" style={{ color: "#F97316" }}>
+                  <Thermometer className="h-3 w-3" /> Temp. (°C) <span className="text-[#30363D] normal-case font-normal">opt.</span>
+                </p>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={temperatura}
+                  onChange={(e) => setTemperatura(e.target.value)}
+                  placeholder="22"
+                  className="w-full rounded-xl px-3 py-2 text-sm text-white bg-[#0E1117] border focus:outline-none text-center"
+                  style={{ borderColor: "rgba(249,115,22,0.3)" }}
+                />
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 flex items-center gap-1" style={{ color: "#6B7280" }}>
+                  <Wind className="h-3 w-3" /> Humedad (%) <span className="text-[#30363D] normal-case font-normal">opt.</span>
+                </p>
+                <input
+                  type="number"
+                  step="1"
+                  value={humedad}
+                  onChange={(e) => setHumedad(e.target.value)}
+                  placeholder="60"
+                  className="w-full rounded-xl px-3 py-2 text-sm text-white bg-[#0E1117] border focus:outline-none text-center"
+                  style={{ borderColor: "rgba(107,114,128,0.3)" }}
+                />
+              </div>
+            </div>
+
+            {/* Notas */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 text-[#8B949E]">Notas (opcional)</p>
+              <textarea
+                value={notas}
+                onChange={(e) => setNotas(e.target.value)}
+                placeholder="Ej: Z2 en tapiz, calor elevado..."
+                rows={2}
+                className="w-full rounded-xl px-3 py-2 text-sm text-white resize-none focus:outline-none"
+                style={{ background: "rgba(14,17,23,0.8)", border: "1px solid rgba(48,54,61,0.6)" }}
+              />
+            </div>
+
+            {/* Preview resultado */}
+            {tasaPreview !== null && (
+              <div
+                className="rounded-xl p-3 text-center"
+                style={{
+                  background: `${tasaColor(tasaPreview)}12`,
+                  border: `1px solid ${tasaColor(tasaPreview)}40`,
+                }}
+              >
+                <p className="text-[10px] text-[#8B949E] uppercase tracking-widest mb-0.5">Resultado estimado</p>
+                <p className="text-3xl font-black" style={{ color: tasaColor(tasaPreview) }}>
+                  {tasaPreview.toFixed(2)} <span className="text-base font-bold">L/h</span>
+                </p>
+                <p className="text-xs font-bold mt-0.5" style={{ color: tasaColor(tasaPreview) }}>
+                  {tasaLabel(tasaPreview)}
+                </p>
+              </div>
+            )}
+
+            {error && <p className="text-xs text-red-400">{error}</p>}
+
+            <button
+              onClick={handleGuardar}
+              disabled={submitting || tasaPreview === null}
+              className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-40"
+              style={{
+                background: "linear-gradient(135deg, #00D4FF, #60A5FA)",
+                color: "#0E1117",
+                boxShadow: "0 0 20px rgba(0,212,255,0.3)",
+              }}
+            >
+              {submitting ? "Guardando..." : "💾 Guardar test"}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Historial ── */}
+        <div className="lg:col-span-3 space-y-4">
+          {/* Resultado flash tras guardar */}
+          {resultadoLocal !== null && (
+            <div
+              className="rounded-2xl p-5 text-center"
+              style={{
+                background: `${tasaColor(resultadoLocal)}12`,
+                border: `1px solid ${tasaColor(resultadoLocal)}40`,
+              }}
+            >
+              <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: tasaColor(resultadoLocal) }}>
+                ✅ Test guardado
+              </p>
+              <p className="text-4xl font-black text-white">
+                {resultadoLocal.toFixed(2)}{" "}
+                <span className="text-lg font-bold text-[#8B949E]">L/h</span>
+              </p>
+              <p className="text-sm mt-1" style={{ color: tasaColor(resultadoLocal) }}>
+                {tasaLabel(resultadoLocal)} sudoración — necesitas ~{Math.round(resultadoLocal * 1000)} mL/h
+              </p>
+              <button
+                onClick={() => setResultadoLocal(null)}
+                className="mt-3 text-xs text-[#8B949E] hover:text-white transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          )}
+
+          {/* Tabla historial */}
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ background: "#161B22", border: "1px solid rgba(0,212,255,0.15)" }}
+          >
+            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <p className="text-xs font-bold uppercase tracking-widest text-[#8B949E]">Historial de tests</p>
+              <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: "rgba(0,212,255,0.12)", color: "#00D4FF", border: "1px solid rgba(0,212,255,0.25)" }}>
+                {historial.length} test{historial.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            {loadingHistorial ? (
+              <div className="p-8 text-center">
+                <p className="text-sm text-[#8B949E]">Cargando...</p>
+              </div>
+            ) : historial.length === 0 ? (
+              <div className="p-10 text-center space-y-2">
+                <Droplets className="h-8 w-8 mx-auto text-[#30363D]" />
+                <p className="text-sm text-[#8B949E]">Aún no tienes tests guardados.</p>
+                <p className="text-xs text-[#30363D]">Haz tu primera prueba y descubre tu tasa de sudoración.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {historial.map((t) => {
+                  const color = tasaColor(t.tasa_sudoracion_lh);
+                  return (
+                    <div key={t.id} className="px-5 py-4 flex items-center gap-4">
+                      {/* Tasa grande */}
+                      <div className="text-center shrink-0 w-16">
+                        <p className="text-2xl font-black" style={{ color }}>
+                          {t.tasa_sudoracion_lh.toFixed(2)}
+                        </p>
+                        <p className="text-[9px] font-bold uppercase" style={{ color }}>L/h</p>
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          <p className="text-sm font-semibold text-white">
+                            {new Date(t.fecha + "T12:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}
+                          </p>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${color}18`, color, border: `1px solid ${color}35` }}>
+                            {tasaLabel(t.tasa_sudoracion_lh)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-[#8B949E] flex-wrap">
+                          <span>⚖️ {t.peso_inicial_kg}→{t.peso_final_kg} kg</span>
+                          <span>💧 {t.liquidos_ml} mL</span>
+                          <span>⏱ {t.tiempo_min} min</span>
+                          {t.temperatura_c != null && (
+                            <span className="flex items-center gap-0.5">
+                              <Thermometer className="h-3 w-3" style={{ color: "#F97316" }} />
+                              {t.temperatura_c}°C
+                            </span>
+                          )}
+                          {t.humedad_pct != null && (
+                            <span className="flex items-center gap-0.5">
+                              <Wind className="h-3 w-3 text-[#6B7280]" />
+                              {t.humedad_pct}%
+                            </span>
+                          )}
+                        </div>
+                        {t.notas && (
+                          <p className="text-[10px] text-[#6B7280] mt-0.5 italic truncate">"{t.notas}"</p>
+                        )}
+                      </div>
+
+                      {/* Hidratación recomendada */}
+                      <div className="text-center shrink-0 hidden sm:block">
+                        <p className="text-sm font-black text-white">{Math.round(t.tasa_sudoracion_lh * 1000)}</p>
+                        <p className="text-[9px] text-[#8B949E]">mL/h</p>
+                      </div>
+
+                      {/* Eliminar */}
+                      <button
+                        onClick={() => handleEliminar(t.id)}
+                        className="p-2 rounded-lg text-[#8B949E] hover:text-red-400 hover:bg-red-500/10 transition-all shrink-0"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Info card — futura integración meteorológica */}
+          {historial.length > 0 && (
+            <div
+              className="rounded-2xl p-4"
+              style={{ background: "rgba(201,255,0,0.04)", border: "1px solid rgba(201,255,0,0.15)" }}
+            >
+              <p className="text-xs font-bold text-[#C9FF00] mb-1">🔮 Próximamente</p>
+              <p className="text-xs text-[#8B949E]">
+                La app cruzará la previsión meteorológica del día de tu carrera con tu base de datos de sweat rate
+                y te dirá exactamente cuánto beber por hora.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export function Diario() {
@@ -1133,6 +1597,7 @@ export function Diario() {
         {safeTab === "libre" && <EntrenoLibre />}
         {safeTab === "ciclo" && <CicloMenstrualDiario />}
         {safeTab === "ejercicios" && <Ejercicios />}
+        {safeTab === "sweat-rate" && <SweatRate />}
       </main>
     </div>
   );

@@ -267,6 +267,21 @@ _SCHEMA = [
     "ALTER TABLE ejercicios_catalogo ADD COLUMN archivado INTEGER DEFAULT 0",
     "ALTER TABLE ejercicios_catalogo ADD COLUMN subir_peso INTEGER DEFAULT 0",
     "ALTER TABLE ejercicios_catalogo ADD COLUMN orden INTEGER DEFAULT 0",
+    # Sweat Rate tests
+    """CREATE TABLE IF NOT EXISTS sweat_rate_tests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER NOT NULL,
+        fecha TEXT NOT NULL,
+        peso_inicial_kg REAL NOT NULL,
+        peso_final_kg REAL NOT NULL,
+        liquidos_ml REAL NOT NULL,
+        tiempo_min REAL NOT NULL,
+        temperatura_c REAL,
+        humedad_pct REAL,
+        tasa_sudoracion_lh REAL NOT NULL,
+        notas TEXT,
+        creado_en TEXT DEFAULT CURRENT_TIMESTAMP
+    )""",
     # Indexes
     "CREATE INDEX IF NOT EXISTS idx_act_usuario_fecha ON actividades_garmin(usuario_id, fecha)",
     "CREATE INDEX IF NOT EXISTS idx_sueno_usuario_fecha ON datos_sueno(usuario_id, fecha)",

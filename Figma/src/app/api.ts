@@ -177,6 +177,33 @@ export function getDiarioFisiologia(usuarioId: number) {
   return req<EntradaDiario[]>(`/diario/fisiologia/${usuarioId}`);
 }
 
+// ── Sweat Rate ───────────────────────────────────────────────────────────────
+
+export function getSweatRateTests(usuarioId: number) {
+  return req<SweatRateTest[]>(`/diario/sweat-rate/${usuarioId}`);
+}
+
+export function crearSweatRateTest(data: {
+  usuario_id: number;
+  fecha?: string;
+  peso_inicial_kg: number;
+  peso_final_kg: number;
+  liquidos_ml: number;
+  tiempo_min: number;
+  temperatura_c?: number | null;
+  humedad_pct?: number | null;
+  notas?: string;
+}) {
+  return req<{ ok: boolean; fecha: string; tasa_sudoracion_lh: number }>("/diario/sweat-rate", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function eliminarSweatRateTest(testId: number) {
+  return req<{ ok: boolean }>(`/diario/sweat-rate/${testId}`, { method: "DELETE" });
+}
+
 export function crearEntradaDiario(e: Partial<EntradaDiario> & { usuario_id: number }) {
   return req<{ ok: boolean }>("/diario/fisiologia", {
     method: "POST",
@@ -474,4 +501,18 @@ export interface PlanGenerado {
   coach_tip: string;
   macrociclo: number;
   sesiones: SesionGenerada[];
+}
+
+export interface SweatRateTest {
+  id: number;
+  fecha: string;
+  peso_inicial_kg: number;
+  peso_final_kg: number;
+  liquidos_ml: number;
+  tiempo_min: number;
+  temperatura_c: number | null;
+  humedad_pct: number | null;
+  tasa_sudoracion_lh: number;
+  notas: string | null;
+  creado_en: string;
 }
