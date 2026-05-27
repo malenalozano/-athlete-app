@@ -172,6 +172,8 @@ def _do_sync(usuario_id: int) -> dict:
     sueno_ok = 0
     errores = []
     hoy = date.today()
+    # Extendemos la ventana a 90 días para no perder actividades de hace más de un mes
+    hace_90 = hoy - timedelta(days=90)
 
     def _fetch_day(dia_str: str) -> dict:
         """Descarga todos los datos de un día en paralelo (se ejecuta en hilo)."""
@@ -224,10 +226,10 @@ def _do_sync(usuario_id: int) -> dict:
     # ── Actividades + datos diarios en paralelo ────────────────────────────────
     dias = [hoy - timedelta(days=d) for d in range(7)]
     dias_str = [d.isoformat() for d in dias]
-    hace_30 = hoy - timedelta(days=30)
 
     with ThreadPoolExecutor(max_workers=8) as pool:
-        fut_acts = pool.submit(client.get_activities, 0, 30)
+        # Pedimos hasta 50 actividades para no perder nada reciente
+        fut_acts = pool.submit(client.get_activities, 0, 50)
         fut_dias = {pool.submit(_fetch_day, d): d for d in dias_str}
 
         # Actividades
@@ -236,7 +238,8 @@ def _do_sync(usuario_id: int) -> dict:
             for act in activities:
                 fecha_raw = act.get("startTimeLocal", "")[:10]
                 try:
-                    if fecha_raw and date.fromisoformat(fecha_raw) >= hace_30:
+                    # Aceptar actividades de los últimos 90 días
+                    if fecha_raw and date.fromisoformat(fecha_raw) >= hace_90:
                         _upsert_actividad(conn, usuario_id, act)
                         actividades_ok += 1
                 except Exception:

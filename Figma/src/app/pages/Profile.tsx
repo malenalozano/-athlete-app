@@ -111,7 +111,11 @@ function Sincronizacion({ biometrico, stats, userId, perfil, onSyncComplete }: {
     setSyncMsg(null);
     try {
       const result = await sincronizarGarmin(userId);
-      setSyncMsg(`Sincronizado: ${result.actividades_importadas} actividades, ${result.dias_biometrico} días biométricos, ${result.dias_sueno} días sueño.`);
+      let msg = `Sincronizado: ${result.actividades_importadas} actividades, ${result.dias_biometrico} días biométricos, ${result.dias_sueno} días sueño.`;
+      if (result.advertencias && result.advertencias.length > 0) {
+        msg += ` ⚠️ ${result.advertencias.join(" | ")}`;
+      }
+      setSyncMsg(msg);
       onSyncComplete();
     } catch (e: unknown) {
       setSyncMsg(e instanceof Error ? e.message : "Error al sincronizar");
@@ -816,7 +820,11 @@ function EditarPerfil({ userId, perfil, onSaved, open, onOpenChange }: { userId:
                         setSyncMsg(null);
                         try {
                           const result = await sincronizarGarmin(userId);
-                          setSyncMsg(`Sincronizado: ${result.actividades_importadas} actividades, ${result.dias_biometrico} días biométricos, ${result.dias_sueno} días sueño.`);
+                          let msg = `Sincronizado: ${result.actividades_importadas} actividades, ${result.dias_biometrico} días biométricos, ${result.dias_sueno} días sueño.`;
+                          if (result.advertencias && result.advertencias.length > 0) {
+                            msg += ` ⚠️ ${result.advertencias.join(" | ")}`;
+                          }
+                          setSyncMsg(msg);
                           onSaved?.();
                         } catch (e: unknown) {
                           const msg = e instanceof Error ? e.message : "Error al sincronizar";
