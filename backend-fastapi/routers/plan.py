@@ -58,6 +58,69 @@ class RegenerarTotalRequest(BaseModel):
 FARTLEK_REPS_MAX = 10  # Máximo absoluto de reps según NORMAS ENTRENAMIENTO.pdf
 
 
+def _migrar_progresiva_legacy(conn, sesiones: list) -> list:
+    """Detecta sesiones Progresiva con bloque_min incorrecto (calculado con semana ISO en
+    lugar de semanas dentro del Mac1) y las corrige en la BD + en la lista devuelta.
+
+    Señal de sesión incorrecta:
+    - sesion == 'Progresiva' y detalles contiene un bloque Z4 > 5 min en Mac1 semana ≤4
+      (el código viejo usaba semana ISO → bloque_min podía ser 15 cuando debería ser 5).
+    - También captura el bug matemático: Z4_min a 4:55/km > km_planificados total.
+
+    Corrección: bloque_min = 5 (inicio del Mac1), km_real calculado desde los tiempos.
+    """
+    PROG_BLOQUE_MIN_INICIO = 5  # NORMAS: bloque Z4 empieza en 5 min
+
+    for s in sesiones:
+        if s.get("tipo") != "Carrera":
+            continue
+        sesion_name = s.get("sesion", "") or ""
+        if "Progresiva" not in sesion_name:
+            continue
+
+        detalles = s.get("detalles", "") or ""
+        km_actual = s.get("km_planificados") or 0
+
+        # Extraer bloque_min del texto actual: "Xer tercio Z4 (N min a 4:55min/km)"
+        match = re.search(r"Z4\s*\((\d+)\s*min", detalles)
+        bloque_min_actual = int(match.group(1)) if match else None
+
+        if bloque_min_actual is None:
+            continue  # descripción desconocida, no tocar
+
+        # Detectar inconsistencia matemática: Z4 solo ya supera km_total
+        # (bloque_min / 4.917 > km_planificados → imposible)
+        km_solo_z4 = bloque_min_actual / 4.917
+        es_inconsistente = km_actual > 0 and km_solo_z4 > km_actual * 0.9
+
+        if not es_inconsistente and bloque_min_actual <= PROG_BLOQUE_MIN_INICIO:
+            continue  # ya es correcto o ya fue migrado
+
+        # Corregir: bloque_min = 5 min (inicio Mac1), km_real desde los tiempos
+        bm = PROG_BLOQUE_MIN_INICIO
+        km_z1 = round(bm / 7.5, 2)    # Z1: ~7:30/km
+        km_z2 = round(bm / 6.5, 2)    # Z2: ~6:30/km
+        km_z4 = round(bm / 4.917, 2)  # Z4: ~4:55/km
+        km_real = round(km_z1 + km_z2 + km_z4, 1)
+
+        nuevos_detalles = (
+            f"{bm} min Z1 (suave, ~7:30/km) · {bm} min Z2 (~6:30/km) · {bm} min Z4 (@4:55min/km). "
+            f"Total ~{km_real} km en {bm * 3} min. "
+            f"Progresión: bloque Z4 empieza {bm} min, +2 min cada ciclo de 4 semanas."
+        )
+
+        conn.execute(
+            "UPDATE plan_entrenamiento SET sesion='Progresiva', detalles=?, km_planificados=? WHERE id=?",
+            (nuevos_detalles, km_real, s["id"]),
+        )
+        s["sesion"] = "Progresiva"
+        s["detalles"] = nuevos_detalles
+        s["km_planificados"] = km_real
+
+    conn.commit()
+    return sesiones
+
+
 def _migrar_fartlek_legacy(conn, sesiones: list) -> list:
     """Detecta sesiones Fartlek con reps incorrectas (código viejo o por encima del cap)
     y las corrige en la BD + en la lista devuelta, sin regenerar el plan completo.
@@ -146,6 +209,8 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
 
     # Auto-migrar sesiones Fartlek antiguas (nombre "Fartlek MacX" o km erróneo)
     sesiones = _migrar_fartlek_legacy(conn, sesiones)
+    # Auto-migrar sesiones Progresiva antiguas (bloque Z4 imposible: > km total)
+    sesiones = _migrar_progresiva_legacy(conn, sesiones)
 
     # Estadísticas semana
     km_plan = sum(s["km_planificados"] or 0 for s in sesiones)
@@ -809,11 +874,20 @@ def _detalles_calidad_mac1(tipo: str, km: float, reps: int, bloque_min: int) -> 
             km_real,
         )
     else:  # Progresiva
-        km_real = km  # La progresiva cubre el total del rodaje
+        # FIX: km_real se calcula DESDE los tiempos, no como % del volumen semanal.
+        # Así Z4(bloque_min min) + Z2(bloque_min min) + Z1(bloque_min min) son coherentes
+        # con el km total y con lo que dice el PDF ("bloque Z4 empieza 5 min").
+        km_z1 = round(bloque_min / 7.5, 2)    # Z1: ~7:30/km
+        km_z2 = round(bloque_min / 6.5, 2)    # Z2: ~6:30/km
+        km_z4 = round(bloque_min / 4.917, 2)  # Z4: ~4:55/km
+        km_real = round(km_z1 + km_z2 + km_z4, 1)
+        dur_total = bloque_min * 3
         return (
             "Progresiva",
-            f"{km_real} km — 1er tercio Z1 · 2º tercio Z2 · 3er tercio Z4 ({bloque_min} min a 4:55min/km). "
-            f"Progresión: bloque Z4 empieza 5 min, +2 min por ciclo.",
+            f"{bloque_min} min Z1 (suave, ~7:30/km) · {bloque_min} min Z2 (~6:30/km) · "
+            f"{bloque_min} min Z4 (@4:55min/km). "
+            f"Total ~{km_real} km en {dur_total} min. "
+            f"Progresión: bloque Z4 empieza 5 min, +2 min cada ciclo de 4 semanas.",
             km_real,
         )
 
