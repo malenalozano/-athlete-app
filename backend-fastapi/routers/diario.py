@@ -180,6 +180,153 @@ def eliminar_sweat_rate(test_id: int):
     return {"ok": True}
 
 
+# ── Intra-Entreno ────────────────────────────────────────────────────────────
+
+class IntraEntrenoTest(BaseModel):
+    usuario_id: int
+    fecha: Optional[str] = None
+    duracion_min: float
+    alimentos: str
+    tipo_fuente: str          # 'gel' | 'solido' | 'liquido' | 'mixto'
+    cho_total_g: float
+    malestar: int             # 1-10
+    notas: Optional[str] = None
+
+
+@router.get("/intra-entreno/{usuario_id}")
+def get_intra_entreno(usuario_id: int, limit: int = 100):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT id, fecha, duracion_min, alimentos, tipo_fuente,
+                  cho_total_g, cho_g_hora, malestar, notas, creado_en
+           FROM intra_entreno_tests
+           WHERE usuario_id = ?
+           ORDER BY fecha DESC LIMIT ?""",
+        (usuario_id, limit),
+    ).fetchall()
+    conn.close()
+    cols = ["id", "fecha", "duracion_min", "alimentos", "tipo_fuente",
+            "cho_total_g", "cho_g_hora", "malestar", "notas", "creado_en"]
+    return [dict(zip(cols, r)) for r in rows]
+
+
+@router.post("/intra-entreno")
+def crear_intra_entreno(e: IntraEntrenoTest):
+    if e.duracion_min <= 0:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="La duración debe ser mayor que 0")
+    if not 1 <= e.malestar <= 10:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="El malestar debe estar entre 1 y 10")
+
+    cho_g_hora = round(e.cho_total_g / (e.duracion_min / 60.0), 2)
+
+    conn = get_db()
+    fecha = e.fecha or datetime.now().strftime("%Y-%m-%d")
+    conn.execute(
+        """INSERT INTO intra_entreno_tests
+           (usuario_id, fecha, duracion_min, alimentos, tipo_fuente,
+            cho_total_g, cho_g_hora, malestar, notas, creado_en)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (e.usuario_id, fecha, e.duracion_min, e.alimentos, e.tipo_fuente,
+         e.cho_total_g, cho_g_hora, e.malestar,
+         e.notas, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True, "fecha": fecha, "cho_g_hora": cho_g_hora}
+
+
+@router.delete("/intra-entreno/{test_id}")
+def eliminar_intra_entreno(test_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM intra_entreno_tests WHERE id = ?", (test_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@router.get("/intra-entreno/{usuario_id}/analisis")
+def analizar_intra_entreno(usuario_id: int, objetivo_gh: float = 90.0):
+    """
+    Detecta patrones de malestar por fuente de carbohidratos.
+    Compara entradas 'solido'/'mixto' buscando el umbral donde malestar >= 6.
+    Sugiere complementar con líquido para alcanzar el objetivo_gh.
+    """
+    conn = get_db()
+
+    # Todas las entradas con sólidos o mixto
+    rows_solido = conn.execute(
+        """SELECT cho_g_hora, malestar FROM intra_entreno_tests
+           WHERE usuario_id = ? AND tipo_fuente IN ('solido', 'mixto')
+           ORDER BY fecha DESC""",
+        (usuario_id,),
+    ).fetchall()
+
+    # Todas las entradas con geles (referencia)
+    rows_gel = conn.execute(
+        """SELECT cho_g_hora, malestar FROM intra_entreno_tests
+           WHERE usuario_id = ? AND tipo_fuente IN ('gel', 'liquido')
+           ORDER BY fecha DESC""",
+        (usuario_id,),
+    ).fetchall()
+
+    conn.close()
+
+    resultado = {
+        "suficientes_datos": False,
+        "n_solido": len(rows_solido),
+        "n_gel": len(rows_gel),
+        "alerta": None,
+        "resumen": None,
+    }
+
+    if len(rows_solido) < 2:
+        return resultado
+
+    resultado["suficientes_datos"] = True
+
+    # Calcular promedios y detectar patrón
+    ok_solido = [r[0] for r in rows_solido if r[1] <= 4]    # malestar tolerable
+    mal_solido = [r[0] for r in rows_solido if r[1] >= 6]   # malestar alto
+
+    # Media general de malestar
+    media_malestar = round(sum(r[1] for r in rows_solido) / len(rows_solido), 1)
+    media_cho = round(sum(r[0] for r in rows_solido) / len(rows_solido), 1)
+
+    resultado["resumen"] = {
+        "media_malestar": media_malestar,
+        "media_cho_gh": media_cho,
+        "n_total": len(rows_solido),
+    }
+
+    # Solo alertar si hay suficientes muestras con malestar alto (≥2)
+    if len(mal_solido) < 2:
+        return resultado
+
+    # Límite = máximo CHO donde todavía hay tolerancia (o mínimo problemático - 10 si no hay OK)
+    if ok_solido:
+        limite = max(ok_solido)
+    else:
+        limite = min(mal_solido) - 10 if min(mal_solido) > 10 else 30.0
+
+    diferencia = max(0.0, objetivo_gh - limite)
+
+    resultado["alerta"] = {
+        "limite_solidos_gh": round(limite, 1),
+        "objetivo_gh": objetivo_gh,
+        "diferencia_liquido_gh": round(diferencia, 1),
+        "muestras_mal": len(mal_solido),
+        "mensaje": (
+            f"Tu límite de absorción con sólidos está en {round(limite)}g/h. "
+            f"Para llegar a los {round(objetivo_gh)}g/h necesarios, "
+            f"la app sugiere añadir {round(diferencia)}g/h en formato líquido en los bidones."
+        ),
+    }
+
+    return resultado
+
+
 @router.post("/biometrico")
 def crear_biometrico(e: EntradaBiometrica):
     conn = get_db()

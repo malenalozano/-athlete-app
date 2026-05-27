@@ -78,6 +78,7 @@ const NAV_ITEMS: NavItem[] = [
       { key: "ciclo", label: "Ciclo Menstrual", onlyMalena: true },
       { key: "ejercicios", label: "Ejercicios", overridePath: "/ejercicios" },
       { key: "sweat-rate", label: "Sweat Rate" },
+      { key: "intra-entreno", label: "Intra-Entreno" },
     ],
   },
   {

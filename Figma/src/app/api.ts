@@ -204,6 +204,36 @@ export function eliminarSweatRateTest(testId: number) {
   return req<{ ok: boolean }>(`/diario/sweat-rate/${testId}`, { method: "DELETE" });
 }
 
+// ── Intra-Entreno ─────────────────────────────────────────────────────────────
+
+export function getIntraEntrenoTests(usuarioId: number) {
+  return req<IntraEntrenoTest[]>(`/diario/intra-entreno/${usuarioId}`);
+}
+
+export function crearIntraEntrenoTest(data: {
+  usuario_id: number;
+  fecha?: string;
+  duracion_min: number;
+  alimentos: string;
+  tipo_fuente: string;
+  cho_total_g: number;
+  malestar: number;
+  notas?: string;
+}) {
+  return req<{ ok: boolean; fecha: string; cho_g_hora: number }>("/diario/intra-entreno", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function eliminarIntraEntrenoTest(testId: number) {
+  return req<{ ok: boolean }>(`/diario/intra-entreno/${testId}`, { method: "DELETE" });
+}
+
+export function getIntraEntrenoAnalisis(usuarioId: number, objetivoGh = 90) {
+  return req<IntraEntrenoAnalisis>(`/diario/intra-entreno/${usuarioId}/analisis?objetivo_gh=${objetivoGh}`);
+}
+
 export function crearEntradaDiario(e: Partial<EntradaDiario> & { usuario_id: number }) {
   return req<{ ok: boolean }>("/diario/fisiologia", {
     method: "POST",
@@ -501,6 +531,37 @@ export interface PlanGenerado {
   coach_tip: string;
   macrociclo: number;
   sesiones: SesionGenerada[];
+}
+
+export interface IntraEntrenoTest {
+  id: number;
+  fecha: string;
+  duracion_min: number;
+  alimentos: string;
+  tipo_fuente: string;
+  cho_total_g: number;
+  cho_g_hora: number;
+  malestar: number;
+  notas: string | null;
+  creado_en: string;
+}
+
+export interface IntraEntrenoAnalisis {
+  suficientes_datos: boolean;
+  n_solido: number;
+  n_gel: number;
+  alerta: {
+    limite_solidos_gh: number;
+    objetivo_gh: number;
+    diferencia_liquido_gh: number;
+    muestras_mal: number;
+    mensaje: string;
+  } | null;
+  resumen: {
+    media_malestar: number;
+    media_cho_gh: number;
+    n_total: number;
+  } | null;
 }
 
 export interface SweatRateTest {

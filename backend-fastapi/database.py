@@ -267,6 +267,20 @@ _SCHEMA = [
     "ALTER TABLE ejercicios_catalogo ADD COLUMN archivado INTEGER DEFAULT 0",
     "ALTER TABLE ejercicios_catalogo ADD COLUMN subir_peso INTEGER DEFAULT 0",
     "ALTER TABLE ejercicios_catalogo ADD COLUMN orden INTEGER DEFAULT 0",
+    # Intra-entreno nutrition log
+    """CREATE TABLE IF NOT EXISTS intra_entreno_tests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER NOT NULL,
+        fecha TEXT NOT NULL,
+        duracion_min REAL NOT NULL,
+        alimentos TEXT NOT NULL,
+        tipo_fuente TEXT NOT NULL,
+        cho_total_g REAL NOT NULL,
+        cho_g_hora REAL NOT NULL,
+        malestar INTEGER NOT NULL,
+        notas TEXT,
+        creado_en TEXT DEFAULT CURRENT_TIMESTAMP
+    )""",
     # Sweat Rate tests
     """CREATE TABLE IF NOT EXISTS sweat_rate_tests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

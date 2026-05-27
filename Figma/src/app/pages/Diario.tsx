@@ -27,7 +27,7 @@ import {
   Wind,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { crearEntradaDiario, getActividades, getEjercicios, getSesionFuerzaHoy, archivarEjercicio, eliminarEjercicio, crearEjercicio, editarEjercicio, getSweatRateTests, crearSweatRateTest, eliminarSweatRateTest, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy, type GrupoFuerza, type SweatRateTest } from "../api";
+import { crearEntradaDiario, getActividades, getEjercicios, getSesionFuerzaHoy, archivarEjercicio, eliminarEjercicio, crearEjercicio, editarEjercicio, getSweatRateTests, crearSweatRateTest, eliminarSweatRateTest, getIntraEntrenoTests, crearIntraEntrenoTest, eliminarIntraEntrenoTest, getIntraEntrenoAnalisis, type ActividadGarmin, type EjercicioBiblioteca, type SesionFuerzaHoy, type GrupoFuerza, type SweatRateTest, type IntraEntrenoTest, type IntraEntrenoAnalisis } from "../api";
 import { ModalRegistroFuerza } from "../components/ModalRegistroFuerza";
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
@@ -1119,6 +1119,504 @@ function Ejercicios() {
   );
 }
 
+// ── Intra-Entreno ─────────────────────────────────────────────────────────────
+
+type TipoFuente = "gel" | "solido" | "liquido" | "mixto";
+
+const FUENTE_META: Record<TipoFuente, { label: string; emoji: string; color: string; desc: string }> = {
+  gel:     { label: "Gel",     emoji: "🧃", color: "#C9FF00", desc: "Maltodextrina, fructosa (fuente simple)" },
+  liquido: { label: "Líquido", emoji: "💧", color: "#00D4FF", desc: "Bebida isotónica, agua con CHO" },
+  solido:  { label: "Sólido",  emoji: "🍌", color: "#F97316", desc: "Pan, dátiles, barritas (fuente compleja)" },
+  mixto:   { label: "Mixto",   emoji: "🔄", color: "#A855F7", desc: "Combinación gel + sólido" },
+};
+
+function malestarColor(m: number): string {
+  if (m <= 3) return "#22C55E";
+  if (m <= 5) return "#C9FF00";
+  if (m <= 7) return "#F97316";
+  return "#F43F5E";
+}
+function malestarLabel(m: number): string {
+  if (m <= 2) return "Sin malestar";
+  if (m <= 4) return "Leve";
+  if (m <= 6) return "Moderado";
+  if (m <= 8) return "Alto";
+  return "Muy alto";
+}
+
+function IntraEntreno() {
+  const { userId } = useUser();
+
+  // Formulario
+  const [fecha, setFecha]           = useState(() => new Date().toISOString().split("T")[0]);
+  const [duracion, setDuracion]     = useState("");
+  const [alimentos, setAlimentos]   = useState("");
+  const [tipoFuente, setTipoFuente] = useState<TipoFuente>("gel");
+  const [choTotal, setChoTotal]     = useState("");
+  const [malestar, setMalestar]     = useState<number | null>(null);
+  const [notas, setNotas]           = useState("");
+
+  // UI
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]           = useState("");
+  const [flashResult, setFlashResult] = useState<{ cho_g_hora: number } | null>(null);
+
+  // Datos
+  const [historial, setHistorial]       = useState<IntraEntrenoTest[]>([]);
+  const [analisis, setAnalisis]         = useState<IntraEntrenoAnalisis | null>(null);
+  const [loadingData, setLoadingData]   = useState(false);
+
+  const cargar = () => {
+    if (!userId) return;
+    setLoadingData(true);
+    Promise.all([
+      getIntraEntrenoTests(userId),
+      getIntraEntrenoAnalisis(userId),
+    ])
+      .then(([tests, anal]) => { setHistorial(tests); setAnalisis(anal); })
+      .catch(() => null)
+      .finally(() => setLoadingData(false));
+  };
+
+  useEffect(() => { cargar(); }, [userId]);
+
+  // Preview CHO g/h
+  const choPreview = (() => {
+    const cho = parseFloat(choTotal);
+    const dur = parseFloat(duracion);
+    if (!isNaN(cho) && !isNaN(dur) && dur > 0) return cho / (dur / 60);
+    return null;
+  })();
+
+  const handleGuardar = async () => {
+    if (!userId) return;
+    const cho = parseFloat(choTotal);
+    const dur = parseFloat(duracion);
+    if (isNaN(cho) || isNaN(dur) || dur <= 0 || !alimentos.trim() || malestar === null) {
+      setError("Rellena todos los campos obligatorios.");
+      return;
+    }
+    setError("");
+    setSubmitting(true);
+    try {
+      const res = await crearIntraEntrenoTest({
+        usuario_id: userId,
+        fecha,
+        duracion_min: dur,
+        alimentos: alimentos.trim(),
+        tipo_fuente: tipoFuente,
+        cho_total_g: cho,
+        malestar,
+        notas: notas.trim() || undefined,
+      });
+      setFlashResult({ cho_g_hora: res.cho_g_hora });
+      setAlimentos(""); setChoTotal(""); setDuracion(""); setMalestar(null); setNotas("");
+      cargar();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEliminar = async (id: number) => {
+    if (!window.confirm("¿Eliminar este registro?")) return;
+    await eliminarIntraEntrenoTest(id);
+    cargar();
+  };
+
+  const fuente = FUENTE_META[tipoFuente];
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── Header ── */}
+      <div
+        className="rounded-2xl p-6"
+        style={{
+          background: "linear-gradient(135deg, rgba(249,115,22,0.12), rgba(201,255,0,0.06))",
+          border: "1px solid rgba(249,115,22,0.25)",
+        }}
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xl">🍌</span>
+          <h2 className="text-xl font-bold text-white">Intra-Entreno</h2>
+        </div>
+        <p className="text-[#8B949E] text-sm">
+          Registra qué comes en cada tirada larga. La app detecta patrones de malestar
+          estomacal y te ayuda a optimizar tu estrategia de carbohidratos.
+        </p>
+      </div>
+
+      {/* ── Alerta de patrón (si hay suficientes datos) ── */}
+      {analisis?.alerta && (
+        <div
+          className="rounded-2xl p-5 space-y-2"
+          style={{
+            background: "rgba(244,63,94,0.08)",
+            border: "1px solid rgba(244,63,94,0.4)",
+            boxShadow: "0 0 24px rgba(244,63,94,0.12)",
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-lg">⚠️</span>
+            <p className="text-sm font-bold text-white">Patrón detectado — Límite de absorción</p>
+            <span
+              className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: "rgba(244,63,94,0.15)", color: "#F43F5E", border: "1px solid rgba(244,63,94,0.3)" }}
+            >
+              {analisis.alerta.muestras_mal} muestras
+            </span>
+          </div>
+          <p className="text-sm text-[#8B949E] leading-relaxed">{analisis.alerta.mensaje}</p>
+          <div className="grid grid-cols-3 gap-3 pt-1">
+            {[
+              { label: "Límite sólidos", value: `${analisis.alerta.limite_solidos_gh}g/h`, color: "#F97316" },
+              { label: "Objetivo", value: `${analisis.alerta.objetivo_gh}g/h`, color: "#C9FF00" },
+              { label: "Añadir líquido", value: `+${analisis.alerta.diferencia_liquido_gh}g/h`, color: "#00D4FF" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="rounded-xl p-2.5 text-center" style={{ background: `${color}10`, border: `1px solid ${color}30` }}>
+                <p className="text-base font-black" style={{ color }}>{value}</p>
+                <p className="text-[9px] text-[#8B949E] uppercase tracking-wider mt-0.5">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Resumen sin alerta ── */}
+      {analisis?.suficientes_datos && !analisis.alerta && analisis.resumen && (
+        <div
+          className="rounded-2xl p-4 flex items-center gap-4"
+          style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.25)" }}
+        >
+          <span className="text-2xl">✅</span>
+          <div>
+            <p className="text-sm font-bold text-white">Sin patrones de malestar detectados</p>
+            <p className="text-xs text-[#8B949E]">
+              Media: <span className="text-white font-semibold">{analisis.resumen.media_cho_gh}g/h</span> con malestar medio de{" "}
+              <span className="text-white font-semibold">{analisis.resumen.media_malestar}/10</span> en {analisis.resumen.n_total} registros con sólidos.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+        {/* ── Formulario ── */}
+        <div className="lg:col-span-2">
+          <div
+            className="rounded-2xl p-5 space-y-4"
+            style={{ background: "#161B22", border: "1px solid rgba(249,115,22,0.2)" }}
+          >
+            <p className="text-xs font-bold text-[#8B949E] uppercase tracking-widest">Nuevo registro</p>
+
+            {/* Fecha */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 text-[#F97316]">Fecha</p>
+              <input
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 text-sm text-white bg-[#0E1117] border focus:outline-none"
+                style={{ borderColor: "rgba(249,115,22,0.3)" }}
+              />
+            </div>
+
+            {/* Duración */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 text-[#A855F7]">Duración del entreno (min)</p>
+              <input
+                type="number"
+                step="5"
+                value={duracion}
+                onChange={(e) => setDuracion(e.target.value)}
+                placeholder="120"
+                className="w-full rounded-xl px-3 py-2 text-sm text-white bg-[#0E1117] border focus:outline-none text-center font-bold"
+                style={{ borderColor: "rgba(168,85,247,0.3)" }}
+              />
+            </div>
+
+            {/* Tipo de fuente */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-2 text-[#C9FF00]">Tipo de fuente</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.entries(FUENTE_META) as [TipoFuente, typeof FUENTE_META[TipoFuente]][]).map(([key, meta]) => (
+                  <button
+                    key={key}
+                    onClick={() => setTipoFuente(key)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all"
+                    style={
+                      tipoFuente === key
+                        ? { background: `${meta.color}18`, border: `1px solid ${meta.color}60`, color: meta.color, boxShadow: `0 0 10px ${meta.color}20` }
+                        : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#8B949E" }
+                    }
+                  >
+                    <span>{meta.emoji}</span>
+                    <div className="text-left">
+                      <p className="font-bold leading-tight">{meta.label}</p>
+                      <p className="text-[9px] opacity-70 font-normal leading-tight">{meta.desc.split("(")[0].trim()}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Alimentos */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: fuente.color }}>
+                ¿Qué comiste? *
+              </p>
+              <textarea
+                value={alimentos}
+                onChange={(e) => setAlimentos(e.target.value)}
+                placeholder={
+                  tipoFuente === "gel"
+                    ? "Ej: 3 geles Maurten 100, 1 gel SIS"
+                    : tipoFuente === "solido"
+                    ? "Ej: 2 trozos pan de plátano con avena, 4 dátiles"
+                    : tipoFuente === "liquido"
+                    ? "Ej: 500ml bebida isotónica, 2 bidones con Tailwind"
+                    : "Ej: 2 geles + 1 barrita de dátiles"
+                }
+                rows={2}
+                className="w-full rounded-xl px-3 py-2 text-sm text-white resize-none focus:outline-none"
+                style={{ background: "rgba(14,17,23,0.8)", border: `1px solid ${fuente.color}30` }}
+              />
+            </div>
+
+            {/* CHO total */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 text-[#C9FF00]">
+                Carbohidratos totales (g) *
+              </p>
+              <input
+                type="number"
+                step="5"
+                value={choTotal}
+                onChange={(e) => setChoTotal(e.target.value)}
+                placeholder="180"
+                className="w-full rounded-xl px-3 py-2 text-sm text-white bg-[#0E1117] border focus:outline-none text-center font-bold"
+                style={{ borderColor: "rgba(201,255,0,0.35)" }}
+              />
+              {choPreview !== null && (
+                <p className="text-[11px] mt-1.5 text-center font-bold" style={{ color: "#C9FF00" }}>
+                  → {choPreview.toFixed(1)} g/h
+                </p>
+              )}
+            </div>
+
+            {/* Malestar */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-2 text-white">
+                Malestar estomacal *
+                {malestar !== null && (
+                  <span className="ml-2 font-black" style={{ color: malestarColor(malestar) }}>
+                    {malestar}/10 — {malestarLabel(malestar)}
+                  </span>
+                )}
+              </p>
+              <div className="grid grid-cols-5 gap-1.5">
+                {[1,2,3,4,5,6,7,8,9,10].map((n) => {
+                  const col = malestarColor(n);
+                  const active = malestar === n;
+                  return (
+                    <button
+                      key={n}
+                      onClick={() => setMalestar(n)}
+                      className="py-2 rounded-xl text-sm font-black transition-all"
+                      style={
+                        active
+                          ? { background: `${col}25`, border: `2px solid ${col}`, color: col, boxShadow: `0 0 12px ${col}40` }
+                          : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#4B5563" }
+                      }
+                    >
+                      {n}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Notas */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 text-[#8B949E]">Notas (opcional)</p>
+              <textarea
+                value={notas}
+                onChange={(e) => setNotas(e.target.value)}
+                placeholder="Calor, ritmo, tipo de terreno..."
+                rows={2}
+                className="w-full rounded-xl px-3 py-2 text-sm text-white resize-none focus:outline-none"
+                style={{ background: "rgba(14,17,23,0.8)", border: "1px solid rgba(48,54,61,0.6)" }}
+              />
+            </div>
+
+            {error && <p className="text-xs text-red-400">{error}</p>}
+
+            <button
+              onClick={handleGuardar}
+              disabled={submitting || malestar === null || !alimentos.trim() || choPreview === null}
+              className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-40"
+              style={{
+                background: "linear-gradient(135deg, #F97316, #fb923c)",
+                color: "#0E1117",
+                boxShadow: "0 0 20px rgba(249,115,22,0.3)",
+              }}
+            >
+              {submitting ? "Guardando..." : "💾 Guardar registro"}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Historial ── */}
+        <div className="lg:col-span-3 space-y-4">
+
+          {/* Flash resultado */}
+          {flashResult && (
+            <div
+              className="rounded-2xl p-4 flex items-center justify-between gap-4"
+              style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)" }}
+            >
+              <div>
+                <p className="text-xs font-bold text-[#22C55E] uppercase tracking-widest mb-0.5">✅ Guardado</p>
+                <p className="text-2xl font-black text-white">
+                  {flashResult.cho_g_hora.toFixed(1)}{" "}
+                  <span className="text-sm font-bold text-[#8B949E]">g/h</span>
+                </p>
+              </div>
+              <button onClick={() => setFlashResult(null)} className="text-[#8B949E] hover:text-white transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Tabla historial */}
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ background: "#161B22", border: "1px solid rgba(249,115,22,0.15)" }}
+          >
+            <div
+              className="px-5 py-3 flex items-center justify-between"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <p className="text-xs font-bold uppercase tracking-widest text-[#8B949E]">Historial</p>
+              <div className="flex items-center gap-2">
+                {analisis && (
+                  <span className="text-[10px] text-[#8B949E]">
+                    {analisis.n_solido} sólido · {analisis.n_gel} gel/líq
+                  </span>
+                )}
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full font-bold"
+                  style={{ background: "rgba(249,115,22,0.12)", color: "#F97316", border: "1px solid rgba(249,115,22,0.25)" }}
+                >
+                  {historial.length} registros
+                </span>
+              </div>
+            </div>
+
+            {loadingData ? (
+              <div className="p-8 text-center">
+                <p className="text-sm text-[#8B949E]">Cargando...</p>
+              </div>
+            ) : historial.length === 0 ? (
+              <div className="p-10 text-center space-y-2">
+                <span className="text-4xl">🍌</span>
+                <p className="text-sm text-[#8B949E]">Aún no hay registros.</p>
+                <p className="text-xs text-[#30363D]">Añade tu próxima tirada larga para empezar a detectar patrones.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {historial.map((t) => {
+                  const fm = FUENTE_META[t.tipo_fuente as TipoFuente] ?? FUENTE_META.mixto;
+                  const mc = malestarColor(t.malestar);
+                  return (
+                    <div key={t.id} className="px-5 py-4 space-y-2">
+                      <div className="flex items-start gap-3">
+                        {/* CHO g/h */}
+                        <div className="text-center shrink-0 w-16">
+                          <p className="text-xl font-black" style={{ color: fm.color }}>
+                            {t.cho_g_hora.toFixed(0)}
+                          </p>
+                          <p className="text-[9px] font-bold uppercase" style={{ color: fm.color }}>g/h</p>
+                        </div>
+
+                        {/* Info principal */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                            <p className="text-sm font-semibold text-white">
+                              {new Date(t.fecha + "T12:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                            </p>
+                            <span
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                              style={{ background: `${fm.color}18`, color: fm.color, border: `1px solid ${fm.color}35` }}
+                            >
+                              {fm.emoji} {fm.label}
+                            </span>
+                            {/* Malestar badge */}
+                            <span
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                              style={{ background: `${mc}18`, color: mc, border: `1px solid ${mc}35` }}
+                            >
+                              😣 {t.malestar}/10
+                            </span>
+                          </div>
+                          <p className="text-xs text-white truncate">{t.alimentos}</p>
+                          <div className="flex items-center gap-3 text-[10px] text-[#8B949E] mt-0.5 flex-wrap">
+                            <span>⏱ {t.duracion_min} min</span>
+                            <span>🍞 {t.cho_total_g}g total</span>
+                          </div>
+                          {t.notas && (
+                            <p className="text-[10px] text-[#6B7280] italic mt-0.5 truncate">"{t.notas}"</p>
+                          )}
+                        </div>
+
+                        {/* Malestar visual */}
+                        <div className="shrink-0 text-center hidden sm:block w-10">
+                          <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black mx-auto"
+                            style={{ background: `${mc}20`, border: `2px solid ${mc}60`, color: mc }}
+                          >
+                            {t.malestar}
+                          </div>
+                          <p className="text-[8px] text-[#8B949E] mt-0.5">{malestarLabel(t.malestar)}</p>
+                        </div>
+
+                        {/* Eliminar */}
+                        <button
+                          onClick={() => handleEliminar(t.id)}
+                          className="p-2 rounded-lg text-[#8B949E] hover:text-red-400 hover:bg-red-500/10 transition-all shrink-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Info sobre el análisis */}
+          {!analisis?.suficientes_datos && historial.length > 0 && (
+            <div
+              className="rounded-2xl p-4"
+              style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.2)" }}
+            >
+              <p className="text-xs font-bold text-[#F97316] mb-1">📊 Análisis en curso</p>
+              <p className="text-xs text-[#8B949E]">
+                Necesitas al menos <strong className="text-white">2 registros con sólidos o mixto</strong> para detectar patrones.
+                Actualmente tienes {analisis?.n_solido ?? 0}.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ── Sweat Rate ────────────────────────────────────────────────────────────────
 
 function SweatRate() {
@@ -1598,6 +2096,7 @@ export function Diario() {
         {safeTab === "ciclo" && <CicloMenstrualDiario />}
         {safeTab === "ejercicios" && <Ejercicios />}
         {safeTab === "sweat-rate" && <SweatRate />}
+        {safeTab === "intra-entreno" && <IntraEntreno />}
       </main>
     </div>
   );
