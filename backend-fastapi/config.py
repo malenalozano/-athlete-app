@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     local_db_path: str = "atleta.db"
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
     ntfy_topic: str = ""  # Topic ntfy.sh para notificaciones iPhone. Ej: "athlete-malena-2026"
+    cron_secret: str = ""  # Secret para proteger endpoints de cron-job.org. Ej: "mi-secreto-random"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

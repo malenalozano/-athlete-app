@@ -1,9 +1,17 @@
 """
 Tareas programadas (background jobs).
 
-Job activo:
+Jobs activos:
+  - garmin_auto_sync       — todos los días a las 07:00 hora Madrid
+    → Sincroniza actividades y biométricos de Garmin para todos los usuarios.
   - daily_training_reminder — todos los días a las 09:00 hora Madrid
     → Consulta el plan de hoy de cada usuario y manda notificación ntfy.
+
+EN PRODUCCIÓN (Render): el scheduler interno está DESACTIVADO porque el dyno
+free duerme. Los jobs los dispara cron-job.org llamando a:
+  - 07:00 → POST https://tu-backend.onrender.com/tasks/garmin-sync
+  - 09:00 → POST https://tu-backend.onrender.com/tasks/daily
+con header X-Cron-Secret: <valor de CRON_SECRET en las env vars de Render>.
 """
 import logging
 from datetime import date
@@ -72,6 +80,37 @@ def _formato_sesion(row: dict) -> str:
         partes.append(f"\n📝 {det}")
 
     return " · ".join(partes[:3]) + (partes[3] if len(partes) > 3 else "")
+
+
+def _garmin_auto_sync_job():
+    """Sincroniza Garmin para todos los usuarios con tokens (job local 07:00)."""
+    from database import get_db
+    try:
+        # Importación lazy para evitar circular imports
+        import sys, os
+        _routers_path = os.path.join(os.path.dirname(__file__))
+        if _routers_path not in sys.path:
+            sys.path.insert(0, _routers_path)
+        from routers.garmin import _do_sync
+    except Exception as e:
+        logger.error(f"No se pudo importar _do_sync para auto-sync Garmin: {e}")
+        return
+
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, nombre FROM usuarios WHERE garmin_tokens IS NOT NULL AND garmin_tokens != ''"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    for usuario_id, nombre in rows:
+        try:
+            res = _do_sync(usuario_id)
+            acts = res.get("actividades_importadas", 0)
+            logger.info(f"Auto-sync Garmin OK para {nombre}: {acts} actividad(es)")
+        except Exception as e:
+            logger.warning(f"Auto-sync Garmin ERROR para {nombre}: {e}")
 
 
 def daily_training_reminder():
@@ -163,7 +202,16 @@ def start_scheduler():
 
     _scheduler = BackgroundScheduler(timezone="Europe/Madrid")
 
-    # Todos los días a las 09:00 hora de Madrid (solo en local)
+    # ── Job 1: Auto-sync Garmin a las 07:00 (solo en local) ──
+    _scheduler.add_job(
+        _garmin_auto_sync_job,
+        trigger=CronTrigger(hour=7, minute=0, timezone="Europe/Madrid"),
+        id="garmin_auto_sync",
+        name="Auto-sync Garmin Connect",
+        replace_existing=True,
+    )
+
+    # ── Job 2: Recordatorio diario a las 09:00 (solo en local) ──
     _scheduler.add_job(
         daily_training_reminder,
         trigger=CronTrigger(hour=9, minute=0, timezone="Europe/Madrid"),
@@ -173,7 +221,7 @@ def start_scheduler():
     )
 
     _scheduler.start()
-    logger.info("Scheduler iniciado — recordatorio diario a las 09:00 (Madrid)")
+    logger.info("Scheduler iniciado — garmin sync 07:00, recordatorio 09:00 (Madrid)")
 
 
 def stop_scheduler():
