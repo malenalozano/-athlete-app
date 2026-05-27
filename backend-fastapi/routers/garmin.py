@@ -172,6 +172,16 @@ def _do_sync(usuario_id: int) -> dict:
             detail="Sesión Garmin caducada. Ejecuta desde tu PC: python scripts/garmin_login_once.py --usuario 1 (o --usuario 2 para Dani)",
         )
 
+    # Algunas versiones de garminconnect requieren cargar el perfil antes de get_stats/get_sleep
+    # para rellenar el display_name interno. Lo hacemos en segundo plano silenciosamente.
+    try:
+        client.get_full_name()
+    except Exception:
+        try:
+            client.get_user_profile()
+        except Exception:
+            pass  # No es crítico — seguimos
+
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     actividades_ok = 0
