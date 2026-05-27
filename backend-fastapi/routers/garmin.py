@@ -106,6 +106,7 @@ def _load_client_from_tokens(conn, usuario_id: int):
     """Carga cliente Garmin desde tokens OAuth guardados en BD.
     No hace login ni llama a la API — la renovación de token ocurre
     automáticamente en el primer 401 mediante di_refresh_token.
+    Soporta tanto gc.client (versiones antiguas) como gc.garth (versiones nuevas).
     """
     try:
         from garminconnect import Garmin
@@ -115,11 +116,17 @@ def _load_client_from_tokens(conn, usuario_id: int):
         if not row or not row[0]:
             return None
         gc = Garmin()
-        store = gc.client if hasattr(gc, "client") and gc.client is not None else None
+        # Detectar dónde vive el store OAuth según la versión de garminconnect
+        store = None
+        if hasattr(gc, "garth") and gc.garth is not None:
+            store = gc.garth
+        elif hasattr(gc, "client") and gc.client is not None:
+            store = gc.client
         if store is None:
             return None
         store.loads(row[0])
-        if not store.is_authenticated:
+        # Algunos stores no tienen is_authenticated; si cargó sin excepción, lo damos por válido
+        if hasattr(store, "is_authenticated") and not store.is_authenticated:
             return None
         return gc
     except Exception:
@@ -418,3 +425,109 @@ def token_status(usuario_id: int):
     conn.close()
     tiene_tokens = bool(row and row[0])
     return {"usuario_id": usuario_id, "tiene_tokens": tiene_tokens}
+
+
+@router.get("/{usuario_id}/diagnostico")
+def diagnostico_garmin(usuario_id: int):
+    """
+    Diagnóstico detallado: prueba cada paso del sync por separado.
+    Útil para depurar por qué sync devuelve 0 actividades.
+    """
+    from datetime import date
+    diag = {
+        "usuario_id": usuario_id,
+        "pasos": [],
+        "error_fatal": None,
+    }
+
+    # 1. DB + tokens
+    try:
+        conn = get_db()
+        row = conn.execute(
+            "SELECT garmin_tokens, email_garmin FROM usuarios WHERE id = ?",
+            (usuario_id,),
+        ).fetchone()
+        if not row:
+            diag["error_fatal"] = "Usuario no encontrado en BD"
+            return diag
+        tokens_len = len(row[0]) if row[0] else 0
+        diag["pasos"].append({
+            "paso": "tokens_en_bd",
+            "ok": tokens_len > 0,
+            "detalle": f"len={tokens_len}, email={row[1]}",
+        })
+        if tokens_len == 0:
+            diag["error_fatal"] = "Sin tokens en BD. Ejecuta garmin_login_once.py"
+            conn.close()
+            return diag
+    except Exception as e:
+        diag["error_fatal"] = f"Error BD: {e}"
+        return diag
+
+    # 2. Cargar client
+    try:
+        from garminconnect import Garmin
+        gc = Garmin()
+        has_client = hasattr(gc, "client") and gc.client is not None
+        has_garth = hasattr(gc, "garth") and gc.garth is not None
+        diag["pasos"].append({
+            "paso": "garmin_obj",
+            "ok": True,
+            "detalle": f"has_client={has_client}, has_garth={has_garth}",
+        })
+
+        # Intentar cargar tokens en el store correcto
+        store = None
+        store_name = None
+        if has_client:
+            store = gc.client
+            store_name = "client"
+        elif has_garth:
+            store = gc.garth
+            store_name = "garth"
+
+        if store is None:
+            diag["pasos"].append({"paso": "load_store", "ok": False, "detalle": "No hay store (ni client ni garth)"})
+            diag["error_fatal"] = "No se puede cargar el store de tokens"
+            conn.close()
+            return diag
+
+        store.loads(row[0])
+        is_auth = store.is_authenticated if hasattr(store, "is_authenticated") else "unknown"
+        diag["pasos"].append({
+            "paso": "load_tokens",
+            "ok": bool(is_auth) if isinstance(is_auth, bool) else True,
+            "detalle": f"store={store_name}, is_authenticated={is_auth}",
+        })
+    except Exception as e:
+        diag["pasos"].append({"paso": "load_client", "ok": False, "detalle": str(e)})
+        diag["error_fatal"] = f"Error cargando client: {e}"
+        conn.close()
+        return diag
+
+    # 3. Llamada a get_activities
+    try:
+        acts = gc.get_activities(0, 5)
+        fechas = [a.get("startTimeLocal", "?")[:10] for a in (acts or [])]
+        diag["pasos"].append({
+            "paso": "get_activities",
+            "ok": True,
+            "detalle": f"total={len(acts or [])}, fechas={fechas}",
+        })
+    except Exception as e:
+        diag["pasos"].append({"paso": "get_activities", "ok": False, "detalle": str(e)[:200]})
+
+    # 4. get_stats de ayer
+    try:
+        ayer = (date.today().replace(day=date.today().day - 1)).isoformat()
+        stats = gc.get_stats(ayer)
+        diag["pasos"].append({
+            "paso": "get_stats",
+            "ok": bool(stats),
+            "detalle": f"fecha={ayer}, keys={list((stats or {}).keys())[:5]}",
+        })
+    except Exception as e:
+        diag["pasos"].append({"paso": "get_stats", "ok": False, "detalle": str(e)[:200]})
+
+    conn.close()
+    return diag
