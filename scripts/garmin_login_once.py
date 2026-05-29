@@ -124,6 +124,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Login Ãºnico Garmin")
     parser.add_argument("--usuario", type=int, default=None, help="ID de usuario (1=Malena, 2=Dani)")
+    parser.add_argument("--force", action="store_true", help="Forzar un login fresco aunque existan tokens en disco")
     args = parser.parse_args()
 
     usuario_id = args.usuario
@@ -192,7 +193,7 @@ def main():
     # Comprobar si ya hay tokens vÃ¡lidos para esta cuenta
     from pathlib import Path
     token_file = Path(token_home) / "garmin_tokens.json"
-    if token_file.exists():
+    if token_file.exists() and not args.force:
         print(f"Tokens existentes en {token_home} â€” verificando...")
         try:
             from garminconnect import Garmin
@@ -216,6 +217,8 @@ def main():
                 _save_blockade(hours=hours)
                 return
             print("Tokens expirados o invÃ¡lidos â€” haciendo login fresco...\n")
+    elif args.force:
+        print("Forzando login fresco, ignorando tokens existentes en disco...\n")
 
     def _prompt_mfa():
         print("\nðŸ” Garmin requiere verificaciÃ³n adicional.")

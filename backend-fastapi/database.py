@@ -2,6 +2,7 @@ import json
 import sqlite3
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from config import settings
 
@@ -142,7 +143,12 @@ def get_db():
     token = settings.turso_auth_token
     if url and token:
         return TursoHTTPConnection(url, token)
-    conn = sqlite3.connect(settings.local_db_path, timeout=30, check_same_thread=False)
+
+    db_path = Path(settings.local_db_path)
+    if not db_path.is_absolute():
+        db_path = Path(__file__).resolve().parent / db_path
+
+    conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     return conn

@@ -1,6 +1,11 @@
 import json
 import os
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+
+BASE_DIR = Path(__file__).resolve().parent
 
 
 def _parse_cors(v: str | list) -> list[str]:
@@ -23,7 +28,7 @@ class Settings(BaseSettings):
     ntfy_topic: str = ""  # Topic ntfy.sh para notificaciones iPhone. Ej: "athlete-malena-2026"
     cron_secret: str = ""  # Secret para proteger endpoints de cron-job.org. Ej: "mi-secreto-random"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": str(BASE_DIR / ".env"), "env_file_encoding": "utf-8"}
 
     def __init__(self, **data):
         raw = os.environ.get("CORS_ORIGINS", "")
