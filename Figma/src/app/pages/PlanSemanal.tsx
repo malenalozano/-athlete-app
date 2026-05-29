@@ -1243,13 +1243,36 @@ function BibliotecaLoggerInline({
   );
 }
 
-function DayDetailPanel({ day, session, onClose, onEdit }: { day: DayPlan; session: Session; onClose: () => void; onEdit?: () => void }) {
+function DayDetailPanel({
+  day,
+  dayIdx,
+  session,
+  dayChoices,
+  onClose,
+  onEdit,
+  onMoveByOffset,
+  onMoveToDay,
+}: {
+  day: DayPlan;
+  dayIdx: number;
+  session: Session;
+  dayChoices: Array<{ idx: number; label: string }>;
+  onClose: () => void;
+  onEdit?: () => void;
+  onMoveByOffset: (offset: number) => void;
+  onMoveToDay: (targetDayIdx: number) => void;
+}) {
   const { userId } = useUser();
   const [fuerzaGuardada, setFuerzaGuardada] = useState(false);
+  const [mobileMoveTarget, setMobileMoveTarget] = useState(String(dayIdx));
   const colors = TYPE_COLORS[session.type] ?? TYPE_COLORS.running;
   const typeLabel = session.type === "running" ? "Carrera" : "Fuerza";
   const typeColor = session.type === "running" ? "#00D4FF" : "#A855F7";
   const grupoFuerza = session.type === "strength" ? detectarGrupoFuerza(session.activity) : null;
+
+  useEffect(() => {
+    setMobileMoveTarget(String(dayIdx));
+  }, [dayIdx, session.id]);
 
   return (
     <div
@@ -1291,6 +1314,55 @@ function DayDetailPanel({ day, session, onClose, onEdit }: { day: DayPlan; sessi
 
       {/* Body */}
       <div className="p-5">
+        <div className="mb-4 rounded-xl p-3 md:hidden" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div>
+              <p className="text-xs font-bold text-white">Mover sesión</p>
+              <p className="text-[10px] text-[#8B949E]">Usa botones rápidos o elige un día concreto.</p>
+            </div>
+            <Badge className="bg-cyan-400/15 text-cyan-300 border-cyan-500/30">Móvil</Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onMoveByOffset(-1)}
+              disabled={dayIdx <= 0}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff" }}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /> Día anterior
+            </button>
+            <button
+              onClick={() => onMoveByOffset(1)}
+              disabled={dayIdx >= dayChoices.length - 1}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff" }}
+            >
+              Siguiente día <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <select
+              value={mobileMoveTarget}
+              onChange={(e) => setMobileMoveTarget(e.target.value)}
+              className="flex-1 rounded-lg px-3 py-2 text-xs outline-none"
+              style={{ background: "rgba(14,17,23,0.9)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              {dayChoices.map((choice) => (
+                <option key={choice.idx} value={choice.idx}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => onMoveToDay(parseInt(mobileMoveTarget, 10))}
+              className="px-3 py-2 rounded-lg text-xs font-semibold transition-all"
+              style={{ background: "#C9FF00", color: "#0E1117" }}
+            >
+              Mover
+            </button>
+          </div>
+        </div>
+
         {session.type === "running" && <RunningDetail session={session} onClose={onClose} />}
         {session.type === "strength" && (
           <div className="space-y-4">
@@ -1858,6 +1930,24 @@ function GenerarPlanInner() {
   const selectedSessionIdx = selectedKey ? parseInt(selectedKey.split("-")[1]) : null;
   const selectedDay = selectedDayIdx !== null ? days[selectedDayIdx] : null;
   const selectedSession = selectedDayIdx !== null && selectedSessionIdx !== null ? days[selectedDayIdx]?.sessions[selectedSessionIdx] : null;
+  const dayChoices = days.map((day, idx) => ({ idx, label: `${day.dayKey} · ${day.date}` }));
+
+  const moveSelectedSessionByOffset = useCallback((offset: number) => {
+    if (selectedDayIdx === null || selectedSessionIdx === null) return;
+    const targetDayIdx = selectedDayIdx + offset;
+    if (targetDayIdx < 0 || targetDayIdx >= days.length || targetDayIdx === selectedDayIdx) return;
+    const targetSessionIdx = days[targetDayIdx]?.sessions.length ?? 0;
+    moveSession(selectedDayIdx, selectedSessionIdx, targetDayIdx, targetSessionIdx);
+    setSelectedKey(`${targetDayIdx}-${targetSessionIdx}`);
+  }, [days, moveSession, selectedDayIdx, selectedSessionIdx]);
+
+  const moveSelectedSessionToDay = useCallback((targetDayIdx: number) => {
+    if (selectedDayIdx === null || selectedSessionIdx === null) return;
+    if (targetDayIdx < 0 || targetDayIdx >= days.length || targetDayIdx === selectedDayIdx) return;
+    const targetSessionIdx = days[targetDayIdx]?.sessions.length ?? 0;
+    moveSession(selectedDayIdx, selectedSessionIdx, targetDayIdx, targetSessionIdx);
+    setSelectedKey(`${targetDayIdx}-${targetSessionIdx}`);
+  }, [days, moveSession, selectedDayIdx, selectedSessionIdx]);
 
   return (
     <div className="space-y-8">
@@ -2054,12 +2144,16 @@ function GenerarPlanInner() {
         {selectedDay && selectedSession && selectedDayIdx !== null && selectedSessionIdx !== null && (
           <DayDetailPanel
             day={selectedDay}
+            dayIdx={selectedDayIdx}
             session={selectedSession}
+            dayChoices={dayChoices}
             onClose={() => setSelectedKey(null)}
             onEdit={() => {
               setEditModal({ dayIdx: selectedDayIdx, sessionIdx: selectedSessionIdx });
               setSelectedKey(null);
             }}
+            onMoveByOffset={moveSelectedSessionByOffset}
+            onMoveToDay={moveSelectedSessionToDay}
           />
         )}
       </div>
