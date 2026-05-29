@@ -13,6 +13,7 @@ import {
   type GrupoFuerza, type EjercicioBiblioteca, type RegistroEjercicioInput,
 } from "../api";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import { TouchBackend } from "react-dnd-touch-backend";
 import {
   Sparkles,
   Calendar,
@@ -246,6 +247,23 @@ const TYPE_COLORS: Record<string, { borderColor: string; textColor: string; badg
 const DRAG_DAY = "DRAG_DAY";
 const DRAG_SESSION = "DRAG_SESSION";
 
+function getPlanSemanalBackend() {
+  const hasTouchSupport =
+    typeof window !== "undefined" &&
+    ((typeof navigator !== "undefined" && navigator.maxTouchPoints > 0) || window.matchMedia?.("(pointer: coarse)")?.matches);
+
+  if (!hasTouchSupport) {
+    return HTML5Backend;
+  }
+
+  return (manager: Parameters<typeof TouchBackend>[0], context: Parameters<typeof TouchBackend>[1]) =>
+    TouchBackend(manager, context, {
+      enableMouseEvents: true,
+      delay: 120,
+      touchSlop: 8,
+    });
+}
+
 // ── Session Card (within a day column) ────────────────────────────────────────
 
 interface SessionCardProps {
@@ -336,7 +354,8 @@ function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onTogg
       <div
         ref={gripRef}
         onClick={(e) => e.stopPropagation()}
-        className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-60 transition-opacity cursor-grab z-10"
+        className="absolute top-1.5 right-1.5 opacity-70 md:opacity-0 md:group-hover:opacity-60 transition-opacity cursor-grab z-10 p-1.5"
+        style={{ touchAction: "none" }}
       >
         <GripVertical className="h-3 w-3 text-[#8B949E]" />
       </div>
@@ -520,8 +539,9 @@ function DayColumn({ day, dayIdx, selectedKey, onSelectSession, onToggleComplete
         <div
           ref={gripRef}
           onClick={(e) => e.stopPropagation()}
-          className="opacity-0 group-hover:opacity-70 cursor-grab transition-opacity"
+          className="opacity-70 md:opacity-0 md:group-hover:opacity-70 cursor-grab transition-opacity p-1.5"
           title="Mover día"
+          style={{ touchAction: "none" }}
         >
           <GripVertical className="h-3.5 w-3.5 text-[#8B949E]" />
         </div>
@@ -866,11 +886,16 @@ function BibliotecaLoggerInline({
 }) {
   const [abierto, setAbierto] = useState(autoOpen);
   const [ejercicios, setEjercicios] = useState<EjercicioBiblioteca[]>([]);
+  // rows indexadas por ejercicio_id (no por posición) para soportar reordenación
   const [rows, setRows] = useState<RegistroRowPlan[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [guardado, setGuardado] = useState(false);
   const [error, setError] = useState("");
+  // Resumen post-guardado
+  const [resumenGuardado, setResumenGuardado] = useState<
+    { nombre: string; series: number; repeticiones: number; peso: number; completado: boolean }[]
+  >([]);
   // Panel añadir ejercicio
   const [mostrarAnadir, setMostrarAnadir] = useState(false);
   const [filtroGrupo, setFiltroGrupo] = useState<GrupoFuerza>(grupo);
@@ -880,18 +905,27 @@ function BibliotecaLoggerInline({
   const color = GRUPO_COLOR_PLAN[grupo];
   const bg = GRUPO_BG_PLAN[grupo];
 
+  // Devuelve el row de un ejercicio por su ID (no por índice)
+  const getRow = (ejId: number): RegistroRowPlan =>
+    rows.find((r) => r.ejercicio_id === ejId) ?? { ejercicio_id: ejId, series: "", repeticiones: "", peso: "", completado: false };
+
+  // Actualiza un campo del row de un ejercicio
+  const updateRow = (ejId: number, field: keyof RegistroRowPlan, value: string | boolean) =>
+    setRows((prev) => prev.map((r) => r.ejercicio_id === ejId ? { ...r, [field]: value } : r));
+
   const cargar = useCallback(async () => {
-    if (ejercicios.length > 0) return; // ya cargado
+    if (ejercicios.length > 0) return;
     setLoading(true);
     try {
       const data = await getEjercicios(usuarioId);
+      // Los activos ya vienen ordenados por el campo `orden` del backend
       const activos = data.grupos[grupo]?.activos ?? [];
       setEjercicios(activos);
       setRows(activos.map((ej) => ({
         ejercicio_id: ej.id,
-        series: ej.ultima_series?.toString() ?? ej.series_objetivo?.toString() ?? "",
-        repeticiones: ej.ultimas_reps?.toString() ?? ej.reps_objetivo?.toString() ?? "",
-        peso: ej.ultimo_peso?.toString() ?? ej.peso_objetivo?.toString() ?? "",
+        series:      ej.ultima_series?.toString() ?? ej.series_objetivo?.toString() ?? "",
+        repeticiones:ej.ultimas_reps?.toString()  ?? ej.reps_objetivo?.toString()   ?? "",
+        peso:        ej.ultimo_peso?.toString()   ?? ej.peso_objetivo?.toString()   ?? "",
         completado: false,
       })));
     } catch {
@@ -901,7 +935,6 @@ function BibliotecaLoggerInline({
     }
   }, [usuarioId, grupo, ejercicios.length]);
 
-  // Auto-cargar ejercicios cuando se abre automáticamente
   useEffect(() => {
     if (autoOpen) cargar();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -918,8 +951,8 @@ function BibliotecaLoggerInline({
     try {
       const data = await getEjercicios(usuarioId);
       setTodosEjercicios({
-        Push: data.grupos.Push?.activos ?? [],
-        Pull: data.grupos.Pull?.activos ?? [],
+        Push:   data.grupos.Push?.activos   ?? [],
+        Pull:   data.grupos.Pull?.activos   ?? [],
         Pierna: data.grupos.Pierna?.activos ?? [],
       });
     } catch { /* ignore */ } finally { setLoadingTodos(false); }
@@ -932,32 +965,57 @@ function BibliotecaLoggerInline({
   };
 
   const handleAnadirEjercicio = (ej: EjercicioBiblioteca) => {
-    if (ejercicios.some((e) => e.id === ej.id)) return; // ya está
-    setEjercicios((prev) => [...prev, ej]);
+    if (ejercicios.some((e) => e.id === ej.id)) return;
+    // Insertar y reordenar según el orden de la biblioteca
+    setEjercicios((prev) => {
+      const lista = [...prev, ej];
+      const todosOrdenados = [
+        ...todosEjercicios.Push,
+        ...todosEjercicios.Pull,
+        ...todosEjercicios.Pierna,
+      ];
+      const posMap = new Map(todosOrdenados.map((e, i) => [e.id, i]));
+      return lista.sort((a, b) => (posMap.get(a.id) ?? 999) - (posMap.get(b.id) ?? 999));
+    });
     setRows((prev) => [...prev, {
       ejercicio_id: ej.id,
-      series: ej.ultima_series?.toString() ?? ej.series_objetivo?.toString() ?? "",
-      repeticiones: ej.ultimas_reps?.toString() ?? ej.reps_objetivo?.toString() ?? "",
-      peso: ej.ultimo_peso?.toString() ?? ej.peso_objetivo?.toString() ?? "",
+      series:       ej.ultima_series?.toString() ?? ej.series_objetivo?.toString() ?? "",
+      repeticiones: ej.ultimas_reps?.toString()  ?? ej.reps_objetivo?.toString()   ?? "",
+      peso:         ej.ultimo_peso?.toString()   ?? ej.peso_objetivo?.toString()   ?? "",
       completado: false,
     }]);
     setMostrarAnadir(false);
   };
 
   const handleGuardar = async () => {
-    const registros: RegistroEjercicioInput[] = rows
-      .filter((r) => r.peso && r.series && r.repeticiones)
-      .map((r) => ({
-        ejercicio_id: r.ejercicio_id,
-        series: parseInt(r.series),
-        repeticiones: parseInt(r.repeticiones),
-        peso: parseFloat(r.peso),
-        completado: r.completado,
-      }));
+    const registros: RegistroEjercicioInput[] = ejercicios
+      .map((ej) => {
+        const r = getRow(ej.id);
+        if (!r.peso || !r.series || !r.repeticiones) return null;
+        return {
+          ejercicio_id:  ej.id,
+          series:        parseInt(r.series),
+          repeticiones:  parseInt(r.repeticiones),
+          peso:          parseFloat(r.peso),
+          completado:    r.completado,
+        };
+      })
+      .filter((r): r is RegistroEjercicioInput => r !== null);
+
     if (registros.length === 0) { setError("Introduce al menos un ejercicio con series, reps y peso."); return; }
     setSaving(true); setError("");
     try {
       await registrarSesionFuerza(usuarioId, registros);
+      // Guardar resumen para mostrarlo
+      setResumenGuardado(
+        registros.map((r) => ({
+          nombre:       ejercicios.find((e) => e.id === r.ejercicio_id)?.nombre ?? "?",
+          series:       r.series,
+          repeticiones: r.repeticiones,
+          peso:         r.peso,
+          completado:   r.completado,
+        }))
+      );
       setGuardado(true);
       onGuardado();
     } catch {
@@ -969,31 +1027,63 @@ function BibliotecaLoggerInline({
 
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${color}25` }}>
-      {/* Cabecera colapsable */}
+      {/* Cabecera siempre clicable */}
       <button
         onClick={toggleAbierto}
         className="w-full flex items-center justify-between px-4 py-3 transition-all"
         style={{ background: bg }}
-        disabled={guardado}
       >
         <div className="flex items-center gap-2">
           <Dumbbell className="h-4 w-4" style={{ color }} />
           <span className="text-sm font-bold" style={{ color }}>
-            {guardado ? "✓ Sesión guardada" : `Logger · ${grupo}`}
+            {guardado ? "✓ Sesión registrada" : `Logger · ${grupo}`}
           </span>
           {!abierto && !guardado && ejercicios.length > 0 && (
             <span className="text-xs text-[#8B949E]">({ejercicios.length} ejercicios)</span>
           )}
+          {!abierto && guardado && resumenGuardado.length > 0 && (
+            <span className="text-xs text-[#8B949E]">{resumenGuardado.length} ejercicios</span>
+          )}
         </div>
-        {!guardado && (
-          <ChevronDown
-            className="h-4 w-4 transition-transform"
-            style={{ color, transform: abierto ? "rotate(180deg)" : "rotate(0deg)" }}
-          />
-        )}
+        <ChevronDown
+          className="h-4 w-4 transition-transform"
+          style={{ color, transform: abierto ? "rotate(180deg)" : "rotate(0deg)" }}
+        />
       </button>
 
-      {/* Contenido expandible */}
+      {/* ── Vista RESUMEN (post-guardado) ── */}
+      {abierto && guardado && (
+        <div className="px-4 pb-4 pt-3 space-y-2" style={{ background: "rgba(14,17,23,0.6)" }}>
+          <p className="text-xs text-[#8B949E] uppercase font-semibold tracking-wider mb-1">Resumen de la sesión</p>
+          {resumenGuardado.map((r, i) => (
+            <div key={i}
+              className="flex items-center justify-between px-3 py-2 rounded-lg"
+              style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${color}20` }}
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
+                <span className="text-sm font-semibold text-white">{r.nombre}</span>
+                {r.completado && (
+                  <span className="text-[10px] font-bold px-1 py-0.5 rounded"
+                    style={{ background: "rgba(34,197,94,0.15)", color: "#22C55E" }}>↑</span>
+                )}
+              </div>
+              <span className="text-xs font-mono" style={{ color }}>
+                {r.series}×{r.repeticiones} · {r.peso}kg
+              </span>
+            </div>
+          ))}
+          <button
+            onClick={() => { setGuardado(false); setResumenGuardado([]); }}
+            className="w-full py-2 rounded-xl text-xs font-semibold mt-1 transition-all hover:brightness-110"
+            style={{ background: "rgba(255,255,255,0.05)", color: "#8B949E", border: "1px solid rgba(255,255,255,0.1)" }}
+          >
+            ✏️ Editar sesión
+          </button>
+        </div>
+      )}
+
+      {/* ── Vista EDICIÓN ── */}
       {abierto && !guardado && (
         <div className="px-4 pb-4 pt-3 space-y-3" style={{ background: "rgba(14,17,23,0.6)" }}>
           {loading && <p className="text-center text-[#8B949E] text-sm py-4">Cargando ejercicios...</p>}
@@ -1005,8 +1095,9 @@ function BibliotecaLoggerInline({
             </div>
           )}
 
-          {!loading && ejercicios.map((ej, i) => {
-            const row = rows[i] ?? { ejercicio_id: ej.id, series: "", repeticiones: "", peso: "", completado: false };
+          {/* Lista de ejercicios en el orden de la biblioteca */}
+          {!loading && ejercicios.map((ej) => {
+            const row = getRow(ej.id);
             const hint = ej.ultima_series && ej.ultimas_reps && ej.ultimo_peso
               ? `${ej.ultima_series}×${ej.ultimas_reps} · ${ej.ultimo_peso}kg`
               : ej.series_objetivo && ej.reps_objetivo
@@ -1014,7 +1105,6 @@ function BibliotecaLoggerInline({
               : null;
             return (
               <div key={ej.id} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                {/* Nombre + botón borrar */}
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
                   <span className="text-sm font-semibold text-white flex-1">{ej.nombre}</span>
@@ -1026,22 +1116,20 @@ function BibliotecaLoggerInline({
                   {hint && <span className="text-[10px] text-[#8B949E] shrink-0">{hint}</span>}
                   <button
                     onClick={() => {
-                      setEjercicios((prev) => prev.filter((_, idx) => idx !== i));
-                      setRows((prev) => prev.filter((_, idx) => idx !== i));
+                      setEjercicios((prev) => prev.filter((e) => e.id !== ej.id));
+                      setRows((prev) => prev.filter((r) => r.ejercicio_id !== ej.id));
                     }}
                     className="ml-1 p-1 rounded-lg opacity-40 hover:opacity-100 transition-opacity"
-                    title="Quitar este ejercicio de la sesión de hoy"
                     style={{ color: "#ef4444" }}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
-                {/* Inputs */}
                 <div className="grid grid-cols-4 gap-2 items-end">
                   {([
-                    { label: "Series", key: "series" as const, ph: ej.ultima_series?.toString() ?? ej.series_objetivo?.toString() ?? "4" },
-                    { label: "Reps",   key: "repeticiones" as const, ph: ej.ultimas_reps?.toString() ?? ej.reps_objetivo?.toString() ?? "8" },
-                    { label: "Peso kg",key: "peso" as const, ph: ej.ultimo_peso?.toString() ?? ej.peso_objetivo?.toString() ?? "0" },
+                    { label: "Series",  key: "series"       as const, ph: ej.ultima_series?.toString() ?? ej.series_objetivo?.toString() ?? "4" },
+                    { label: "Reps",    key: "repeticiones" as const, ph: ej.ultimas_reps?.toString()  ?? ej.reps_objetivo?.toString()   ?? "8" },
+                    { label: "Peso kg", key: "peso"         as const, ph: ej.ultimo_peso?.toString()   ?? ej.peso_objetivo?.toString()   ?? "0" },
                   ] as const).map(({ label, key, ph }) => (
                     <div key={key}>
                       <p className="text-[9px] text-[#8B949E] uppercase mb-1">{label}</p>
@@ -1049,19 +1137,17 @@ function BibliotecaLoggerInline({
                         type="number"
                         value={row[key]}
                         placeholder={ph}
-                        onChange={(e) => setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [key]: e.target.value } : r))}
+                        onChange={(e) => updateRow(ej.id, key, e.target.value)}
                         className="w-full px-2 py-1.5 rounded-lg text-sm text-white text-center outline-none"
                         style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
                       />
                     </div>
                   ))}
-                  {/* Toggle subir peso */}
                   <div>
                     <p className="text-[9px] text-[#8B949E] uppercase mb-1">↑ Subir</p>
                     <button
-                      onClick={() => setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, completado: !r.completado } : r))}
+                      onClick={() => updateRow(ej.id, "completado", !row.completado)}
                       className="w-full py-1.5 rounded-lg text-xs font-bold transition-all"
-                      title={row.completado ? "Próxima sesión: subir peso" : "Marcar para subir peso la próxima vez"}
                       style={row.completado
                         ? { background: "rgba(34,197,94,0.2)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.4)" }
                         : { background: "rgba(255,255,255,0.04)", color: "#8B949E", border: "1px solid rgba(255,255,255,0.1)" }}
@@ -1076,7 +1162,7 @@ function BibliotecaLoggerInline({
 
           {error && <p className="text-xs text-red-400 text-center">{error}</p>}
 
-          {/* ── Botón + panel añadir ejercicio ── */}
+          {/* Panel añadir ejercicio */}
           {!loading && (
             <div className="rounded-xl overflow-hidden" style={{ border: `1px dashed ${color}35` }}>
               <button
@@ -1090,58 +1176,45 @@ function BibliotecaLoggerInline({
 
               {mostrarAnadir && (
                 <div className="px-3 pb-3 pt-1 space-y-2" style={{ background: "rgba(14,17,23,0.5)" }}>
-                  {/* Filtro Pull / Push / Pierna */}
                   <div className="flex gap-1.5">
                     {(["Push", "Pull", "Pierna"] as GrupoFuerza[]).map((g) => (
-                      <button
-                        key={g}
-                        onClick={() => setFiltroGrupo(g)}
+                      <button key={g} onClick={() => setFiltroGrupo(g)}
                         className="flex-1 py-1 rounded-lg text-[10px] font-bold transition-all"
                         style={filtroGrupo === g
                           ? { background: GRUPO_COLOR_PLAN[g] + "22", color: GRUPO_COLOR_PLAN[g], border: `1px solid ${GRUPO_COLOR_PLAN[g]}55` }
                           : { background: "rgba(255,255,255,0.04)", color: "#8B949E", border: "1px solid rgba(255,255,255,0.08)" }}
-                      >
-                        {g}
-                      </button>
+                      >{g}</button>
                     ))}
                   </div>
-
-                  {/* Lista de ejercicios del grupo seleccionado */}
                   {loadingTodos && <p className="text-center text-[#8B949E] text-xs py-2">Cargando...</p>}
                   {!loadingTodos && (
                     <div className="space-y-1 max-h-48 overflow-y-auto">
-                      {(todosEjercicios[filtroGrupo] ?? [])
-                        .filter((ej) => !ejercicios.some((e) => e.id === ej.id))
-                        .length === 0 && (
+                      {(todosEjercicios[filtroGrupo] ?? []).filter((ej) => !ejercicios.some((e) => e.id === ej.id)).length === 0 && (
                         <p className="text-[11px] text-[#8B949E] text-center py-2">
                           {ejercicios.some((e) => (todosEjercicios[filtroGrupo] ?? []).some((t) => t.id === e.id))
                             ? "Ya tienes todos los ejercicios de este grupo"
                             : `Sin ejercicios activos en ${filtroGrupo}`}
                         </p>
                       )}
-                      {(todosEjercicios[filtroGrupo] ?? [])
-                        .filter((ej) => !ejercicios.some((e) => e.id === ej.id))
-                        .map((ej) => {
-                          const hint = ej.ultimo_peso
-                            ? `${ej.ultima_series ?? ""}×${ej.ultimas_reps ?? ""} · ${ej.ultimo_peso}kg`
-                            : ej.series_objetivo
-                            ? `obj: ${ej.series_objetivo}×${ej.reps_objetivo ?? ""}${ej.peso_objetivo ? ` ${ej.peso_objetivo}kg` : ""}`
-                            : null;
-                          return (
-                            <button
-                              key={ej.id}
-                              onClick={() => handleAnadirEjercicio(ej)}
-                              className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all hover:opacity-90"
-                              style={{ background: GRUPO_COLOR_PLAN[filtroGrupo] + "12", border: `1px solid ${GRUPO_COLOR_PLAN[filtroGrupo]}25` }}
-                            >
-                              <div className="flex items-center gap-2">
-                                <Plus className="h-3 w-3 shrink-0" style={{ color: GRUPO_COLOR_PLAN[filtroGrupo] }} />
-                                <span className="text-xs font-semibold text-white">{ej.nombre}</span>
-                              </div>
-                              {hint && <span className="text-[10px] text-[#8B949E] shrink-0">{hint}</span>}
-                            </button>
-                          );
-                        })}
+                      {(todosEjercicios[filtroGrupo] ?? []).filter((ej) => !ejercicios.some((e) => e.id === ej.id)).map((ej) => {
+                        const hint = ej.ultimo_peso
+                          ? `${ej.ultima_series ?? ""}×${ej.ultimas_reps ?? ""} · ${ej.ultimo_peso}kg`
+                          : ej.series_objetivo
+                          ? `obj: ${ej.series_objetivo}×${ej.reps_objetivo ?? ""}${ej.peso_objetivo ? ` ${ej.peso_objetivo}kg` : ""}`
+                          : null;
+                        return (
+                          <button key={ej.id} onClick={() => handleAnadirEjercicio(ej)}
+                            className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all hover:opacity-90"
+                            style={{ background: GRUPO_COLOR_PLAN[filtroGrupo] + "12", border: `1px solid ${GRUPO_COLOR_PLAN[filtroGrupo]}25` }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Plus className="h-3 w-3 shrink-0" style={{ color: GRUPO_COLOR_PLAN[filtroGrupo] }} />
+                              <span className="text-xs font-semibold text-white">{ej.nombre}</span>
+                            </div>
+                            {hint && <span className="text-[10px] text-[#8B949E] shrink-0">{hint}</span>}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1152,7 +1225,7 @@ function BibliotecaLoggerInline({
           {!loading && ejercicios.length > 0 && (
             <>
               <p className="text-[10px] text-[#8B949E]">
-                Pulsa <span style={{ color: "#22C55E" }}>↑ Subir</span> en los ejercicios que quieras progresar → la próxima sesión te aparecerá el badge <span style={{ color: "#22C55E" }}>↑ Sube peso</span>.
+                Pulsa <span style={{ color: "#22C55E" }}>↑ Subir</span> para indicar que la próxima vez quieres subir peso en ese ejercicio.
               </p>
               <button
                 onClick={handleGuardar}
@@ -2055,7 +2128,7 @@ function GenerarPlanInner() {
 
 function GenerarPlan() {
   return (
-    <DndProvider backend={HTML5Backend}>
+    <DndProvider backend={getPlanSemanalBackend()}>
       <GenerarPlanInner />
     </DndProvider>
   );
