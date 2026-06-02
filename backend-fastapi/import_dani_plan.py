@@ -83,7 +83,8 @@ def classify_activities(lines: list[str]):
         elif "race day" in l_lower:
             special_tokens.append(l)
         elif "prueba" in l_lower or "esfuerzo" in l_lower:
-            special_tokens.append("Prueba de Esfuerzo")
+            if "Prueba de Esfuerzo" not in special_tokens:  # evitar duplicado por "PRUEBA\nESFUERZO"
+                special_tokens.append("Prueba de Esfuerzo")
         elif re.match(r"\d+x[\d,\.]+km", l, re.I):
             run_tokens.append(l)
         elif re.match(r"[\d,\.]+\s*km", l, re.I):
@@ -274,7 +275,7 @@ def import_plan():
 
     conn.commit()
     conn.close()
-    print(f"\n✓ Inserted {total_inserted} sessions for Dani (userId={USUARIO_ID})")
+    print(f"\nOK: Inserted {total_inserted} sessions for Dani (userId={USUARIO_ID})")
 
 
 if __name__ == "__main__":

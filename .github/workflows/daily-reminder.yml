@@ -155,10 +155,15 @@ jobs:
           print(f"Titulo: {title}")
           print(f"Mensaje:\n{mensaje}")
 
+          # Los headers HTTP no aceptan Unicode completo; ntfy solo necesita texto ASCII aquí.
+          title_ascii = title.encode("ascii", errors="ignore").decode("ascii").strip()
+          if not title_ascii:
+              title_ascii = "Plan de hoy"
+
           ntfy_req = urllib.request.Request(
               f"https://ntfy.sh/{topic}",
               data=mensaje.encode("utf-8"),
-              headers={"Title": title, "Tags": tags, "Priority": "default"})
+              headers={"Title": title_ascii, "Tags": tags, "Priority": "default"})
           with urllib.request.urlopen(ntfy_req, timeout=10) as r:
               print(f"ntfy OK — status {r.status}")
           EOF

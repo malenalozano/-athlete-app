@@ -179,7 +179,11 @@ def _bootstrap_client_from_credentials(conn, usuario_id: int):
 
 
 def _do_sync(usuario_id: int) -> dict:
-    """Realiza la sincronización completa con Garmin Connect."""
+    """Realiza la sincronización completa con Garmin Connect.
+    
+    Maneja automáticamente tokens expirados: si los tokens guardados fallan con 401,
+    intenta bootstrap con credenciales como fallback.
+    """
     try:
         from garminconnect import Garmin
     except ImportError:
@@ -192,6 +196,7 @@ def _do_sync(usuario_id: int) -> dict:
     client = _load_client_from_tokens(conn, usuario_id)
 
     if client is None:
+        logger.info(f"Sin tokens OAuth para usuario {usuario_id}, intentando bootstrap con credenciales...")
         client = _bootstrap_client_from_credentials(conn, usuario_id)
 
     if client is None:
@@ -292,7 +297,30 @@ def _do_sync(usuario_id: int) -> dict:
                     pass
             conn.commit()
         except Exception as e:
-            errores.append(f"Actividades: {str(e)[:100]}")
+            err_str = str(e)
+            # Detectar error 401 y reintentar con bootstrap automático
+            if "401" in err_str or "Authentication failed" in err_str:
+                logger.warning(f"Tokens expirados para usuario {usuario_id} (401). Reintentando con credenciales...")
+                client = _bootstrap_client_from_credentials(conn, usuario_id)
+                if client is not None:
+                    try:
+                        activities = client.get_activities(0, 50)
+                        for act in activities:
+                            fecha_raw = act.get("startTimeLocal", "")[:10]
+                            try:
+                                if fecha_raw and date.fromisoformat(fecha_raw) >= hace_90:
+                                    _upsert_actividad(conn, usuario_id, act)
+                                    actividades_ok += 1
+                            except Exception:
+                                pass
+                        conn.commit()
+                        logger.info(f"Reintento exitoso para usuario {usuario_id}: {actividades_ok} actividades")
+                    except Exception as e2:
+                        errores.append(f"Actividades (reintento fallido): {str(e2)[:100]}")
+                else:
+                    errores.append(f"Actividades: Tokens expirados, no se pudo renovar con credenciales")
+            else:
+                errores.append(f"Actividades: {err_str[:100]}")
 
         # Datos diarios
         for fut in as_completed(fut_dias, timeout=25):
