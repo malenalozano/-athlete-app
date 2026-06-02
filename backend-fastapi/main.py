@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
@@ -16,6 +16,8 @@ _cors_origins = list({
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
+    # Permitir dominios Vercel dinamicos (ej: *.vercel.app)
+    allow_origin_regex=r"https?://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,7 +57,7 @@ def test_notificacion_hoy():
 
 
 @app.post("/tasks/daily")
-def tasks_daily(request: dict = None):
+def tasks_daily(x_cron_secret: str = Header(default=None)):
     """
     Endpoint para cron-job.org (llamado cada dia automaticamente).
     Requiere header X-Cron-Secret con el valor de CRON_SECRET.
@@ -68,15 +70,19 @@ def tasks_daily(request: dict = None):
       - 07:00 → POST /tasks/garmin-sync  (despierta el servidor + sincroniza)
       - 09:00 → POST /tasks/daily        (ya despierto, manda la notificacion)
     """
-    from fastapi import Request
-    # La proteccion por secreto se hace en el endpoint de abajo
+    from fastapi import HTTPException
+
+    secret = settings.cron_secret
+    if secret and x_cron_secret != secret:
+        raise HTTPException(status_code=401, detail="Cron secret invalido")
+
     from scheduler import daily_training_reminder
     daily_training_reminder()
     return {"ok": True, "paso": "reminder_enviado"}
 
 
 @app.post("/tasks/garmin-sync")
-def tasks_garmin_sync(x_cron_secret: str = None):
+def tasks_garmin_sync(x_cron_secret: str = Header(default=None)):
     """
     Sincroniza Garmin para todos los usuarios con tokens guardados.
     Llamado por cron-job.org a las 7:00 AM para:

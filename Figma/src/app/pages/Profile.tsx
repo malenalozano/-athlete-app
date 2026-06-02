@@ -44,6 +44,7 @@ import {
   getGarminStats,
   sincronizarGarmin,
   guardarCredencialesGarmin,
+  uploadGarminTokens,
   type PerfilUsuario,
   type ActividadGarmin,
   type EntradaBiometrica,
@@ -124,6 +125,39 @@ function Sincronizacion({ biometrico, stats, userId, perfil, onSyncComplete }: {
     }
   };
 
+  // Upload tokens UI
+  const [tokensText, setTokensText] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+
+  const handleFile = async (f?: File) => {
+    if (!f) return;
+    try {
+      const txt = await f.text();
+      setTokensText(txt);
+      setUploadMsg("Archivo cargado, listo para subir.");
+    } catch (e) {
+      setUploadMsg("Error leyendo el archivo.");
+    }
+  };
+
+  const handleUploadTokens = async () => {
+    if (!userId) return setUploadMsg("Usuario no identificado");
+    if (!tokensText) return setUploadMsg("Pega o carga el JSON de tokens antes de subir");
+    setUploading(true);
+    setUploadMsg(null);
+    try {
+      const res = await uploadGarminTokens(userId, tokensText);
+      setUploadMsg(res.message || "Tokens subidos correctamente.");
+      // Trigger a refresh of profile/stats outside
+      onSyncComplete();
+    } catch (e: unknown) {
+      setUploadMsg(e instanceof Error ? e.message : "Error subiendo tokens");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Device card */}
@@ -185,6 +219,20 @@ function Sincronizacion({ biometrico, stats, userId, perfil, onSyncComplete }: {
               <div className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: hasData ? "#22C55E" : hasCredentials ? "#EAB308" : "#F97316" }}>
                 <Wifi className="h-3.5 w-3.5" />
                 {hasData ? "Datos disponibles" : hasCredentials ? "Sincroniza para importar datos" : "Configura credenciales abajo"}
+              </div>
+            </div>
+            {/* Upload tokens (for cloud): paste JSON or upload file */}
+            <div className="mt-4">
+              <p className="text-xs text-[#8B949E] mb-2">Si ya ejecutaste el login localmente, sube aquí el archivo <span className="font-semibold">garmin_tokens.json</span> o pega su contenido:</p>
+              <div className="flex gap-2 items-start">
+                <input type="file" accept="application/json" onChange={e => handleFile(e.target.files?.[0])} className="text-sm text-[#8B949E]" />
+                <textarea value={tokensText} onChange={e => setTokensText(e.target.value)} placeholder="Pega aquí el JSON de tokens" className="flex-1 bg-[#0E1117] p-2 rounded-md text-sm text-white" rows={4} />
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <button onClick={handleUploadTokens} disabled={uploading} className="px-4 py-2 rounded-xl text-sm font-semibold" style={{ background: "linear-gradient(135deg, #10B981, #059669)", color: "white" }}>
+                  {uploading ? "Subiendo..." : "Subir tokens a la nube"}
+                </button>
+                {uploadMsg && <p className="text-xs text-[#8B949E]">{uploadMsg}</p>}
               </div>
             </div>
           </div>
