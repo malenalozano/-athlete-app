@@ -151,6 +151,33 @@ def _save_tokens_to_db(conn, usuario_id: int, gc):
         pass
 
 
+def _bootstrap_client_from_credentials(conn, usuario_id: int):
+    """Genera tokens OAuth desde credenciales guardadas (one-time bootstrap)."""
+    try:
+        from garminconnect import Garmin
+    except ImportError:
+        return None
+
+    row = conn.execute(
+        "SELECT email_garmin, password_garmin_enc FROM usuarios WHERE id = ?",
+        (usuario_id,),
+    ).fetchone()
+    if not row or not row[0] or not row[1]:
+        return None
+
+    email = row[0]
+    password = row[1]
+    try:
+        gc = Garmin(email=email, password=password)
+        gc.login()
+        _save_tokens_to_db(conn, usuario_id, gc)
+        conn.commit()
+        return gc
+    except Exception as e:
+        logger.warning(f"No se pudo bootstrap Garmin con credenciales para usuario {usuario_id}: {e}")
+        return None
+
+
 def _do_sync(usuario_id: int) -> dict:
     """Realiza la sincronización completa con Garmin Connect."""
     try:
@@ -160,16 +187,18 @@ def _do_sync(usuario_id: int) -> dict:
 
     conn = get_db()
 
-    # Solo usar tokens OAuth — NUNCA intentar login con contraseña desde el cloud
-    # (Garmin bloquea IPs de servidores con 403).
-    # garminconnect auto-refresca el di_token usando di_refresh_token en los 401.
+    # Preferimos tokens OAuth. Si no existen, hacemos bootstrap one-time con
+    # credenciales guardadas para no obligar al usuario a ejecutar scripts manuales.
     client = _load_client_from_tokens(conn, usuario_id)
+
+    if client is None:
+        client = _bootstrap_client_from_credentials(conn, usuario_id)
 
     if client is None:
         conn.close()
         raise HTTPException(
             status_code=400,
-            detail="Sesión Garmin caducada. Ejecuta desde tu PC: python scripts/garmin_login_once.py --usuario 1 (o --usuario 2 para Dani)",
+            detail="No se pudo iniciar sesión en Garmin con las credenciales guardadas. Revisa email/password en Perfil y vuelve a sincronizar.",
         )
 
     # Algunas versiones de garminconnect requieren cargar el perfil antes de get_stats/get_sleep
