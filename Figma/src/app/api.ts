@@ -266,13 +266,6 @@ export function guardarCredencialesGarmin(usuarioId: number, emailGarmin: string
   });
 }
 
-export function uploadGarminTokens(usuarioId: number, tokensJson: string) {
-  return req<{ ok: boolean; message?: string }>(`/garmin/${usuarioId}/upload-tokens`, {
-    method: "POST",
-    body: JSON.stringify({ tokens_json: tokensJson }),
-  });
-}
-
 export function generarPlanSemana(usuarioId: number, fechaInicio: string, kmTotal?: number) {
   return req<PlanGenerado>(`/plan/${usuarioId}/generar-semana`, {
     method: "POST",
