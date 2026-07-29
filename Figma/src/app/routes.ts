@@ -1,44 +1,65 @@
 import { createBrowserRouter } from "react-router";
-import { Home } from "./pages/Home";
-import { Profile } from "./pages/Profile";
-import { PersonalTrainer } from "./pages/PersonalTrainer";
-import { CicloMenstrual } from "./pages/CicloMenstrual";
-import { Calendario } from "./pages/Calendario";
-import { PlanSemanal } from "./pages/PlanSemanal";
-import { Diario } from "./pages/Diario";
-import { Ejercicios } from "./pages/Ejercicios";
+import { LandingPage } from "./pages/LandingPage";
 
 export const router = createBrowserRouter([
   {
     path: "/",
-    Component: Home,
+    Component: LandingPage,
+  },
+  {
+    path: "/dashboard",
+    lazy: async () => {
+      const { Home } = await import("./pages/Home");
+      return { Component: Home };
+    },
   },
   {
     path: "/plan-semanal",
-    Component: PlanSemanal,
+    lazy: async () => {
+      const { PlanSemanal } = await import("./pages/PlanSemanal");
+      return { Component: PlanSemanal };
+    },
   },
   {
     path: "/diario",
-    Component: Diario,
+    lazy: async () => {
+      const { Diario } = await import("./pages/Diario");
+      return { Component: Diario };
+    },
   },
   {
     path: "/calendario",
-    Component: Calendario,
+    lazy: async () => {
+      const { Calendario } = await import("./pages/Calendario");
+      return { Component: Calendario };
+    },
   },
   {
     path: "/perfil",
-    Component: Profile,
+    lazy: async () => {
+      const { Profile } = await import("./pages/Profile");
+      return { Component: Profile };
+    },
   },
   {
     path: "/ejercicios",
-    Component: Ejercicios,
+    lazy: async () => {
+      const { Ejercicios } = await import("./pages/Ejercicios");
+      return { Component: Ejercicios };
+    },
   },
   {
     path: "/entrenador",
-    Component: PersonalTrainer,
+    lazy: async () => {
+      const { PersonalTrainer } = await import("./pages/PersonalTrainer");
+      return { Component: PersonalTrainer };
+    },
   },
   {
     path: "/ciclo-menstrual",
-    Component: CicloMenstrual,
+    lazy: async () => {
+      const { CicloMenstrual } = await import("./pages/CicloMenstrual");
+      return { Component: CicloMenstrual };
+    },
   },
 ]);
