@@ -13,7 +13,7 @@ import { es } from "date-fns/locale";
 import { useUser } from "../context/UserContext";
 import {
   actualizarSesionCompleta, borrarSesion, crearSesion, getDashboard, getPlanSemana,
-  type DashboardData, type SesionPlan,
+  sincronizarGarmin, type ActividadGarmin, type DashboardData, type SesionPlan,
 } from "../api";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ const T = {
   reorderTx:"#020617",
 } as const;
 
-type Subtype = "RB" | "CAL" | "TL" | "PUSH" | "PULL" | "PIERNA";
+type Subtype = "RB" | "CAL" | "TL" | "PUSH" | "PULL" | "PIERNA" | "EXTRA";
 
 const SUB: Record<Subtype, { bg: string; color: string; glow: string; label: string }> = {
   RB:     { bg: "#083344", color: "#22d3ee", glow: "0 0 8px rgba(34,211,238,0.3)",   label: "RB" },
@@ -41,7 +41,30 @@ const SUB: Record<Subtype, { bg: string; color: string; glow: string; label: str
   PUSH:   { bg: "#431407", color: "#f97316", glow: "0 0 8px rgba(249,115,22,0.25)",  label: "PUSH" },
   PULL:   { bg: "#451a03", color: "#f59e0b", glow: "0 0 6px rgba(245,158,11,0.2)",   label: "PULL" },
   PIERNA: { bg: "#450a0a", color: "#ef4444", glow: "0 0 6px rgba(239,68,68,0.2)",    label: "PIERNA" },
+  EXTRA:  { bg: "#2e1065", color: "#a855f7", glow: "0 0 8px rgba(168,85,247,0.35)",  label: "EXTRA" },
 };
+
+// Actividades Garmin realizadas pero no planificadas — se muestran igualmente en
+// el calendario, marcadas como hechas, en color violeta ("EXTRA").
+const RUNNING_KEYWORDS = ["running", "trail_running", "treadmill_running", "track_running", "correr", "carrera"];
+
+function esActividadRunning(tipoDeporte: string): boolean {
+  const t = (tipoDeporte || "").toLowerCase();
+  return RUNNING_KEYWORDS.some(k => t.includes(k));
+}
+
+function humanizarTipoActividad(tipoDeporte: string): string {
+  const map: Record<string, string> = {
+    running: "Carrera", trail_running: "Trail running", treadmill_running: "Cinta de correr",
+    strength_training: "Fuerza", indoor_climbing: "Escalada", hiit: "HIIT",
+    cross_training: "Cross training", cycling: "Ciclismo", indoor_cycling: "Ciclismo indoor",
+    yoga: "Yoga", pilates: "Pilates", walking: "Caminata", hiking: "Senderismo",
+    stand_up_paddleboarding_v2: "Paddle surf", swimming: "Natación",
+  };
+  const key = (tipoDeporte || "").toLowerCase();
+  if (map[key]) return map[key];
+  return capitalize(key.replace(/_/g, " ")) || "Actividad";
+}
 
 const DAYS = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
 
@@ -55,6 +78,7 @@ interface Session {
   subtype: Subtype;
   title: string; duration: string; metric: string;
   notes: string; completed: boolean;
+  origin: "plan" | "garmin"; // "garmin" = actividad real sin sesión planificada (no editable)
 }
 
 // ── Date / mapping helpers ──────────────────────────────────────────────────
@@ -131,7 +155,48 @@ function toSession(s: SesionPlan, monday: Date): Session {
     metric: s.km_planificados ? `${s.km_planificados} km` : "",
     notes: s.detalles ?? "",
     completed: !!s.completado,
+    origin: "plan",
   };
+}
+
+/** Actividades Garmin de la semana que no corresponden a ninguna sesión planificada
+ * ese día (por tipo running/no-running) — se muestran igualmente como "hechas",
+ * en el color EXTRA, para que nada de lo entrenado se pierda del calendario. */
+function buildExtraSessions(planSessions: Session[], actividades: ActividadGarmin[], monday: Date): Session[] {
+  const byDay = new Map<number, ActividadGarmin[]>();
+  for (const a of actividades) {
+    const dayIndex = differenceInCalendarDays(parseISO(a.fecha), monday);
+    if (dayIndex < 0 || dayIndex > 6) continue;
+    const list = byDay.get(dayIndex) ?? [];
+    list.push(a);
+    byDay.set(dayIndex, list);
+  }
+
+  const extras: Session[] = [];
+  byDay.forEach((acts, dayIndex) => {
+    const daySessions = planSessions.filter(s => s.dayIndex === dayIndex);
+    const plannedCarrera = daySessions.filter(s => s.type === "carrera").length;
+    const plannedFuerza = daySessions.filter(s => s.type === "fuerza").length;
+    const running = acts.filter(a => esActividadRunning(a.tipo_deporte));
+    const noRunning = acts.filter(a => !esActividadRunning(a.tipo_deporte));
+    const leftover = [...running.slice(plannedCarrera), ...noRunning.slice(plannedFuerza)];
+    leftover.forEach((a, i) => {
+      const km = (a.distancia_m || 0) / 1000;
+      extras.push({
+        id: `garmin-${dayIndex}-${i}-${a.fecha}-${a.tipo_deporte}`,
+        dayIndex,
+        type: esActividadRunning(a.tipo_deporte) ? "carrera" : "fuerza",
+        subtype: "EXTRA",
+        title: humanizarTipoActividad(a.tipo_deporte),
+        duration: formatDuracion(a.tiempo_seg ? Math.round(a.tiempo_seg / 60) : null),
+        metric: km > 0.1 ? `${km.toFixed(1)} km` : "",
+        notes: "Actividad de Garmin no planificada.",
+        completed: true,
+        origin: "garmin",
+      });
+    });
+  });
+  return extras;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,6 +328,33 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CARD EXTRA (actividad Garmin hecha pero no planificada — solo lectura)
+// ─────────────────────────────────────────────────────────────────────────────
+function CardExtra({ session }: { session: Session }) {
+  const c = SUB.EXTRA;
+  return (
+    <div className="p-3 rounded-xl relative" style={{ background: `${c.bg}55`, border: `1px solid ${c.color}40` }}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Badge sub="EXTRA" />
+          <span className="text-xs font-bold line-clamp-1" style={{ color: T.text1 }}>{session.title}</span>
+        </div>
+        <Check className="w-3.5 h-3.5 shrink-0" style={{ color: c.color }} />
+      </div>
+      <div className="mt-2 flex items-center justify-between text-[11px]" style={{ color: T.text2 }}>
+        <div className="flex items-center gap-1">
+          <Clock className="w-3 h-3" style={{ color: T.text3 }} />
+          <span>{session.duration}</span>
+        </div>
+        {session.metric && (
+          <span className="font-semibold" style={{ color: "#f1f5f9" }}>{session.metric}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DAY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
 function DayBlock({ dayLabel, sessions, isReorderMode, onToggle, onOpen, onReorderTap }: {
@@ -280,12 +372,14 @@ function DayBlock({ dayLabel, sessions, isReorderMode, onToggle, onOpen, onReord
 
       {/* Session cards */}
       <div className="space-y-2">
-        {sessions.map(s => s.type === "carrera"
-          ? <CardCarrera key={s.id} session={s} isReorderMode={isReorderMode}
-              onToggle={() => onToggle(s.id)} onOpen={() => onOpen(s)}
-              onReorderTap={() => onReorderTap(s)} />
-          : <CardFuerza key={s.id} session={s} isReorderMode={isReorderMode}
-              onToggle={() => onToggle(s.id)} onReorderTap={() => onReorderTap(s)} />
+        {sessions.map(s => s.origin === "garmin"
+          ? <CardExtra key={s.id} session={s} />
+          : s.type === "carrera"
+            ? <CardCarrera key={s.id} session={s} isReorderMode={isReorderMode}
+                onToggle={() => onToggle(s.id)} onOpen={() => onOpen(s)}
+                onReorderTap={() => onReorderTap(s)} />
+            : <CardFuerza key={s.id} session={s} isReorderMode={isReorderMode}
+                onToggle={() => onToggle(s.id)} onReorderTap={() => onReorderTap(s)} />
         )}
         {sessions.length === 0 && (
           <p className="py-2 text-center text-[10px] italic" style={{ color: "#475569" }}>
@@ -545,7 +639,7 @@ function AddSessionModal({ days, onAdd, onClose }: {
 // ─────────────────────────────────────────────────────────────────────────────
 function WeeklyView({
   sessions, loading, error, weekLabel, onPrevWeek, onNextWeek,
-  onToggle, onSave, onDelete, onMove, onAdd,
+  onToggle, onSave, onDelete, onMove, onAdd, onSync, syncing, syncState,
 }: {
   sessions: Session[]; loading: boolean; error: string | null; weekLabel: string;
   onPrevWeek: () => void; onNextWeek: () => void;
@@ -554,6 +648,7 @@ function WeeklyView({
   onDelete: (id: string) => void;
   onMove: (id: string, dayIndex: number) => void;
   onAdd: (fields: NewSessionFields) => Promise<void>;
+  onSync: () => void; syncing: boolean; syncState: "idle" | "success" | "error";
 }) {
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
@@ -571,6 +666,16 @@ function WeeklyView({
             </h1>
           </div>
           <div className="flex items-center gap-2">
+            {/* Sync Garmin button */}
+            <button onClick={onSync} disabled={syncing} title="Sincronizar Garmin"
+              className="w-9 h-9 rounded-full flex items-center justify-center border transition-all disabled:opacity-70"
+              style={{
+                background: syncState === "success" ? "rgba(34,197,94,0.2)" : syncState === "error" ? "rgba(239,68,68,0.15)" : T.border,
+                borderColor: syncState === "success" ? "rgba(34,197,94,0.5)" : syncState === "error" ? "rgba(239,68,68,0.4)" : "#334155",
+              }}>
+              <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
+                style={{ color: syncState === "success" ? "#22c55e" : syncState === "error" ? "#f87171" : T.text2 }} />
+            </button>
             {/* Reorder button */}
             <button onClick={() => setIsReorderMode(p => !p)}
               className="flex items-center gap-1.5 text-xs px-3.5 py-2 rounded-full font-black transition-all"
@@ -648,7 +753,7 @@ function WeeklyView({
 // ─────────────────────────────────────────────────────────────────────────────
 // MONTHLY VIEW (fetch propio de 5 semanas reales para cubrir la cuadrícula)
 // ─────────────────────────────────────────────────────────────────────────────
-interface WeekRow { monday: Date; sessions: Session[]; kmPlanificados: number }
+interface WeekRow { monday: Date; sessions: Session[]; kmPlanificados: number; kmRealizados: number }
 
 function MonthlyView({ userId }: { userId: number }) {
   const [monthOffset, setMonthOffset] = useState(0);
@@ -670,11 +775,16 @@ function MonthlyView({ userId }: { userId: number }) {
     Promise.all(mondays.map(m => getPlanSemana(userId, toISODate(m))))
       .then(plans => {
         if (cancelled) return;
-        setWeeks(plans.map((p, i) => ({
-          monday: mondays[i],
-          sessions: p.sesiones.map(s => toSession(s, mondays[i])),
-          kmPlanificados: p.stats.km_planificados,
-        })));
+        setWeeks(plans.map((p, i) => {
+          const planSessions = p.sesiones.map(s => toSession(s, mondays[i]));
+          const extraSessions = buildExtraSessions(planSessions, p.actividades_garmin, mondays[i]);
+          return {
+            monday: mondays[i],
+            sessions: [...planSessions, ...extraSessions],
+            kmPlanificados: p.stats.km_planificados,
+            kmRealizados: p.stats.km_realizados,
+          };
+        }));
       })
       .catch(() => { if (!cancelled) setWeeks([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -763,11 +873,11 @@ function MonthlyView({ userId }: { userId: number }) {
                       </div>
                     );
                   })}
-                  {/* Km column */}
-                  <div className="aspect-square rounded-lg flex flex-col justify-center items-center p-1"
+                  {/* Km column: hechos/planeados */}
+                  <div className="aspect-square rounded-lg flex flex-col justify-center items-center p-1 text-center"
                     style={{ background: "rgba(15,23,42,0.5)", borderLeft: "2px solid #06b6d4" }}>
-                    <span className="text-[8px] font-bold uppercase" style={{ color: T.text3 }}>Sem</span>
-                    <span className="text-xs font-black" style={{ color: "#22d3ee" }}>{row.kmPlanificados.toFixed(0)}k</span>
+                    <span className="text-[10px] font-black leading-tight" style={{ color: "#22d3ee" }}>{row.kmRealizados.toFixed(0)}/{row.kmPlanificados.toFixed(0)}</span>
+                    <span className="text-[7px] font-bold uppercase" style={{ color: T.text3 }}>km</span>
                   </div>
                 </div>
               ))}
@@ -1063,6 +1173,7 @@ export function LandingPage() {
   const [loadingDashboard, setLoadingDashboard] = useState(true);
 
   const [toast, setToast] = useState("");
+  const [toastKind, setToastKind] = useState<"error" | "success">("error");
 
   const monday = useMemo(() => mondayFor(weekOffset), [weekOffset]);
 
@@ -1077,9 +1188,13 @@ export function LandingPage() {
         getPlanSemana(userId, toISODate(currMonday)),
         getPlanSemana(userId, toISODate(prevMonday)),
       ]);
-      setSessions(curr.sesiones.map(s => toSession(s, currMonday)));
+      const currPlanSessions = curr.sesiones.map(s => toSession(s, currMonday));
+      const currExtras = buildExtraSessions(currPlanSessions, curr.actividades_garmin, currMonday);
+      setSessions([...currPlanSessions, ...currExtras]);
       setWeekStats(curr.stats);
-      setPrevSessions(prev.sesiones.map(s => toSession(s, prevMonday)));
+      const prevPlanSessions = prev.sesiones.map(s => toSession(s, prevMonday));
+      const prevExtras = buildExtraSessions(prevPlanSessions, prev.actividades_garmin, prevMonday);
+      setPrevSessions([...prevPlanSessions, ...prevExtras]);
     } catch {
       setWeekError("No se pudo cargar el plan de esta semana.");
     } finally {
@@ -1088,6 +1203,30 @@ export function LandingPage() {
   }, [userId, weekOffset]);
 
   useEffect(() => { fetchWeek(); }, [fetchWeek]);
+
+  const [syncing, setSyncing] = useState(false);
+  const [syncState, setSyncState] = useState<"idle" | "success" | "error">("idle");
+
+  const handleSync = useCallback(async () => {
+    if (!userId || syncing) return;
+    setSyncing(true);
+    setSyncState("idle");
+    try {
+      const res = await sincronizarGarmin(userId);
+      await Promise.all([fetchWeek(), getDashboard(userId).then(setDashboard).catch(() => {})]);
+      setSyncState("success");
+      const auto = res.sesiones_completadas_auto ?? 0;
+      setToastKind("success");
+      setToast(auto > 0 ? `Garmin sincronizado — ${auto} sesión(es) marcada(s) como hechas.` : "Garmin sincronizado.");
+    } catch {
+      setSyncState("error");
+      setToastKind("error");
+      setToast("No se pudo sincronizar con Garmin. Se reintentará en la próxima sync automática.");
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncState("idle"), 2500);
+    }
+  }, [userId, syncing, fetchWeek]);
 
   useEffect(() => {
     if (!userId) return;
@@ -1106,15 +1245,20 @@ export function LandingPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  const showToast = useCallback((text: string, kind: "error" | "success" = "error") => {
+    setToastKind(kind);
+    setToast(text);
+  }, []);
+
   const handleToggle = useCallback((id: string) => {
     setSessions(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
     const target = sessions.find(s => s.id === id);
     const nextCompleted = target ? !target.completed : true;
     actualizarSesionCompleta(Number(id), { completado: nextCompleted }).catch(() => {
       setSessions(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
-      setToast("No se pudo guardar el cambio.");
+      showToast("No se pudo guardar el cambio.");
     });
-  }, [sessions]);
+  }, [sessions, showToast]);
 
   const handleSave = useCallback((id: string, fields: Partial<Session>) => {
     actualizarSesionCompleta(Number(id), {
@@ -1124,21 +1268,21 @@ export function LandingPage() {
       detalles: fields.notes,
     })
       .then(fetchWeek)
-      .catch(() => setToast("No se pudo guardar la sesión."));
-  }, [fetchWeek]);
+      .catch(() => showToast("No se pudo guardar la sesión."));
+  }, [fetchWeek, showToast]);
 
   const handleDelete = useCallback((id: string) => {
     borrarSesion(Number(id))
       .then(fetchWeek)
-      .catch(() => setToast("No se pudo eliminar la sesión."));
-  }, [fetchWeek]);
+      .catch(() => showToast("No se pudo eliminar la sesión."));
+  }, [fetchWeek, showToast]);
 
   const handleMove = useCallback((id: string, dayIndex: number) => {
     const newFecha = toISODate(addDays(monday, dayIndex));
     actualizarSesionCompleta(Number(id), { fecha: newFecha })
       .then(fetchWeek)
-      .catch(() => setToast("No se pudo mover la sesión."));
-  }, [monday, fetchWeek]);
+      .catch(() => showToast("No se pudo mover la sesión."));
+  }, [monday, fetchWeek, showToast]);
 
   const handleAdd = useCallback(async (fields: NewSessionFields) => {
     if (!userId) return;
@@ -1155,7 +1299,7 @@ export function LandingPage() {
       });
       await fetchWeek();
     } catch {
-      setToast("No se pudo añadir la sesión.");
+      showToast("No se pudo añadir la sesión.");
     }
   }, [userId, monday, fetchWeek]);
 
@@ -1200,6 +1344,7 @@ export function LandingPage() {
               onNextWeek={() => setWeekOffset(o => o + 1)}
               onToggle={handleToggle} onSave={handleSave} onDelete={handleDelete}
               onMove={handleMove} onAdd={handleAdd}
+              onSync={handleSync} syncing={syncing} syncState={syncState}
             />
           )}
           {activeTab === "calendario" && calView === "mensual" && userId && (
@@ -1213,8 +1358,8 @@ export function LandingPage() {
           )}
 
           {toast && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-xs font-bold z-40"
-              style={{ background: "rgba(239,68,68,0.9)", color: "#fff" }}>
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-xs font-bold z-40 text-center max-w-[90%]"
+              style={{ background: toastKind === "success" ? "rgba(34,197,94,0.92)" : "rgba(239,68,68,0.9)", color: "#fff" }}>
               {toast}
             </div>
           )}

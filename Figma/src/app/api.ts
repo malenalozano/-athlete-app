@@ -256,7 +256,14 @@ export function getGarminStats(usuarioId: number) {
 }
 
 export function sincronizarGarmin(usuarioId: number) {
-  return req<{ ok: boolean; actividades_importadas: number; dias_biometrico: number; dias_sueno: number; advertencias: string[] | null }>(`/garmin/${usuarioId}/sync`, { method: "POST" }, 90000);
+  return req<{
+    ok: boolean;
+    actividades_importadas: number;
+    dias_biometrico: number;
+    dias_sueno: number;
+    sesiones_completadas_auto?: number;
+    advertencias: string[] | null;
+  }>(`/garmin/${usuarioId}/sync`, { method: "POST" }, 90000);
 }
 
 export function guardarCredencialesGarmin(usuarioId: number, emailGarmin: string, passwordGarmin: string) {

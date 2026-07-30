@@ -1,17 +1,17 @@
 """
 Tareas programadas (background jobs).
 
-Jobs activos:
-  - garmin_auto_sync       — todos los días a las 07:00 hora Madrid
-    → Sincroniza actividades y biométricos de Garmin para todos los usuarios.
-  - daily_training_reminder — todos los días a las 09:00 hora Madrid
-    → Consulta el plan de hoy de cada usuario y manda notificación ntfy.
+Job activo:
+  - daily_sync_and_reminder — todos los días a las 09:00 hora Madrid
+    → Sincroniza Garmin (actividades + biométricos) de todos los usuarios y,
+      justo después, envía la notificación ntfy con el plan del día.
 
 EN PRODUCCIÓN (Render): el scheduler interno está DESACTIVADO porque el dyno
-free duerme. Los jobs los dispara cron-job.org llamando a:
-  - 07:00 → POST https://tu-backend.onrender.com/tasks/garmin-sync
+free duerme. El job lo dispara cron-job.org llamando a:
   - 09:00 → POST https://tu-backend.onrender.com/tasks/daily
 con header X-Cron-Secret: <valor de CRON_SECRET en las env vars de Render>.
+Ese mismo endpoint hace sync + recordatorio, así que basta con UN cron job
+diario a las 9am (no hace falta configurar /tasks/garmin-sync aparte).
 """
 import logging
 from datetime import date
@@ -82,8 +82,11 @@ def _formato_sesion(row: dict) -> str:
     return " · ".join(partes[:3]) + (partes[3] if len(partes) > 3 else "")
 
 
-def _garmin_auto_sync_job():
-    """Sincroniza Garmin para todos los usuarios con tokens (job local 07:00)."""
+def sync_all_users() -> list[dict]:
+    """Sincroniza Garmin (actividades + biométricos) para todos los usuarios con
+    tokens guardados. Un usuario que falle (tokens caídos, 429, timeout...) no
+    interrumpe la sync del resto — cada uno se aísla en su propio try/except.
+    """
     from database import get_db
     try:
         # Importación lazy para evitar circular imports
@@ -94,7 +97,7 @@ def _garmin_auto_sync_job():
         from routers.garmin import _do_sync
     except Exception as e:
         logger.error(f"No se pudo importar _do_sync para auto-sync Garmin: {e}")
-        return
+        return []
 
     conn = get_db()
     try:
@@ -104,13 +107,17 @@ def _garmin_auto_sync_job():
     finally:
         conn.close()
 
+    resultados = []
     for usuario_id, nombre in rows:
         try:
             res = _do_sync(usuario_id)
             acts = res.get("actividades_importadas", 0)
             logger.info(f"Auto-sync Garmin OK para {nombre}: {acts} actividad(es)")
+            resultados.append({"usuario": nombre, "ok": True, "actividades": acts})
         except Exception as e:
             logger.warning(f"Auto-sync Garmin ERROR para {nombre}: {e}")
+            resultados.append({"usuario": nombre, "ok": False, "error": str(e)[:150]})
+    return resultados
 
 
 def daily_training_reminder():
@@ -177,6 +184,13 @@ def daily_training_reminder():
         logger.info(f"Recordatorio diario enviado para {nombre}: {n_sesiones} sesión(es)")
 
 
+def daily_sync_and_reminder():
+    """09:00 Madrid — sincroniza Garmin de todos los usuarios y, justo después,
+    envía el recordatorio del plan de hoy (ya con los datos recién sincronizados)."""
+    sync_all_users()
+    daily_training_reminder()
+
+
 # ── Inicialización del scheduler ───────────────────────────────────────────────
 
 _scheduler: BackgroundScheduler | None = None
@@ -202,26 +216,17 @@ def start_scheduler():
 
     _scheduler = BackgroundScheduler(timezone="Europe/Madrid")
 
-    # ── Job 1: Auto-sync Garmin a las 07:00 (solo en local) ──
+    # ── Job único: sync Garmin + recordatorio a las 09:00 (solo en local) ──
     _scheduler.add_job(
-        _garmin_auto_sync_job,
-        trigger=CronTrigger(hour=7, minute=0, timezone="Europe/Madrid"),
-        id="garmin_auto_sync",
-        name="Auto-sync Garmin Connect",
-        replace_existing=True,
-    )
-
-    # ── Job 2: Recordatorio diario a las 09:00 (solo en local) ──
-    _scheduler.add_job(
-        daily_training_reminder,
+        daily_sync_and_reminder,
         trigger=CronTrigger(hour=9, minute=0, timezone="Europe/Madrid"),
-        id="daily_training_reminder",
-        name="Recordatorio diario de entrenamiento",
+        id="daily_sync_and_reminder",
+        name="Sync Garmin + recordatorio diario",
         replace_existing=True,
     )
 
     _scheduler.start()
-    logger.info("Scheduler iniciado — garmin sync 07:00, recordatorio 09:00 (Madrid)")
+    logger.info("Scheduler iniciado — sync Garmin + recordatorio a las 09:00 (Madrid)")
 
 
 def stop_scheduler():

@@ -178,11 +178,85 @@ def _bootstrap_client_from_credentials(conn, usuario_id: int):
         return None
 
 
+# Palabras clave para clasificar el tipo de actividad de Garmin y poder
+# auto-completar sesiones del plan cuando coinciden con lo realizado.
+RUNNING_KEYWORDS = ("running", "trail_running", "treadmill_running", "track_running", "correr", "carrera")
+STRENGTH_KEYWORDS = (
+    "strength_training", "indoor_cardio", "hiit", "indoor_climbing", "cross_training",
+    "yoga", "pilates", "bouldering", "cardio",
+)
+
+
+def _es_actividad_running(tipo_deporte: str) -> bool:
+    t = (tipo_deporte or "").lower()
+    return any(k in t for k in RUNNING_KEYWORDS)
+
+
+def _es_actividad_fuerza(tipo_deporte: str) -> bool:
+    t = (tipo_deporte or "").lower()
+    return any(k in t for k in STRENGTH_KEYWORDS)
+
+
+def _auto_completar_sesiones_por_garmin(conn, usuario_id: int, desde: str) -> int:
+    """Marca como completadas las sesiones del plan que ya tienen una actividad
+    Garmin compatible ese mismo día (carrera→actividad de running, fuerza→actividad
+    de fuerza/cross). No inventa datos: si no hay actividad compatible, no toca nada.
+    Devuelve el número de sesiones marcadas.
+    """
+    sesiones = conn.execute(
+        """SELECT id, fecha, tipo FROM plan_entrenamiento
+           WHERE usuario_id = ? AND fecha >= ? AND completado = 0""",
+        (usuario_id, desde),
+    ).fetchall()
+    if not sesiones:
+        return 0
+
+    actividades = conn.execute(
+        """SELECT fecha, tipo_deporte, distancia_m FROM actividades_garmin
+           WHERE usuario_id = ? AND fecha >= ?""",
+        (usuario_id, desde),
+    ).fetchall()
+    por_fecha: dict = {}
+    for fecha, tipo_deporte, distancia_m in actividades:
+        por_fecha.setdefault(fecha, []).append((tipo_deporte or "", distancia_m or 0))
+
+    marcadas = 0
+    for sesion_id, fecha, tipo in sesiones:
+        acts = por_fecha.get(fecha)
+        if not acts:
+            continue
+        es_carrera = (tipo or "").lower() == "carrera"
+        km_real = 0.0
+        match = False
+        for tipo_deporte, distancia_m in acts:
+            if es_carrera and _es_actividad_running(tipo_deporte):
+                match = True
+                km_real += distancia_m / 1000
+            elif not es_carrera and _es_actividad_fuerza(tipo_deporte):
+                match = True
+        if not match:
+            continue
+        if es_carrera and km_real > 0:
+            conn.execute(
+                "UPDATE plan_entrenamiento SET completado = 1, km_realizados = ? WHERE id = ?",
+                (round(km_real, 2), sesion_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE plan_entrenamiento SET completado = 1 WHERE id = ?",
+                (sesion_id,),
+            )
+        marcadas += 1
+    return marcadas
+
+
 def _do_sync(usuario_id: int) -> dict:
     """Realiza la sincronización completa con Garmin Connect.
-    
+
     Maneja automáticamente tokens expirados: si los tokens guardados fallan con 401,
-    intenta bootstrap con credenciales como fallback.
+    intenta bootstrap con credenciales como fallback. Nunca deja una excepción sin
+    capturar (timeouts, 429, errores de red) para que una sync fallida no tumbe el
+    endpoint ni deje la conexión de BD abierta.
     """
     try:
         from garminconnect import Garmin
@@ -190,6 +264,14 @@ def _do_sync(usuario_id: int) -> dict:
         raise HTTPException(status_code=500, detail="garminconnect no instalado en el servidor")
 
     conn = get_db()
+    try:
+        return _do_sync_inner(conn, usuario_id)
+    finally:
+        conn.close()
+
+
+def _do_sync_inner(conn, usuario_id: int) -> dict:
+    from garminconnect import Garmin
 
     # Preferimos tokens OAuth. Si no existen, hacemos bootstrap one-time con
     # credenciales guardadas para no obligar al usuario a ejecutar scripts manuales.
@@ -200,7 +282,6 @@ def _do_sync(usuario_id: int) -> dict:
         client = _bootstrap_client_from_credentials(conn, usuario_id)
 
     if client is None:
-        conn.close()
         raise HTTPException(
             status_code=400,
             detail="No se pudo iniciar sesión en Garmin con las credenciales guardadas. Revisa email/password en Perfil y vuelve a sincronizar.",
@@ -216,11 +297,12 @@ def _do_sync(usuario_id: int) -> dict:
         except Exception:
             pass  # No es crítico — seguimos
 
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
 
     actividades_ok = 0
     biometrico_ok = 0
     sueno_ok = 0
+    sesiones_auto_completadas = 0
     errores = []
     hoy = date.today()
     # Extendemos la ventana a 90 días para no perder actividades de hace más de un mes
@@ -298,8 +380,13 @@ def _do_sync(usuario_id: int) -> dict:
             conn.commit()
         except Exception as e:
             err_str = str(e)
-            # Detectar error 401 y reintentar con bootstrap automático
-            if "401" in err_str or "Authentication failed" in err_str:
+            # Un 429 (rate limit) NO debe reintentar con login por contraseña: reintentar
+            # login durante un bloqueo de Garmin es justo lo que agrava/alarga el bloqueo
+            # (ver GARMIN_429_COMPLETE_GUIDE.md). Nos limitamos a registrar el error.
+            if "429" in err_str or "Too Many Requests" in err_str:
+                logger.warning(f"Garmin rate-limit (429) para usuario {usuario_id}. No se reintenta login.")
+                errores.append("Actividades: Garmin está limitando peticiones (429). Se reintentará en la próxima sync.")
+            elif "401" in err_str or "Authentication failed" in err_str:
                 logger.warning(f"Tokens expirados para usuario {usuario_id} (401). Reintentando con credenciales...")
                 client = _bootstrap_client_from_credentials(conn, usuario_id)
                 if client is not None:
@@ -322,38 +409,56 @@ def _do_sync(usuario_id: int) -> dict:
             else:
                 errores.append(f"Actividades: {err_str[:100]}")
 
-        # Datos diarios
-        for fut in as_completed(fut_dias, timeout=25):
-            try:
-                day = fut.result()
-                dia_str = day["fecha"]
-                if day["sueno"]:
-                    _upsert_sueno(conn, usuario_id, dia_str, **day["sueno"])
-                    sueno_ok += 1
-                    # Guardar sleep_score en biometrico para que el LEFT JOIN
-                    # del endpoint /diario/biometrico siempre devuelva esta fila
-                    if day["sueno"].get("score"):
-                        _upsert_biometrico(conn, usuario_id, dia_str, sleep_score=day["sueno"]["score"])
-                if day["hrv"]:
-                    _upsert_biometrico(conn, usuario_id, dia_str, hrv_ms=day["hrv"])
-                    biometrico_ok += 1
-                if day["stats"]:
-                    _upsert_biometrico(conn, usuario_id, dia_str, **day["stats"])
-                    biometrico_ok += 1
-                if day["readiness"]:
-                    _upsert_biometrico(conn, usuario_id, dia_str, **day["readiness"])
-            except Exception:
-                pass
+        # Datos diarios — un timeout global de as_completed() no debe tumbar toda la
+        # sync (las actividades ya están guardadas); los días que no lleguen a tiempo
+        # simplemente se omiten y se recuperan en la siguiente sincronización.
+        try:
+            for fut in as_completed(fut_dias, timeout=25):
+                try:
+                    day = fut.result()
+                    dia_str = day["fecha"]
+                    if day["sueno"]:
+                        _upsert_sueno(conn, usuario_id, dia_str, **day["sueno"])
+                        sueno_ok += 1
+                        # Guardar sleep_score en biometrico para que el LEFT JOIN
+                        # del endpoint /diario/biometrico siempre devuelva esta fila
+                        if day["sueno"].get("score"):
+                            _upsert_biometrico(conn, usuario_id, dia_str, sleep_score=day["sueno"]["score"])
+                    if day["hrv"]:
+                        _upsert_biometrico(conn, usuario_id, dia_str, hrv_ms=day["hrv"])
+                        biometrico_ok += 1
+                    if day["stats"]:
+                        _upsert_biometrico(conn, usuario_id, dia_str, **day["stats"])
+                        biometrico_ok += 1
+                    if day["readiness"]:
+                        _upsert_biometrico(conn, usuario_id, dia_str, **day["readiness"])
+                except Exception:
+                    pass
+        except FutureTimeoutError:
+            logger.warning(f"Timeout esperando datos biométricos diarios para usuario {usuario_id} — continuando.")
+            errores.append("Datos biométricos: algunos días no llegaron a tiempo, se reintentarán en la próxima sync.")
 
-    _save_tokens_to_db(conn, usuario_id, client)
-    conn.commit()
-    conn.close()
+    try:
+        _save_tokens_to_db(conn, usuario_id, client)
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"No se pudieron guardar tokens/commit final para usuario {usuario_id}: {e}")
+
+    # Auto-completar sesiones del plan que ya coinciden con actividades importadas
+    # (últimos 14 días — suficiente para "esta semana" y la anterior).
+    try:
+        desde = (hoy - timedelta(days=14)).isoformat()
+        sesiones_auto_completadas = _auto_completar_sesiones_por_garmin(conn, usuario_id, desde)
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"No se pudo auto-completar sesiones para usuario {usuario_id}: {e}")
 
     return {
         "ok": True,
         "actividades_importadas": actividades_ok,
         "dias_biometrico": biometrico_ok,
         "dias_sueno": sueno_ok,
+        "sesiones_completadas_auto": sesiones_auto_completadas,
         "advertencias": errores if errores else None,
     }
 
@@ -454,6 +559,8 @@ def sync_garmin(usuario_id: int):
                 priority="default",
             )
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         send_notification(
             f"Error al sincronizar Garmin: {str(e)[:120]}",
@@ -461,7 +568,7 @@ def sync_garmin(usuario_id: int):
             tags=["x", "warning"],
             priority="high",
         )
-        raise
+        raise HTTPException(status_code=502, detail=f"No se pudo sincronizar con Garmin: {str(e)[:150]}")
 
 
 class TokensPayload(BaseModel):
