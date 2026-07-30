@@ -1,10 +1,20 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
   Calendar, TrendingUp, Award, ChevronLeft, ChevronRight,
   ArrowLeftRight, X, Clock, Flame, Plus, Check, Save, Trash2,
   RefreshCw, ArrowRight, Zap,
 } from "lucide-react";
+import {
+  addDays, addMonths, addWeeks, differenceInCalendarDays, format,
+  getDay, isSameDay, parseISO, startOfMonth, startOfWeek,
+} from "date-fns";
+import { es } from "date-fns/locale";
+import { useUser } from "../context/UserContext";
+import {
+  actualizarSesionCompleta, borrarSesion, crearSesion, getDashboard, getPlanSemana,
+  type DashboardData, type SesionPlan,
+} from "../api";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS (exact spec hex codes)
@@ -33,56 +43,96 @@ const SUB: Record<Subtype, { bg: string; color: string; glow: string; label: str
   PIERNA: { bg: "#450a0a", color: "#ef4444", glow: "0 0 6px rgba(239,68,68,0.2)",    label: "PIERNA" },
 };
 
+const DAYS = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+
 // ─────────────────────────────────────────────────────────────────────────────
-// DATA
+// SESSION MODEL (backed by /plan real data — ver Figma/src/app/api.ts)
 // ─────────────────────────────────────────────────────────────────────────────
 interface Session {
-  id: string; week: number; dayIndex: number;
-  type: "carrera" | "fuerza"; subtype: Subtype;
+  id: string; // String(SesionPlan.id) — usado para llamar a la API
+  dayIndex: number; // 0=Lun … 6=Dom, relativo al lunes de la semana mostrada
+  type: "carrera" | "fuerza";
+  subtype: Subtype;
   title: string; duration: string; metric: string;
   notes: string; completed: boolean;
 }
 
-const INITIAL_SESSIONS: Session[] = [
-  // Week 3
-  { id:"w3d0f1", week:3, dayIndex:0, type:"fuerza",  subtype:"PULL",   title:"Pull",                     duration:"45 min", metric:"",      notes:"Espalda y bíceps.",                                      completed:true },
-  { id:"w3d1r1", week:3, dayIndex:1, type:"carrera", subtype:"RB",     title:"Rodaje Base Zona 2",        duration:"50 min", metric:"10 km", notes:"Sensación muy cómoda. Ritmo medio Z2 5:15 min/km.",       completed:true },
-  { id:"w3d2f1", week:3, dayIndex:2, type:"fuerza",  subtype:"PUSH",   title:"Push",                     duration:"50 min", metric:"",      notes:"Pecho, hombro y tríceps.",                               completed:true },
-  { id:"w3d3r1", week:3, dayIndex:3, type:"carrera", subtype:"CAL",    title:"Series de Calidad",         duration:"45 min", metric:"6x1000m",notes:"Pace medio: 4:05/km en Z4. Recuperación 2 min.",        completed:true },
-  { id:"w3d4f1", week:3, dayIndex:4, type:"fuerza",  subtype:"PIERNA", title:"Pierna",                   duration:"55 min", metric:"",      notes:"Sentadillas.",                                           completed:true },
-  { id:"w3d6r1", week:3, dayIndex:6, type:"carrera", subtype:"TL",     title:"Tirada Larga Semanal",      duration:"1h 22m", metric:"16 km", notes:"Fondo constante. Buenas sensaciones al final.",          completed:true },
-  // Week 4 (current)
-  { id:"w4d0f1", week:4, dayIndex:0, type:"fuerza",  subtype:"PULL",   title:"Pull",                     duration:"45 min", metric:"",      notes:"Espalda y bíceps.",                                      completed:true },
-  { id:"w4d1r1", week:4, dayIndex:1, type:"carrera", subtype:"RB",     title:"Rodaje Base Zona 2",        duration:"50 min", metric:"10 km", notes:"Mantener ritmo Z2 medio cómodo de 5:10 min/km.",         completed:true },
-  { id:"w4d2f1", week:4, dayIndex:2, type:"fuerza",  subtype:"PUSH",   title:"Push",                     duration:"50 min", metric:"",      notes:"Pecho y tríceps.",                                       completed:false },
-  { id:"w4d3r1", week:4, dayIndex:3, type:"carrera", subtype:"CAL",    title:"Series de Calidad",         duration:"45 min", metric:"6x1000m",notes:"Series rápidas a 4:05 min/km.",                        completed:false },
-  { id:"w4d4f1", week:4, dayIndex:4, type:"fuerza",  subtype:"PIERNA", title:"Pierna",                   duration:"55 min", metric:"",      notes:"Sentadillas.",                                           completed:false },
-  { id:"w4d6r1", week:4, dayIndex:6, type:"carrera", subtype:"TL",     title:"Tirada Larga Semanal",      duration:"1h 30m", metric:"18 km", notes:"Probar geles e hidratarse bien cada 20 min.",            completed:false },
-  // Week 5
-  { id:"w5d0f1", week:5, dayIndex:0, type:"fuerza",  subtype:"PULL",   title:"Pull",                     duration:"45 min", metric:"",      notes:"Espalda y bíceps.",                                      completed:false },
-  { id:"w5d1r1", week:5, dayIndex:1, type:"carrera", subtype:"RB",     title:"Rodaje Base Zona 2",        duration:"1h 00m", metric:"12 km", notes:"Aumento progresivo de volumen en Z2 medio.",              completed:false },
-  { id:"w5d2f1", week:5, dayIndex:2, type:"fuerza",  subtype:"PUSH",   title:"Push",                     duration:"50 min", metric:"",      notes:"Pecho y tríceps.",                                       completed:false },
-  { id:"w5d3r1", week:5, dayIndex:3, type:"carrera", subtype:"CAL",    title:"Series de Calidad",         duration:"50 min", metric:"8x1000m",notes:"Incremento a 8 repeticiones a ritmo 4:00 min/km.",      completed:false },
-  { id:"w5d4f1", week:5, dayIndex:4, type:"fuerza",  subtype:"PIERNA", title:"Pierna",                   duration:"55 min", metric:"",      notes:"Sentadillas.",                                           completed:false },
-  { id:"w5d6r1", week:5, dayIndex:6, type:"carrera", subtype:"TL",     title:"Tirada Larga Semanal",      duration:"1h 40m", metric:"20 km", notes:"Objetivo de fondo máximo para el mes.",                  completed:false },
-];
+// ── Date / mapping helpers ──────────────────────────────────────────────────
 
-const DAYS = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
-const WEEKS = [
-  { id:3, label:"Semana 15 - 21 de Junio" },
-  { id:4, label:"Semana 22 - 28 de Junio" },
-  { id:5, label:"29 Jun - 5 de Julio" },
-];
-const MONTHS = [
-  { name:"Mayo 2026",   days:31, offset:4 },
-  { name:"Junio 2026",  days:30, offset:0 },
-  { name:"Julio 2026",  days:31, offset:2 },
-];
-const MONTH_KMS = [
-  [35,38,40,42,10],
-  [38,41,44,50,12],
-  [40,44,48,52,15],
-];
+function mondayFor(weekOffset: number): Date {
+  return startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
+}
+
+function toISODate(d: Date): string {
+  return format(d, "yyyy-MM-dd");
+}
+
+function capitalize(s: string): string {
+  return s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+function formatWeekLabel(monday: Date): string {
+  const sunday = addDays(monday, 6);
+  return `${format(monday, "d MMM", { locale: es })} – ${format(sunday, "d MMM yyyy", { locale: es })}`;
+}
+
+function formatDuracion(min: number | null | undefined): string {
+  if (!min) return "";
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
+function parseDuracion(text: string): number | undefined {
+  const trimmed = text.trim();
+  const hm = trimmed.match(/^(\d+)\s*h\s*(?:(\d+)\s*m)?$/i);
+  if (hm) return parseInt(hm[1], 10) * 60 + (hm[2] ? parseInt(hm[2], 10) : 0);
+  const minOnly = trimmed.match(/^(\d+)/);
+  return minOnly ? parseInt(minOnly[1], 10) : undefined;
+}
+
+function formatPace(ritmo: number): string {
+  const min = Math.floor(ritmo);
+  const sec = Math.round((ritmo - min) * 60);
+  return `${min}:${String(sec).padStart(2, "0")}`;
+}
+
+function classifySubtype(tipo: string, sesion: string): Subtype {
+  const isFuerza = (tipo || "").toLowerCase() === "fuerza";
+  const s = (sesion || "").toLowerCase();
+  if (isFuerza) {
+    if (s.includes("pierna")) return "PIERNA";
+    if (s.includes("push")) return "PUSH";
+    return "PULL";
+  }
+  if (s.includes("tirada")) return "TL";
+  if (s.includes("rodaje") || s.includes("regenerativo") || s.includes("descanso")) return "RB";
+  return "CAL";
+}
+
+function defaultTitleFor(type: "carrera" | "fuerza", subtype: Subtype): string {
+  if (type === "carrera") {
+    return subtype === "RB" ? "Rodaje Base Zona 2" : subtype === "TL" ? "Tirada Larga" : "Series de Calidad";
+  }
+  return subtype === "PIERNA" ? "Pierna" : subtype === "PUSH" ? "Push" : "Pull";
+}
+
+function toSession(s: SesionPlan, monday: Date): Session {
+  const dayIndex = Math.min(6, Math.max(0, differenceInCalendarDays(parseISO(s.fecha), monday)));
+  const type: "carrera" | "fuerza" = (s.tipo || "").toLowerCase() === "fuerza" ? "fuerza" : "carrera";
+  return {
+    id: String(s.id),
+    dayIndex,
+    type,
+    subtype: classifySubtype(s.tipo, s.sesion),
+    title: s.sesion,
+    duration: formatDuracion(s.duracion_min),
+    metric: s.km_planificados ? `${s.km_planificados} km` : "",
+    notes: s.detalles ?? "",
+    completed: !!s.completado,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BADGE
@@ -174,7 +224,6 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
   session: Session; isReorderMode: boolean;
   onToggle: () => void; onReorderTap: () => void;
 }) {
-  const fuerzaLabel = session.subtype === "PIERNA" ? "Pierna" : session.subtype === "PUSH" ? "Push" : "Pull";
   return (
     <div
       onClick={() => isReorderMode ? onReorderTap() : onToggle()}
@@ -195,7 +244,7 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Badge sub={session.subtype} />
-          <span className="text-xs font-bold" style={{ color: T.text1 }}>GYM</span>
+          <span className="text-xs font-bold" style={{ color: T.text1 }}>{session.title}</span>
         </div>
         {!isReorderMode && <CompleteBtn completed={session.completed} onToggle={onToggle} />}
       </div>
@@ -216,11 +265,10 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // DAY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
-function DayBlock({ dayIndex, dayLabel, sessions, isReorderMode, onToggle, onOpen, onReorderTap }: {
-  dayIndex: number; dayLabel: string; sessions: Session[]; isReorderMode: boolean;
+function DayBlock({ dayLabel, sessions, isReorderMode, onToggle, onOpen, onReorderTap }: {
+  dayLabel: string; sessions: Session[]; isReorderMode: boolean;
   onToggle: (id: string) => void; onOpen: (s: Session) => void; onReorderTap: (s: Session) => void;
 }) {
-  const done = sessions.filter(s => s.completed).length;
   return (
     <div className="rounded-2xl p-3" style={{ background: "rgba(15,23,42,0.4)", border: `1px solid ${T.border}80` }}>
       {/* Day header */}
@@ -383,35 +431,32 @@ function ReorderModal({ session, days, onMove, onClose }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // ADD SESSION MODAL
 // ─────────────────────────────────────────────────────────────────────────────
-function AddSessionModal({ weekId, days, onAdd, onClose }: {
-  weekId: number; days: string[]; onAdd: (s: Session) => void; onClose: () => void;
+interface NewSessionFields {
+  type: "carrera" | "fuerza"; subtype: Subtype; dayIndex: number; metric: string; notes: string;
+}
+
+function AddSessionModal({ days, onAdd, onClose }: {
+  days: string[]; onAdd: (fields: NewSessionFields) => Promise<void>; onClose: () => void;
 }) {
   const [type, setType] = useState<"carrera" | "fuerza">("carrera");
   const [subtype, setSubtype] = useState<Subtype>("RB");
   const [day, setDay] = useState(0);
   const [metric, setMetric] = useState("");
   const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const runSubs: Subtype[] = ["RB", "TL", "CAL"];
   const strSubs: Subtype[] = ["PUSH", "PULL", "PIERNA"];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    let title = "";
-    if (type === "carrera") {
-      title = subtype === "RB" ? "Rodaje Base Zona 2" : subtype === "TL" ? "Tirada Larga" : "Series de Calidad";
-    } else {
-      title = subtype === "PIERNA" ? "Pierna" : subtype === "PUSH" ? "Push" : "Pull";
+    setSaving(true);
+    try {
+      await onAdd({ type, subtype, dayIndex: day, metric, notes });
+      onClose();
+    } finally {
+      setSaving(false);
     }
-    onAdd({
-      id: `custom_${Date.now()}`, week: weekId, dayIndex: day,
-      type, subtype, title,
-      duration: type === "carrera" ? "45 min" : "50 min",
-      metric: type === "carrera" ? (metric || "10 km") : "",
-      notes: notes || "Sesión planificada.",
-      completed: false,
-    });
-    onClose();
   };
 
   return (
@@ -472,8 +517,8 @@ function AddSessionModal({ weekId, days, onAdd, onClose }: {
 
         {type === "carrera" && (
           <div>
-            <label className="text-[10px] font-black uppercase tracking-wider mb-1.5 block" style={{ color: T.text3 }}>Objetivo (Métrica)</label>
-            <input value={metric} onChange={e => setMetric(e.target.value)} placeholder="Ej: 12 km @ 5:00 min/km"
+            <label className="text-[10px] font-black uppercase tracking-wider mb-1.5 block" style={{ color: T.text3 }}>Objetivo (km)</label>
+            <input value={metric} onChange={e => setMetric(e.target.value)} placeholder="Ej: 12"
               className="w-full rounded-xl py-2 px-3 text-xs font-semibold outline-none"
               style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }} />
           </div>
@@ -486,9 +531,9 @@ function AddSessionModal({ weekId, days, onAdd, onClose }: {
             style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }} />
         </div>
 
-        <button type="submit" className="w-full py-3 rounded-xl text-xs font-black text-white active:scale-[0.98]"
+        <button type="submit" disabled={saving} className="w-full py-3 rounded-xl text-xs font-black text-white active:scale-[0.98] disabled:opacity-60"
           style={{ background: "linear-gradient(135deg,#06b6d4,#4f46e5)" }}>
-          Añadir al Calendario
+          {saving ? "Añadiendo…" : "Añadir al Calendario"}
         </button>
       </form>
     </div>
@@ -498,34 +543,22 @@ function AddSessionModal({ weekId, days, onAdd, onClose }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // WEEKLY VIEW
 // ─────────────────────────────────────────────────────────────────────────────
-function WeeklyView({ sessions, setSessions, weekIndex, weeks }: {
-  sessions: Session[]; setSessions: React.Dispatch<React.SetStateAction<Session[]>>;
-  weekIndex: number; weeks: typeof WEEKS;
+function WeeklyView({
+  sessions, loading, error, weekLabel, onPrevWeek, onNextWeek,
+  onToggle, onSave, onDelete, onMove, onAdd,
+}: {
+  sessions: Session[]; loading: boolean; error: string | null; weekLabel: string;
+  onPrevWeek: () => void; onNextWeek: () => void;
+  onToggle: (id: string) => void;
+  onSave: (id: string, fields: Partial<Session>) => void;
+  onDelete: (id: string) => void;
+  onMove: (id: string, dayIndex: number) => void;
+  onAdd: (fields: NewSessionFields) => Promise<void>;
 }) {
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [reorderingSession, setReorderingSession] = useState<Session | null>(null);
   const [isAdding, setIsAdding] = useState(false);
-
-  const weekId = weeks[weekIndex].id;
-  const weekSessions = sessions.filter(s => s.week === weekId);
-
-  const toggleCompleted = (id: string) => {
-    setSessions(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
-    setEditingSession(prev => prev?.id === id ? { ...prev, completed: !prev.completed } : prev);
-  };
-  const saveSession = (id: string, fields: Partial<Session>) => {
-    setSessions(prev => prev.map(s => s.id === id ? { ...s, ...fields } : s));
-  };
-  const deleteSession = (id: string) => {
-    setSessions(prev => prev.filter(s => s.id !== id));
-  };
-  const moveSession = (id: string, dayIndex: number) => {
-    setSessions(prev => prev.map(s => s.id === id ? { ...s, dayIndex } : s));
-    setReorderingSession(null);
-    setEditingSession(prev => prev?.id === id ? { ...prev, dayIndex } : prev);
-  };
-  const addSession = (s: Session) => setSessions(prev => [...prev, s]);
 
   return (
     <div className="flex flex-col h-full">
@@ -549,35 +582,37 @@ function WeeklyView({ sessions, setSessions, weekIndex, weeks }: {
               <ArrowLeftRight className="w-3.5 h-3.5" />
               {isReorderMode ? "Listo" : "Reorganizar"}
             </button>
-            {/* Sync */}
-            <button className="w-9 h-9 rounded-full flex items-center justify-center border" style={{ background: T.border, borderColor: "#334155" }}>
-              <RefreshCw className="w-4 h-4" style={{ color: T.text2 }} />
-            </button>
           </div>
         </div>
       </header>
 
       {/* Week navigator */}
       <div className="px-4 py-2.5 flex items-center justify-between shrink-0" style={{ background: "rgba(15,23,42,0.8)", border: `1px solid ${T.border}`, margin: "0 16px 12px", borderRadius: 16 }}>
-        <button className="w-10 h-10 flex items-center justify-center rounded-xl" style={{ background: T.bgSurf, border: `1px solid ${T.border}`, color: "#22d3ee" }}>
+        <button onClick={onPrevWeek} className="w-10 h-10 flex items-center justify-center rounded-xl" style={{ background: T.bgSurf, border: `1px solid ${T.border}`, color: "#22d3ee" }}>
           <ChevronLeft className="w-5 h-5" />
         </button>
         <div className="text-center">
           <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>PROGRAMA SEMANAL</p>
-          <p className="text-xs font-bold" style={{ color: T.text1 }}>{weeks[weekIndex].label}</p>
+          <p className="text-xs font-bold" style={{ color: T.text1 }}>{weekLabel}</p>
         </div>
-        <button className="w-10 h-10 flex items-center justify-center rounded-xl" style={{ background: T.bgSurf, border: `1px solid ${T.border}`, color: "#22d3ee" }}>
+        <button onClick={onNextWeek} className="w-10 h-10 flex items-center justify-center rounded-xl" style={{ background: T.bgSurf, border: `1px solid ${T.border}`, color: "#22d3ee" }}>
           <ChevronRight className="w-5 h-5" />
         </button>
       </div>
 
       {/* Days scroll */}
       <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-3">
-        {DAYS.map((d, i) => (
-          <DayBlock key={d} dayIndex={i} dayLabel={d}
-            sessions={weekSessions.filter(s => s.dayIndex === i)}
+        {loading && (
+          <p className="py-8 text-center text-xs font-semibold" style={{ color: T.text3 }}>Cargando plan semanal…</p>
+        )}
+        {!loading && error && (
+          <p className="py-8 text-center text-xs font-semibold" style={{ color: "#f87171" }}>{error}</p>
+        )}
+        {!loading && !error && DAYS.map((d, i) => (
+          <DayBlock key={d} dayLabel={d}
+            sessions={sessions.filter(s => s.dayIndex === i)}
             isReorderMode={isReorderMode}
-            onToggle={toggleCompleted}
+            onToggle={onToggle}
             onOpen={s => setEditingSession(s)}
             onReorderTap={s => setReorderingSession(s)}
           />
@@ -594,183 +629,245 @@ function WeeklyView({ sessions, setSessions, weekIndex, weeks }: {
       {/* Modals */}
       {editingSession && (
         <RunningEditModal session={editingSession} days={DAYS}
-          onClose={() => setEditingSession(null)} onSave={saveSession}
-          onToggle={toggleCompleted} onDelete={deleteSession} onMove={moveSession}
+          onClose={() => setEditingSession(null)} onSave={onSave}
+          onToggle={onToggle} onDelete={onDelete} onMove={onMove}
         />
       )}
       {reorderingSession && (
         <ReorderModal session={reorderingSession} days={DAYS}
-          onMove={moveSession} onClose={() => setReorderingSession(null)} />
+          onMove={(id, dayIndex) => { onMove(id, dayIndex); setReorderingSession(null); }}
+          onClose={() => setReorderingSession(null)} />
       )}
       {isAdding && (
-        <AddSessionModal weekId={weekId} days={DAYS} onAdd={addSession} onClose={() => setIsAdding(false)} />
+        <AddSessionModal days={DAYS} onAdd={onAdd} onClose={() => setIsAdding(false)} />
       )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MONTHLY VIEW
+// MONTHLY VIEW (fetch propio de 5 semanas reales para cubrir la cuadrícula)
 // ─────────────────────────────────────────────────────────────────────────────
-function MonthlyView({ sessions, monthIndex, setMonthIndex }: {
-  sessions: Session[]; monthIndex: number; setMonthIndex: (i: number) => void;
-}) {
-  const [clickedDay, setClickedDay] = useState<number | null>(null);
-  const month = MONTHS[monthIndex];
+interface WeekRow { monday: Date; sessions: Session[]; kmPlanificados: number }
+
+function MonthlyView({ userId }: { userId: number }) {
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [weeks, setWeeks] = useState<WeekRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [clickedDayIso, setClickedDayIso] = useState<string | null>(null);
+
+  const monthDate = useMemo(() => startOfMonth(addMonths(new Date(), monthOffset)), [monthOffset]);
+  const gridStart = useMemo(() => {
+    const offsetDays = (getDay(monthDate) + 6) % 7; // Lun=0…Dom=6
+    return addDays(monthDate, -offsetDays);
+  }, [monthDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setClickedDayIso(null);
+    const mondays = Array.from({ length: 5 }, (_, i) => addDays(gridStart, i * 7));
+    Promise.all(mondays.map(m => getPlanSemana(userId, toISODate(m))))
+      .then(plans => {
+        if (cancelled) return;
+        setWeeks(plans.map((p, i) => ({
+          monday: mondays[i],
+          sessions: p.sesiones.map(s => toSession(s, mondays[i])),
+          kmPlanificados: p.stats.km_planificados,
+        })));
+      })
+      .catch(() => { if (!cancelled) setWeeks([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [userId, gridStart]);
+
   const DAYS_HEADER = ["L","M","M","J","V","S","D"];
-  const weekSessions = sessions.filter(s => s.week === 4);
+  const today = new Date();
+
+  const clickedSessions = useMemo(() => {
+    if (!clickedDayIso) return [];
+    const rowIdx = weeks.findIndex(w => {
+      const diff = differenceInCalendarDays(parseISO(clickedDayIso), w.monday);
+      return diff >= 0 && diff <= 6;
+    });
+    if (rowIdx === -1) return [];
+    const dIdx = differenceInCalendarDays(parseISO(clickedDayIso), weeks[rowIdx].monday);
+    return weeks[rowIdx].sessions.filter(s => s.dayIndex === dIdx);
+  }, [clickedDayIso, weeks]);
 
   return (
     <div className="flex flex-col h-full">
       {/* TopBar */}
       <header className="px-5 py-4 shrink-0" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-[18px] font-black bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(90deg,#22d3ee,#818cf8)" }}>
-              Proyecto Athlete
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="w-9 h-9 rounded-full flex items-center justify-center border" style={{ background: T.border, borderColor: "#334155" }}>
-              <RefreshCw className="w-4 h-4" style={{ color: T.text2 }} />
-            </button>
-          </div>
-        </div>
+        <h1 className="text-[18px] font-black bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(90deg,#22d3ee,#818cf8)" }}>
+          Proyecto Athlete
+        </h1>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 pb-6">
         {/* Month nav */}
         <div className="flex items-center justify-between p-2 rounded-xl my-3" style={{ background: T.bgSurf, border: `1px solid ${T.border}` }}>
-          <button disabled={monthIndex === 0} onClick={() => setMonthIndex(monthIndex - 1)}
-            className="w-9 h-9 flex items-center justify-center rounded-lg transition-all disabled:opacity-30"
+          <button onClick={() => setMonthOffset(o => o - 1)}
+            className="w-9 h-9 flex items-center justify-center rounded-lg transition-all"
             style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: "#22d3ee" }}>
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-xs font-black uppercase tracking-wider" style={{ color: "#818cf8" }}>{month.name}</span>
-          <button disabled={monthIndex === MONTHS.length - 1} onClick={() => setMonthIndex(monthIndex + 1)}
-            className="w-9 h-9 flex items-center justify-center rounded-lg transition-all disabled:opacity-30"
+          <span className="text-xs font-black uppercase tracking-wider" style={{ color: "#818cf8" }}>
+            {capitalize(format(monthDate, "MMMM yyyy", { locale: es }))}
+          </span>
+          <button onClick={() => setMonthOffset(o => o + 1)}
+            className="w-9 h-9 flex items-center justify-center rounded-lg transition-all"
             style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: "#22d3ee" }}>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Grid header */}
-        <div className="grid grid-cols-8 text-center mb-2">
-          {DAYS_HEADER.map((d, i) => (
-            <span key={i} className="text-[9px] font-black uppercase" style={{ color: T.text3 }}>{d}</span>
-          ))}
-          <span className="text-[9px] font-black uppercase" style={{ color: "#22d3ee", borderLeft: `1px solid ${T.border}60`, paddingLeft: 2 }}>Kms</span>
-        </div>
-
-        {/* Grid rows */}
-        <div className="space-y-1">
-          {[0,1,2,3,4].map(weekIdx => (
-            <div key={weekIdx} className="grid grid-cols-8 gap-1 items-center">
-              {Array.from({ length: 7 }).map((_, dIdx) => {
-                const dayNum = weekIdx * 7 + dIdx + 1 - month.offset;
-                if (dayNum <= 0 || dayNum > month.days) {
-                  return <div key={dIdx} className="aspect-square rounded-lg" style={{ background: "rgba(2,6,23,0.2)" }} />;
-                }
-                const dayName = DAYS[dIdx];
-                const daySessions = weekSessions.filter(s => s.dayIndex === dIdx);
-                const isToday = dayNum === 22 && monthIndex === 1;
-                const isSel = clickedDay === dayNum;
-                return (
-                  <div key={dIdx} onClick={() => setClickedDay(isSel ? null : dayNum)}
-                    className="aspect-square rounded-lg flex flex-col justify-between p-1 cursor-pointer transition-all relative"
-                    style={{ background: T.bgSurf, border: `1px solid ${isSel || isToday ? "#22d3ee80" : T.border}`, borderWidth: isToday ? 2 : 1 }}>
-                    <span className="text-[9px] font-bold" style={{ color: isToday ? "#22d3ee" : T.text3 }}>{dayNum}</span>
-                    <div className="flex gap-0.5 justify-center pb-0.5">
-                      {daySessions.slice(0, 3).map((s, i) => (
-                        <span key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: SUB[s.subtype].color, boxShadow: SUB[s.subtype].glow }} />
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-              {/* Km column */}
-              <div className="aspect-square rounded-lg flex flex-col justify-center items-center p-1"
-                style={{ background: "rgba(15,23,42,0.5)", borderLeft: "2px solid #06b6d4" }}>
-                <span className="text-[8px] font-bold uppercase" style={{ color: T.text3 }}>Sem</span>
-                <span className="text-xs font-black" style={{ color: "#22d3ee" }}>{MONTH_KMS[monthIndex]?.[weekIdx] ?? 0}k</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Day detail */}
-        {clickedDay && (
-          <div className="mt-4 rounded-2xl overflow-hidden" style={{ background: T.bgSurf, border: `1px solid ${T.border}` }}>
-            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${T.border}`, background: "rgba(255,255,255,0.02)" }}>
-              <p className="text-sm font-black" style={{ color: T.text1 }}>Día {clickedDay} · {MONTHS[monthIndex].name.split(" ")[0]}</p>
-              <button onClick={() => setClickedDay(null)} className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: T.border }}>
-                <X className="w-3.5 h-3.5" style={{ color: T.text2 }} />
-              </button>
-            </div>
-            <div className="p-3 space-y-2">
-              {weekSessions.filter(s => s.dayIndex === (clickedDay - 1) % 7).length > 0
-                ? weekSessions.filter(s => s.dayIndex === (clickedDay - 1) % 7).map(s => (
-                  <div key={s.id} className="flex items-center gap-2 rounded-xl px-3 py-2.5"
-                    style={{ background: T.bgApp, border: `1px solid ${T.border}` }}>
-                    <Badge sub={s.subtype} size="xs" />
-                    <span className="text-xs font-bold flex-1" style={{ color: T.text1 }}>{s.title}</span>
-                    <span className="text-[10px]" style={{ color: T.text2 }}>{s.duration}</span>
-                    {s.metric && <span className="text-[10px] font-bold" style={{ color: SUB[s.subtype].color }}>{s.metric}</span>}
-                  </div>
-                ))
-                : <p className="text-xs italic text-center py-3" style={{ color: T.text3 }}>Sin entrenamientos planificados</p>
-              }
-            </div>
-          </div>
+        {loading && (
+          <p className="py-8 text-center text-xs font-semibold" style={{ color: T.text3 }}>Cargando mes…</p>
         )}
 
-        {/* Legend */}
-        <div className="mt-4 pt-3.5 grid grid-cols-2 gap-2 text-[9px]" style={{ borderTop: `1px solid ${T.border}60`, color: T.text2 }}>
-          <div className="space-y-1.5">
-            <p className="font-black uppercase tracking-wide" style={{ color: "#22d3ee" }}>Carrera</p>
-            {(["RB","CAL","TL"] as Subtype[]).map(k => (
-              <div key={k} className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: SUB[k].color, boxShadow: SUB[k].glow }} />
-                <span>{k === "RB" ? "RB (Rodaje Base)" : k === "CAL" ? "CAL (Calidad / Series)" : "TL (Tirada Larga)"}</span>
+        {!loading && (
+          <>
+            {/* Grid header */}
+            <div className="grid grid-cols-8 text-center mb-2">
+              {DAYS_HEADER.map((d, i) => (
+                <span key={i} className="text-[9px] font-black uppercase" style={{ color: T.text3 }}>{d}</span>
+              ))}
+              <span className="text-[9px] font-black uppercase" style={{ color: "#22d3ee", borderLeft: `1px solid ${T.border}60`, paddingLeft: 2 }}>Kms</span>
+            </div>
+
+            {/* Grid rows */}
+            <div className="space-y-1">
+              {weeks.map((row, weekIdx) => (
+                <div key={weekIdx} className="grid grid-cols-8 gap-1 items-center">
+                  {Array.from({ length: 7 }).map((_, dIdx) => {
+                    const dayDate = addDays(row.monday, dIdx);
+                    const inMonth = dayDate.getMonth() === monthDate.getMonth();
+                    if (!inMonth) {
+                      return <div key={dIdx} className="aspect-square rounded-lg" style={{ background: "rgba(2,6,23,0.2)" }} />;
+                    }
+                    const daySessions = row.sessions.filter(s => s.dayIndex === dIdx);
+                    const isToday = isSameDay(dayDate, today);
+                    const iso = toISODate(dayDate);
+                    const isSel = clickedDayIso === iso;
+                    return (
+                      <div key={dIdx} onClick={() => setClickedDayIso(isSel ? null : iso)}
+                        className="aspect-square rounded-lg flex flex-col justify-between p-1 cursor-pointer transition-all relative"
+                        style={{ background: T.bgSurf, border: `1px solid ${isSel || isToday ? "#22d3ee80" : T.border}`, borderWidth: isToday ? 2 : 1 }}>
+                        <span className="text-[9px] font-bold" style={{ color: isToday ? "#22d3ee" : T.text3 }}>{format(dayDate, "d")}</span>
+                        <div className="flex gap-0.5 justify-center pb-0.5">
+                          {daySessions.slice(0, 3).map((s, i) => (
+                            <span key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: SUB[s.subtype].color, boxShadow: SUB[s.subtype].glow }} />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Km column */}
+                  <div className="aspect-square rounded-lg flex flex-col justify-center items-center p-1"
+                    style={{ background: "rgba(15,23,42,0.5)", borderLeft: "2px solid #06b6d4" }}>
+                    <span className="text-[8px] font-bold uppercase" style={{ color: T.text3 }}>Sem</span>
+                    <span className="text-xs font-black" style={{ color: "#22d3ee" }}>{row.kmPlanificados.toFixed(0)}k</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Day detail */}
+            {clickedDayIso && (
+              <div className="mt-4 rounded-2xl overflow-hidden" style={{ background: T.bgSurf, border: `1px solid ${T.border}` }}>
+                <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${T.border}`, background: "rgba(255,255,255,0.02)" }}>
+                  <p className="text-sm font-black" style={{ color: T.text1 }}>{capitalize(format(parseISO(clickedDayIso), "d 'de' MMMM", { locale: es }))}</p>
+                  <button onClick={() => setClickedDayIso(null)} className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: T.border }}>
+                    <X className="w-3.5 h-3.5" style={{ color: T.text2 }} />
+                  </button>
+                </div>
+                <div className="p-3 space-y-2">
+                  {clickedSessions.length > 0
+                    ? clickedSessions.map(s => (
+                      <div key={s.id} className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+                        style={{ background: T.bgApp, border: `1px solid ${T.border}` }}>
+                        <Badge sub={s.subtype} size="xs" />
+                        <span className="text-xs font-bold flex-1" style={{ color: T.text1 }}>{s.title}</span>
+                        <span className="text-[10px]" style={{ color: T.text2 }}>{s.duration}</span>
+                        {s.metric && <span className="text-[10px] font-bold" style={{ color: SUB[s.subtype].color }}>{s.metric}</span>}
+                      </div>
+                    ))
+                    : <p className="text-xs italic text-center py-3" style={{ color: T.text3 }}>Sin entrenamientos planificados</p>
+                  }
+                </div>
               </div>
-            ))}
-          </div>
-          <div className="space-y-1.5 pl-2.5" style={{ borderLeft: `1px solid ${T.border}` }}>
-            <p className="font-black uppercase tracking-wide" style={{ color: T.reorder }}>Fuerza</p>
-            {(["PUSH","PULL","PIERNA"] as Subtype[]).map(k => (
-              <div key={k} className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: SUB[k].color, boxShadow: SUB[k].glow }} />
-                <span>{k === "PUSH" ? "Push (Empuje)" : k === "PULL" ? "Pull (Tirón)" : "Pierna"}</span>
+            )}
+
+            {/* Legend */}
+            <div className="mt-4 pt-3.5 grid grid-cols-2 gap-2 text-[9px]" style={{ borderTop: `1px solid ${T.border}60`, color: T.text2 }}>
+              <div className="space-y-1.5">
+                <p className="font-black uppercase tracking-wide" style={{ color: "#22d3ee" }}>Carrera</p>
+                {(["RB","CAL","TL"] as Subtype[]).map(k => (
+                  <div key={k} className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm" style={{ background: SUB[k].color, boxShadow: SUB[k].glow }} />
+                    <span>{k === "RB" ? "RB (Rodaje Base)" : k === "CAL" ? "CAL (Calidad / Series)" : "TL (Tirada Larga)"}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+              <div className="space-y-1.5 pl-2.5" style={{ borderLeft: `1px solid ${T.border}` }}>
+                <p className="font-black uppercase tracking-wide" style={{ color: T.reorder }}>Fuerza</p>
+                {(["PUSH","PULL","PIERNA"] as Subtype[]).map(k => (
+                  <div key={k} className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm" style={{ background: SUB[k].color, boxShadow: SUB[k].glow }} />
+                    <span>{k === "PUSH" ? "Push (Empuje)" : k === "PULL" ? "Pull (Tirón)" : "Pierna"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PROGRESS VIEW
+// PROGRESS VIEW (datos reales de /dashboard: running_trend, ritmo_trend, semana_actual)
 // ─────────────────────────────────────────────────────────────────────────────
-const BAR_DATA = [
-  { label:"Sem 1", km:28, active:false }, { label:"Sem 2", km:34, active:false },
-  { label:"Sem 3", km:38, active:false }, { label:"Sem 4", km:41, active:false },
-  { label:"Sem 5", km:44, active:false }, { label:"Sem 6", km:50, active:true },
-];
+function ProgressView({ weekStats, dashboard, loadingDashboard }: {
+  weekStats: { km_planificados: number; km_realizados: number } | null;
+  dashboard: DashboardData | null;
+  loadingDashboard: boolean;
+}) {
+  const bars = dashboard?.running_trend ?? [];
+  const paceTrend = dashboard?.ritmo_trend ?? [];
+  const maxBar = Math.max(1, ...bars.map(b => b.km));
+  const totalKm = bars.reduce((a, b) => a + b.km, 0);
+  const pctChange = bars.length >= 2 && bars[bars.length - 2].km > 0
+    ? Math.round(((bars[bars.length - 1].km - bars[bars.length - 2].km) / bars[bars.length - 2].km) * 100)
+    : null;
 
-function ProgressView({ weeklyKms }: { weeklyKms: number }) {
+  const paceMin = paceTrend.length ? Math.min(...paceTrend.map(p => p.ritmo)) : 0;
+  const paceMax = paceTrend.length ? Math.max(...paceTrend.map(p => p.ritmo)) : 0;
+  const paceRange = paceMax - paceMin || 1;
+  const pacePoints = paceTrend.map((p, i) => {
+    const x = paceTrend.length > 1 ? 10 + (i / (paceTrend.length - 1)) * 280 : 150;
+    const norm = (p.ritmo - paceMin) / paceRange;
+    const y = 15 + norm * 90;
+    return { x, y, ritmo: p.ritmo, semana: p.semana };
+  });
+  const pacePath = pacePoints.length
+    ? "M " + pacePoints.map(p => `${p.x} ${p.y}`).join(" L ")
+    : "";
+  const paceAreaPath = pacePoints.length
+    ? `${pacePath} L ${pacePoints[pacePoints.length - 1].x} 120 L ${pacePoints[0].x} 120 Z`
+    : "";
+
+  const weeklyKms = weekStats?.km_realizados ?? 0;
+  const weeklyPlan = weekStats?.km_planificados ?? 0;
+
   return (
     <div className="flex flex-col h-full">
       <header className="px-5 py-4 shrink-0" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: T.text2 }}>MIS ENTRENOS</p>
-            <h1 className="text-[18px] font-black bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(90deg,#22d3ee,#818cf8)" }}>Proyecto Athlete</h1>
-          </div>
-          <button className="w-9 h-9 rounded-full flex items-center justify-center border" style={{ background: T.border, borderColor: "#334155" }}>
-            <RefreshCw className="w-4 h-4" style={{ color: T.text2 }} />
-          </button>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: T.text2 }}>MIS ENTRENOS</p>
+          <h1 className="text-[18px] font-black bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(90deg,#22d3ee,#818cf8)" }}>Proyecto Athlete</h1>
         </div>
       </header>
 
@@ -781,75 +878,86 @@ function ProgressView({ weeklyKms }: { weeklyKms: number }) {
 
         {/* Bar chart */}
         <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
-          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Progreso de Volumen (km / semana)</h3>
-          <div className="h-40 w-full flex items-end justify-between px-2 relative">
-            {/* Guide lines */}
-            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-              <div className="border-b text-[8px] pt-1" style={{ borderColor: T.border + "80", color: T.text3 }}>50 km</div>
-              <div className="border-b text-[8px]" style={{ borderColor: T.border + "80", color: T.text3 }}>25 km</div>
-              <div className="text-[8px]" style={{ color: T.text3 }}>0 km</div>
+          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Volumen semanal (últimas {bars.length || 8} semanas)</h3>
+          {loadingDashboard && <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Cargando…</p>}
+          {!loadingDashboard && bars.length === 0 && (
+            <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos de Garmin suficientes todavía</p>
+          )}
+          {!loadingDashboard && bars.length > 0 && (
+            <div className="h-40 w-full flex items-end justify-between px-2 relative">
+              <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                <div className="border-b text-[8px] pt-1" style={{ borderColor: T.border + "80", color: T.text3 }}>{maxBar.toFixed(0)} km</div>
+                <div className="text-[8px]" style={{ color: T.text3 }}>0 km</div>
+              </div>
+              {bars.map((b, i) => {
+                const h = Math.round((b.km / maxBar) * 140);
+                const active = i === bars.length - 1;
+                return (
+                  <div key={i} className="flex flex-col items-center z-10 group">
+                    <span className="text-[9px] font-black mb-1 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "#22d3ee" }}>{b.km}k</span>
+                    <div className="w-6 rounded-t-lg" style={{
+                      height: Math.max(h, 2),
+                      background: active ? "linear-gradient(to top,#06b6d4,#4f46e5)" : T.border,
+                      boxShadow: active ? "0 0 12px rgba(6,182,212,0.3)" : "none",
+                    }} />
+                    <span className="text-[10px] font-medium mt-2" style={{ color: T.text2 }}>{b.semana}</span>
+                  </div>
+                );
+              })}
             </div>
-            {BAR_DATA.map((b, i) => {
-              const h = Math.round((b.km / 55) * 140);
-              return (
-                <div key={i} className="flex flex-col items-center z-10 group">
-                  <span className="text-[9px] font-black mb-1 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "#22d3ee" }}>{b.km}k</span>
-                  <div className="w-8 rounded-t-lg" style={{
-                    height: h,
-                    background: b.active ? "linear-gradient(to top,#06b6d4,#4f46e5)" : T.border,
-                    boxShadow: b.active ? "0 0 12px rgba(6,182,212,0.3)" : "none",
-                  }} />
-                  <span className="text-[10px] font-medium mt-2" style={{ color: T.text2 }}>{b.label}</span>
-                </div>
-              );
-            })}
-          </div>
+          )}
         </div>
 
         {/* Line chart (SVG) */}
         <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
-          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Evolución Ritmo en Zona 2 Medio (min / km)</h3>
-          <div className="h-40 w-full relative">
-            <div className="absolute inset-y-0 left-0 right-0 flex flex-col justify-between pointer-events-none text-[8px]" style={{ color: T.text3 }}>
-              <div className="border-b w-full" style={{ borderColor: T.border + "60" }}>4:30</div>
-              <div className="border-b w-full" style={{ borderColor: T.border + "60" }}>5:15</div>
-              <div className="w-full">6:00</div>
+          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Evolución del ritmo medio (min/km)</h3>
+          {!loadingDashboard && paceTrend.length < 2 && (
+            <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos suficientes todavía</p>
+          )}
+          {paceTrend.length >= 2 && (
+            <div className="h-40 w-full relative">
+              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 130">
+                <defs>
+                  <linearGradient id="line-grad-lp" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.35" />
+                    <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d={paceAreaPath} fill="url(#line-grad-lp)" />
+                <path d={pacePath} fill="none" stroke="#22d3ee" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                {pacePoints.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={i === pacePoints.length - 1 ? 5 : 4}
+                    fill={i === pacePoints.length - 1 ? "#10b981" : "#0891b2"} stroke="#fff" strokeWidth="1.5" />
+                ))}
+                {pacePoints.map((p, i) => (
+                  <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
+                    fill={i === pacePoints.length - 1 ? "#34d399" : T.text3} fontSize="8" fontWeight="bold">
+                    {formatPace(p.ritmo)}
+                  </text>
+                ))}
+              </svg>
             </div>
-            <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 120">
-              <defs>
-                <linearGradient id="line-grad-lp" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path d="M 10 100 Q 70 80 130 75 T 250 45 L 250 120 L 10 120 Z" fill="url(#line-grad-lp)" />
-              <path d="M 10 100 Q 70 80 130 75 T 250 45" fill="none" stroke="#22d3ee" strokeWidth="3.5" strokeLinecap="round" />
-              <circle cx="10" cy="100" r="4" fill="#0891b2" stroke="#fff" strokeWidth="1.5" />
-              <circle cx="70" cy="80" r="4" fill="#0891b2" stroke="#fff" strokeWidth="1.5" />
-              <circle cx="130" cy="75" r="4" fill="#0891b2" stroke="#fff" strokeWidth="1.5" />
-              <circle cx="250" cy="45" r="5" fill="#10b981" stroke="#fff" strokeWidth="2" />
-              <text x="5" y="115" fill={T.text3} fontSize="8" fontWeight="bold">S1 (5:45)</text>
-              <text x="65" y="95" fill={T.text3} fontSize="8" fontWeight="bold">S3 (5:15)</text>
-              <text x="125" y="90" fill={T.text3} fontSize="8" fontWeight="bold">S4 (5:10)</text>
-              <text x="220" y="38" fill="#34d399" fontSize="9" fontWeight="bold">Hoy (4:50)</text>
-            </svg>
-          </div>
+          )}
         </div>
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 gap-3">
           <div className="p-4 rounded-xl" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
-            <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>KMS TOTALES MES</p>
-            <p className="text-xl font-black mt-1" style={{ color: "#22d3ee" }}>186.4 km</p>
-            <span className="text-[9px] font-bold" style={{ color: T.success }}>▲ +12% vs. anterior</span>
+            <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>KMS ({bars.length || 8} SEMANAS)</p>
+            <p className="text-xl font-black mt-1" style={{ color: "#22d3ee" }}>{totalKm.toFixed(1)} km</p>
+            {pctChange !== null && (
+              <span className="text-[9px] font-bold" style={{ color: pctChange >= 0 ? T.success : "#f87171" }}>
+                {pctChange >= 0 ? "▲" : "▼"} {Math.abs(pctChange)}% vs. semana anterior
+              </span>
+            )}
           </div>
           <div className="p-4 rounded-xl" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
             <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>KMS SEMANA ACTUAL</p>
             <p className="text-xl font-black mt-1" style={{ color: "#818cf8" }}>{weeklyKms.toFixed(1)} km</p>
             <div className="w-full h-1.5 rounded-full mt-2 overflow-hidden" style={{ background: T.border }}>
-              <div className="h-full rounded-full" style={{ width: `${Math.min((weeklyKms/45)*100,100)}%`, background: "linear-gradient(90deg,#22d3ee,#4f46e5)" }} />
+              <div className="h-full rounded-full" style={{ width: `${weeklyPlan ? Math.min((weeklyKms / weeklyPlan) * 100, 100) : 0}%`, background: "linear-gradient(90deg,#22d3ee,#4f46e5)" }} />
             </div>
-            <span className="text-[8px] font-bold mt-1 block" style={{ color: T.text3 }}>Planificado: 45.0 km</span>
+            <span className="text-[8px] font-bold mt-1 block" style={{ color: T.text3 }}>Planificado: {weeklyPlan.toFixed(1)} km</span>
           </div>
         </div>
 
@@ -866,69 +974,65 @@ function ProgressView({ weeklyKms }: { weeklyKms: number }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COMPARATOR VIEW
+// COMPARATOR VIEW (semana actual vs. semana anterior, datos reales)
 // ─────────────────────────────────────────────────────────────────────────────
-const COMP_CARDS = [
-  {
-    sub: "RB" as Subtype, title: "Rodajes Base",
-    tag: "Ritmo en Zona 2",
-    prev: { label:"10.0 km", note:"Ritmo Z2: 5:15/km", status:"Completado" },
-    curr: { label:"12.0 km", note:"Plan ritmo Z2: 5:10/km", status:"Programado" },
-  },
-  {
-    sub: "CAL" as Subtype, title: "Series de Calidad",
-    tag: "Zonas 4 y 5",
-    prev: { label:"6x1000m", note:"Pace medio: 4:05/km", status:"" },
-    curr: { label:"8x1000m", note:"Pace objetivo: 4:00/km", status:"+2 Repeticiones" },
-  },
-  {
-    sub: "TL" as Subtype, title: "Tirada Larga (Fondo)",
-    tag: "Resistencia",
-    prev: { label:"16.0 km", note:"", status:"Completado" },
-    curr: { label:"18.0 km", note:"", status:"Crecimiento +2k" },
-  },
+const COMPARE_SUBS: { sub: Subtype; title: string; tag: string }[] = [
+  { sub: "RB",  title: "Rodajes Base",           tag: "Ritmo en Zona 2" },
+  { sub: "CAL", title: "Series de Calidad",      tag: "Zonas 4 y 5" },
+  { sub: "TL",  title: "Tirada Larga (Fondo)",   tag: "Resistencia" },
 ];
 
-function ComparatorView() {
+function ComparatorView({ currentSessions, prevSessions }: {
+  currentSessions: Session[]; prevSessions: Session[];
+}) {
   return (
     <div className="flex flex-col h-full">
       <header className="px-5 py-4 shrink-0" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: T.text2 }}>MIS ENTRENOS</p>
-            <h1 className="text-[18px] font-black bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(90deg,#22d3ee,#818cf8)" }}>Proyecto Athlete</h1>
-          </div>
-          <button className="w-9 h-9 rounded-full flex items-center justify-center border" style={{ background: T.border, borderColor: "#334155" }}>
-            <RefreshCw className="w-4 h-4" style={{ color: T.text2 }} />
-          </button>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: T.text2 }}>MIS ENTRENOS</p>
+          <h1 className="text-[18px] font-black bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(90deg,#22d3ee,#818cf8)" }}>Proyecto Athlete</h1>
         </div>
       </header>
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {COMP_CARDS.map((card) => {
-          const c = SUB[card.sub];
+        {COMPARE_SUBS.map(({ sub, title, tag }) => {
+          const c = SUB[sub];
+          const curr = currentSessions.find(s => s.subtype === sub);
+          const prev = prevSessions.find(s => s.subtype === sub);
           return (
-            <div key={card.sub} className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${T.border}80`, background: "rgba(15,23,42,0.6)" }}>
+            <div key={sub} className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${T.border}80`, background: "rgba(15,23,42,0.6)" }}>
               <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: `${c.bg}60`, borderBottom: `1px solid ${T.border}80` }}>
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${c.color}20`, border: `1px solid ${c.color}50` }}>
-                    <span className="text-[9px] font-black" style={{ color: c.color }}>{card.sub}</span>
+                    <span className="text-[9px] font-black" style={{ color: c.color }}>{sub}</span>
                   </div>
-                  <span className="text-xs font-black" style={{ color: T.text1 }}>{card.title}</span>
+                  <span className="text-xs font-black" style={{ color: T.text1 }}>{title}</span>
                 </div>
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${c.color}15`, color: c.color }}>{card.tag}</span>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${c.color}15`, color: c.color }}>{tag}</span>
               </div>
-              <div className="p-3.5 grid grid-cols-2 gap-4" style={{ borderLeft: "none" }}>
+              <div className="p-3.5 grid grid-cols-2 gap-4">
                 <div className="space-y-1" style={{ borderRight: `1px solid ${T.border}` }}>
                   <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>SEMANA ANTERIOR</p>
-                  <p className={`font-black ${card.sub === "CAL" ? "text-xs" : "text-base"}`} style={{ color: T.text2 }}>{card.prev.label}</p>
-                  {card.prev.note && <p className="text-[10px] italic" style={{ color: T.text3 }}>{card.prev.note}</p>}
-                  {card.prev.status && <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded mt-1" style={{ color: T.success, background: `${T.success}15` }}>{card.prev.status}</span>}
+                  {prev ? (
+                    <>
+                      <p className="font-black text-base" style={{ color: T.text2 }}>{prev.metric || prev.duration || "—"}</p>
+                      {prev.notes && <p className="text-[10px] italic" style={{ color: T.text3 }}>{prev.notes}</p>}
+                      <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded mt-1" style={{ color: prev.completed ? T.success : T.text3, background: prev.completed ? `${T.success}15` : "transparent" }}>
+                        {prev.completed ? "Completado" : "No completado"}
+                      </span>
+                    </>
+                  ) : <p className="text-[11px] italic" style={{ color: T.text3 }}>Sin sesión</p>}
                 </div>
                 <div className="space-y-1 pl-3">
-                  <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: c.color }}>{`SEMANA ACTUAL`}</p>
-                  <p className={`font-black ${card.sub === "CAL" ? "text-xs" : "text-base"}`} style={{ color: T.text1 }}>{card.curr.label}</p>
-                  {card.curr.note && <p className="text-[10px] italic" style={{ color: c.color }}>{card.curr.note}</p>}
-                  {card.curr.status && <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded mt-1" style={{ color: c.color, background: `${c.color}15` }}>{card.curr.status}</span>}
+                  <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: c.color }}>SEMANA ACTUAL</p>
+                  {curr ? (
+                    <>
+                      <p className="font-black text-base" style={{ color: T.text1 }}>{curr.metric || curr.duration || "—"}</p>
+                      {curr.notes && <p className="text-[10px] italic" style={{ color: c.color }}>{curr.notes}</p>}
+                      <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded mt-1" style={{ color: curr.completed ? T.success : c.color, background: curr.completed ? `${T.success}15` : `${c.color}15` }}>
+                        {curr.completed ? "Completado" : "Programado"}
+                      </span>
+                    </>
+                  ) : <p className="text-[11px] italic" style={{ color: T.text3 }}>Sin sesión</p>}
                 </div>
               </div>
             </div>
@@ -943,16 +1047,117 @@ function ComparatorView() {
 // MAIN
 // ─────────────────────────────────────────────────────────────────────────────
 export function LandingPage() {
-  const [sessions, setSessions] = useState<Session[]>(INITIAL_SESSIONS);
+  const { userId } = useUser();
+
   const [activeTab, setActiveTab] = useState<"calendario" | "progreso" | "comparador">("calendario");
   const [calView, setCalView] = useState<"semanal" | "mensual">("semanal");
-  const [weekIndex, setWeekIndex] = useState(1);
-  const [monthIndex, setMonthIndex] = useState(1);
+
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [prevSessions, setPrevSessions] = useState<Session[]>([]);
+  const [weekStats, setWeekStats] = useState<{ km_planificados: number; km_realizados: number } | null>(null);
+  const [loadingWeek, setLoadingWeek] = useState(true);
+  const [weekError, setWeekError] = useState<string | null>(null);
+
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
+
   const [toast, setToast] = useState("");
 
-  const weekId = WEEKS[weekIndex].id;
-  const weekSessions = sessions.filter(s => s.week === weekId);
-  const weeklyKms = weekSessions.filter(s => s.type === "carrera").reduce((a, s) => a + (parseFloat(s.metric) || 0), 0);
+  const monday = useMemo(() => mondayFor(weekOffset), [weekOffset]);
+
+  const fetchWeek = useCallback(async () => {
+    if (!userId) return;
+    setLoadingWeek(true);
+    setWeekError(null);
+    const currMonday = mondayFor(weekOffset);
+    const prevMonday = addWeeks(currMonday, -1);
+    try {
+      const [curr, prev] = await Promise.all([
+        getPlanSemana(userId, toISODate(currMonday)),
+        getPlanSemana(userId, toISODate(prevMonday)),
+      ]);
+      setSessions(curr.sesiones.map(s => toSession(s, currMonday)));
+      setWeekStats(curr.stats);
+      setPrevSessions(prev.sesiones.map(s => toSession(s, prevMonday)));
+    } catch {
+      setWeekError("No se pudo cargar el plan de esta semana.");
+    } finally {
+      setLoadingWeek(false);
+    }
+  }, [userId, weekOffset]);
+
+  useEffect(() => { fetchWeek(); }, [fetchWeek]);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    setLoadingDashboard(true);
+    getDashboard(userId)
+      .then(d => { if (!cancelled) setDashboard(d); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingDashboard(false); });
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(""), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const handleToggle = useCallback((id: string) => {
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
+    const target = sessions.find(s => s.id === id);
+    const nextCompleted = target ? !target.completed : true;
+    actualizarSesionCompleta(Number(id), { completado: nextCompleted }).catch(() => {
+      setSessions(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
+      setToast("No se pudo guardar el cambio.");
+    });
+  }, [sessions]);
+
+  const handleSave = useCallback((id: string, fields: Partial<Session>) => {
+    actualizarSesionCompleta(Number(id), {
+      sesion: fields.title,
+      duracion_min: fields.duration ? parseDuracion(fields.duration) : undefined,
+      km_planificados: fields.metric ? (parseFloat(fields.metric) || undefined) : undefined,
+      detalles: fields.notes,
+    })
+      .then(fetchWeek)
+      .catch(() => setToast("No se pudo guardar la sesión."));
+  }, [fetchWeek]);
+
+  const handleDelete = useCallback((id: string) => {
+    borrarSesion(Number(id))
+      .then(fetchWeek)
+      .catch(() => setToast("No se pudo eliminar la sesión."));
+  }, [fetchWeek]);
+
+  const handleMove = useCallback((id: string, dayIndex: number) => {
+    const newFecha = toISODate(addDays(monday, dayIndex));
+    actualizarSesionCompleta(Number(id), { fecha: newFecha })
+      .then(fetchWeek)
+      .catch(() => setToast("No se pudo mover la sesión."));
+  }, [monday, fetchWeek]);
+
+  const handleAdd = useCallback(async (fields: NewSessionFields) => {
+    if (!userId) return;
+    const fecha = toISODate(addDays(monday, fields.dayIndex));
+    try {
+      await crearSesion({
+        usuario_id: userId,
+        fecha,
+        tipo: fields.type === "carrera" ? "Carrera" : "Fuerza",
+        sesion: defaultTitleFor(fields.type, fields.subtype),
+        detalles: fields.notes || "Sesión planificada.",
+        duracion_min: fields.type === "carrera" ? 45 : 50,
+        km_planificados: fields.type === "carrera" ? (parseFloat(fields.metric) || 10) : undefined,
+      });
+      await fetchWeek();
+    } catch {
+      setToast("No se pudo añadir la sesión.");
+    }
+  }, [userId, monday, fetchWeek]);
 
   const NAV = [
     { key: "calendario", icon: Calendar, label: "Calendario" },
@@ -965,17 +1170,6 @@ export function LandingPage() {
       {/* Phone shell */}
       <div className="w-full max-w-[440px] md:h-[844px] h-screen md:rounded-[40px] overflow-hidden flex flex-col relative md:shadow-2xl md:border-[6px]"
         style={{ background: T.bgSurf, borderColor: T.border }}>
-
-        {/* Status bar (desktop only) */}
-        <div className="hidden md:flex h-9 px-6 justify-between items-center text-xs font-medium shrink-0" style={{ background: T.bgApp, color: T.text2 }}>
-          <span>10:30</span>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: "rgba(99,102,241,0.2)", color: "#818cf8" }}>5G</span>
-            <div className="w-5 h-2.5 border rounded-sm p-[1px] flex" style={{ borderColor: T.text3 }}>
-              <div className="w-4 h-full rounded-sm" style={{ background: T.text3 }} />
-            </div>
-          </div>
-        </div>
 
         {/* Segmented control (only in calendario tab) */}
         {activeTab === "calendario" && (
@@ -999,13 +1193,31 @@ export function LandingPage() {
         {/* Main content */}
         <main className="flex-1 overflow-hidden relative" style={{ background: "rgba(15,23,42,0.4)" }}>
           {activeTab === "calendario" && calView === "semanal" && (
-            <WeeklyView sessions={sessions} setSessions={setSessions} weekIndex={weekIndex} weeks={WEEKS} />
+            <WeeklyView
+              sessions={sessions} loading={loadingWeek} error={weekError}
+              weekLabel={formatWeekLabel(monday)}
+              onPrevWeek={() => setWeekOffset(o => o - 1)}
+              onNextWeek={() => setWeekOffset(o => o + 1)}
+              onToggle={handleToggle} onSave={handleSave} onDelete={handleDelete}
+              onMove={handleMove} onAdd={handleAdd}
+            />
           )}
-          {activeTab === "calendario" && calView === "mensual" && (
-            <MonthlyView sessions={sessions} monthIndex={monthIndex} setMonthIndex={setMonthIndex} />
+          {activeTab === "calendario" && calView === "mensual" && userId && (
+            <MonthlyView userId={userId} />
           )}
-          {activeTab === "progreso" && <ProgressView weeklyKms={weeklyKms} />}
-          {activeTab === "comparador" && <ComparatorView />}
+          {activeTab === "progreso" && (
+            <ProgressView weekStats={weekStats} dashboard={dashboard} loadingDashboard={loadingDashboard} />
+          )}
+          {activeTab === "comparador" && (
+            <ComparatorView currentSessions={sessions} prevSessions={prevSessions} />
+          )}
+
+          {toast && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-xs font-bold z-40"
+              style={{ background: "rgba(239,68,68,0.9)", color: "#fff" }}>
+              {toast}
+            </div>
+          )}
         </main>
 
         {/* Bottom NavBar */}
