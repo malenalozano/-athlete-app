@@ -639,7 +639,7 @@ function AddSessionModal({ days, onAdd, onClose }: {
 // ─────────────────────────────────────────────────────────────────────────────
 function WeeklyView({
   sessions, loading, error, weekLabel, onPrevWeek, onNextWeek,
-  onToggle, onSave, onDelete, onMove, onAdd, onSync, syncing, syncState,
+  onToggle, onSave, onDelete, onMove, onAdd,
 }: {
   sessions: Session[]; loading: boolean; error: string | null; weekLabel: string;
   onPrevWeek: () => void; onNextWeek: () => void;
@@ -648,7 +648,6 @@ function WeeklyView({
   onDelete: (id: string) => void;
   onMove: (id: string, dayIndex: number) => void;
   onAdd: (fields: NewSessionFields) => Promise<void>;
-  onSync: () => void; syncing: boolean; syncState: "idle" | "success" | "error";
 }) {
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
@@ -658,37 +657,18 @@ function WeeklyView({
   return (
     <div className="flex flex-col h-full">
       {/* TopBar */}
-      <header className="px-5 py-4 shrink-0" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-[18px] font-black bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(90deg,#22d3ee,#818cf8)" }}>
-              Proyecto Athlete
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Sync Garmin button */}
-            <button onClick={onSync} disabled={syncing} title="Sincronizar Garmin"
-              className="w-9 h-9 rounded-full flex items-center justify-center border transition-all disabled:opacity-70"
-              style={{
-                background: syncState === "success" ? "rgba(34,197,94,0.2)" : syncState === "error" ? "rgba(239,68,68,0.15)" : T.border,
-                borderColor: syncState === "success" ? "rgba(34,197,94,0.5)" : syncState === "error" ? "rgba(239,68,68,0.4)" : "#334155",
-              }}>
-              <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
-                style={{ color: syncState === "success" ? "#22c55e" : syncState === "error" ? "#f87171" : T.text2 }} />
-            </button>
-            {/* Reorder button */}
-            <button onClick={() => setIsReorderMode(p => !p)}
-              className="flex items-center gap-1.5 text-xs px-3.5 py-2 rounded-full font-black transition-all"
-              style={{
-                background: isReorderMode ? T.reorder : T.border,
-                color: isReorderMode ? T.reorderTx : T.text2,
-                boxShadow: isReorderMode ? `0 4px 12px ${T.reorder}40` : "none",
-              }}>
-              <ArrowLeftRight className="w-3.5 h-3.5" />
-              {isReorderMode ? "Listo" : "Reorganizar"}
-            </button>
-          </div>
-        </div>
+      <header className="px-5 py-3 shrink-0 flex justify-end" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
+        {/* Reorder button */}
+        <button onClick={() => setIsReorderMode(p => !p)}
+          className="flex items-center gap-1.5 text-xs px-3.5 py-2 rounded-full font-black transition-all"
+          style={{
+            background: isReorderMode ? T.reorder : T.border,
+            color: isReorderMode ? T.reorderTx : T.text2,
+            boxShadow: isReorderMode ? `0 4px 12px ${T.reorder}40` : "none",
+          }}>
+          <ArrowLeftRight className="w-3.5 h-3.5" />
+          {isReorderMode ? "Listo" : "Reorganizar"}
+        </button>
       </header>
 
       {/* Week navigator */}
@@ -755,7 +735,7 @@ function WeeklyView({
 // ─────────────────────────────────────────────────────────────────────────────
 interface WeekRow { monday: Date; sessions: Session[]; kmPlanificados: number; kmRealizados: number }
 
-function MonthlyView({ userId }: { userId: number }) {
+function MonthlyView({ userId, refreshKey }: { userId: number; refreshKey: number }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const [weeks, setWeeks] = useState<WeekRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -789,7 +769,7 @@ function MonthlyView({ userId }: { userId: number }) {
       .catch(() => { if (!cancelled) setWeeks([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [userId, gridStart]);
+  }, [userId, gridStart, refreshKey]);
 
   const DAYS_HEADER = ["L","M","M","J","V","S","D"];
   const today = new Date();
@@ -807,14 +787,7 @@ function MonthlyView({ userId }: { userId: number }) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* TopBar */}
-      <header className="px-5 py-4 shrink-0" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
-        <h1 className="text-[18px] font-black bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(90deg,#22d3ee,#818cf8)" }}>
-          Proyecto Athlete
-        </h1>
-      </header>
-
-      <div className="flex-1 overflow-y-auto px-4 pb-6">
+      <div className="flex-1 overflow-y-auto px-4 pb-6 pt-4">
         {/* Month nav */}
         <div className="flex items-center justify-between p-2 rounded-xl my-3" style={{ background: T.bgSurf, border: `1px solid ${T.border}` }}>
           <button onClick={() => setMonthOffset(o => o - 1)}
@@ -974,13 +947,6 @@ function ProgressView({ weekStats, dashboard, loadingDashboard }: {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="px-5 py-4 shrink-0" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: T.text2 }}>MIS ENTRENOS</p>
-          <h1 className="text-[18px] font-black bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(90deg,#22d3ee,#818cf8)" }}>Proyecto Athlete</h1>
-        </div>
-      </header>
-
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         <h2 className="text-base font-bold flex items-center gap-2" style={{ color: T.text1 }}>
           <Award className="w-4 h-4" style={{ color: "#22d3ee" }} /> Rendimiento y Volumen
@@ -1097,12 +1063,6 @@ function ComparatorView({ currentSessions, prevSessions }: {
 }) {
   return (
     <div className="flex flex-col h-full">
-      <header className="px-5 py-4 shrink-0" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: T.text2 }}>MIS ENTRENOS</p>
-          <h1 className="text-[18px] font-black bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(90deg,#22d3ee,#818cf8)" }}>Proyecto Athlete</h1>
-        </div>
-      </header>
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {COMPARE_SUBS.map(({ sub, title, tag }) => {
           const c = SUB[sub];
@@ -1206,6 +1166,7 @@ export function LandingPage() {
 
   const [syncing, setSyncing] = useState(false);
   const [syncState, setSyncState] = useState<"idle" | "success" | "error">("idle");
+  const [syncedAt, setSyncedAt] = useState(0);
 
   const handleSync = useCallback(async () => {
     if (!userId || syncing) return;
@@ -1214,6 +1175,7 @@ export function LandingPage() {
     try {
       const res = await sincronizarGarmin(userId);
       await Promise.all([fetchWeek(), getDashboard(userId).then(setDashboard).catch(() => {})]);
+      setSyncedAt(Date.now());
       setSyncState("success");
       const auto = res.sesiones_completadas_auto ?? 0;
       setToastKind("success");
@@ -1315,6 +1277,24 @@ export function LandingPage() {
       <div className="w-full max-w-[440px] md:h-[844px] h-screen md:rounded-[40px] overflow-hidden flex flex-col relative md:shadow-2xl md:border-[6px]"
         style={{ background: T.bgSurf, borderColor: T.border }}>
 
+        {/* Global header — siempre visible, en todas las pestañas */}
+        <header className="px-5 py-4 shrink-0" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
+          <div className="flex items-center justify-between">
+            <h1 className="text-[18px] font-black bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(90deg,#22d3ee,#818cf8)" }}>
+              Proyecto Athlete
+            </h1>
+            <button onClick={handleSync} disabled={syncing} title="Sincronizar Garmin"
+              className="w-9 h-9 rounded-full flex items-center justify-center border transition-all disabled:opacity-70 shrink-0"
+              style={{
+                background: syncState === "success" ? "rgba(34,197,94,0.2)" : syncState === "error" ? "rgba(239,68,68,0.15)" : T.border,
+                borderColor: syncState === "success" ? "rgba(34,197,94,0.5)" : syncState === "error" ? "rgba(239,68,68,0.4)" : "#334155",
+              }}>
+              <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
+                style={{ color: syncState === "success" ? "#22c55e" : syncState === "error" ? "#f87171" : T.text2 }} />
+            </button>
+          </div>
+        </header>
+
         {/* Segmented control (only in calendario tab) */}
         {activeTab === "calendario" && (
           <div className="px-4 pt-3 pb-0 shrink-0" style={{ background: T.bgSurf }}>
@@ -1344,11 +1324,10 @@ export function LandingPage() {
               onNextWeek={() => setWeekOffset(o => o + 1)}
               onToggle={handleToggle} onSave={handleSave} onDelete={handleDelete}
               onMove={handleMove} onAdd={handleAdd}
-              onSync={handleSync} syncing={syncing} syncState={syncState}
             />
           )}
           {activeTab === "calendario" && calView === "mensual" && userId && (
-            <MonthlyView userId={userId} />
+            <MonthlyView userId={userId} refreshKey={syncedAt} />
           )}
           {activeTab === "progreso" && (
             <ProgressView weekStats={weekStats} dashboard={dashboard} loadingDashboard={loadingDashboard} />
