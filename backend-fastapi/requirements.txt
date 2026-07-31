@@ -7,3 +7,7 @@ garminconnect
 xlrd==2.0.1
 apscheduler==3.10.4
 requests>=2.32.0
+
+# Dev / tests (ver tests/, ejecutar con: pytest)
+pytest>=8.0.0
+httpx>=0.27.0

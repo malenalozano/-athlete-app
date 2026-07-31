@@ -11,6 +11,7 @@ import {
 } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUser } from "../context/UserContext";
+import { esActividadRunning } from "../lib/running";
 import {
   actualizarSesionCompleta, aplicarSemanaGenerada, borrarSesion, crearSesion, generarPlanSemana,
   getDashboard, getPlanSemana, sincronizarGarmin,
@@ -47,12 +48,6 @@ const SUB: Record<Subtype, { bg: string; color: string; glow: string; label: str
 
 // Actividades Garmin realizadas pero no planificadas — se muestran igualmente en
 // el calendario, marcadas como hechas, en color violeta ("EXTRA").
-const RUNNING_KEYWORDS = ["running", "trail_running", "treadmill_running", "track_running", "correr", "carrera"];
-
-function esActividadRunning(tipoDeporte: string): boolean {
-  const t = (tipoDeporte || "").toLowerCase();
-  return RUNNING_KEYWORDS.some(k => t.includes(k));
-}
 
 function humanizarTipoActividad(tipoDeporte: string): string {
   const map: Record<string, string> = {

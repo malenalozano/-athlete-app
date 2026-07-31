@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
 from database import get_db
+from constants import es_actividad_running
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +181,8 @@ def _bootstrap_client_from_credentials(conn, usuario_id: int):
 
 # Palabras clave para clasificar el tipo de actividad de Garmin y poder
 # auto-completar sesiones del plan cuando coinciden con lo realizado.
-RUNNING_KEYWORDS = ("running", "trail_running", "treadmill_running", "track_running", "correr", "carrera")
+# RUNNING_TIPOS viene de constants.py (compartida con plan.py/dashboard.py) para
+# que "qué cuenta como carrera" no se desincronice entre sitios.
 STRENGTH_KEYWORDS = (
     "strength_training", "indoor_cardio", "hiit", "indoor_climbing", "cross_training",
     "yoga", "pilates", "bouldering", "cardio",
@@ -188,8 +190,7 @@ STRENGTH_KEYWORDS = (
 
 
 def _es_actividad_running(tipo_deporte: str) -> bool:
-    t = (tipo_deporte or "").lower()
-    return any(k in t for k in RUNNING_KEYWORDS)
+    return es_actividad_running(tipo_deporte)
 
 
 def _es_actividad_fuerza(tipo_deporte: str) -> bool:

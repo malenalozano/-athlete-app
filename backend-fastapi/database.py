@@ -7,26 +7,19 @@ from pathlib import Path
 from config import settings
 
 
-def _escape_val(v):
+def _hrana_arg(v) -> dict:
+    """Convierte un valor Python al formato de argumento tipado que espera la API
+    HTTP (hrana) de Turso. Los enteros van como string por el protocolo (evita
+    pérdida de precisión en JSON), igual que ya se parsean así en las respuestas."""
     if v is None:
-        return "NULL"
+        return {"type": "null"}
     if isinstance(v, bool):
-        return "1" if v else "0"
-    if isinstance(v, (int, float)):
-        return str(v)
-    return "'" + str(v).replace("'", "''") + "'"
-
-
-def _bind_params(sql: str, params) -> str:
-    if not params:
-        return sql
-    parts = sql.split("?")
-    if len(parts) != len(params) + 1:
-        raise ValueError(f"SQL has {len(parts)-1} placeholders but {len(params)} params")
-    result = parts[0]
-    for val, tail in zip(params, parts[1:]):
-        result += _escape_val(val) + tail
-    return result
+        return {"type": "integer", "value": "1" if v else "0"}
+    if isinstance(v, int):
+        return {"type": "integer", "value": str(v)}
+    if isinstance(v, float):
+        return {"type": "float", "value": v}
+    return {"type": "text", "value": str(v)}
 
 
 class _TursoCursor:
@@ -38,8 +31,10 @@ class _TursoCursor:
         self.rowcount = -1
 
     def execute(self, sql, params=()):
-        sql_bound = _bind_params(sql, params)
-        result = self._conn._send([sql_bound])
+        stmt = {"sql": sql}
+        if params:
+            stmt["args"] = [_hrana_arg(v) for v in params]
+        result = self._conn._send_stmts([stmt])
         r = result[0]
         if r.get("type") == "error":
             raise sqlite3.OperationalError(r.get("error", {}).get("message", "Turso error"))
@@ -96,8 +91,9 @@ class TursoHTTPConnection:
         self._token = token
         self._pipeline_url = f"{self._url}/v2/pipeline"
 
-    def _send(self, sql_statements: list[str]) -> list[dict]:
-        requests = [{"type": "execute", "stmt": {"sql": s}} for s in sql_statements]
+    def _send_stmts(self, stmts: list[dict]) -> list[dict]:
+        """stmts: lista de {"sql": str, "args"?: list[dict-hrana]}."""
+        requests = [{"type": "execute", "stmt": s} for s in stmts]
         requests.append({"type": "close"})
         payload = json.dumps({"requests": requests}).encode("utf-8")
         req = urllib.request.Request(
@@ -158,7 +154,7 @@ def exec_batch(conn, sqls: list[str], ignore_errors: bool = True):
     if not sqls:
         return
     if isinstance(conn, TursoHTTPConnection):
-        results = conn._send(sqls)
+        results = conn._send_stmts([{"sql": s} for s in sqls])
         if not ignore_errors:
             for r in results:
                 if r.get("type") == "error":

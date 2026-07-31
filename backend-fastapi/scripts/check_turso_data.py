@@ -4,7 +4,7 @@ Uso: Pon TURSO_DATABASE_URL y TURSO_AUTH_TOKEN en .env y ejecuta:
   python check_turso_data.py
 """
 import sys, os
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import TursoHTTPConnection, get_db
 from config import settings
 

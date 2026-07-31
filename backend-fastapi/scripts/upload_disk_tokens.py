@@ -5,7 +5,7 @@ Uso: python upload_disk_tokens.py
 """
 import sys, os, json, re
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db
 
 GARTH_HOME = os.path.expanduser("~/.garth_athlete")

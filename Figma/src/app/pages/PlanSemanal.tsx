@@ -4,6 +4,7 @@ import { Header } from "../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { useUser } from "../context/UserContext";
+import { RUNNING_TIPOS } from "../lib/running";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import {
   getPlanSemana, actualizarSesion, actualizarSesionCompleta, crearSesion, borrarSesion,
@@ -198,10 +199,6 @@ const TIPO_MAP: Record<string, "running" | "strength"> = {
   Fuerza: "strength", fuerza: "strength", strength: "strength",
 };
 
-const RUNNING_TIPOS = new Set([
-  "running", "trail_running", "correr", "carrera", "trail", "run",
-  "treadmill_running", "indoor_running",
-]);
 const STRENGTH_TIPOS = new Set([
   "strength_training", "fitness_equipment", "gym", "fuerza", "strength",
   "indoor_cycling", "yoga", "pilates",
@@ -2186,9 +2183,22 @@ function GenerarPlanInner() {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative">
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Badge className="bg-cyan-400/20 text-cyan-300 border-cyan-500/30 text-xs">
-                ⚡ Acondicionamiento
-              </Badge>
+              {planData?.macrociclo_label && (
+                <Badge className="bg-purple-400/20 text-purple-300 border-purple-500/30 text-xs">
+                  {planData.macrociclo_label}
+                </Badge>
+              )}
+              {planData?.ciclo_label && (
+                <Badge
+                  className={
+                    planData.ciclo_label === "Descarga"
+                      ? "bg-green-400/20 text-green-300 border-green-500/30 text-xs"
+                      : "bg-blue-400/20 text-blue-300 border-blue-500/30 text-xs"
+                  }
+                >
+                  {planData.ciclo_label}
+                </Badge>
+              )}
               <Badge className="bg-green-400/20 text-green-300 border-green-500/30 text-xs">
                 Plan Activo ✓
               </Badge>

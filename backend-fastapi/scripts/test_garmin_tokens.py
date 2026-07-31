@@ -1,6 +1,6 @@
 """Test rápido de carga de tokens Garmin. Ejecutar: python test_garmin_tokens.py"""
-import sys
-sys.path.insert(0, '.')
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db
 
 try:

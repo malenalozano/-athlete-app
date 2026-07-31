@@ -3,12 +3,9 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter
 
 from database import get_db
+from constants import RUNNING_TIPOS_SQL
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
-
-# Tipos de actividad Garmin que cuentan como "carrera" para el km semanal —
-# bici, natación, etc. no suman al volumen de carrera (NORMAS_ENTRENAMIENTO_v2).
-RUNNING_TIPOS_SQL = "('running','trail_running','treadmill_running','track_running','correr','carrera')"
 
 
 def _row_to_dict(row, cols):
@@ -121,9 +118,9 @@ def dashboard(usuario_id: int):
 
     # Progresión running últimas 8 semanas
     running_trend = conn.execute(
-        """SELECT strftime('%W', fecha) as semana, SUM(distancia_m)/1000 as km
+        f"""SELECT strftime('%W', fecha) as semana, SUM(distancia_m)/1000 as km
            FROM actividades_garmin
-           WHERE usuario_id = ? AND fecha >= ? AND tipo_deporte IN ('running','trail_running','correr','carrera')
+           WHERE usuario_id = ? AND fecha >= ? AND tipo_deporte IN {RUNNING_TIPOS_SQL}
            GROUP BY strftime('%W', fecha)
            ORDER BY semana ASC LIMIT 8""",
         (usuario_id, (hoy - timedelta(days=56)).isoformat()),
@@ -236,10 +233,10 @@ def dashboard(usuario_id: int):
     # ritmo_medio ya está en decimal min/km (calculado en _upsert_actividad como
     # (duracion_seg/60) / (distancia_m/1000)), NO dividir de nuevo.
     ritmo_rows = conn.execute(
-        """SELECT strftime('%W', fecha) as semana, AVG(ritmo_medio) as ritmo
+        f"""SELECT strftime('%W', fecha) as semana, AVG(ritmo_medio) as ritmo
            FROM actividades_garmin
            WHERE usuario_id = ? AND fecha >= ?
-             AND tipo_deporte IN ('running','trail_running','correr','carrera')
+             AND tipo_deporte IN {RUNNING_TIPOS_SQL}
              AND ritmo_medio IS NOT NULL AND ritmo_medio > 0
              AND fc_media IS NOT NULL AND fc_media < 150
            GROUP BY strftime('%W', fecha)
@@ -253,10 +250,10 @@ def dashboard(usuario_id: int):
 
     # Cadencia media semanal (running, últimas 8 semanas)
     cadencia_rows = conn.execute(
-        """SELECT strftime('%W', fecha) as semana, AVG(cadencia_media) as cad
+        f"""SELECT strftime('%W', fecha) as semana, AVG(cadencia_media) as cad
            FROM actividades_garmin
            WHERE usuario_id = ? AND fecha >= ?
-             AND tipo_deporte IN ('running','trail_running','correr','carrera')
+             AND tipo_deporte IN {RUNNING_TIPOS_SQL}
              AND cadencia_media IS NOT NULL
            GROUP BY strftime('%W', fecha)
            ORDER BY semana ASC LIMIT 8""",
