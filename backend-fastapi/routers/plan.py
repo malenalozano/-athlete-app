@@ -531,13 +531,28 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
             km_tl = km_tl_calculado
     else:
         km_tl = km_tl_calculado
-    # Mínimo TL proporcional al volumen total: no forzar 8 km si el volumen es bajo.
+    # TL: 30-35% del volumen semanal, tope absoluto 32 km. Si el cálculo (p.ej. la
+    # progresión +1.75km/semana de Mac1) se sale de esa banda, se recorta al 35%/32km
+    # y el resto se reparte en Rodaje Base a través del residuo km_rb de más abajo.
+    # Mínimo proporcional: no forzar 8 km si el volumen semanal es bajo.
     # Para km_total=15 → TL_min = 4.5 km (30%). Para km_total≥24 → mínimo 8 km.
     km_tl_min = max(round(km_total * 0.30, 1), 4.0)
-    km_tl = max(km_tl, km_tl_min)
+    km_tl_max = min(round(km_total * 0.35, 1), 32.0)
+    km_tl = min(max(km_tl, km_tl_min), max(km_tl_max, km_tl_min))
 
     km_rg = round(km_tl / 3, 1)
-    km_calidad = round(km_total * 0.17, 1)
+
+    # Calidad: nunca más del 20% del volumen semanal — sea 1 sesión (Mac1/Mac4) o 2
+    # (Mac2: Intervalos+Tempo a partes iguales; Mac3: VO2max+Tempo Largo manteniendo
+    # la proporción 1:1.3 pero repartiendo ese 20% total entre ambas).
+    km_calidad = round(km_total * 0.20, 1)
+    if macrociclo == 2:
+        km_calidad_sesion = round(km_calidad / 2, 1)
+    elif macrociclo == 3:
+        km_calidad_sesion = round(km_calidad / 2.3, 1)  # la Tempo Larga usa ×1.3 de este valor
+    else:
+        km_calidad_sesion = km_calidad
+
     km_rb = round(km_total - km_tl - km_rg - km_calidad, 1)
     if km_rb < 3:
         km_rb = 3.0
@@ -639,9 +654,23 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
 
     # ── 9. Construir sesiones ──
     sesiones_plan = _construir_sesiones(
-        fecha_inicio, tipo_calidad, macrociclo, km_calidad, km_rb, km_rg, km_tl,
+        fecha_inicio, tipo_calidad, macrociclo, km_calidad_sesion, km_rb, km_rg, km_tl,
         fartlek_reps, prog_bloque_min
     )
+
+    # Mac1: Fartlek/Progresiva calculan su km real desde la estructura de la sesión
+    # (reps × ritmo), no directamente desde km_calidad_sesion — con reps altas puede
+    # superar el 20% del volumen semanal. Recortar al tope y pasar el sobrante a RB.
+    if macrociclo == 1:
+        for s in sesiones_plan:
+            if s["tipo"] == "Carrera" and s["intensidad"] == "Alta" and (s["km_planificados"] or 0) > km_calidad:
+                sobrante = round(s["km_planificados"] - km_calidad, 1)
+                s["km_planificados"] = km_calidad
+                for rb in sesiones_plan:
+                    if rb["tipo"] == "Carrera" and "Rodaje Base" in (rb["sesion"] or ""):
+                        rb["km_planificados"] = round((rb["km_planificados"] or 0) + sobrante, 1)
+                        rb["duracion_min"] = round(rb["km_planificados"] * 6.5)
+                        break
 
     # Si semáforo rojo, añadir advertencia a sesiones de calidad
     if semaforo_info.get("color") == "rojo":
@@ -923,9 +952,18 @@ def _generar_semana_interna(conn, usuario_id: int, fecha_inicio_str: str, km_tot
 
     km_tl = min(round(km_total * 0.33, 1), 32.0)
     km_tl_min = max(round(km_total * 0.30, 1), 4.0)
-    km_tl = max(km_tl, km_tl_min)
+    km_tl_max = min(round(km_total * 0.35, 1), 32.0)
+    km_tl = min(max(km_tl, km_tl_min), max(km_tl_max, km_tl_min))
     km_rg = round(km_tl / 3, 1)
-    km_calidad = round(km_total * 0.17, 1)
+
+    km_calidad = round(km_total * 0.20, 1)
+    if macrociclo == 2:
+        km_calidad_sesion = round(km_calidad / 2, 1)
+    elif macrociclo == 3:
+        km_calidad_sesion = round(km_calidad / 2.3, 1)
+    else:
+        km_calidad_sesion = km_calidad
+
     km_rb = max(round(km_total - km_tl - km_rg - km_calidad, 1), 3.0)
 
     semanas_en_macro = _calcular_semanas_en_macro(fecha_inicio, macrociclo)
@@ -934,9 +972,20 @@ def _generar_semana_interna(conn, usuario_id: int, fecha_inicio_str: str, km_tot
     prog_bloque_min = 5 + ciclo_num * 2
 
     sesiones_plan = _construir_sesiones(
-        fecha_inicio, tipo_calidad, macrociclo, km_calidad, km_rb, km_rg, km_tl,
+        fecha_inicio, tipo_calidad, macrociclo, km_calidad_sesion, km_rb, km_rg, km_tl,
         fartlek_reps, prog_bloque_min
     )
+
+    if macrociclo == 1:
+        for s in sesiones_plan:
+            if s["tipo"] == "Carrera" and s["intensidad"] == "Alta" and (s["km_planificados"] or 0) > km_calidad:
+                sobrante = round(s["km_planificados"] - km_calidad, 1)
+                s["km_planificados"] = km_calidad
+                for rb in sesiones_plan:
+                    if rb["tipo"] == "Carrera" and "Rodaje Base" in (rb["sesion"] or ""):
+                        rb["km_planificados"] = round((rb["km_planificados"] or 0) + sobrante, 1)
+                        rb["duracion_min"] = round(rb["km_planificados"] * 6.5)
+                        break
 
     ahora = datetime.now().isoformat()
     for s in sesiones_plan:
