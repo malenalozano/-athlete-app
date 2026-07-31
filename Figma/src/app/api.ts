@@ -273,11 +273,13 @@ export function guardarCredencialesGarmin(usuarioId: number, emailGarmin: string
   });
 }
 
+export type CicloOverride = "carga1" | "carga2" | "carga3" | "descarga";
+
 export function generarPlanSemana(
   usuarioId: number,
   fechaInicio: string,
   kmTotal?: number,
-  opts?: { incluirCalidad?: boolean; dryRun?: boolean }
+  opts?: { incluirCalidad?: boolean; dryRun?: boolean; cicloOverride?: CicloOverride }
 ) {
   return req<PlanGenerado>(`/plan/${usuarioId}/generar-semana`, {
     method: "POST",
@@ -286,6 +288,7 @@ export function generarPlanSemana(
       km_total: kmTotal ?? null,
       incluir_calidad: opts?.incluirCalidad ?? true,
       dry_run: opts?.dryRun ?? false,
+      ciclo_override: opts?.cicloOverride ?? null,
     }),
   });
 }
@@ -384,6 +387,7 @@ export interface PlanSemana {
   actividades_garmin: ActividadGarmin[];
   stats: { km_planificados: number; km_realizados: number; sesiones_completadas: number; total_sesiones: number };
   es_descarga: boolean;
+  ciclo_label: string;
   fase: string;
   coach_tip: string;
 }
@@ -554,6 +558,8 @@ export interface PlanGenerado {
   semana_inicio: string;
   km_total: number;
   tipo_semana: string;
+  es_descarga?: boolean;
+  ciclo_label?: string;
   coach_tip: string;
   macrociclo: number;
   sesiones: SesionGenerada[];

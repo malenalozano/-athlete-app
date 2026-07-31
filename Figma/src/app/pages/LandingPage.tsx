@@ -14,7 +14,7 @@ import { useUser } from "../context/UserContext";
 import {
   actualizarSesionCompleta, aplicarSemanaGenerada, borrarSesion, crearSesion, generarPlanSemana,
   getDashboard, getPlanSemana, sincronizarGarmin,
-  type ActividadGarmin, type DashboardData, type SesionGenerada, type SesionPlan,
+  type ActividadGarmin, type CicloOverride, type DashboardData, type SesionGenerada, type SesionPlan,
 } from "../api";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -743,6 +743,7 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
   const [open, setOpen] = useState(false);
   const [kmObjetivo, setKmObjetivo] = useState("");
   const [incluirCalidad, setIncluirCalidad] = useState(true);
+  const [cicloOverride, setCicloOverride] = useState<"" | CicloOverride>("");
   const [generating, setGenerating] = useState(false);
   const [applying, setApplying] = useState(false);
   const [preview, setPreview] = useState<SesionGenerada[] | null>(null);
@@ -752,7 +753,9 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
     setPreview(null);
     try {
       const km = kmObjetivo.trim() ? parseFloat(kmObjetivo) : undefined;
-      const res = await generarPlanSemana(userId, toISODate(monday), km, { incluirCalidad, dryRun: true });
+      const res = await generarPlanSemana(userId, toISODate(monday), km, {
+        incluirCalidad, dryRun: true, cicloOverride: cicloOverride || undefined,
+      });
       setPreview(res.sesiones.filter(s => s.tipo === "Carrera"));
     } catch {
       showToast("No se pudo generar la previsualización.");
@@ -806,6 +809,17 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
               <input type="number" min="0" step="0.5" value={kmObjetivo} onChange={e => setKmObjetivo(e.target.value)}
                 placeholder="Auto"
                 className="w-full rounded-xl py-2.5 px-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Tipo de semana</label>
+              <select value={cicloOverride} onChange={e => setCicloOverride(e.target.value as "" | CicloOverride)}
+                className="w-full rounded-xl py-2.5 px-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }}>
+                <option value="">Automático</option>
+                <option value="carga1">Carga 1</option>
+                <option value="carga2">Carga 2</option>
+                <option value="carga3">Carga 3</option>
+                <option value="descarga">Descarga</option>
+              </select>
             </div>
             <label className="flex items-center gap-2 self-end pb-2.5 cursor-pointer">
               <input type="checkbox" checked={incluirCalidad} onChange={e => setIncluirCalidad(e.target.checked)}
@@ -862,7 +876,7 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
 function WeeklyView({
   sessions, loading, error, weekLabel, onPrevWeek, onNextWeek,
   onToggle, onSave, onDelete, onMove, onAdd,
-  userId, monday, onApplied, showToast, esDescarga,
+  userId, monday, onApplied, showToast, cicloLabel,
 }: {
   sessions: Session[]; loading: boolean; error: string | null; weekLabel: string;
   onPrevWeek: () => void; onNextWeek: () => void;
@@ -875,7 +889,7 @@ function WeeklyView({
   monday: Date;
   onApplied: () => void;
   showToast: (text: string, kind?: "error" | "success") => void;
-  esDescarga: boolean;
+  cicloLabel: string;
 }) {
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
@@ -888,10 +902,10 @@ function WeeklyView({
       <header className="px-5 py-3 shrink-0 flex items-center justify-end gap-2" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
         {/* Pastilla carga/descarga */}
         <span className="text-[10px] px-3 py-2 rounded-full font-black"
-          style={esDescarga
+          style={cicloLabel === "Descarga"
             ? { background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid #10b98150" }
             : { background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid #3b82f650" }}>
-          {esDescarga ? "Descarga" : "Carga"}
+          {cicloLabel}
         </span>
         {/* Reorder button */}
         <button onClick={() => setIsReorderMode(p => !p)}
@@ -1363,7 +1377,7 @@ export function LandingPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [prevSessions, setPrevSessions] = useState<Session[]>([]);
   const [weekStats, setWeekStats] = useState<{ km_planificados: number; km_realizados: number } | null>(null);
-  const [weekEsDescarga, setWeekEsDescarga] = useState(false);
+  const [weekCicloLabel, setWeekCicloLabel] = useState("Carga 1");
   const [loadingWeek, setLoadingWeek] = useState(true);
   const [weekError, setWeekError] = useState<string | null>(null);
 
@@ -1389,7 +1403,7 @@ export function LandingPage() {
       const currPlanSessions = curr.sesiones.map(s => toSession(s, currMonday));
       setSessions(applyDeficitRedistribution(applyGarminMatching(currPlanSessions, curr.actividades_garmin, currMonday), currMonday));
       setWeekStats(curr.stats);
-      setWeekEsDescarga(curr.es_descarga);
+      setWeekCicloLabel(curr.ciclo_label);
       const prevPlanSessions = prev.sesiones.map(s => toSession(s, prevMonday));
       setPrevSessions(applyGarminMatching(prevPlanSessions, prev.actividades_garmin, prevMonday));
     } catch {
@@ -1563,7 +1577,7 @@ export function LandingPage() {
               onToggle={handleToggle} onSave={handleSave} onDelete={handleDelete}
               onMove={handleMove} onAdd={handleAdd}
               userId={userId} monday={monday} onApplied={fetchWeek} showToast={showToast}
-              esDescarga={weekEsDescarga}
+              cicloLabel={weekCicloLabel}
             />
           )}
           {activeTab === "calendario" && calView === "mensual" && userId && (

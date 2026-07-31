@@ -51,6 +51,7 @@ class GenerarSemanaRequest(BaseModel):
     km_total: Optional[float] = None  # Si se proporciona, sobreescribe el cálculo automático
     incluir_calidad: bool = True  # Si es False, las sesiones de calidad se sustituyen por Rodaje Base
     dry_run: bool = False  # Si es True, solo calcula y devuelve las sesiones, no las guarda
+    ciclo_override: Optional[str] = None  # "carga1" | "carga2" | "carga3" | "descarga" — fuerza el tipo de semana
 
 
 class AplicarSemanaRequest(BaseModel):
@@ -63,6 +64,21 @@ class RegenerarTotalRequest(BaseModel):
 
 
 FARTLEK_REPS_MAX = 10  # Máximo absoluto de reps según NORMAS ENTRENAMIENTO.pdf
+
+# Ciclo de 4 semanas: Carga 1 → Carga 2 → Carga 3 → Descarga → Carga 1…
+# Anclado a una semana de referencia conocida como Carga 1 (lunes 2026-07-27),
+# para que la etiqueta que ve el usuario no dependa de la semana ISO del año.
+CICLO_CARGA_ANCLA = datetime(2026, 7, 27)
+
+
+def _posicion_ciclo(fecha_inicio: datetime) -> int:
+    """0=Carga1, 1=Carga2, 2=Carga3, 3=Descarga."""
+    semanas = (fecha_inicio - CICLO_CARGA_ANCLA).days // 7
+    return semanas % 4
+
+
+def _etiqueta_ciclo(pos: int) -> str:
+    return "Descarga" if pos == 3 else f"Carga {pos + 1}"
 
 
 def _migrar_progresiva_legacy(conn, sesiones: list) -> list:
@@ -250,14 +266,16 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
     fecha_objetivo = perfil_row[1] if perfil_row else None
     fase = _calcular_fase_nombre(objetivo_tipo, fecha_objetivo)
 
-    # Cadencia 3 semanas de carga + 1 de descarga (cada 4ª semana ISO) — informativo,
-    # para que el usuario sepa en qué tipo de semana está.
-    es_descarga = (inicio.isocalendar()[1] % 4 == 0)
+    # Ciclo de 4 semanas Carga1/Carga2/Carga3/Descarga — informativo, para que el
+    # usuario sepa en qué tipo de semana está.
+    pos_ciclo = _posicion_ciclo(inicio)
+    es_descarga = (pos_ciclo == 3)
 
     return {
         "semana_inicio": fecha_inicio,
         "sesiones": sesiones,
         "actividades_garmin": actividades_garmin,
+        "ciclo_label": _etiqueta_ciclo(pos_ciclo),
         "stats": {
             "km_planificados": round(km_plan, 1),
             "km_realizados": round(km_real, 1),
@@ -419,11 +437,22 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         # Con 15 km: TL ~5 km, RB ~5.6 km, RG ~1.7 km, Fartlek ~6.2 km (6 reps).
         km_semana_ant = 15.0
 
-    # ── 4. Determinar si es semana de descarga (cada 4a semana del año) ──
+    # ── 4. Determinar si es semana de descarga (ciclo de 4 semanas anclado) ──
     semana_iso = fecha_inicio.isocalendar()[1]
-    es_descarga = (semana_iso % 4 == 0)
-    semanas_desde_descarga = semana_iso % 4
+    pos_ciclo = _posicion_ciclo(fecha_inicio)
+    es_descarga = (pos_ciclo == 3)
+    semanas_desde_descarga = pos_ciclo + 1
     volumen_congelado = False
+
+    # Override manual del tipo de semana (selector "Carga1/Carga2/Carga3/Descarga" en Rehacer plan)
+    if body.ciclo_override:
+        override = body.ciclo_override.strip().lower()
+        if override == "descarga":
+            pos_ciclo, es_descarga = 3, True
+        elif override in ("carga1", "carga2", "carga3"):
+            pos_ciclo = int(override[-1]) - 1
+            es_descarga = False
+        semanas_desde_descarga = pos_ciclo + 1
 
     # Si el usuario ha especificado km_total manualmente, usarlo directamente
     if body.km_total is not None and body.km_total > 0:
@@ -472,7 +501,7 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
     tipo_calidad = sesion_calidad_impar if semana_iso % 2 != 0 else sesion_calidad_par
 
     # ── 5b. Mac3: ciclo 2+1 (2 semanas carga + 1 descarga) en lugar del 3+1 genérico ──
-    if macrociclo == 3 and not volumen_congelado and body.km_total is None:
+    if macrociclo == 3 and not volumen_congelado and body.km_total is None and not body.ciclo_override:
         inicio_mac3 = datetime(
             fecha_inicio.year if fecha_inicio.month == 12 else fecha_inicio.year - 1,
             12, 1
@@ -709,6 +738,8 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         "semana_inicio": fecha_inicio_str,
         "km_total": km_total,
         "tipo_semana": tipo_semana,
+        "es_descarga": es_descarga,
+        "ciclo_label": _etiqueta_ciclo(pos_ciclo),
         "coach_tip": tip_semana,
         "macrociclo": macrociclo,
         "semaforo": {"color": semaforo_info.get("color", "verde"), "mensaje": semaforo_info.get("mensaje", "")},
@@ -809,8 +840,7 @@ def regenerar_total(usuario_id: int, body: RegenerarTotalRequest):
     for n in range(body.semanas):
         fecha_sem_dt = semana_actual + timedelta(weeks=n)
         fecha_sem = fecha_sem_dt.strftime("%Y-%m-%d")
-        semana_iso = fecha_sem_dt.isocalendar()[1]
-        es_descarga = (semana_iso % 4 == 0)
+        es_descarga = (_posicion_ciclo(fecha_sem_dt) == 3)
 
         # Check tapering
         dias_obj = None
