@@ -96,7 +96,8 @@ npm run dev
 
 | Ruta | Archivo | Descripción |
 |------|---------|-------------|
-| `/` | `pages/Home.tsx` | Dashboard principal (KPIs, checkpoints maratón) |
+| `/` | `pages/LandingPage.tsx` | **Nueva interfaz de entrada** (shell tipo móvil, carga inmediata, sin `Header.tsx`). Tabs: Calendario / Progreso / Comparar. Datos aún hardcodeados (`INITIAL_SESSIONS`), pendiente de conectar a `api.ts`. |
+| `/dashboard` | `pages/Home.tsx` | Dashboard antiguo completo (KPIs, checkpoints maratón). Se accede desde el botón "Dashboard completo" en la tab Progreso de `LandingPage`. Cargado con `lazy` en `routes.ts` — no se descarga hasta que se visita. |
 | `/diario` | `pages/Diario.tsx` | Diario: entreno libre, ciclo menstrual, ejercicios, lesiones |
 | `/calendario` | `pages/Calendario.tsx` | Vista semanal del plan de entrenamiento |
 | `/plan-semanal` | `pages/PlanSemanal.tsx` | Vista del plan semanal extendida |
@@ -105,6 +106,8 @@ npm run dev
 | `/ejercicios` | `pages/Ejercicios.tsx` | Biblioteca de ejercicios |
 | `/ciclo-menstrual` | `pages/CicloMenstrual.tsx` | Solo Malena — ciclo menstrual |
 | `/habitos` | `pages/Habitos.tsx` | Hábitos (sin navbar aún) |
+
+Todas las rutas salvo `/` están registradas con `lazy: () => import(...)` en `routes.ts` para que el bundle inicial (LandingPage) sea pequeño y rápido. Al añadir una ruta nueva a `Header.tsx`/app antigua, seguir ese mismo patrón `lazy`.
 
 **Páginas eliminadas (no recrear):** Nutricion, BibliotecaCientifica, DiarioFuerza, Garmin (fusionada en Perfil).
 

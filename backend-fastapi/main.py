@@ -59,16 +59,15 @@ def test_notificacion_hoy():
 @app.post("/tasks/daily")
 def tasks_daily(x_cron_secret: str = Header(default=None)):
     """
-    Endpoint para cron-job.org (llamado cada dia automaticamente).
-    Requiere header X-Cron-Secret con el valor de CRON_SECRET.
+    Endpoint para cron-job.org — configurar UN solo job diario a las 09:00 que
+    llame a este endpoint. Requiere header X-Cron-Secret con el valor de CRON_SECRET.
 
-    Hace dos cosas en orden:
-      1. Sync Garmin para todos los usuarios con tokens (7:00 AM recomendado)
-      2. Envia el recordatorio de entrenamiento por ntfy (9:00 AM recomendado)
+    Hace, en orden:
+      1. Sync Garmin para todos los usuarios con tokens guardados.
+      2. Envia el recordatorio de entrenamiento por ntfy (ya con datos frescos).
 
-    Como Render duerme el dyno gratis, usamos DOS jobs en cron-job.org:
-      - 07:00 → POST /tasks/garmin-sync  (despierta el servidor + sincroniza)
-      - 09:00 → POST /tasks/daily        (ya despierto, manda la notificacion)
+    /tasks/garmin-sync se mantiene por compatibilidad si ya tienes un cron job
+    aparte a las 07:00, pero ya no hace falta: este endpoint sincroniza solo.
     """
     from fastapi import HTTPException
 
@@ -76,9 +75,9 @@ def tasks_daily(x_cron_secret: str = Header(default=None)):
     if secret and x_cron_secret != secret:
         raise HTTPException(status_code=401, detail="Cron secret invalido")
 
-    from scheduler import daily_training_reminder
-    daily_training_reminder()
-    return {"ok": True, "paso": "reminder_enviado"}
+    from scheduler import daily_sync_and_reminder
+    daily_sync_and_reminder()
+    return {"ok": True, "paso": "sync_y_reminder_enviados"}
 
 
 @app.post("/tasks/garmin-sync")
