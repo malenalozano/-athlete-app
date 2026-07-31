@@ -330,14 +330,14 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
   const locked = !!session.garminBacked;
   return (
     <div
-      onClick={() => isReorderMode ? onReorderTap() : locked ? undefined : onToggle()}
+      onClick={() => isReorderMode ? onReorderTap() : undefined}
       className="p-3 rounded-xl transition-all relative"
       style={{
         background: locked ? "rgba(16,185,129,0.14)" : session.completed ? "rgba(15,23,42,0.5)" : T.bgSurf,
         border: `1px solid ${isReorderMode ? T.reorder + "80" : locked ? "#10b98180" : T.border}`,
         opacity: session.completed && !locked ? 0.7 : 1,
         boxShadow: isReorderMode ? `0 0 0 1px ${T.reorder}60` : locked ? "0 0 0 1px rgba(16,185,129,0.25)" : "none",
-        cursor: isReorderMode || !locked ? "pointer" : "default",
+        cursor: isReorderMode ? "pointer" : "default",
       }}
     >
       {isReorderMode && (
@@ -347,21 +347,10 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
       )}
       {/* Top row */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Badge sub={session.subtype} />
-          <span className="text-xs font-bold" style={{ color: T.text1 }}>{session.title}</span>
-        </div>
+        <Badge sub={session.subtype} />
         {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
       </div>
-      {/* Action hint */}
-      {!isReorderMode && (
-        <div className="mt-2 pt-1.5 flex items-center justify-between" style={{ borderTop: `1px solid ${T.border}` }}>
-          <span className="text-[9px] font-semibold" style={{ color: T.text3 }}>
-            {locked ? "Sincronizado con Garmin" : "Toca para completar la sesión"}
-          </span>
-        </div>
-      )}
-      <div className="mt-1 flex items-center gap-1 text-[11px]" style={{ color: T.text2 }}>
+      <div className="mt-2 flex items-center gap-1 text-[11px]" style={{ color: T.text2 }}>
         <Clock className="w-3 h-3" style={{ color: T.text3 }} />
         <span>{session.duration}</span>
       </div>
@@ -406,10 +395,8 @@ function DayBlock({ dayLabel, sessions, isReorderMode, onToggle, onOpen, onReord
   return (
     <div className="rounded-2xl p-3" style={{ background: "rgba(15,23,42,0.4)", border: `1px solid ${T.border}80` }}>
       {/* Day header */}
-      <div className="flex items-center mb-2">
-        <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: T.bgSurf, border: `1px solid ${T.border}` }}>
-          <span className="text-[10px] font-black" style={{ color: "#818cf8" }}>{dayLabel}</span>
-        </div>
+      <div className="flex items-center justify-center mb-2">
+        <span className="text-[10px] font-black" style={{ color: "#818cf8" }}>{dayLabel}</span>
       </div>
 
       {/* Session cards */}
