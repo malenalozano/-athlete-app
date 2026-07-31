@@ -65,6 +65,11 @@ class RegenerarTotalRequest(BaseModel):
 
 FARTLEK_REPS_MAX = 10  # Máximo absoluto de reps según NORMAS ENTRENAMIENTO.pdf
 
+# Tipos de actividad Garmin que cuentan como "carrera" para el km semanal del plan.
+# Bici, natación, etc. no deben sumar al volumen de carrera (NORMAS_ENTRENAMIENTO_v2).
+RUNNING_TIPOS = {"running", "trail_running", "treadmill_running", "track_running", "correr", "carrera"}
+RUNNING_TIPOS_SQL = "('running','trail_running','treadmill_running','track_running','correr','carrera')"
+
 # Ciclo de 4 semanas: Carga 1 → Carga 2 → Carga 3 → Descarga → Carga 1…
 # Anclado a una semana de referencia conocida como Carga 1 (lunes 2026-07-27),
 # para que la etiqueta que ve el usuario no dependa de la semana ISO del año.
@@ -169,6 +174,14 @@ def _calcular_macrociclo_v2(
         es_descarga = pos == 3
         ciclo_label = "Descarga" if es_descarga else f"Carga {pos + 1}"
 
+    # Duración total de cada macrociclo (en semanas), para la barra de progreso.
+    # M1 y M4 son fijos; M2/M3 dependen de la distancia real entre las dos carreras.
+    race_week_monday = f_inter - timedelta(days=f_inter.weekday())
+    taper3_start_monday = f_final - timedelta(days=f_final.weekday()) - timedelta(weeks=3)
+    semanas_m2 = max(1, (race_week_monday - monday_plan_start).days // 7 + 1 - 4)
+    semanas_m3 = max(1, (taper3_start_monday - (race_week_monday + timedelta(weeks=1))).days // 7 + 1)
+    semanas_por_macrociclo = {1: 4, 2: semanas_m2, 3: semanas_m3, 4: 3}
+
     return {
         "macrociclo": macrociclo,
         "sub_fase": sub_fase,
@@ -176,6 +189,8 @@ def _calcular_macrociclo_v2(
         "ciclo_label": ciclo_label,
         "semana_num": semana_num,
         "semana_en_macro": semana_en_macro,
+        "semanas_totales_macrociclo": semanas_por_macrociclo[macrociclo],
+        "semanas_por_macrociclo": semanas_por_macrociclo,
         "proximo_hito": proximo_hito,
         "semanas_hasta_hito": semanas_hasta_hito,
     }
@@ -351,9 +366,14 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
     garmin_cols = ["fecha", "tipo_deporte", "distancia_m", "tiempo_seg", "ritmo_medio", "fc_media"]
     actividades_garmin = [dict(zip(garmin_cols, r)) for r in garmin_rows]
 
-    # Si no hay km_real en plan pero hay Garmin, usar Garmin
+    # Si no hay km_real en plan pero hay Garmin, usar Garmin — solo carrera/cinta,
+    # no bici/natación/etc.
     if km_real == 0 and actividades_garmin:
-        km_real = round(sum(a["distancia_m"] or 0 for a in actividades_garmin) / 1000, 1)
+        km_real = round(
+            sum(a["distancia_m"] or 0 for a in actividades_garmin
+                if (a["tipo_deporte"] or "").lower() in RUNNING_TIPOS) / 1000,
+            1,
+        )
 
     # Coach recommendation
     perfil_row = conn.execute(
@@ -394,9 +414,13 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
         es_descarga = v2_info["es_descarga"]
         macrociclo_num = v2_info["macrociclo"]
         semana_num = v2_info["semana_num"]
+        semana_en_macro = v2_info["semana_en_macro"]
+        semanas_por_macrociclo = v2_info["semanas_por_macrociclo"]
         proximo_hito = v2_info["proximo_hito"]
         semanas_hasta_hito = v2_info["semanas_hasta_hito"]
     else:
+        semana_en_macro = None
+        semanas_por_macrociclo = None
         pos_ciclo = _posicion_ciclo(inicio)
         ciclo_label = _etiqueta_ciclo(pos_ciclo)
         es_descarga = (pos_ciclo == 3)
@@ -433,6 +457,8 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
         "ciclo_label": ciclo_label,
         "macrociclo_label": f"M{macrociclo_num}",
         "semana_num": semana_num,
+        "semana_en_macro": semana_en_macro,
+        "semanas_por_macrociclo": semanas_por_macrociclo,
         "proximo_hito": proximo_hito,
         "proximo_hito_nombre": proximo_hito_nombre,
         "semanas_hasta_hito": semanas_hasta_hito,
@@ -588,9 +614,10 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
     ).fetchone()[0]
 
     km_ant_garmin = conn.execute(
-        """SELECT COALESCE(SUM(distancia_m)/1000, 0)
+        f"""SELECT COALESCE(SUM(distancia_m)/1000, 0)
            FROM actividades_garmin
-           WHERE usuario_id = ? AND fecha >= ? AND fecha <= ?""",
+           WHERE usuario_id = ? AND fecha >= ? AND fecha <= ?
+             AND tipo_deporte IN {RUNNING_TIPOS_SQL}""",
         (usuario_id, semana_ant_inicio, semana_ant_fin),
     ).fetchone()[0]
 
@@ -1043,9 +1070,10 @@ def regenerar_total(usuario_id: int, body: RegenerarTotalRequest):
     # ── 1. Calcular km reales promedio de las últimas 4 semanas ──
     hace_28 = (hoy - timedelta(days=28)).strftime("%Y-%m-%d")
     km_reales_4sem = conn.execute(
-        """SELECT COALESCE(SUM(distancia_m)/1000, 0)
+        f"""SELECT COALESCE(SUM(distancia_m)/1000, 0)
            FROM actividades_garmin
-           WHERE usuario_id = ? AND fecha >= ?""",
+           WHERE usuario_id = ? AND fecha >= ?
+             AND tipo_deporte IN {RUNNING_TIPOS_SQL}""",
         (usuario_id, hace_28),
     ).fetchone()[0]
 

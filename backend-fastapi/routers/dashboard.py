@@ -6,6 +6,10 @@ from database import get_db
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
+# Tipos de actividad Garmin que cuentan como "carrera" para el km semanal —
+# bici, natación, etc. no suman al volumen de carrera (NORMAS_ENTRENAMIENTO_v2).
+RUNNING_TIPOS_SQL = "('running','trail_running','treadmill_running','track_running','correr','carrera')"
+
 
 def _row_to_dict(row, cols):
     if row is None:
@@ -48,9 +52,10 @@ def dashboard(usuario_id: int):
                 "fc_media", "cadencia_media", "fc_max"]
     actividades = [dict(zip(act_cols, r)) for r in actividades]
 
-    # KM semana actual
+    # KM semana actual (solo carrera/cinta, no bici/natación/etc.)
     km_semana = conn.execute(
-        "SELECT COALESCE(SUM(distancia_m)/1000, 0) FROM actividades_garmin WHERE usuario_id = ? AND fecha >= ?",
+        f"""SELECT COALESCE(SUM(distancia_m)/1000, 0) FROM actividades_garmin
+            WHERE usuario_id = ? AND fecha >= ? AND tipo_deporte IN {RUNNING_TIPOS_SQL}""",
         (usuario_id, semana_inicio),
     ).fetchone()
     km_semana_val = round(float(km_semana[0] or 0), 1)

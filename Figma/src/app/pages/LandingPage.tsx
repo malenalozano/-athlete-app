@@ -955,14 +955,14 @@ function WeeklyView({
           </span>
           {/* Reorder button */}
           <button onClick={() => setIsReorderMode(p => !p)}
-            className="flex items-center gap-1.5 text-xs px-3.5 py-2 rounded-full font-black transition-all"
+            className={`flex items-center gap-1.5 text-xs font-black transition-all ${isReorderMode ? "px-3.5 py-2 rounded-full" : "w-9 h-9 rounded-full justify-center"}`}
             style={{
               background: isReorderMode ? T.reorder : T.border,
               color: isReorderMode ? T.reorderTx : T.text2,
               boxShadow: isReorderMode ? `0 4px 12px ${T.reorder}40` : "none",
             }}>
             <ArrowLeftRight className="w-3.5 h-3.5" />
-            {isReorderMode ? "Listo" : "Reorganizar"}
+            {isReorderMode && "Listo"}
           </button>
         </div>
       </header>
@@ -1225,10 +1225,21 @@ function MonthlyView({ userId, refreshKey }: { userId: number; refreshKey: numbe
 // ─────────────────────────────────────────────────────────────────────────────
 // PROGRESS VIEW (datos reales de /dashboard: running_trend, ritmo_trend, semana_actual)
 // ─────────────────────────────────────────────────────────────────────────────
-function ProgressView({ weekStats, dashboard, loadingDashboard }: {
+const MACROCICLOS_INFO: { num: 1 | 2 | 3 | 4; nombre: string; color: string }[] = [
+  { num: 1, nombre: "Base y Adaptación", color: "#22d3ee" },
+  { num: 2, nombre: "Construcción y Umbral", color: "#60a5fa" },
+  { num: 3, nombre: "Específico de Maratón", color: "#c084fc" },
+  { num: 4, nombre: "Tapering", color: "#f97316" },
+];
+
+function ProgressView({ weekStats, dashboard, loadingDashboard, todayMacro }: {
   weekStats: { km_planificados: number; km_realizados: number } | null;
   dashboard: DashboardData | null;
   loadingDashboard: boolean;
+  todayMacro: {
+    macrocicloLabel: string; semanaEnMacro: number | null;
+    semanasPorMacrociclo: Record<"1" | "2" | "3" | "4", number> | null;
+  } | null;
 }) {
   const bars = dashboard?.running_trend ?? [];
   const paceTrend = dashboard?.ritmo_trend ?? [];
@@ -1256,6 +1267,11 @@ function ProgressView({ weekStats, dashboard, loadingDashboard }: {
 
   const weeklyKms = weekStats?.km_realizados ?? 0;
   const weeklyPlan = weekStats?.km_planificados ?? 0;
+
+  const todayIso = toISODate(new Date());
+  const hrvHoy = dashboard?.hrv_data?.find(h => h.fecha === todayIso)?.hrv_ms ?? null;
+
+  const macrocicloActual = todayMacro ? parseInt(todayMacro.macrocicloLabel.replace("M", ""), 10) : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -1346,6 +1362,49 @@ function ProgressView({ weekStats, dashboard, loadingDashboard }: {
               <div className="h-full rounded-full" style={{ width: `${weeklyPlan ? Math.min((weeklyKms / weeklyPlan) * 100, 100) : 0}%`, background: "linear-gradient(90deg,#22d3ee,#4f46e5)" }} />
             </div>
             <span className="text-[8px] font-bold mt-1 block" style={{ color: T.text3 }}>Planificado: {weeklyPlan.toFixed(1)} km</span>
+          </div>
+          <div className="p-4 rounded-xl col-span-2" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
+            <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>HRV DE HOY</p>
+            <p className="text-xl font-black mt-1" style={{ color: hrvHoy !== null ? "#34d399" : T.text3 }}>
+              {hrvHoy !== null ? `${hrvHoy} ms` : "—"}
+            </p>
+            {hrvHoy === null && <span className="text-[9px]" style={{ color: T.text3 }}>Sin dato de hoy todavía (se importa con la sincronización de Garmin)</span>}
+          </div>
+        </div>
+
+        {/* Macrociclos (NORMAS_ENTRENAMIENTO_v2) */}
+        <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
+          <h3 className="text-xs font-black uppercase tracking-wide mb-3" style={{ color: T.text2 }}>Macrociclos del plan</h3>
+          {!todayMacro && (
+            <p className="text-[10px] italic" style={{ color: T.text3 }}>
+              Configura la carrera intermedia en tu perfil para ver el progreso por macrociclo.
+            </p>
+          )}
+          <div className="space-y-3">
+            {MACROCICLOS_INFO.map(m => {
+              const totalSemanas = todayMacro?.semanasPorMacrociclo?.[String(m.num) as "1" | "2" | "3" | "4"] ?? null;
+              let pct = 0;
+              if (macrocicloActual !== null && totalSemanas) {
+                if (m.num < macrocicloActual) pct = 100;
+                else if (m.num === macrocicloActual) pct = Math.min(100, Math.round(((todayMacro?.semanaEnMacro ?? 0) / totalSemanas) * 100));
+              }
+              const activo = m.num === macrocicloActual;
+              return (
+                <div key={m.num}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-bold" style={{ color: activo ? m.color : T.text2 }}>
+                      M{m.num} · {m.nombre}
+                    </span>
+                    <span className="text-[9px] font-semibold" style={{ color: T.text3 }}>
+                      {totalSemanas ? `${activo ? todayMacro?.semanaEnMacro : (pct === 100 ? totalSemanas : 0)}/${totalSemanas} sem` : ""}
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: T.border }}>
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: m.color }} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -1449,6 +1508,28 @@ export function LandingPage() {
 
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
+
+  // Macrociclo de HOY, independiente de qué semana esté navegando en Calendario —
+  // se usa en la tab Progreso, que debe reflejar el momento real del plan.
+  const [todayMacro, setTodayMacro] = useState<{
+    macrocicloLabel: string; semanaEnMacro: number | null;
+    semanasPorMacrociclo: Record<"1" | "2" | "3" | "4", number> | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    getPlanSemana(userId, toISODate(mondayFor(0)))
+      .then(d => {
+        if (cancelled) return;
+        setTodayMacro({
+          macrocicloLabel: d.macrociclo_label,
+          semanaEnMacro: d.semana_en_macro,
+          semanasPorMacrociclo: d.semanas_por_macrociclo,
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [userId]);
 
   const [toast, setToast] = useState("");
   const [toastKind, setToastKind] = useState<"error" | "success">("error");
@@ -1657,7 +1738,7 @@ export function LandingPage() {
             <MonthlyView userId={userId} refreshKey={syncedAt} />
           )}
           {activeTab === "progreso" && (
-            <ProgressView weekStats={weekStats} dashboard={dashboard} loadingDashboard={loadingDashboard} />
+            <ProgressView weekStats={weekStats} dashboard={dashboard} loadingDashboard={loadingDashboard} todayMacro={todayMacro} />
           )}
           {activeTab === "comparador" && (
             <ComparatorView currentSessions={sessions} prevSessions={prevSessions} />

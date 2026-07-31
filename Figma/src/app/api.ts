@@ -392,6 +392,8 @@ export interface PlanSemana {
   ciclo_label: string;
   macrociclo_label: string;
   semana_num: number | null;
+  semana_en_macro: number | null;
+  semanas_por_macrociclo: Record<"1" | "2" | "3" | "4", number> | null;
   proximo_hito: "intermedia" | "final" | null;
   proximo_hito_nombre: string | null;
   semanas_hasta_hito: number | null;
