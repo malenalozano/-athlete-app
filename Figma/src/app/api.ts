@@ -336,6 +336,8 @@ export interface PerfilUsuario {
   objetivo_tipo: string;
   fecha_inicio_entrenamiento?: string | null;
   email_garmin?: string | null;
+  fecha_objetivo_intermedio?: string | null;
+  objetivo_intermedio_nombre?: string | null;
 }
 
 export interface FaseMacrociclo {
@@ -388,6 +390,12 @@ export interface PlanSemana {
   stats: { km_planificados: number; km_realizados: number; sesiones_completadas: number; total_sesiones: number };
   es_descarga: boolean;
   ciclo_label: string;
+  macrociclo_label: string;
+  semana_num: number | null;
+  proximo_hito: "intermedia" | "final" | null;
+  proximo_hito_nombre: string | null;
+  semanas_hasta_hito: number | null;
+  distribucion_intensidad: string | null;
   fase: string;
   coach_tip: string;
 }

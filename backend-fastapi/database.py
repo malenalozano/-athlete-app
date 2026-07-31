@@ -180,7 +180,8 @@ _SCHEMA = [
         email_garmin TEXT, password_garmin_enc TEXT, rol TEXT,
         fcmax INTEGER, fecha_inicio_entrenamiento TEXT,
         fecha_objetivo TEXT, objetivo_tipo TEXT, garmin_tokens TEXT,
-        ciclo_dias_personalizado INTEGER
+        ciclo_dias_personalizado INTEGER,
+        fecha_objetivo_intermedio TEXT, objetivo_intermedio_nombre TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS actividades_garmin (
         id_actividad TEXT PRIMARY KEY, usuario_id INTEGER, fecha TEXT,
@@ -273,6 +274,10 @@ _SCHEMA = [
     "ALTER TABLE ejercicios_catalogo ADD COLUMN archivado INTEGER DEFAULT 0",
     "ALTER TABLE ejercicios_catalogo ADD COLUMN subir_peso INTEGER DEFAULT 0",
     "ALTER TABLE ejercicios_catalogo ADD COLUMN orden INTEGER DEFAULT 0",
+    # Carrera intermedia (NORMAS_ENTRENAMIENTO_v2 — plan con dos objetivos, ej. media
+    # maratón de test antes del maratón final)
+    "ALTER TABLE usuarios ADD COLUMN fecha_objetivo_intermedio TEXT",
+    "ALTER TABLE usuarios ADD COLUMN objetivo_intermedio_nombre TEXT",
     # Intra-entreno nutrition log
     """CREATE TABLE IF NOT EXISTS intra_entreno_tests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

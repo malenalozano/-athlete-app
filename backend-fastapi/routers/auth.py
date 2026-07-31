@@ -36,6 +36,8 @@ class PerfilUpdate(BaseModel):
     fcmax: Optional[int] = None
     fecha_objetivo: Optional[str] = None
     objetivo_tipo: Optional[str] = None
+    fecha_objetivo_intermedio: Optional[str] = None
+    objetivo_intermedio_nombre: Optional[str] = None
 
 
 @router.put("/perfil/{usuario_id}")
@@ -59,7 +61,7 @@ def perfil(usuario_id: int):
     row = conn.execute(
         """SELECT id, nombre, edad, genero, peso, objetivo, nivel, ritmo,
                   fcmax, fecha_objetivo, objetivo_tipo, fecha_inicio_entrenamiento,
-                  email_garmin
+                  email_garmin, fecha_objetivo_intermedio, objetivo_intermedio_nombre
            FROM usuarios WHERE id = ?""",
         (usuario_id,),
     ).fetchone()
@@ -68,7 +70,7 @@ def perfil(usuario_id: int):
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     cols = ["id", "nombre", "edad", "genero", "peso", "objetivo", "nivel", "ritmo",
             "fcmax", "fecha_objetivo", "objetivo_tipo", "fecha_inicio_entrenamiento",
-            "email_garmin"]
+            "email_garmin", "fecha_objetivo_intermedio", "objetivo_intermedio_nombre"]
     return dict(zip(cols, row))
 
 

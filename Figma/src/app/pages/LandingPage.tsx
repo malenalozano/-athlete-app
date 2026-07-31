@@ -876,7 +876,7 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
 function WeeklyView({
   sessions, loading, error, weekLabel, onPrevWeek, onNextWeek,
   onToggle, onSave, onDelete, onMove, onAdd,
-  userId, monday, onApplied, showToast, cicloLabel,
+  userId, monday, onApplied, showToast, cicloLabel, weekMeta,
 }: {
   sessions: Session[]; loading: boolean; error: string | null; weekLabel: string;
   onPrevWeek: () => void; onNextWeek: () => void;
@@ -890,35 +890,62 @@ function WeeklyView({
   onApplied: () => void;
   showToast: (text: string, kind?: "error" | "success") => void;
   cicloLabel: string;
+  weekMeta: {
+    macrocicloLabel: string; semanaNum: number | null;
+    proximoHitoNombre: string | null; semanasHastaHito: number | null;
+    distribucion: string | null;
+  };
 }) {
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [reorderingSession, setReorderingSession] = useState<Session | null>(null);
   const [isAdding, setIsAdding] = useState(false);
 
+  const avisoDistribucion = weekMeta.distribucion && weekMeta.distribucion.includes("⚠️") ? weekMeta.distribucion : null;
+
   return (
     <div className="flex flex-col h-full">
       {/* TopBar */}
-      <header className="px-5 py-3 shrink-0 flex items-center justify-end gap-2" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
-        {/* Pastilla carga/descarga */}
-        <span className="text-[10px] px-3 py-2 rounded-full font-black"
-          style={cicloLabel === "Descarga"
-            ? { background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid #10b98150" }
-            : { background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid #3b82f650" }}>
-          {cicloLabel}
-        </span>
-        {/* Reorder button */}
-        <button onClick={() => setIsReorderMode(p => !p)}
-          className="flex items-center gap-1.5 text-xs px-3.5 py-2 rounded-full font-black transition-all"
-          style={{
-            background: isReorderMode ? T.reorder : T.border,
-            color: isReorderMode ? T.reorderTx : T.text2,
-            boxShadow: isReorderMode ? `0 4px 12px ${T.reorder}40` : "none",
-          }}>
-          <ArrowLeftRight className="w-3.5 h-3.5" />
-          {isReorderMode ? "Listo" : "Reorganizar"}
-        </button>
+      <header className="px-5 py-3 shrink-0 flex items-center justify-between gap-2" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
+        <div className="flex items-center gap-2">
+          {/* Pastilla macrociclo */}
+          <span className="text-[10px] px-3 py-2 rounded-full font-black"
+            style={{ background: "rgba(168,85,247,0.15)", color: "#c084fc", border: "1px solid #a855f750" }}>
+            {weekMeta.macrocicloLabel}
+          </span>
+          {/* Chip próximo hito */}
+          {weekMeta.proximoHitoNombre && weekMeta.semanasHastaHito !== null && (
+            <span className="text-[10px] px-2.5 py-2 rounded-full font-bold" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>
+              {weekMeta.proximoHitoNombre} en {weekMeta.semanasHastaHito} sem
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Pastilla carga/descarga */}
+          <span className="text-[10px] px-3 py-2 rounded-full font-black"
+            style={cicloLabel === "Descarga"
+              ? { background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid #10b98150" }
+              : { background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid #3b82f650" }}>
+            {cicloLabel}
+          </span>
+          {/* Reorder button */}
+          <button onClick={() => setIsReorderMode(p => !p)}
+            className="flex items-center gap-1.5 text-xs px-3.5 py-2 rounded-full font-black transition-all"
+            style={{
+              background: isReorderMode ? T.reorder : T.border,
+              color: isReorderMode ? T.reorderTx : T.text2,
+              boxShadow: isReorderMode ? `0 4px 12px ${T.reorder}40` : "none",
+            }}>
+            <ArrowLeftRight className="w-3.5 h-3.5" />
+            {isReorderMode ? "Listo" : "Reorganizar"}
+          </button>
+        </div>
       </header>
+      {avisoDistribucion && (
+        <div className="mx-4 mt-2 px-3 py-2 rounded-xl text-[10px] font-semibold" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid #f8717150", color: "#fca5a5" }}>
+          {avisoDistribucion}
+        </div>
+      )}
 
       {/* Week navigator */}
       <div className="px-4 py-2.5 flex items-center justify-between shrink-0" style={{ background: T.bgSurf, border: "1px solid #22d3ee40", margin: "0 16px 12px", borderRadius: 16, boxShadow: "0 4px 16px rgba(0,0,0,0.25)" }}>
@@ -926,7 +953,9 @@ function WeeklyView({
           <ChevronLeft className="w-5 h-5" />
         </button>
         <div className="text-center">
-          <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#22d3ee" }}>PROGRAMA SEMANAL</p>
+          <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#22d3ee" }}>
+            {weekMeta.semanaNum !== null ? `SEMANA ${weekMeta.semanaNum} DEL PLAN` : "PROGRAMA SEMANAL"}
+          </p>
           <p className="text-xs font-bold" style={{ color: T.text1 }}>{weekLabel}</p>
         </div>
         <button onClick={onNextWeek} className="w-10 h-10 flex items-center justify-center rounded-xl" style={{ background: "rgba(34,211,238,0.12)", border: "1px solid #22d3ee50", color: "#22d3ee" }}>
@@ -1378,6 +1407,11 @@ export function LandingPage() {
   const [prevSessions, setPrevSessions] = useState<Session[]>([]);
   const [weekStats, setWeekStats] = useState<{ km_planificados: number; km_realizados: number } | null>(null);
   const [weekCicloLabel, setWeekCicloLabel] = useState("Carga 1");
+  const [weekMeta, setWeekMeta] = useState<{
+    macrocicloLabel: string; semanaNum: number | null;
+    proximoHitoNombre: string | null; semanasHastaHito: number | null;
+    distribucion: string | null;
+  }>({ macrocicloLabel: "M1", semanaNum: null, proximoHitoNombre: null, semanasHastaHito: null, distribucion: null });
   const [loadingWeek, setLoadingWeek] = useState(true);
   const [weekError, setWeekError] = useState<string | null>(null);
 
@@ -1404,6 +1438,13 @@ export function LandingPage() {
       setSessions(applyDeficitRedistribution(applyGarminMatching(currPlanSessions, curr.actividades_garmin, currMonday), currMonday));
       setWeekStats(curr.stats);
       setWeekCicloLabel(curr.ciclo_label);
+      setWeekMeta({
+        macrocicloLabel: curr.macrociclo_label,
+        semanaNum: curr.semana_num,
+        proximoHitoNombre: curr.proximo_hito_nombre,
+        semanasHastaHito: curr.semanas_hasta_hito,
+        distribucion: curr.distribucion_intensidad,
+      });
       const prevPlanSessions = prev.sesiones.map(s => toSession(s, prevMonday));
       setPrevSessions(applyGarminMatching(prevPlanSessions, prev.actividades_garmin, prevMonday));
     } catch {
@@ -1577,7 +1618,7 @@ export function LandingPage() {
               onToggle={handleToggle} onSave={handleSave} onDelete={handleDelete}
               onMove={handleMove} onAdd={handleAdd}
               userId={userId} monday={monday} onApplied={fetchWeek} showToast={showToast}
-              cicloLabel={weekCicloLabel}
+              cicloLabel={weekCicloLabel} weekMeta={weekMeta}
             />
           )}
           {activeTab === "calendario" && calView === "mensual" && userId && (

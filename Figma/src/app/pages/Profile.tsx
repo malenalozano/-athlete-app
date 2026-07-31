@@ -563,6 +563,7 @@ function EditarPerfil({ userId, perfil, onSaved, open, onOpenChange }: { userId:
   const [form, setForm] = useState({
     nombre: "", edad: "", peso: "", objetivo: "", ritmo: "", genero: "",
     objetivo_tipo: "", fecha_objetivo: "", fcmax: "", nivel: "",
+    fecha_inicio_entrenamiento: "", fecha_objetivo_intermedio: "", objetivo_intermedio_nombre: "",
   });
 
   useEffect(() => {
@@ -578,6 +579,9 @@ function EditarPerfil({ userId, perfil, onSaved, open, onOpenChange }: { userId:
       fecha_objetivo: perfil.fecha_objetivo || "",
       fcmax: String(perfil.fcmax || ""),
       nivel: perfil.nivel || "",
+      fecha_inicio_entrenamiento: perfil.fecha_inicio_entrenamiento || "",
+      fecha_objetivo_intermedio: perfil.fecha_objetivo_intermedio || "",
+      objetivo_intermedio_nombre: perfil.objetivo_intermedio_nombre || "",
     });
     if (perfil.email_garmin) {
       setEmailGarmin(perfil.email_garmin);
@@ -607,6 +611,9 @@ function EditarPerfil({ userId, perfil, onSaved, open, onOpenChange }: { userId:
         fecha_objetivo: form.fecha_objetivo || undefined,
         fcmax: form.fcmax ? Number(form.fcmax) : undefined,
         nivel: form.nivel || undefined,
+        fecha_inicio_entrenamiento: form.fecha_inicio_entrenamiento || undefined,
+        fecha_objetivo_intermedio: form.fecha_objetivo_intermedio || undefined,
+        objetivo_intermedio_nombre: form.objetivo_intermedio_nombre || undefined,
       });
       setSaveMsg({ ok: true, text: "Perfil guardado correctamente." });
       onSaved?.();
@@ -679,6 +686,17 @@ function EditarPerfil({ userId, perfil, onSaved, open, onOpenChange }: { userId:
                 <div>
                   <Label className="text-white mb-2 block">Fecha objetivo</Label>
                   <Input type="date" value={form.fecha_objetivo} onChange={set("fecha_objetivo")} className="bg-[#0E1117] border-[#C9FF00]/30 text-white" />
+                </div>
+                <div>
+                  <Label className="text-white mb-2 block">Inicio del plan</Label>
+                  <Input type="date" value={form.fecha_inicio_entrenamiento} onChange={set("fecha_inicio_entrenamiento")} className="bg-[#0E1117] border-[#C9FF00]/30 text-white" />
+                  <p className="text-[10px] text-[#8B949E] mt-1">Lunes de la semana 1 del plan (Macrociclo 1). Se usa para calcular en qué semana/macrociclo estás.</p>
+                </div>
+                <div>
+                  <Label className="text-white mb-2 block">Carrera intermedia (opcional)</Label>
+                  <Input value={form.objetivo_intermedio_nombre} onChange={set("objetivo_intermedio_nombre")} placeholder="Ej: Media Maratón de Ávila" className="bg-[#0E1117] border-[#C9FF00]/30 text-white mb-2" />
+                  <Input type="date" value={form.fecha_objetivo_intermedio} onChange={set("fecha_objetivo_intermedio")} className="bg-[#0E1117] border-[#C9FF00]/30 text-white" />
+                  <p className="text-[10px] text-[#8B949E] mt-1">Si tienes una carrera de test antes del objetivo final (ej. una media antes del maratón), el plan la usa para dividir Macrociclo 2/3 automáticamente.</p>
                 </div>
                 <div>
                   <Label className="text-white mb-2 block">FC Máxima</Label>

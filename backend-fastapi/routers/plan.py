@@ -81,6 +81,106 @@ def _etiqueta_ciclo(pos: int) -> str:
     return "Descarga" if pos == 3 else f"Carga {pos + 1}"
 
 
+def _calcular_macrociclo_v2(
+    fecha_inicio: datetime,
+    plan_start_str: str | None,
+    f_inter_str: str | None,
+    f_final_str: str | None,
+) -> dict | None:
+    """Calendario de macrociclos de NORMAS_ENTRENAMIENTO_v2 (dos carreras: una
+    intermedia de test — ej. media maratón — y el maratón final). Devuelve None si
+    el usuario no tiene configurada la carrera intermedia, para que el caller use la
+    lógica antigua de un solo objetivo (por mes).
+
+    M1 = semanas 1-4 del plan (fijo). M2 = desde semana 5 hasta el taper de la
+    intermedia. M3 = desde la semana siguiente a la intermedia hasta el taper del
+    objetivo final. M4 = las 3 semanas de taper antes del objetivo final.
+    """
+    if not f_final_str or not f_inter_str:
+        return None
+    try:
+        f_final = datetime.strptime(f_final_str, "%Y-%m-%d")
+        f_inter = datetime.strptime(f_inter_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
+
+    plan_start = None
+    if plan_start_str:
+        try:
+            plan_start = datetime.strptime(plan_start_str, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            plan_start = None
+    if not plan_start:
+        plan_start = f_inter - timedelta(weeks=14)  # fallback: 14 semanas de base a la intermedia
+
+    monday_plan_start = plan_start - timedelta(days=plan_start.weekday())
+    semana_num = max(1, (fecha_inicio - monday_plan_start).days // 7 + 1)
+
+    dias_inter = (f_inter - fecha_inicio).days
+    dias_final = (f_final - fecha_inicio).days
+
+    macrociclo: int
+    sub_fase: str | None = None
+    proximo_hito: str | None = None
+    semanas_hasta_hito: int | None = None
+
+    if dias_inter >= 0:
+        proximo_hito, semanas_hasta_hito = "intermedia", dias_inter // 7
+        if dias_inter <= 6:
+            macrociclo, sub_fase = 2, "Semana de carrera"
+        elif dias_inter <= 13:
+            macrociclo, sub_fase = 2, "Taper corto"
+        elif semana_num <= 4:
+            macrociclo = 1
+        else:
+            macrociclo = 2
+    elif dias_final >= 0:
+        proximo_hito, semanas_hasta_hito = "final", dias_final // 7
+        if dias_final <= 6:
+            macrociclo, sub_fase = 4, "Semana de carrera"
+        elif dias_final <= 13:
+            macrociclo, sub_fase = 4, "Taper -2"
+        elif dias_final <= 20:
+            macrociclo, sub_fase = 4, "Taper -3"
+        else:
+            macrociclo = 3
+    else:
+        macrociclo, sub_fase = 4, "Semana de carrera"  # objetivo final ya pasado
+
+    if macrociclo == 1:
+        semana_en_macro = semana_num
+    elif macrociclo == 2:
+        semana_en_macro = max(1, semana_num - 4)
+    elif macrociclo == 3:
+        semana_en_macro = max(1, (fecha_inicio - f_inter).days // 7 + 1)
+    else:
+        semana_en_macro = 1
+
+    if macrociclo == 3:
+        # Ciclo especial 2 semanas de carga + 1 de descarga
+        pos = (semana_en_macro - 1) % 3
+        es_descarga = pos == 2
+        ciclo_label = "Descarga" if es_descarga else f"Carga {pos + 1}"
+    elif macrociclo == 4:
+        es_descarga = False
+        ciclo_label = sub_fase or "Tapering"
+    else:
+        pos = (semana_num - 1) % 4
+        es_descarga = pos == 3
+        ciclo_label = "Descarga" if es_descarga else f"Carga {pos + 1}"
+
+    return {
+        "macrociclo": macrociclo,
+        "sub_fase": sub_fase,
+        "es_descarga": es_descarga,
+        "ciclo_label": ciclo_label,
+        "semana_num": semana_num,
+        "semana_en_macro": semana_en_macro,
+        "proximo_hito": proximo_hito,
+        "semanas_hasta_hito": semanas_hasta_hito,
+    }
+
+
 def _migrar_progresiva_legacy(conn, sesiones: list) -> list:
     """Detecta sesiones Progresiva con bloque_min incorrecto (calculado con semana ISO en
     lugar de semanas dentro del Mac1) y las corrige en la BD + en la lista devuelta.
@@ -257,25 +357,86 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
 
     # Coach recommendation
     perfil_row = conn.execute(
-        "SELECT objetivo_tipo, fecha_objetivo, fcmax FROM usuarios WHERE id = ?",
+        """SELECT objetivo_tipo, fecha_objetivo, fcmax, fecha_inicio_entrenamiento,
+                  fecha_objetivo_intermedio, objetivo_intermedio_nombre
+           FROM usuarios WHERE id = ?""",
         (usuario_id,),
     ).fetchone()
+
+    # Distribución 80/20 Z1+Z2 de la semana (aviso, no corrige automáticamente)
+    distribucion_msg = None
+    if _REGLAS_DISPONIBLES and sesiones:
+        try:
+            _, distribucion_msg = controlar_distribucion_intensidad(
+                [{"tipo": s["tipo"], "intensidad": s["intensidad"], "km_planificados": s["km_planificados"]} for s in sesiones]
+            )
+        except Exception:
+            pass
+
     conn.close()
 
     objetivo_tipo = perfil_row[0] if perfil_row else "maraton"
     fecha_objetivo = perfil_row[1] if perfil_row else None
+    objetivo_intermedio_nombre = perfil_row[5] if perfil_row else None
     fase = _calcular_fase_nombre(objetivo_tipo, fecha_objetivo)
 
-    # Ciclo de 4 semanas Carga1/Carga2/Carga3/Descarga — informativo, para que el
-    # usuario sepa en qué tipo de semana está.
-    pos_ciclo = _posicion_ciclo(inicio)
-    es_descarga = (pos_ciclo == 3)
+    # Ciclo Carga1/Carga2/Carga3/Descarga + macrociclo — informativo, para que el
+    # usuario sepa en qué tipo de semana y macrociclo está. Camino v2 (dos carreras)
+    # si está configurado, si no ciclo genérico anclado + macrociclo antiguo por mes.
+    v2_info = _calcular_macrociclo_v2(
+        inicio,
+        perfil_row[3] if perfil_row else None,
+        perfil_row[4] if perfil_row else None,
+        fecha_objetivo,
+    )
+    if v2_info:
+        ciclo_label = v2_info["ciclo_label"]
+        es_descarga = v2_info["es_descarga"]
+        macrociclo_num = v2_info["macrociclo"]
+        semana_num = v2_info["semana_num"]
+        proximo_hito = v2_info["proximo_hito"]
+        semanas_hasta_hito = v2_info["semanas_hasta_hito"]
+    else:
+        pos_ciclo = _posicion_ciclo(inicio)
+        ciclo_label = _etiqueta_ciclo(pos_ciclo)
+        es_descarga = (pos_ciclo == 3)
+        mes = inicio.month
+        if mes in (5, 6, 7, 8):
+            macrociclo_num = 1
+        elif mes in (9, 10, 11):
+            macrociclo_num = 2
+        elif mes in (12, 1):
+            macrociclo_num = 3
+        else:
+            macrociclo_num = 1
+        if fecha_objetivo:
+            try:
+                dias_obj = (datetime.strptime(fecha_objetivo, "%Y-%m-%d") - inicio).days
+                if 0 <= dias_obj <= 21:
+                    macrociclo_num = 4
+            except (ValueError, TypeError):
+                pass
+        semana_num = None
+        proximo_hito = None
+        semanas_hasta_hito = None
+
+    proximo_hito_nombre = None
+    if proximo_hito == "intermedia":
+        proximo_hito_nombre = objetivo_intermedio_nombre or "carrera intermedia"
+    elif proximo_hito == "final":
+        proximo_hito_nombre = "objetivo final"
 
     return {
         "semana_inicio": fecha_inicio,
         "sesiones": sesiones,
         "actividades_garmin": actividades_garmin,
-        "ciclo_label": _etiqueta_ciclo(pos_ciclo),
+        "ciclo_label": ciclo_label,
+        "macrociclo_label": f"M{macrociclo_num}",
+        "semana_num": semana_num,
+        "proximo_hito": proximo_hito,
+        "proximo_hito_nombre": proximo_hito_nombre,
+        "semanas_hasta_hito": semanas_hasta_hito,
+        "distribucion_intensidad": distribucion_msg,
         "stats": {
             "km_planificados": round(km_plan, 1),
             "km_realizados": round(km_real, 1),
@@ -396,10 +557,14 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
 
     # ── 2. Obtener perfil del usuario (fecha objetivo + lesiones) ──
     perfil_row = conn.execute(
-        "SELECT objetivo_tipo, fecha_objetivo, fcmax FROM usuarios WHERE id = ?",
+        """SELECT objetivo_tipo, fecha_objetivo, fcmax, fecha_inicio_entrenamiento,
+                  fecha_objetivo_intermedio
+           FROM usuarios WHERE id = ?""",
         (usuario_id,),
     ).fetchone()
     fecha_objetivo_str = perfil_row[1] if perfil_row else None
+    fecha_inicio_entreno_str = perfil_row[3] if perfil_row else None
+    fecha_objetivo_intermedio_str = perfil_row[4] if perfil_row else None
 
     # Verificar lesiones activas ANTES de calcular volumen
     lesiones_activas_count = 0
@@ -437,22 +602,79 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         # Con 15 km: TL ~5 km, RB ~5.6 km, RG ~1.7 km, Fartlek ~6.2 km (6 reps).
         km_semana_ant = 15.0
 
-    # ── 4. Determinar si es semana de descarga (ciclo de 4 semanas anclado) ──
+    # ── 4-5. Macrociclo + ciclo carga/descarga ──
+    # Camino v2 (dos carreras: intermedia + final) si el usuario la tiene configurada;
+    # si no, camino antiguo por mes con un único objetivo (compatibilidad Dani/otros).
     semana_iso = fecha_inicio.isocalendar()[1]
-    pos_ciclo = _posicion_ciclo(fecha_inicio)
-    es_descarga = (pos_ciclo == 3)
-    semanas_desde_descarga = pos_ciclo + 1
     volumen_congelado = False
+    v2_info = _calcular_macrociclo_v2(
+        fecha_inicio, fecha_inicio_entreno_str, fecha_objetivo_intermedio_str, fecha_objetivo_str
+    )
+    dias_hasta_objetivo = None  # usado en el texto de tapering del camino antiguo
+
+    if v2_info:
+        macrociclo = v2_info["macrociclo"]
+        es_descarga = v2_info["es_descarga"]
+        ciclo_label = v2_info["ciclo_label"]
+        semanas_desde_descarga = v2_info["semana_en_macro"]
+        semanas_en_macro = v2_info["semana_en_macro"]
+        if macrociclo in (1, 4):
+            sesion_calidad_impar, sesion_calidad_par = "Fartlek", "Progresiva"
+        elif macrociclo == 2:
+            sesion_calidad_impar, sesion_calidad_par = "Intervalos", "Tempo"
+        else:
+            sesion_calidad_impar, sesion_calidad_par = "Intervalos_VO2max", "Tempo_Largo"
+        tipo_calidad = sesion_calidad_impar if semanas_en_macro % 2 != 0 else sesion_calidad_par
+    else:
+        pos_ciclo = _posicion_ciclo(fecha_inicio)
+        es_descarga = (pos_ciclo == 3)
+        semanas_desde_descarga = pos_ciclo + 1
+        ciclo_label = _etiqueta_ciclo(pos_ciclo)
+
+        mes = fecha_inicio.month
+        if fecha_objetivo_str:
+            try:
+                dias_hasta_objetivo = (datetime.strptime(fecha_objetivo_str, "%Y-%m-%d") - fecha_inicio).days
+            except (ValueError, TypeError):
+                pass
+
+        if dias_hasta_objetivo is not None and 0 <= dias_hasta_objetivo <= 21:
+            macrociclo = 4
+            sesion_calidad_impar, sesion_calidad_par = "Fartlek", "Progresiva"
+        elif mes in [5, 6, 7, 8]:
+            macrociclo = 1
+            sesion_calidad_impar, sesion_calidad_par = "Fartlek", "Progresiva"
+        elif mes in [9, 10, 11]:
+            macrociclo = 2
+            sesion_calidad_impar, sesion_calidad_par = "Intervalos", "Tempo"
+        elif mes in [12, 1]:
+            macrociclo = 3
+            sesion_calidad_impar, sesion_calidad_par = "Intervalos_VO2max", "Tempo_Largo"
+        else:  # Feb-Abr (post-maratón o sin fecha objetivo)
+            macrociclo = 1
+            sesion_calidad_impar, sesion_calidad_par = "Fartlek", "Progresiva"
+
+        tipo_calidad = sesion_calidad_impar if semana_iso % 2 != 0 else sesion_calidad_par
+
+        # Mac3 (camino antiguo): ciclo especial 2+1 en lugar del 3+1 genérico
+        if macrociclo == 3:
+            inicio_mac3 = datetime(
+                fecha_inicio.year if fecha_inicio.month == 12 else fecha_inicio.year - 1,
+                12, 1
+            )
+            semanas_en_mac3 = max(1, ((fecha_inicio - inicio_mac3).days // 7) + 1)
+            pos_mac3 = (semanas_en_mac3 - 1) % 3
+            es_descarga = pos_mac3 == 2
+            ciclo_label = "Descarga" if es_descarga else f"Carga {pos_mac3 + 1}"
 
     # Override manual del tipo de semana (selector "Carga1/Carga2/Carga3/Descarga" en Rehacer plan)
     if body.ciclo_override:
         override = body.ciclo_override.strip().lower()
         if override == "descarga":
-            pos_ciclo, es_descarga = 3, True
+            es_descarga, ciclo_label = True, "Descarga"
         elif override in ("carga1", "carga2", "carga3"):
-            pos_ciclo = int(override[-1]) - 1
-            es_descarga = False
-        semanas_desde_descarga = pos_ciclo + 1
+            es_descarga, ciclo_label = False, f"Carga {override[-1]}"
+        semanas_desde_descarga = int(override[-1]) if override[-1].isdigit() else 1
 
     # Si el usuario ha especificado km_total manualmente, usarlo directamente
     if body.km_total is not None and body.km_total > 0:
@@ -463,59 +685,34 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         km_total = round(km_semana_ant, 1)
         es_descarga = False
         volumen_congelado = True
+    elif v2_info and macrociclo == 4 and not body.ciclo_override:
+        # Tapering M4 (v2): reducción sobre el PICO de km alcanzado en M3, no sobre
+        # el volumen de la semana anterior (que ya está bajando).
+        pico_row = conn.execute(
+            """SELECT MAX(semana_km) FROM (
+                 SELECT semana_inicio, SUM(km_planificados) AS semana_km
+                 FROM plan_entrenamiento
+                 WHERE usuario_id = ? AND tipo = 'Carrera' AND fecha < ?
+                 GROUP BY semana_inicio
+               )""",
+            (usuario_id, fecha_inicio_str),
+        ).fetchone()
+        pico = float(pico_row[0]) if pico_row and pico_row[0] else km_semana_ant
+        sub_fase = v2_info.get("sub_fase")
+        if sub_fase == "Taper -3":
+            km_total = round(pico * 0.75, 1)
+        elif sub_fase == "Taper -2":
+            km_total = round(pico * 0.50, 1)
+        else:  # Semana de carrera: mínimo, sesiones fijas cortas
+            km_total = 5.0
+        es_descarga = False
     elif es_descarga:
         km_total = round(km_semana_ant * 0.70, 1)
     else:
         km_total = round(km_semana_ant * 1.10, 1)
 
-    # ── 5. Macrociclo: primero comprobar tapering por fecha objetivo ──
-    mes = fecha_inicio.month
-    dias_hasta_objetivo = None
-    if fecha_objetivo_str:
-        try:
-            dias_hasta_objetivo = (datetime.strptime(fecha_objetivo_str, "%Y-%m-%d") - fecha_inicio).days
-        except (ValueError, TypeError):
-            pass
-
-    if dias_hasta_objetivo is not None and 0 <= dias_hasta_objetivo <= 21:
-        macrociclo = 4
-        sesion_calidad_impar = "Fartlek"
-        sesion_calidad_par = "Progresiva"
-    elif mes in [5, 6, 7, 8]:
-        macrociclo = 1
-        sesion_calidad_impar = "Fartlek"
-        sesion_calidad_par = "Progresiva"
-    elif mes in [9, 10, 11]:
-        macrociclo = 2
-        sesion_calidad_impar = "Intervalos"
-        sesion_calidad_par = "Tempo"
-    elif mes in [12, 1]:
-        macrociclo = 3
-        sesion_calidad_impar = "Intervalos_VO2max"
-        sesion_calidad_par = "Tempo_Largo"
-    else:  # Feb-Abr (post-maratón o sin fecha objetivo)
-        macrociclo = 1
-        sesion_calidad_impar = "Fartlek"
-        sesion_calidad_par = "Progresiva"
-
-    tipo_calidad = sesion_calidad_impar if semana_iso % 2 != 0 else sesion_calidad_par
-
-    # ── 5b. Mac3: ciclo 2+1 (2 semanas carga + 1 descarga) en lugar del 3+1 genérico ──
-    if macrociclo == 3 and not volumen_congelado and body.km_total is None and not body.ciclo_override:
-        inicio_mac3 = datetime(
-            fecha_inicio.year if fecha_inicio.month == 12 else fecha_inicio.year - 1,
-            12, 1
-        )
-        semanas_en_mac3 = max(1, ((fecha_inicio - inicio_mac3).days // 7) + 1)
-        if semanas_en_mac3 % 3 == 0:  # cada 3ª semana = descarga
-            km_total = round(km_semana_ant * 0.70, 1)
-            es_descarga = True
-        else:
-            km_total = round(km_semana_ant * 1.10, 1)
-            es_descarga = False
-
     # ── 6. Distribución de km ──
-    # Mac1: TL crece +1.75 km respecto a la TL de la semana anterior (PDF: +1.5-2 km)
+    # Mac1: TL crece un 8% respecto a la TL de la semana anterior (NORMAS v2 1.2)
     km_tl_calculado = min(round(km_total * 0.33, 1), 32.0)
     if macrociclo == 1:
         km_tl_ant_row = conn.execute(
@@ -526,7 +723,7 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
             (usuario_id, semana_ant_inicio, semana_ant_fin),
         ).fetchone()
         if km_tl_ant_row and km_tl_ant_row[0]:
-            km_tl = min(round(float(km_tl_ant_row[0]) + 1.75, 1), 32.0)
+            km_tl = min(round(float(km_tl_ant_row[0]) * 1.08, 1), 32.0)
         else:
             km_tl = km_tl_calculado
     else:
@@ -562,7 +759,8 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
     # CORRECCIÓN: se usa semanas desde inicio de Mac (no semana ISO del año, que daba 11 reps
     # en semana 21 del año cuando la deportista llevaba solo 3 semanas de entrenamiento).
     # Cap de seguridad: máximo 10 reps para prevenir sobrecarga.
-    semanas_en_macro = _calcular_semanas_en_macro(fecha_inicio, macrociclo)
+    if not v2_info:
+        semanas_en_macro = _calcular_semanas_en_macro(fecha_inicio, macrociclo)
     ciclo_num = max(0, (semanas_en_macro - 1) // 4)
     fartlek_reps = min(6 + ciclo_num, FARTLEK_REPS_MAX)  # NORMA: empezar en 6 reps, +1 rep/ciclo, máx 10
     prog_bloque_min = 5 + ciclo_num * 2
@@ -707,7 +905,7 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
             if s["tipo"] == "Carrera" and s["intensidad"] == "Alta":
                 km_sustituido = s["km_planificados"] or 0
                 s["sesion"] = "Rodaje Base Z2"
-                s["detalles"] = f"Rodaje Base Z2 — {km_sustituido} km. Ritmo 6:20-6:50min/km. FC 130-150 ppm. (Sustituye sesión de calidad por indicación del usuario.)"
+                s["detalles"] = f"Rodaje Base Z2 — {km_sustituido} km. Ritmo 6:20-6:50min/km. FC 134-143 ppm. (Sustituye sesión de calidad por indicación del usuario.)"
                 s["intensidad"] = "Baja"
                 s["duracion_min"] = round(km_sustituido * 6.5)
 
@@ -742,8 +940,13 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
             f"No aumentes el volumen. Prioriza recuperación y sesiones de bajo impacto."
         )
     elif macrociclo == 4:
-        sem_antes = (dias_hasta_objetivo // 7) + 1 if dias_hasta_objetivo is not None else "?"
-        tipo_semana = f"Tapering — {sem_antes} semana(s) para el maratón"
+        if v2_info:
+            sem_antes = (v2_info["semanas_hasta_hito"] or 0) + 1
+            sub_fase = v2_info.get("sub_fase") or "Tapering"
+            tipo_semana = f"{sub_fase} — {sem_antes} semana(s) para el objetivo final"
+        else:
+            sem_antes = (dias_hasta_objetivo // 7) + 1 if dias_hasta_objetivo is not None else "?"
+            tipo_semana = f"Tapering — {sem_antes} semana(s) para el maratón"
         tip_semana = f"Tapering: reduce volumen, mantén algo de intensidad. Piernas frescas para el día D. {km_total:.0f} km esta semana."
     elif es_descarga:
         tipo_semana = "Semana de Descarga"
@@ -768,7 +971,11 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         "km_total": km_total,
         "tipo_semana": tipo_semana,
         "es_descarga": es_descarga,
-        "ciclo_label": _etiqueta_ciclo(pos_ciclo),
+        "ciclo_label": ciclo_label,
+        "macrociclo_label": f"M{macrociclo}",
+        "semana_num": v2_info["semana_num"] if v2_info else None,
+        "proximo_hito": v2_info["proximo_hito"] if v2_info else None,
+        "semanas_hasta_hito": v2_info["semanas_hasta_hito"] if v2_info else None,
         "coach_tip": tip_semana,
         "macrociclo": macrociclo,
         "semaforo": {"color": semaforo_info.get("color", "verde"), "mensaje": semaforo_info.get("mensaje", "")},
@@ -1075,7 +1282,7 @@ def _detalles_tl(macrociclo: int, km_tl: float) -> str:
     """Genera los detalles de la Tirada Larga según el macrociclo (normas PDF)."""
     if macrociclo == 1:
         return (
-            f"Tirada Larga Z2 — {km_tl} km. Ritmo 6:20-6:50min/km. FC 130-150 ppm. "
+            f"Tirada Larga Z2 — {km_tl} km. Ritmo 6:20-6:50min/km. FC 134-143 ppm. "
             f"100% Z2 — base aeróbica. Toma nota de tu FC al levantarte al día siguiente."
         )
     elif macrociclo == 2:
@@ -1178,7 +1385,7 @@ def _construir_sesiones(
                     "duracion_min": 55, "intensidad": "Moderada", "km_planificados": None})
             elif dia_semana == 3:
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Rodaje Base Z2",
-                    "detalles": f"Rodaje Base Z2 — {km_rb} km. Ritmo 6:20-6:50min/km. FC 130-150 ppm.",
+                    "detalles": f"Rodaje Base Z2 — {km_rb} km. Ritmo 6:20-6:50min/km. FC 134-143 ppm.",
                     "duracion_min": round(km_rb * 6.5), "intensidad": "Baja", "km_planificados": km_rb})
             elif dia_semana == 4:
                 sesiones.append({"fecha": fecha_dia, "tipo": "Fuerza", "sesion": "Fuerza Pierna",
@@ -1190,14 +1397,16 @@ def _construir_sesiones(
                     "duracion_min": round(km_tl * 6.5), "intensidad": "Moderada-Alta", "km_planificados": km_tl})
             elif dia_semana == 6:
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Regenerativo Z1",
-                    "detalles": f"Regenerativo Z1 — {km_rg} km. Ritmo muy suave >7:00min/km. FC <130 ppm.",
+                    "detalles": f"Regenerativo Z1 — {km_rg} km. Ritmo muy suave >7:00min/km. FC <133 ppm.",
                     "duracion_min": round(km_rg * 7.5), "intensidad": "Muy baja", "km_planificados": km_rg})
 
         elif macrociclo == 2:
             # ── MAC 2: 2 sesiones de calidad (Intervalos + Tempo) ──
             # NORMA: Pierna → día siguiente NO puede ser Fartlek/Tempo/Intervalos.
-            # FIX: Pierna(Lun) → Core+TS(Mar, NO es calidad ✓) → Intervalos(Mié, 48h ✓)
-            # Distribución: Lun=PiernaP · Mar=Core+TS · Mié=Intervalos · Jue=Tempo · Vie=RB · Sáb=TL · Dom=RG
+            # NORMA: las dos sesiones de calidad deben ir separadas por al menos 48h.
+            # Pierna(Lun) → Core+TS(Mar, no calidad ✓) → Intervalos(Mié, 48h de Pierna) →
+            # RB(Jue) → Tempo(Vie, 48h de Intervalos ✓) → TL(Sáb) → RG(Dom)
+            # Distribución: Lun=PiernaP · Mar=Core+TS · Mié=Intervalos · Jue=RB · Vie=Tempo · Sáb=TL · Dom=RG
             nombre_int, det_int = _detalles_calidad_mac2("Intervalos", km_calidad, semana_iso)
             nombre_tmp, det_tmp = _detalles_calidad_mac2("Tempo", km_calidad, semana_iso)
             if dia_semana == 0:
@@ -1205,7 +1414,6 @@ def _construir_sesiones(
                     "detalles": "Sentadilla 4×6 @85% 1RM, Peso muerto 4×5 @85%, Prensa 45° 4×8. Mac2: 1 día pesado.",
                     "duracion_min": 65, "intensidad": "Alta", "km_planificados": None})
             elif dia_semana == 1:
-                # ANTES aquí iban Intervalos (violaba la norma Pierna→día siguiente calidad)
                 sesiones.append({"fecha": fecha_dia, "tipo": "Fuerza", "sesion": "Core + Tren Superior",
                     "detalles": "Plancha 3×45s, Dead Bug 3×12, Jalón 4×8, Remo en polea 3×12, Press militar 3×10. Recuperación activa tras Pierna.",
                     "duracion_min": 50, "intensidad": "Moderada", "km_planificados": None})
@@ -1214,23 +1422,27 @@ def _construir_sesiones(
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre_int, "detalles": det_int,
                     "duracion_min": 70, "intensidad": "Alta", "km_planificados": km_calidad})
             elif dia_semana == 3:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Rodaje Base Z2",
+                    "detalles": f"Rodaje Base Z2 — {km_rb} km. Ritmo 6:10-6:40min/km. FC 134-143 ppm.",
+                    "duracion_min": round(km_rb * 6.2), "intensidad": "Baja", "km_planificados": km_rb})
+            elif dia_semana == 4:
+                # Tempo a 48h de Intervalos ✓
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre_tmp, "detalles": det_tmp,
                     "duracion_min": 70, "intensidad": "Alta", "km_planificados": km_calidad})
-            elif dia_semana == 4:
-                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Rodaje Base Z2",
-                    "detalles": f"Rodaje Base Z2 — {km_rb} km. Ritmo 6:10-6:40min/km. FC 130-150 ppm.",
-                    "duracion_min": round(km_rb * 6.2), "intensidad": "Baja", "km_planificados": km_rb})
             elif dia_semana == 5:
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Tirada Larga con Bloque Maratón",
                     "detalles": _detalles_tl(2, km_tl),
                     "duracion_min": round(km_tl * 6.2), "intensidad": "Moderada-Alta", "km_planificados": km_tl})
             elif dia_semana == 6:
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Regenerativo Z1",
-                    "detalles": f"Regenerativo Z1 — {km_rg} km. Ritmo muy suave >7:00min/km. FC <130 ppm.",
+                    "detalles": f"Regenerativo Z1 — {km_rg} km. Ritmo muy suave >7:00min/km. FC <133 ppm.",
                     "duracion_min": round(km_rg * 7.5), "intensidad": "Muy baja", "km_planificados": km_rg})
 
         elif macrociclo == 3:
             # ── MAC 3: TL específica, VO2max + Tempo Largo, fuerza mínima ──
+            # NORMA: la TL Específica debe estar separada de cualquier sesión de calidad
+            # por al menos 72h → Tempo Largo va el miércoles (72h antes de la TL del
+            # sábado), Rodaje Base pasa al jueves.
             nombre_vo2, det_vo2 = _detalles_calidad_mac3("Intervalos_VO2max", km_calidad)
             nombre_tl2, det_tl2 = _detalles_calidad_mac3("Tempo_Largo", round(km_calidad * 1.3, 1))
             if dia_semana == 0:
@@ -1241,12 +1453,13 @@ def _construir_sesiones(
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre_vo2, "detalles": det_vo2,
                     "duracion_min": 70, "intensidad": "Alta", "km_planificados": km_calidad})
             elif dia_semana == 2:
-                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Rodaje Base Z2",
-                    "detalles": f"Rodaje Base Z2 — {km_rb} km. Ritmo suave. FC 130-150 ppm. Recuperación activa entre sesiones de calidad.",
-                    "duracion_min": round(km_rb * 6.2), "intensidad": "Baja", "km_planificados": km_rb})
-            elif dia_semana == 3:
+                # Tempo Largo a 72h de la TL del sábado ✓
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": nombre_tl2, "detalles": det_tl2,
                     "duracion_min": 90, "intensidad": "Alta", "km_planificados": round(km_calidad * 1.3, 1)})
+            elif dia_semana == 3:
+                sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Rodaje Base Z2",
+                    "detalles": f"Rodaje Base Z2 — {km_rb} km. Ritmo suave. FC 134-143 ppm. Recuperación activa entre sesiones de calidad.",
+                    "duracion_min": round(km_rb * 6.2), "intensidad": "Baja", "km_planificados": km_rb})
             elif dia_semana == 4:
                 sesiones.append({"fecha": fecha_dia, "tipo": "Descanso", "sesion": "Descanso Activo",
                     "detalles": "Descanso o movilidad/estiramientos 20-30 min. No correr. La TL específica requiere 72h de separación.",
@@ -1257,7 +1470,7 @@ def _construir_sesiones(
                     "duracion_min": round(km_tl * 6.0), "intensidad": "Alta", "km_planificados": km_tl})
             elif dia_semana == 6:
                 sesiones.append({"fecha": fecha_dia, "tipo": "Carrera", "sesion": "Regenerativo Z1",
-                    "detalles": f"Regenerativo Z1 — {km_rg} km. Ritmo muy suave >7:00min/km. FC <130 ppm. Recuperación post-TL específica.",
+                    "detalles": f"Regenerativo Z1 — {km_rg} km. Ritmo muy suave >7:00min/km. FC <133 ppm. Recuperación post-TL específica.",
                     "duracion_min": round(km_rg * 7.5), "intensidad": "Muy baja", "km_planificados": km_rg})
 
         else:  # Mac4 — Tapering
