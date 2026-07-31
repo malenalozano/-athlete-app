@@ -276,11 +276,24 @@ function applyDeficitRedistribution(sessions: Session[], monday: Date): Session[
     .sort((a, b) => a.dayIndex - b.dayIndex);
   if (targets.length === 0) return sessions;
 
-  const extraPer = Math.round((deficit / targets.length) * 10) / 10;
-  if (extraPer <= 0) return sessions;
+  // Reparto ponderado: la Tirada Larga absorbe más déficit que el resto, el
+  // Regenerativo (recuperación) el menos posible.
+  const pesoDe = (s: Session): number => {
+    if (s.subtype === "TL") return 3;
+    if (s.title.toLowerCase().includes("regenerativo")) return 0.5;
+    return 1;
+  };
+  const pesoTotal = targets.reduce((sum, t) => sum + pesoDe(t), 0);
+  if (pesoTotal <= 0) return sessions;
 
-  const targetIds = new Set(targets.map(t => t.id));
-  return sessions.map(s => targetIds.has(s.id) ? { ...s, extraKm: extraPer } : s);
+  const extraPorId = new Map<string, number>();
+  targets.forEach(t => {
+    const extra = Math.round(deficit * (pesoDe(t) / pesoTotal) * 10) / 10;
+    if (extra > 0) extraPorId.set(t.id, extra);
+  });
+  if (extraPorId.size === 0) return sessions;
+
+  return sessions.map(s => extraPorId.has(s.id) ? { ...s, extraKm: extraPorId.get(s.id) } : s);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
