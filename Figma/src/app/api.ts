@@ -273,10 +273,27 @@ export function guardarCredencialesGarmin(usuarioId: number, emailGarmin: string
   });
 }
 
-export function generarPlanSemana(usuarioId: number, fechaInicio: string, kmTotal?: number) {
+export function generarPlanSemana(
+  usuarioId: number,
+  fechaInicio: string,
+  kmTotal?: number,
+  opts?: { incluirCalidad?: boolean; dryRun?: boolean }
+) {
   return req<PlanGenerado>(`/plan/${usuarioId}/generar-semana`, {
     method: "POST",
-    body: JSON.stringify({ fecha_inicio: fechaInicio, km_total: kmTotal ?? null }),
+    body: JSON.stringify({
+      fecha_inicio: fechaInicio,
+      km_total: kmTotal ?? null,
+      incluir_calidad: opts?.incluirCalidad ?? true,
+      dry_run: opts?.dryRun ?? false,
+    }),
+  });
+}
+
+export function aplicarSemanaGenerada(usuarioId: number, fechaInicio: string, sesiones: SesionGenerada[]) {
+  return req<{ ok: boolean; sesiones_aplicadas: number }>(`/plan/${usuarioId}/aplicar-semana`, {
+    method: "POST",
+    body: JSON.stringify({ fecha_inicio: fechaInicio, sesiones }),
   });
 }
 
@@ -532,6 +549,7 @@ export interface SesionGenerada {
 
 export interface PlanGenerado {
   ok: boolean;
+  dry_run?: boolean;
   semana_inicio: string;
   km_total: number;
   tipo_semana: string;

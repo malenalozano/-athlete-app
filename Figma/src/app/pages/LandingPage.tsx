@@ -12,8 +12,9 @@ import {
 import { es } from "date-fns/locale";
 import { useUser } from "../context/UserContext";
 import {
-  actualizarSesionCompleta, borrarSesion, crearSesion, getDashboard, getPlanSemana,
-  sincronizarGarmin, type ActividadGarmin, type DashboardData, type SesionPlan,
+  actualizarSesionCompleta, aplicarSemanaGenerada, borrarSesion, crearSesion, generarPlanSemana,
+  getDashboard, getPlanSemana, sincronizarGarmin,
+  type ActividadGarmin, type DashboardData, type SesionGenerada, type SesionPlan,
 } from "../api";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -666,11 +667,139 @@ function AddSessionModal({ days, onAdd, onClose }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// REHACER PLAN — recalcula las sesiones de Carrera de la semana. El usuario fija
+// los km objetivo y si quiere sesión de calidad; "Generar" solo previsualiza
+// (dry_run, no toca la BD) y deja editar cada sesión antes de "Añadir estas
+// sesiones", que sustituye las sesiones de Carrera planificadas por las nuevas
+// (Fuerza no se toca). Sin sesión de calidad, esos km se rellenan con Rodaje Base.
+// ─────────────────────────────────────────────────────────────────────────────
+function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
+  userId: number; monday: Date; onApplied: () => void;
+  showToast: (text: string, kind?: "error" | "success") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [kmObjetivo, setKmObjetivo] = useState("");
+  const [incluirCalidad, setIncluirCalidad] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [preview, setPreview] = useState<SesionGenerada[] | null>(null);
+
+  const handleGenerar = async () => {
+    setGenerating(true);
+    setPreview(null);
+    try {
+      const km = kmObjetivo.trim() ? parseFloat(kmObjetivo) : undefined;
+      const res = await generarPlanSemana(userId, toISODate(monday), km, { incluirCalidad, dryRun: true });
+      setPreview(res.sesiones.filter(s => s.tipo === "Carrera"));
+    } catch {
+      showToast("No se pudo generar la previsualización.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const updatePreviewRow = (idx: number, field: "sesion" | "km_planificados", value: string) => {
+    setPreview(prev => {
+      if (!prev) return prev;
+      const next = [...prev];
+      const row = { ...next[idx] };
+      if (field === "sesion") row.sesion = value;
+      else row.km_planificados = value === "" ? null : parseFloat(value);
+      next[idx] = row;
+      return next;
+    });
+  };
+
+  const handleAplicar = async () => {
+    if (!preview) return;
+    setApplying(true);
+    try {
+      await aplicarSemanaGenerada(userId, toISODate(monday), preview);
+      showToast("Plan de carrera actualizado.", "success");
+      setPreview(null);
+      setOpen(false);
+      onApplied();
+    } catch {
+      showToast("No se pudo aplicar el nuevo plan.");
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl p-4 mt-2" style={{ background: "rgba(15,23,42,0.6)", border: `1px solid ${T.border}` }}>
+      <button onClick={() => setOpen(p => !p)} className="w-full flex items-center justify-between">
+        <span className="flex items-center gap-2 text-xs font-black" style={{ color: T.text1 }}>
+          <RefreshCw className="w-4 h-4" style={{ color: "#22d3ee" }} /> Rehacer plan de la semana
+        </span>
+        <ChevronRight className="w-4 h-4 transition-transform" style={{ color: T.text3, transform: open ? "rotate(90deg)" : "none" }} />
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Km esta semana</label>
+              <input type="number" min="0" step="0.5" value={kmObjetivo} onChange={e => setKmObjetivo(e.target.value)}
+                placeholder="Auto"
+                className="w-full rounded-xl py-2.5 px-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
+            </div>
+            <label className="flex items-center gap-2 self-end pb-2.5 cursor-pointer">
+              <input type="checkbox" checked={incluirCalidad} onChange={e => setIncluirCalidad(e.target.checked)}
+                className="w-4 h-4 rounded" />
+              <span className="text-[10px] font-bold" style={{ color: T.text2 }}>Sesión de calidad</span>
+            </label>
+          </div>
+
+          <button onClick={handleGenerar} disabled={generating}
+            className="w-full py-2.5 rounded-xl text-xs font-black text-white flex items-center justify-center gap-2 disabled:opacity-60"
+            style={{ background: "linear-gradient(135deg,#06b6d4,#4f46e5)" }}>
+            <Zap className="w-4 h-4" /> {generating ? "Generando…" : "Generar"}
+          </button>
+
+          {preview && (
+            <div className="space-y-2 pt-1">
+              <p className="text-[9px] font-black uppercase tracking-wider" style={{ color: T.text3 }}>
+                Nuevas sesiones de carrera — revisa y edita antes de añadir
+              </p>
+              {preview.map((s, idx) => (
+                <div key={idx} className="rounded-xl p-2.5 flex items-center gap-2" style={{ background: T.bgApp, border: `1px solid ${T.border}` }}>
+                  <span className="text-[9px] font-black w-7 shrink-0" style={{ color: "#818cf8" }}>
+                    {DAYS[differenceInCalendarDays(parseISO(s.fecha), monday)] ?? "?"}
+                  </span>
+                  <input value={s.sesion} onChange={e => updatePreviewRow(idx, "sesion", e.target.value)}
+                    className="flex-1 min-w-0 text-xs font-bold bg-transparent outline-none" style={{ color: T.text1 }} />
+                  <input type="number" step="0.5" value={s.km_planificados ?? ""} onChange={e => updatePreviewRow(idx, "km_planificados", e.target.value)}
+                    className="w-14 text-xs font-bold bg-transparent outline-none text-right" style={{ color: "#22d3ee" }} />
+                  <span className="text-[10px]" style={{ color: T.text3 }}>km</span>
+                </div>
+              ))}
+              <div className="flex gap-2 pt-1">
+                <button onClick={handleAplicar} disabled={applying}
+                  className="flex-1 py-2.5 rounded-xl text-xs font-black text-white flex items-center justify-center gap-2 disabled:opacity-60"
+                  style={{ background: "#10b981" }}>
+                  <Save className="w-4 h-4" /> {applying ? "Añadiendo…" : "Añadir estas sesiones"}
+                </button>
+                <button onClick={() => setPreview(null)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold" style={{ background: T.border, color: T.text2 }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WEEKLY VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 function WeeklyView({
   sessions, loading, error, weekLabel, onPrevWeek, onNextWeek,
   onToggle, onSave, onDelete, onMove, onAdd,
+  userId, monday, onApplied, showToast,
 }: {
   sessions: Session[]; loading: boolean; error: string | null; weekLabel: string;
   onPrevWeek: () => void; onNextWeek: () => void;
@@ -679,6 +808,10 @@ function WeeklyView({
   onDelete: (id: string) => void;
   onMove: (id: string, dayIndex: number) => void;
   onAdd: (fields: NewSessionFields) => Promise<void>;
+  userId: number;
+  monday: Date;
+  onApplied: () => void;
+  showToast: (text: string, kind?: "error" | "success") => void;
 }) {
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
@@ -733,6 +866,9 @@ function WeeklyView({
             onReorderTap={s => setReorderingSession(s)}
           />
         ))}
+        {!loading && !error && (
+          <RegenerarPlanCard userId={userId} monday={monday} onApplied={onApplied} showToast={showToast} />
+        )}
       </div>
 
       {/* FAB */}
@@ -1345,7 +1481,7 @@ export function LandingPage() {
 
         {/* Main content */}
         <main className="flex-1 overflow-hidden relative" style={{ background: "rgba(15,23,42,0.4)" }}>
-          {activeTab === "calendario" && calView === "semanal" && (
+          {activeTab === "calendario" && calView === "semanal" && userId && (
             <WeeklyView
               sessions={sessions} loading={loadingWeek} error={weekError}
               weekLabel={formatWeekLabel(monday)}
@@ -1353,6 +1489,7 @@ export function LandingPage() {
               onNextWeek={() => setWeekOffset(o => o + 1)}
               onToggle={handleToggle} onSave={handleSave} onDelete={handleDelete}
               onMove={handleMove} onAdd={handleAdd}
+              userId={userId} monday={monday} onApplied={fetchWeek} showToast={showToast}
             />
           )}
           {activeTab === "calendario" && calView === "mensual" && userId && (

@@ -49,6 +49,13 @@ class SesionCreate(BaseModel):
 class GenerarSemanaRequest(BaseModel):
     fecha_inicio: str
     km_total: Optional[float] = None  # Si se proporciona, sobreescribe el cálculo automático
+    incluir_calidad: bool = True  # Si es False, las sesiones de calidad se sustituyen por Rodaje Base
+    dry_run: bool = False  # Si es True, solo calcula y devuelve las sesiones, no las guarda
+
+
+class AplicarSemanaRequest(BaseModel):
+    fecha_inicio: str
+    sesiones: list[dict]
 
 
 class RegenerarTotalRequest(BaseModel):
@@ -355,13 +362,14 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
 
     conn = get_db()
 
-    # ── 1. Borrar sesiones existentes de esa semana ──
+    # ── 1. Borrar sesiones existentes de esa semana (salvo dry_run: solo previsualiza) ──
     fecha_fin = (fecha_inicio + timedelta(days=6)).strftime("%Y-%m-%d")
     fecha_inicio_str = fecha_inicio.strftime("%Y-%m-%d")
-    conn.execute(
-        "DELETE FROM plan_entrenamiento WHERE usuario_id = ? AND fecha >= ? AND fecha <= ?",
-        (usuario_id, fecha_inicio_str, fecha_fin),
-    )
+    if not body.dry_run:
+        conn.execute(
+            "DELETE FROM plan_entrenamiento WHERE usuario_id = ? AND fecha >= ? AND fecha <= ?",
+            (usuario_id, fecha_inicio_str, fecha_fin),
+        )
 
     # ── 2. Obtener perfil del usuario (fecha objetivo + lesiones) ──
     perfil_row = conn.execute(
@@ -630,6 +638,16 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
                 s["detalles"] = (s["detalles"] or "") + f"\n{mac2_alerta_z4}"
                 break
 
+    # ── 9b. Sin sesión de calidad: sustituir por Rodaje Base (mismo km) ──
+    if not body.incluir_calidad:
+        for s in sesiones_plan:
+            if s["tipo"] == "Carrera" and s["intensidad"] == "Alta":
+                km_sustituido = s["km_planificados"] or 0
+                s["sesion"] = "Rodaje Base Z2"
+                s["detalles"] = f"Rodaje Base Z2 — {km_sustituido} km. Ritmo 6:20-6:50min/km. FC 130-150 ppm. (Sustituye sesión de calidad por indicación del usuario.)"
+                s["intensidad"] = "Baja"
+                s["duracion_min"] = round(km_sustituido * 6.5)
+
     # ── 10. Validar distribución 80/20 Z1+Z2 ──
     distribucion_msg = None
     if _REGLAS_DISPONIBLES:
@@ -638,17 +656,18 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         except Exception:
             pass
 
-    ahora = datetime.now().isoformat()
-    for s in sesiones_plan:
-        conn.execute(
-            """INSERT INTO plan_entrenamiento
-               (usuario_id, semana_inicio, fecha, tipo, sesion, detalles, duracion_min,
-                intensidad, km_planificados, creado_en)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (usuario_id, fecha_inicio_str, s["fecha"], s["tipo"], s["sesion"],
-             s["detalles"], s["duracion_min"], s["intensidad"], s["km_planificados"], ahora),
-        )
-    conn.commit()
+    if not body.dry_run:
+        ahora = datetime.now().isoformat()
+        for s in sesiones_plan:
+            conn.execute(
+                """INSERT INTO plan_entrenamiento
+                   (usuario_id, semana_inicio, fecha, tipo, sesion, detalles, duracion_min,
+                    intensidad, km_planificados, creado_en)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (usuario_id, fecha_inicio_str, s["fecha"], s["tipo"], s["sesion"],
+                 s["detalles"], s["duracion_min"], s["intensidad"], s["km_planificados"], ahora),
+            )
+        conn.commit()
 
     # ── 11. Construir coach_tip ──
     conn.close()
@@ -681,6 +700,7 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
 
     return {
         "ok": True,
+        "dry_run": body.dry_run,
         "semana_inicio": fecha_inicio_str,
         "km_total": km_total,
         "tipo_semana": tipo_semana,
@@ -701,6 +721,43 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
             for s in sesiones_plan
         ],
     }
+
+
+@router.post("/{usuario_id}/aplicar-semana")
+def aplicar_semana(usuario_id: int, body: AplicarSemanaRequest):
+    """Aplica una lista de sesiones de Carrera (previsualizadas y opcionalmente editadas
+    por el usuario tras /generar-semana con dry_run=true), sustituyendo únicamente las
+    sesiones de tipo Carrera de esa semana. Las sesiones de Fuerza no se tocan."""
+    try:
+        fecha_inicio = datetime.strptime(body.fecha_inicio, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Formato fecha inválido (YYYY-MM-DD)")
+    fecha_inicio_str = fecha_inicio.strftime("%Y-%m-%d")
+    fecha_fin = (fecha_inicio + timedelta(days=6)).strftime("%Y-%m-%d")
+
+    sesiones_carrera = [s for s in body.sesiones if (s.get("tipo") or "Carrera") == "Carrera"]
+    if not sesiones_carrera:
+        raise HTTPException(status_code=400, detail="No hay sesiones de Carrera para aplicar")
+
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM plan_entrenamiento WHERE usuario_id = ? AND fecha >= ? AND fecha <= ? AND tipo = 'Carrera'",
+        (usuario_id, fecha_inicio_str, fecha_fin),
+    )
+    ahora = datetime.now().isoformat()
+    for s in sesiones_carrera:
+        conn.execute(
+            """INSERT INTO plan_entrenamiento
+               (usuario_id, semana_inicio, fecha, tipo, sesion, detalles, duracion_min,
+                intensidad, km_planificados, creado_en)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (usuario_id, fecha_inicio_str, s.get("fecha"), "Carrera", s.get("sesion"),
+             s.get("detalles"), s.get("duracion_min"), s.get("intensidad"),
+             s.get("km_planificados"), ahora),
+        )
+    conn.commit()
+    conn.close()
+    return {"ok": True, "sesiones_aplicadas": len(sesiones_carrera)}
 
 
 @router.post("/{usuario_id}/regenerar-total")
