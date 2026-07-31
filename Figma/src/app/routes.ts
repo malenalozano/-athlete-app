@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, redirect } from "react-router";
 import { Home } from "./pages/Home";
 import { Profile } from "./pages/Profile";
 import { PersonalTrainer } from "./pages/PersonalTrainer";
@@ -11,6 +11,7 @@ import { Ejercicios } from "./pages/Ejercicios";
 export const router = createBrowserRouter([
   {
     path: "/",
+    loader: () => redirect("/plan-semanal"),
     Component: Home,
   },
   {

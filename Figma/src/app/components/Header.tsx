@@ -43,7 +43,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   {
-    path: "/",
+    path: "/plan-semanal",
     label: "Inicio",
     icon: Home,
     color: "text-[#C9FF00]",
@@ -109,7 +109,6 @@ const NAV_ITEMS: NavItem[] = [
 // ── Color dot for section indicator ──────────────────────────────────────────
 
 const DOT_COLORS: Record<string, string> = {
-  "/": "bg-[#C9FF00]",
   "/plan-semanal": "bg-cyan-400",
   "/diario": "bg-purple-400",
   "/calendario": "bg-orange-400",
@@ -141,7 +140,6 @@ export function Header() {
   };
 
   const activeNav = NAV_ITEMS.find((item) => {
-    if (item.path === "/") return location.pathname === "/";
     // Comprobar si algún subtab con overridePath coincide con la ruta actual
     if (item.subTabs?.some((t) => t.overridePath && location.pathname === t.overridePath)) return true;
     return location.pathname.startsWith(item.path);
@@ -174,7 +172,6 @@ export function Header() {
   };
 
   const isActive = (path: string) => {
-    if (path === "/") return location.pathname === "/";
     return location.pathname.startsWith(path);
   };
 
@@ -195,7 +192,7 @@ export function Header() {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-14 md:h-16 gap-2 md:gap-4">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-3 shrink-0 group">
+            <Link to="/plan-semanal" className="flex items-center gap-3 shrink-0 group">
               <div
                 className="relative flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden"
                 style={{

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useLocation } from "react-router";
 import { Header } from "../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -73,11 +73,13 @@ interface Session {
   kmDone?: number;
   kmPlanned?: number;
   garminKm?: number;       // km reales de Garmin si hay match
+  isExtra?: boolean;       // actividad Garmin sin sesión planificada (no persiste, no editable)
 }
 
 interface DayPlan {
   dayKey: string;
   date: string;
+  dateKey: string;         // fecha ISO yyyy-mm-dd
   isToday?: boolean;
   sessions: Session[];
 }
@@ -122,6 +124,66 @@ const STRENGTH_PLANS: Record<string, ExerciseLog[]> = {
 
 const DAY_KEYS = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
 const MONTH_NAMES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const MONTH_NAMES_LONG = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const MONTH_GRID_DAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+function formatDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function getMonday(date: Date): Date {
+  const monday = new Date(date);
+  const day = monday.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  monday.setDate(monday.getDate() + diff);
+  return monday;
+}
+
+function getSunday(date: Date): Date {
+  const sunday = new Date(date);
+  const day = sunday.getDay();
+  const diff = day === 0 ? 0 : 7 - day;
+  sunday.setDate(sunday.getDate() + diff);
+  return sunday;
+}
+
+function formatMonthLabel(date: Date): string {
+  return `${MONTH_NAMES_LONG[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function formatKmValue(km?: number | null): string {
+  if (km === null || km === undefined) return "";
+  return `${km % 1 === 0 ? km.toFixed(0) : km.toFixed(1)} km`;
+}
+
+interface MonthSessionItem {
+  id: string;
+  type: "running" | "strength";
+  label: string;
+  sessionName: string;
+  details: string;
+  km: string;
+  group: GrupoFuerza | null;
+}
+
+interface MonthDayCell {
+  dateKey: string;
+  dayNumber: number;
+  weekdayIndex: number;
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  sessions: MonthSessionItem[];
+}
 
 function getWeekStart(offset = 0): string {
   const d = new Date();
@@ -131,6 +193,21 @@ function getWeekStart(offset = 0): string {
   return d.toISOString().slice(0, 10);
 }
 
+const TIPO_MAP: Record<string, "running" | "strength"> = {
+  Carrera: "running", carrera: "running", running: "running",
+  Fuerza: "strength", fuerza: "strength", strength: "strength",
+};
+
+const RUNNING_TIPOS = new Set([
+  "running", "trail_running", "correr", "carrera", "trail", "run",
+  "treadmill_running", "indoor_running",
+]);
+const STRENGTH_TIPOS = new Set([
+  "strength_training", "fitness_equipment", "gym", "fuerza", "strength",
+  "indoor_cycling", "yoga", "pilates",
+]);
+
+// Construye los días base a partir del plan — SIN matching de Garmin (eso lo hace applyGarminOverlay)
 function apiPlanToDayPlans(plan: PlanSemana): DayPlan[] {
   const days: DayPlan[] = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(plan.semana_inicio);
@@ -140,34 +217,11 @@ function apiPlanToDayPlans(plan: PlanSemana): DayPlan[] {
     return {
       dayKey: DAY_KEYS[i],
       date: `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`,
+      dateKey: dateStr,
       isToday: dateStr === todayStr,
       sessions: [],
     };
   });
-
-  const TIPO_MAP: Record<string, "running" | "strength"> = {
-    Carrera: "running", carrera: "running", running: "running",
-    Fuerza: "strength", fuerza: "strength", strength: "strength",
-  };
-
-  const RUNNING_TIPOS = new Set([
-    "running", "trail_running", "correr", "carrera", "trail", "run",
-    "treadmill_running", "indoor_running",
-  ]);
-  const STRENGTH_TIPOS = new Set([
-    "strength_training", "fitness_equipment", "gym", "fuerza", "strength",
-    "indoor_cycling", "yoga", "pilates",
-  ]);
-
-  // Agrupar actividades Garmin por fecha
-  const actByDate = new Map<string, typeof plan.actividades_garmin>();
-  (plan.actividades_garmin ?? []).forEach((a) => {
-    const arr = actByDate.get(a.fecha) ?? [];
-    arr.push(a);
-    actByDate.set(a.fecha, arr);
-  });
-
-  const todayStr = new Date().toISOString().slice(0, 10);
 
   plan.sesiones.forEach((s) => {
     const mappedType = TIPO_MAP[s.tipo];
@@ -177,45 +231,6 @@ function apiPlanToDayPlans(plan: PlanSemana): DayPlan[] {
       Math.max(0, Math.round((new Date(s.fecha).getTime() - new Date(plan.semana_inicio).getTime()) / 86400000))
     );
 
-    const isPast = s.fecha < todayStr;
-    const actsDia = actByDate.get(s.fecha) ?? [];
-    let autoCompleted = false;
-    let notDone = false;
-    let garminKm: number | undefined;
-
-    if (isPast && !Boolean(s.completado)) {
-      if (mappedType === "running") {
-        const runActs = actsDia.filter((a) =>
-          RUNNING_TIPOS.has((a.tipo_deporte ?? "").toLowerCase())
-        );
-        if (runActs.length > 0) {
-          autoCompleted = true;
-          // Buscar la actividad con km más cercanos al plan
-          const bestMatch = runActs.reduce((best, a) => {
-            if (!best) return a;
-            const kmA = (a.distancia_m ?? 0) / 1000;
-            const kmB = (best.distancia_m ?? 0) / 1000;
-            const planned = s.km_planificados ?? 0;
-            return Math.abs(kmA - planned) < Math.abs(kmB - planned) ? a : best;
-          }, runActs[0]);
-          garminKm = bestMatch ? Math.round((bestMatch.distancia_m ?? 0) / 100) / 10 : undefined;
-        } else if (actsDia.length === 0) {
-          notDone = true; // día sin ninguna actividad
-        } else {
-          notDone = true; // actividades pero ninguna de carrera
-        }
-      } else if (mappedType === "strength") {
-        const strActs = actsDia.filter((a) =>
-          STRENGTH_TIPOS.has((a.tipo_deporte ?? "").toLowerCase())
-        );
-        if (strActs.length > 0) {
-          autoCompleted = true;
-        } else {
-          notDone = true;
-        }
-      }
-    }
-
     days[dayIdx].sessions.push({
       id: String(s.id),
       activity: s.sesion,
@@ -224,15 +239,133 @@ function apiPlanToDayPlans(plan: PlanSemana): DayPlan[] {
       zone: s.intensidad ?? undefined,
       notes: s.detalles ?? undefined,
       completed: Boolean(s.completado),
-      autoCompleted,
-      notDone,
       kmDone: s.km_realizados ?? undefined,
       kmPlanned: s.km_planificados ?? undefined,
-      garminKm,
     });
   });
 
   return days;
+}
+
+// Superpone el estado de Garmin sobre los días base: marca sesiones planificadas
+// como auto-completadas cuando hay actividad Garmin del mismo tipo ese día, y añade
+// tarjetas "extra" (verdes, bloqueadas) para actividades Garmin que no encajan con
+// ninguna sesión planificada. Se recalcula en cada render — así al mover una sesión
+// de día se recompone el match automáticamente (se desmarca si el día nuevo no tiene
+// actividad Garmin correspondiente, o consume la actividad "extra" si sí la hay).
+function applyGarminOverlay(days: DayPlan[], actividades: ActividadGarmin[]): DayPlan[] {
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const actByDate = new Map<string, ActividadGarmin[]>();
+  actividades.forEach((a) => {
+    const arr = actByDate.get(a.fecha) ?? [];
+    arr.push(a);
+    actByDate.set(a.fecha, arr);
+  });
+
+  return days.map((day) => {
+    const actsDia = actByDate.get(day.dateKey) ?? [];
+    const isPastOrToday = day.dateKey <= todayStr;
+    const consumed = new Set<ActividadGarmin>();
+
+    const sessions: Session[] = day.sessions.map((s) => {
+      if (!isPastOrToday || s.completed) return { ...s };
+
+      if (s.type === "running") {
+        const runActs = actsDia.filter((a) => !consumed.has(a) && RUNNING_TIPOS.has((a.tipo_deporte ?? "").toLowerCase()));
+        if (runActs.length > 0) {
+          const planned = s.kmPlanned ?? 0;
+          const bestMatch = runActs.reduce((best, a) => {
+            const kmA = (a.distancia_m ?? 0) / 1000;
+            const kmB = (best.distancia_m ?? 0) / 1000;
+            return Math.abs(kmA - planned) < Math.abs(kmB - planned) ? a : best;
+          }, runActs[0]);
+          consumed.add(bestMatch);
+          return { ...s, autoCompleted: true, garminKm: Math.round((bestMatch.distancia_m ?? 0) / 100) / 10 };
+        }
+        return { ...s, notDone: true };
+      }
+
+      if (s.type === "strength") {
+        const strActs = actsDia.filter((a) => !consumed.has(a) && STRENGTH_TIPOS.has((a.tipo_deporte ?? "").toLowerCase()));
+        if (strActs.length > 0) {
+          consumed.add(strActs[0]);
+          return { ...s, autoCompleted: true };
+        }
+        return { ...s, notDone: true };
+      }
+
+      return { ...s };
+    });
+
+    // Actividades Garmin del día que no coincidieron con ninguna sesión planificada → tarjeta extra
+    actsDia.forEach((a, idx) => {
+      if (consumed.has(a)) return;
+      const tipo = (a.tipo_deporte ?? "").toLowerCase();
+      const isRunning = RUNNING_TIPOS.has(tipo);
+      const isStrength = STRENGTH_TIPOS.has(tipo);
+      if (!isRunning && !isStrength) return;
+
+      const km = isRunning ? Math.round((a.distancia_m ?? 0) / 100) / 10 : undefined;
+      sessions.push({
+        id: `extra-${a.id ?? `${day.dateKey}-${idx}`}`,
+        activity: a.tipo_deporte || (isRunning ? "Carrera" : "Fuerza"),
+        type: isRunning ? "running" : "strength",
+        duration: a.duracion_fmt ?? "",
+        completed: true,
+        autoCompleted: true,
+        isExtra: true,
+        kmDone: km,
+        garminKm: km,
+      });
+    });
+
+    return { ...day, sessions };
+  });
+}
+
+function sessionToMonthItem(session: SesionPlan): MonthSessionItem | null {
+  const lowerType = session.tipo.toLowerCase();
+  const isRunning = lowerType.includes("carr") || lowerType.includes("run");
+  const isStrength = lowerType.includes("fuerza") || lowerType.includes("strength");
+
+  if (!isRunning && !isStrength) return null;
+
+  const group = isStrength ? detectarGrupoFuerza(session.sesion) : null;
+  const kmValue = formatKmValue(session.km_planificados ?? session.km_realizados ?? null);
+
+  return {
+    id: String(session.id),
+    type: isRunning ? "running" : "strength",
+    label: isRunning ? "Carrera" : `Fuerza${group ? ` · ${group}` : ""}`,
+    sessionName: session.sesion,
+    details: session.detalles ?? "",
+    km: kmValue,
+    group,
+  };
+}
+
+function buildMonthCells(monthAnchor: Date, sessionsByDate: Map<string, MonthSessionItem[]>): MonthDayCell[] {
+  const monthStart = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
+  const monthEnd = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 0);
+  const gridStart = getMonday(monthStart);
+  const gridEnd = getSunday(monthEnd);
+  const todayKey = formatDateKey(new Date());
+
+  const cells: MonthDayCell[] = [];
+  for (let cursor = new Date(gridStart); cursor <= gridEnd; cursor = addDays(cursor, 1)) {
+    const dateKey = formatDateKey(cursor);
+    cells.push({
+      dateKey,
+      dayNumber: cursor.getDate(),
+      weekdayIndex: (cursor.getDay() + 6) % 7,
+      isCurrentMonth: cursor.getMonth() === monthAnchor.getMonth(),
+      isToday: dateKey === todayKey,
+      sessions: sessionsByDate.get(dateKey) ?? [],
+    });
+  }
+
+  return cells;
 }
 
 // ── Colors ─────────────────────────────────────────────────────────────────────
@@ -282,10 +415,14 @@ function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onTogg
   const colors = TYPE_COLORS[session.type] ?? TYPE_COLORS.running;
 
   const isDone = session.completed || session.autoCompleted;
+  // Bloqueada = sincronizada de Garmin (auto-detectada o extra) — no se puede desmarcar ni arrastrar
+  const isLocked = Boolean(session.autoCompleted);
+  const isDraggable = !isLocked && !session.isExtra;
 
   const [{ isDragging }, drag, dragPreview] = useDrag({
     type: DRAG_SESSION,
     item: { dayIdx, sessionIdx },
+    canDrag: isDraggable,
     collect: (m) => ({ isDragging: m.isDragging() }),
   });
 
@@ -306,6 +443,8 @@ function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onTogg
   // Estilos según estado
   const cardBg = session.notDone
     ? "rgba(14,17,23,0.5)"
+    : session.autoCompleted
+    ? "rgba(34,197,94,0.14)"
     : isDone
     ? "rgba(14,17,23,0.6)"
     : isSelected
@@ -314,6 +453,8 @@ function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onTogg
 
   const borderColor = session.notDone
     ? "rgba(48,54,61,0.3)"
+    : session.autoCompleted
+    ? "rgba(34,197,94,0.5)"
     : isDone
     ? "rgba(48,54,61,0.4)"
     : isSelected
@@ -323,11 +464,13 @@ function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onTogg
   const leftBorderColor = session.notDone
     ? "rgba(48,54,61,0.3)"
     : isDone
-    ? "rgba(34,197,94,0.5)"
+    ? "rgba(34,197,94,0.7)"
     : colors.borderColor;
 
   const titleClass = session.notDone
     ? "text-[#4B5563] line-through"
+    : session.autoCompleted
+    ? "text-white"
     : isDone
     ? "text-[#8B949E] line-through"
     : colors.textColor;
@@ -341,32 +484,36 @@ function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onTogg
         border: `1px solid ${borderColor}`,
         borderLeftWidth: "3px",
         borderLeftColor: leftBorderColor,
-        opacity: isDragging ? 0.3 : session.notDone ? 0.55 : isDone ? 0.75 : 1,
+        opacity: isDragging ? 0.3 : session.notDone ? 0.55 : isDone && !session.autoCompleted ? 0.75 : 1,
         boxShadow: isOver
           ? `0 0 0 2px ${colors.borderColor}80`
+          : session.autoCompleted
+          ? "0 0 0 1px rgba(34,197,94,0.3)"
           : isSelected && !session.notDone && !isDone
           ? `0 4px 12px ${colors.borderColor}30, 0 0 0 1px ${colors.borderColor}40`
           : "0 2px 4px rgba(0,0,0,0.1)",
       }}
       onClick={() => onSelect(dayIdx, sessionIdx)}
     >
-      {/* Grip */}
-      <div
-        ref={gripRef}
-        onClick={(e) => e.stopPropagation()}
-        className="absolute top-1.5 right-1.5 opacity-70 md:opacity-0 md:group-hover:opacity-60 transition-opacity cursor-grab z-10 p-1.5"
-        style={{ touchAction: "none" }}
-      >
-        <GripVertical className="h-3 w-3 text-[#8B949E]" />
-      </div>
+      {/* Grip — oculto en tarjetas bloqueadas por Garmin */}
+      {isDraggable && (
+        <div
+          ref={gripRef}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-1.5 right-1.5 opacity-70 md:opacity-0 md:group-hover:opacity-60 transition-opacity cursor-grab z-10 p-1.5"
+          style={{ touchAction: "none" }}
+        >
+          <GripVertical className="h-3 w-3 text-[#8B949E]" />
+        </div>
+      )}
 
       <div className="p-3">
         <div className="flex items-start gap-2 mb-1.5">
           {/* Estado visual */}
           <button
-            onClick={(e) => { e.stopPropagation(); onToggleComplete(dayIdx, sessionIdx); }}
-            className="shrink-0 mt-0.5 transition-colors"
-            title={session.notDone ? "No realizado" : isDone ? "Realizado" : "Marcar completado"}
+            onClick={(e) => { e.stopPropagation(); if (!isLocked) onToggleComplete(dayIdx, sessionIdx); }}
+            className={`shrink-0 mt-0.5 transition-colors ${isLocked ? "cursor-default" : ""}`}
+            title={session.notDone ? "No realizado" : isLocked ? "Sincronizado con Garmin — no se puede desmarcar" : isDone ? "Realizado" : "Marcar completado"}
           >
             {session.notDone ? (
               <div className="h-4 w-4 rounded-full border-2 border-[#4B5563] flex items-center justify-center">
@@ -391,14 +538,16 @@ function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onTogg
           <div
             className="mt-1.5 rounded-lg px-2 py-1 flex items-center justify-between"
             style={{
-              background: session.notDone ? "rgba(48,54,61,0.2)" : "rgba(0,212,255,0.08)",
-              border: `1px solid ${session.notDone ? "rgba(48,54,61,0.3)" : "rgba(0,212,255,0.2)"}`,
+              background: session.notDone ? "rgba(48,54,61,0.2)" : session.autoCompleted ? "rgba(34,197,94,0.12)" : "rgba(0,212,255,0.08)",
+              border: `1px solid ${session.notDone ? "rgba(48,54,61,0.3)" : session.autoCompleted ? "rgba(34,197,94,0.3)" : "rgba(0,212,255,0.2)"}`,
             }}
           >
             <span className="text-[10px] text-[#8B949E]">km</span>
-            <span className={`text-[10px] font-bold ${session.notDone ? "text-[#4B5563]" : "text-cyan-400"}`}>
+            <span className={`text-[10px] font-bold ${session.notDone ? "text-[#4B5563]" : session.autoCompleted ? "text-green-400" : "text-cyan-400"}`}>
               {session.notDone
                 ? `— / ${session.kmPlanned ?? "?"}`
+                : session.isExtra
+                ? `${session.garminKm ?? session.kmDone ?? 0} km`
                 : isDone && session.garminKm !== undefined
                 ? `${session.garminKm} / ${session.kmPlanned ?? "?"}`
                 : isDone && session.kmDone !== undefined
@@ -419,9 +568,11 @@ function SessionCard({ session, dayIdx, sessionIdx, isSelected, onSelect, onTogg
         {session.notDone && (
           <span className="text-[9px] text-[#4B5563] font-medium">No realizado</span>
         )}
-        {/* Etiqueta "Garmin ✓" para auto-detectados */}
-        {session.autoCompleted && !session.completed && (
-          <span className="text-[9px] text-green-500/70 font-medium">Garmin ✓</span>
+        {/* Etiqueta "Garmin ✓" para auto-detectados/extra */}
+        {session.autoCompleted && (
+          <span className="text-[9px] text-green-400 font-bold">
+            {session.isExtra ? "Extra · Garmin ✓" : "Garmin ✓"}
+          </span>
         )}
       </div>
     </div>
@@ -476,8 +627,8 @@ function DayColumn({ day, dayIdx, selectedKey, onSelectSession, onToggleComplete
   dropSessionZone(dropZoneRef);
 
   const totalPlanned = day.sessions.filter(s => s.type === "running" && s.kmPlanned).reduce((a, s) => a + (s.kmPlanned ?? 0), 0);
-  const totalDone = day.sessions.filter(s => s.type === "running" && s.completed && s.kmDone).reduce((a, s) => a + (s.kmDone ?? 0), 0);
-  const completedCount = day.sessions.filter(s => s.completed).length;
+  const totalDone = day.sessions.filter(s => s.type === "running" && (s.completed || s.autoCompleted)).reduce((a, s) => a + (s.garminKm ?? s.kmDone ?? 0), 0);
+  const completedCount = day.sessions.filter(s => s.completed || s.autoCompleted).length;
 
   return (
     <div
@@ -1408,6 +1559,7 @@ function buildEmptyWeek(): DayPlan[] {
     return {
       dayKey: DAY_KEYS[i],
       date: `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`,
+      dateKey: d.toISOString().slice(0, 10),
       isToday: d.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10),
       sessions: [],
     };
@@ -1734,13 +1886,22 @@ function GenerarPlanInner() {
   const weekStartRef = useRef<string>("");
   const [coachTip, setCoachTip] = useState<string>("");
   const [loadingRegen, setLoadingRegen] = useState<"semana" | "total" | null>(null);
+  const [monthCells, setMonthCells] = useState<MonthDayCell[]>([]);
+  const [monthLabel, setMonthLabel] = useState<string>("");
+  const [monthLoading, setMonthLoading] = useState(false);
+  const [monthError, setMonthError] = useState<string | null>(null);
   const [editModal, setEditModal] = useState<{ dayIdx: number; sessionIdx: number } | null>(null);
   const [addModal, setAddModal] = useState<{ dayIdx: number } | null>(null);
   const [kmEditValue, setKmEditValue] = useState<string>("");
   const [kmEditing, setKmEditing] = useState(false);
   const [regenMsg, setRegenMsg] = useState<string | null>(null);
 
-  const loadPlan = (weekOffset: number) => {
+  const displayDays = useMemo(
+    () => applyGarminOverlay(days, planData?.actividades_garmin ?? []),
+    [days, planData]
+  );
+
+  const loadPlan = useCallback((weekOffset: number) => {
     if (!userId) return;
     const semanaInicio = getWeekStart(weekOffset);
     weekStartRef.current = semanaInicio;
@@ -1753,21 +1914,74 @@ function GenerarPlanInner() {
       .catch(() => {
         setDays(buildEmptyWeek());
       });
-  };
+  }, [userId]);
+
+  const loadMonthCalendar = useCallback((weekOffset: number) => {
+    if (!userId) return;
+
+    const anchorWeekStart = new Date(`${getWeekStart(weekOffset)}T12:00:00`);
+    const monthAnchor = new Date(anchorWeekStart.getFullYear(), anchorWeekStart.getMonth(), 1);
+    const monthStart = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
+    const monthEnd = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 0);
+    const gridStart = getMonday(monthStart);
+    const gridEnd = getSunday(monthEnd);
+    const weekStarts: string[] = [];
+
+    for (let cursor = new Date(gridStart); cursor <= gridEnd; cursor = addDays(cursor, 7)) {
+      weekStarts.push(formatDateKey(cursor));
+    }
+
+    let cancelled = false;
+    setMonthLoading(true);
+    setMonthError(null);
+
+    Promise.all(weekStarts.map((weekStart) => getPlanSemana(userId, weekStart)))
+      .then((plans) => {
+        if (cancelled) return;
+        const sessionsByDate = new Map<string, MonthSessionItem[]>();
+
+        plans.forEach((plan) => {
+          plan.sesiones.forEach((session) => {
+            const item = sessionToMonthItem(session);
+            if (!item) return;
+            const list = sessionsByDate.get(session.fecha) ?? [];
+            list.push(item);
+            sessionsByDate.set(session.fecha, list);
+          });
+        });
+
+        setMonthLabel(formatMonthLabel(monthAnchor));
+        setMonthCells(buildMonthCells(monthAnchor, sessionsByDate));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMonthCells([]);
+        setMonthError("No se ha podido cargar el calendario mensual.");
+      })
+      .finally(() => {
+        if (!cancelled) setMonthLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   useEffect(() => {
     loadPlan(currentWeek);
-  }, [userId, currentWeek]);
+    const cleanup = loadMonthCalendar(currentWeek);
+    return cleanup;
+  }, [currentWeek, loadPlan, loadMonthCalendar]);
 
-  // Computed KPIs
-  const kmPlanned = days.flatMap((d) => d.sessions).filter((s) => s.type === "running" && s.kmPlanned).reduce((a, s) => a + (s.kmPlanned ?? 0), 0);
-  const kmDone = days.flatMap((d) => d.sessions).filter((s) => s.type === "running" && (s.completed || s.autoCompleted)).reduce((a, s) => {
+  // Computed KPIs (sobre displayDays, incluye tarjetas extra de Garmin)
+  const kmPlanned = displayDays.flatMap((d) => d.sessions).filter((s) => s.type === "running" && s.kmPlanned).reduce((a, s) => a + (s.kmPlanned ?? 0), 0);
+  const kmDone = displayDays.flatMap((d) => d.sessions).filter((s) => s.type === "running" && (s.completed || s.autoCompleted)).reduce((a, s) => {
     // Usar km reales: garminKm (auto-detect), kmDone (manual), o kmPlanned como fallback
     const km = s.garminKm ?? s.kmDone ?? s.kmPlanned ?? 0;
     return a + km;
   }, 0);
-  const totalSessions = days.flatMap((d) => d.sessions).length;
-  const fuerzaSessions = days.flatMap((d) => d.sessions).filter((s) => s.type === "strength").length;
+  const totalSessions = displayDays.flatMap((d) => d.sessions).length;
+  const fuerzaSessions = displayDays.flatMap((d) => d.sessions).filter((s) => s.type === "strength").length;
 
   // Handlers
   const handleRegenerarSemana = async () => {
@@ -1779,6 +1993,7 @@ function GenerarPlanInner() {
       const result = await generarPlanSemana(userId, semanaInicio);
       setRegenMsg(`Semana regenerada: ${result.km_total} km · ${result.tipo_semana}`);
       loadPlan(currentWeek);
+      loadMonthCalendar(currentWeek);
     } catch (e: any) {
       setRegenMsg(`Error: ${e.message}`);
     } finally {
@@ -1794,6 +2009,7 @@ function GenerarPlanInner() {
       const result = await regenerarPlanTotal(userId, 4);
       setRegenMsg(`Plan total regenerado: ${result.semanas_regeneradas} semanas · base ${result.km_base_real} km/sem`);
       loadPlan(currentWeek);
+      loadMonthCalendar(currentWeek);
     } catch (e: any) {
       setRegenMsg(`Error: ${e.message}`);
     } finally {
@@ -1813,6 +2029,7 @@ function GenerarPlanInner() {
       const result = await generarPlanSemana(userId, semanaInicio, km);
       setRegenMsg(`Semana recalculada a ${km} km · distribución ajustada`);
       loadPlan(currentWeek);
+      loadMonthCalendar(currentWeek);
     } catch (e: any) {
       setRegenMsg(`Error: ${e.message}`);
     } finally {
@@ -1831,6 +2048,7 @@ function GenerarPlanInner() {
         }
       )
     );
+    loadMonthCalendar(currentWeek);
   };
 
   const handleDeleteSession = (dayIdx: number, sessionIdx: number) => {
@@ -1839,6 +2057,7 @@ function GenerarPlanInner() {
         di !== dayIdx ? d : { ...d, sessions: d.sessions.filter((_, si) => si !== sessionIdx) }
       )
     );
+    loadMonthCalendar(currentWeek);
   };
 
   const handleAddSession = (dayIdx: number, session: Session) => {
@@ -1847,6 +2066,7 @@ function GenerarPlanInner() {
         di !== dayIdx ? d : { ...d, sessions: [...d.sessions, session] }
       )
     );
+    loadMonthCalendar(currentWeek);
   };
 
   const moveDay = useCallback((from: number, to: number) => {
@@ -1899,7 +2119,8 @@ function GenerarPlanInner() {
 
       return updated;
     });
-  }, []);
+    loadMonthCalendar(currentWeek);
+  }, [currentWeek, loadMonthCalendar]);
 
   const toggleComplete = useCallback((dayIdx: number, sessionIdx: number) => {
     setDays((prev) => {
@@ -1919,17 +2140,19 @@ function GenerarPlanInner() {
         };
       });
     });
-  }, []);
+    loadMonthCalendar(currentWeek);
+  }, [currentWeek, loadMonthCalendar]);
 
   const handleSelectSession = (dayIdx: number, sessionIdx: number) => {
+    if (displayDays[dayIdx]?.sessions[sessionIdx]?.isExtra) return; // tarjetas extra no son seleccionables/editables
     const key = `${dayIdx}-${sessionIdx}`;
     setSelectedKey((prev) => (prev === key ? null : key));
   };
 
   const selectedDayIdx = selectedKey ? parseInt(selectedKey.split("-")[0]) : null;
   const selectedSessionIdx = selectedKey ? parseInt(selectedKey.split("-")[1]) : null;
-  const selectedDay = selectedDayIdx !== null ? days[selectedDayIdx] : null;
-  const selectedSession = selectedDayIdx !== null && selectedSessionIdx !== null ? days[selectedDayIdx]?.sessions[selectedSessionIdx] : null;
+  const selectedDay = selectedDayIdx !== null ? displayDays[selectedDayIdx] : null;
+  const selectedSession = selectedDayIdx !== null && selectedSessionIdx !== null ? displayDays[selectedDayIdx]?.sessions[selectedSessionIdx] : null;
   const dayChoices = days.map((day, idx) => ({ idx, label: `${day.dayKey} · ${day.date}` }));
 
   const moveSelectedSessionByOffset = useCallback((offset: number) => {
@@ -2116,7 +2339,7 @@ function GenerarPlanInner() {
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
-          {days.map((day, dayIdx) => (
+          {displayDays.map((day, dayIdx) => (
             <div key={`${day.dayKey}-${day.date}`} className="flex flex-col gap-1">
               <DayColumn
                 day={day}
@@ -2139,6 +2362,135 @@ function GenerarPlanInner() {
             </div>
           ))}
         </div>
+
+        {/* Month Grid */}
+        <section className="mt-8">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between mb-4">
+            <div>
+              <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-cyan-400" />
+                Calendario Mensual
+              </h3>
+              <p className="text-[11px] text-[#8B949E] mt-1">
+                {monthLabel || "Mes actual"} · Todas las sesiones del plan visibles por día
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-[#8B949E]">
+              <span className="px-2 py-1 rounded-full" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {monthCells.reduce((acc, day) => acc + day.sessions.length, 0)} sesiones
+              </span>
+              <span className="px-2 py-1 rounded-full" style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.15)" }}>
+                {monthCells.filter((day) => day.isCurrentMonth).length} días del mes
+              </span>
+            </div>
+          </div>
+
+          <Card className="bg-[#161B22] border border-[#C9FF00]/20 rounded-2xl overflow-hidden">
+            <CardContent className="p-4 md:p-5">
+              {monthLoading ? (
+                <div className="py-12 text-center text-[#8B949E] text-sm">
+                  Cargando calendario mensual...
+                </div>
+              ) : monthError ? (
+                <div className="py-12 text-center text-[#8B949E] text-sm">
+                  {monthError}
+                </div>
+              ) : monthCells.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
+                  {MONTH_GRID_DAYS.map((label) => (
+                    <div
+                      key={label}
+                      className="hidden lg:block text-[10px] font-bold uppercase tracking-[0.2em] text-[#8B949E] px-2"
+                    >
+                      {label}
+                    </div>
+                  ))}
+                  {monthCells.map((cell) => (
+                    <div
+                      key={cell.dateKey}
+                      className="rounded-2xl p-3 flex flex-col gap-2"
+                      style={{
+                        minHeight: 180,
+                        background: cell.isToday
+                          ? "linear-gradient(180deg, rgba(0,212,255,0.12), rgba(22,27,34,0.95))"
+                          : cell.isCurrentMonth
+                          ? "rgba(255,255,255,0.03)"
+                          : "rgba(255,255,255,0.015)",
+                        border: cell.isToday
+                          ? "1px solid rgba(0,212,255,0.35)"
+                          : "1px solid rgba(255,255,255,0.06)",
+                        opacity: cell.isCurrentMonth ? 1 : 0.42,
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-[10px] font-semibold text-[#8B949E] uppercase leading-none">
+                            {MONTH_GRID_DAYS[cell.weekdayIndex]}
+                          </p>
+                          <p className="text-lg font-black text-white leading-none mt-1">
+                            {cell.dayNumber}
+                          </p>
+                        </div>
+                        {cell.isToday && (
+                          <span className="text-[9px] font-bold px-2 py-1 rounded-full bg-cyan-400/20 text-cyan-300 border border-cyan-400/30">
+                            HOY
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        {cell.sessions.length > 0 ? (
+                          cell.sessions.map((session) => {
+                            const isRunning = session.type === "running";
+                            return (
+                              <div
+                                key={`${cell.dateKey}-${session.id}`}
+                                className="rounded-xl p-2.5 border"
+                                style={{
+                                  background: isRunning ? "rgba(0,212,255,0.08)" : "rgba(168,85,247,0.08)",
+                                  borderColor: isRunning ? "rgba(0,212,255,0.18)" : "rgba(168,85,247,0.2)",
+                                }}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: isRunning ? "#00D4FF" : "#C084FC" }}>
+                                    {session.label}
+                                  </span>
+                                  {isRunning && session.km && (
+                                    <span className="text-[10px] font-bold text-cyan-300 shrink-0">
+                                      {session.km}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs font-semibold text-white mt-1 leading-snug break-words">
+                                  {session.sessionName}
+                                </p>
+                                <p className="text-[10px] text-[#8B949E] mt-1 leading-snug break-words">
+                                  {isRunning
+                                    ? session.details || "Sesión de carrera"
+                                    : session.group
+                                    ? `Grupo ${session.group}${session.details ? ` · ${session.details}` : ""}`
+                                    : session.details || "Sesión de fuerza"}
+                                </p>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-white/8 px-3 py-4 text-center text-[11px] text-[#8B949E]">
+                            Descanso
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-12 text-center text-[#8B949E] text-sm">
+                  No hay sesiones mensuales para mostrar.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
 
         {/* Detail panel below grid */}
         {selectedDay && selectedSession && selectedDayIdx !== null && selectedSessionIdx !== null && (
