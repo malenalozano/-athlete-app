@@ -296,6 +296,29 @@ function applyDeficitRedistribution(sessions: Session[], monday: Date): Session[
   return sessions.map(s => extraPorId.has(s.id) ? { ...s, extraKm: extraPorId.get(s.id) } : s);
 }
 
+/** Avisa si dos sesiones de calidad (o la TL y una de calidad) quedan demasiado
+ * juntas — 48h mínimo en general, 72h en Macrociclo 3 para la TL. Útil sobre todo
+ * si el usuario reordena sesiones a mano y rompe la separación del plan generado. */
+function checkSeparaciones(sessions: Session[], macrociclo: number): string[] {
+  const relevantes = sessions.filter(
+    s => s.origin === "plan" && s.type === "carrera" && (s.subtype === "CAL" || s.subtype === "TL")
+  );
+  const avisos: string[] = [];
+  for (let i = 0; i < relevantes.length; i++) {
+    for (let j = i + 1; j < relevantes.length; j++) {
+      const a = relevantes[i], b = relevantes[j];
+      const gapDias = Math.abs(a.dayIndex - b.dayIndex);
+      const implicaTL = a.subtype === "TL" || b.subtype === "TL";
+      const minDias = macrociclo === 3 && implicaTL ? 3 : 2;
+      if (gapDias < minDias) {
+        const [primero, segundo] = a.dayIndex <= b.dayIndex ? [a, b] : [b, a];
+        avisos.push(`${DAYS[primero.dayIndex]}-${DAYS[segundo.dayIndex]}: "${primero.title}" y "${segundo.title}" a solo ${gapDias * 24}h (mínimo ${minDias * 24}h)`);
+      }
+    }
+  }
+  return avisos;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BADGE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -902,6 +925,8 @@ function WeeklyView({
   const [isAdding, setIsAdding] = useState(false);
 
   const avisoDistribucion = weekMeta.distribucion && weekMeta.distribucion.includes("⚠️") ? weekMeta.distribucion : null;
+  const macrocicloNum = parseInt(weekMeta.macrocicloLabel.replace("M", ""), 10) || 1;
+  const avisosSeparacion = useMemo(() => checkSeparaciones(sessions, macrocicloNum), [sessions, macrocicloNum]);
 
   return (
     <div className="flex flex-col h-full">
@@ -944,6 +969,13 @@ function WeeklyView({
       {avisoDistribucion && (
         <div className="mx-4 mt-2 px-3 py-2 rounded-xl text-[10px] font-semibold" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid #f8717150", color: "#fca5a5" }}>
           {avisoDistribucion}
+        </div>
+      )}
+      {avisosSeparacion.length > 0 && (
+        <div className="mx-4 mt-2 px-3 py-2 rounded-xl space-y-1" style={{ background: "rgba(249,115,22,0.1)", border: "1px solid #f9731650" }}>
+          {avisosSeparacion.map((a, i) => (
+            <p key={i} className="text-[10px] font-semibold" style={{ color: "#fdba74" }}>⚠️ Poca separación: {a}</p>
+          ))}
         </div>
       )}
 
