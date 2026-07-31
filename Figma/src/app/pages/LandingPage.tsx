@@ -79,6 +79,9 @@ interface Session {
   title: string; duration: string; metric: string;
   notes: string; completed: boolean;
   origin: "plan" | "garmin"; // "garmin" = actividad real sin sesión planificada (no editable)
+  kmRealizados?: number; // km reales (Garmin) para mostrar "hechos/planeados"
+  kmPlanificados?: number;
+  garminBacked?: boolean; // completada porque hay actividad Garmin ese día — no se puede desmarcar
 }
 
 // ── Date / mapping helpers ──────────────────────────────────────────────────
@@ -145,6 +148,7 @@ function defaultTitleFor(type: "carrera" | "fuerza", subtype: Subtype): string {
 function toSession(s: SesionPlan, monday: Date): Session {
   const dayIndex = Math.min(6, Math.max(0, differenceInCalendarDays(parseISO(s.fecha), monday)));
   const type: "carrera" | "fuerza" = (s.tipo || "").toLowerCase() === "fuerza" ? "fuerza" : "carrera";
+  const kmRealizados = s.km_realizados ?? undefined;
   return {
     id: String(s.id),
     dayIndex,
@@ -152,17 +156,25 @@ function toSession(s: SesionPlan, monday: Date): Session {
     subtype: classifySubtype(s.tipo, s.sesion),
     title: s.sesion,
     duration: formatDuracion(s.duracion_min),
-    metric: s.km_planificados ? `${s.km_planificados} km` : "",
+    metric: s.completado && kmRealizados !== undefined && s.km_planificados
+      ? `${kmRealizados}/${s.km_planificados} km`
+      : s.km_planificados ? `${s.km_planificados} km` : "",
     notes: s.detalles ?? "",
     completed: !!s.completado,
     origin: "plan",
+    kmRealizados,
+    kmPlanificados: s.km_planificados ?? undefined,
   };
 }
 
-/** Actividades Garmin de la semana que no corresponden a ninguna sesión planificada
- * ese día (por tipo running/no-running) — se muestran igualmente como "hechas",
- * en el color EXTRA, para que nada de lo entrenado se pierda del calendario. */
-function buildExtraSessions(planSessions: Session[], actividades: ActividadGarmin[], monday: Date): Session[] {
+/** Combina las sesiones planificadas con las actividades Garmin de la semana:
+ * - Sesión planificada completada con actividad Garmin del mismo tipo ese día →
+ *   se marca `garminBacked` (tarjeta verde bloqueada, no se puede desmarcar).
+ * - Actividad Garmin sobrante sin sesión planificada que la consuma → tarjeta
+ *   "EXTRA" de solo lectura, para que nada de lo entrenado se pierda del calendario.
+ * Se recalcula en cada fetch, así que mover una sesión al día de una actividad
+ * suelta la "consume" automáticamente (la extra desaparece, la movida se marca). */
+function applyGarminMatching(planSessions: Session[], actividades: ActividadGarmin[], monday: Date): Session[] {
   const byDay = new Map<number, ActividadGarmin[]>();
   for (const a of actividades) {
     const dayIndex = differenceInCalendarDays(parseISO(a.fecha), monday);
@@ -172,14 +184,36 @@ function buildExtraSessions(planSessions: Session[], actividades: ActividadGarmi
     byDay.set(dayIndex, list);
   }
 
+  const updatedPlanSessions: Session[] = [];
   const extras: Session[] = [];
-  byDay.forEach((acts, dayIndex) => {
+
+  for (let dayIndex = 0; dayIndex <= 6; dayIndex++) {
+    const acts = byDay.get(dayIndex) ?? [];
     const daySessions = planSessions.filter(s => s.dayIndex === dayIndex);
-    const plannedCarrera = daySessions.filter(s => s.type === "carrera").length;
-    const plannedFuerza = daySessions.filter(s => s.type === "fuerza").length;
     const running = acts.filter(a => esActividadRunning(a.tipo_deporte));
     const noRunning = acts.filter(a => !esActividadRunning(a.tipo_deporte));
-    const leftover = [...running.slice(plannedCarrera), ...noRunning.slice(plannedFuerza)];
+
+    let runningUsed = 0;
+    let noRunningUsed = 0;
+    daySessions.forEach(s => {
+      if (s.type === "carrera" && s.completed && runningUsed < running.length) {
+        const a = running[runningUsed++];
+        const km = (a.distancia_m || 0) / 1000;
+        updatedPlanSessions.push({
+          ...s,
+          garminBacked: true,
+          kmRealizados: km > 0.1 ? Math.round(km * 10) / 10 : s.kmRealizados,
+          metric: s.kmPlanificados ? `${km > 0.1 ? Math.round(km * 10) / 10 : (s.kmRealizados ?? "?")}/${s.kmPlanificados} km` : s.metric,
+        });
+      } else if (s.type === "fuerza" && s.completed && noRunningUsed < noRunning.length) {
+        noRunningUsed++;
+        updatedPlanSessions.push({ ...s, garminBacked: true });
+      } else {
+        updatedPlanSessions.push(s);
+      }
+    });
+
+    const leftover = [...running.slice(runningUsed), ...noRunning.slice(noRunningUsed)];
     leftover.forEach((a, i) => {
       const km = (a.distancia_m || 0) / 1000;
       extras.push({
@@ -192,11 +226,13 @@ function buildExtraSessions(planSessions: Session[], actividades: ActividadGarmi
         metric: km > 0.1 ? `${km.toFixed(1)} km` : "",
         notes: "Actividad de Garmin no planificada.",
         completed: true,
+        garminBacked: true,
         origin: "garmin",
       });
     });
-  });
-  return extras;
+  }
+
+  return [...updatedPlanSessions, ...extras];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -219,11 +255,12 @@ function Badge({ sub, size = "sm" }: { sub: Subtype; size?: "sm" | "xs" }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPLETE BUTTON
 // ─────────────────────────────────────────────────────────────────────────────
-function CompleteBtn({ completed, onToggle }: { completed: boolean; onToggle: () => void }) {
+function CompleteBtn({ completed, locked, onToggle }: { completed: boolean; locked?: boolean; onToggle: () => void }) {
   return (
     <button
-      onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all"
+      onClick={(e) => { e.stopPropagation(); if (!locked) onToggle(); }}
+      className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${locked ? "cursor-default" : ""}`}
+      title={locked ? "Sincronizado con Garmin — no se puede desmarcar" : undefined}
       style={{
         background: completed ? "rgba(16,185,129,0.2)" : T.bgSurf,
         border: `1px solid ${completed ? "#10b98166" : "#334155"}`,
@@ -244,15 +281,16 @@ function CardCarrera({ session, isReorderMode, onToggle, onOpen, onReorderTap }:
   session: Session; isReorderMode: boolean;
   onToggle: () => void; onOpen: () => void; onReorderTap: () => void;
 }) {
+  const locked = !!session.garminBacked;
   return (
     <div
       onClick={() => isReorderMode ? onReorderTap() : onOpen()}
       className="p-3 rounded-xl cursor-pointer transition-all relative"
       style={{
-        background: session.completed ? "rgba(15,23,42,0.5)" : T.bgSurf,
-        border: `1px solid ${isReorderMode ? T.reorder + "80" : T.border}`,
-        opacity: session.completed ? 0.7 : 1,
-        boxShadow: isReorderMode ? `0 0 0 1px ${T.reorder}60` : "none",
+        background: locked ? "rgba(16,185,129,0.14)" : session.completed ? "rgba(15,23,42,0.5)" : T.bgSurf,
+        border: `1px solid ${isReorderMode ? T.reorder + "80" : locked ? "#10b98180" : T.border}`,
+        opacity: session.completed && !locked ? 0.7 : 1,
+        boxShadow: isReorderMode ? `0 0 0 1px ${T.reorder}60` : locked ? "0 0 0 1px rgba(16,185,129,0.25)" : "none",
       }}
     >
       {isReorderMode && (
@@ -266,7 +304,7 @@ function CardCarrera({ session, isReorderMode, onToggle, onOpen, onReorderTap }:
           <Badge sub={session.subtype} />
           <span className="text-xs font-bold line-clamp-1" style={{ color: T.text1 }}>{session.title}</span>
         </div>
-        {!isReorderMode && <CompleteBtn completed={session.completed} onToggle={onToggle} />}
+        {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
       </div>
       {/* Bottom row */}
       <div className="mt-2 flex items-center justify-between text-[11px]" style={{ color: T.text2 }}>
@@ -275,7 +313,7 @@ function CardCarrera({ session, isReorderMode, onToggle, onOpen, onReorderTap }:
           <span>{session.duration}</span>
         </div>
         {session.metric && (
-          <span className="font-semibold" style={{ color: "#f1f5f9" }}>{session.metric}</span>
+          <span className="font-semibold" style={{ color: locked ? "#34d399" : "#f1f5f9" }}>{session.metric}</span>
         )}
       </div>
     </div>
@@ -289,15 +327,17 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
   session: Session; isReorderMode: boolean;
   onToggle: () => void; onReorderTap: () => void;
 }) {
+  const locked = !!session.garminBacked;
   return (
     <div
-      onClick={() => isReorderMode ? onReorderTap() : onToggle()}
-      className="p-3 rounded-xl cursor-pointer transition-all relative"
+      onClick={() => isReorderMode ? onReorderTap() : locked ? undefined : onToggle()}
+      className="p-3 rounded-xl transition-all relative"
       style={{
-        background: session.completed ? "rgba(15,23,42,0.5)" : T.bgSurf,
-        border: `1px solid ${isReorderMode ? T.reorder + "80" : T.border}`,
-        opacity: session.completed ? 0.7 : 1,
-        boxShadow: isReorderMode ? `0 0 0 1px ${T.reorder}60` : "none",
+        background: locked ? "rgba(16,185,129,0.14)" : session.completed ? "rgba(15,23,42,0.5)" : T.bgSurf,
+        border: `1px solid ${isReorderMode ? T.reorder + "80" : locked ? "#10b98180" : T.border}`,
+        opacity: session.completed && !locked ? 0.7 : 1,
+        boxShadow: isReorderMode ? `0 0 0 1px ${T.reorder}60` : locked ? "0 0 0 1px rgba(16,185,129,0.25)" : "none",
+        cursor: isReorderMode || !locked ? "pointer" : "default",
       }}
     >
       {isReorderMode && (
@@ -311,12 +351,14 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
           <Badge sub={session.subtype} />
           <span className="text-xs font-bold" style={{ color: T.text1 }}>{session.title}</span>
         </div>
-        {!isReorderMode && <CompleteBtn completed={session.completed} onToggle={onToggle} />}
+        {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
       </div>
       {/* Action hint */}
       {!isReorderMode && (
         <div className="mt-2 pt-1.5 flex items-center justify-between" style={{ borderTop: `1px solid ${T.border}` }}>
-          <span className="text-[9px] font-semibold" style={{ color: T.text3 }}>Toca para completar la sesión</span>
+          <span className="text-[9px] font-semibold" style={{ color: T.text3 }}>
+            {locked ? "Sincronizado con Garmin" : "Toca para completar la sesión"}
+          </span>
         </div>
       )}
       <div className="mt-1 flex items-center gap-1 text-[11px]" style={{ color: T.text2 }}>
@@ -475,8 +517,10 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
               style={{ background: "linear-gradient(135deg,#06b6d4,#4f46e5)", boxShadow: "0 4px 16px rgba(6,182,212,0.25)" }}>
               <Save className="w-4 h-4" /> Guardar
             </button>
-            <button onClick={() => { onToggle(session.id); }}
-              className="py-3 px-4 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all"
+            <button onClick={() => { if (!session.garminBacked) onToggle(session.id); }}
+              disabled={session.garminBacked}
+              title={session.garminBacked ? "Sincronizado con Garmin — no se puede desmarcar" : undefined}
+              className="py-3 px-4 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all disabled:cursor-default"
               style={{ background: session.completed ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.06)", color: session.completed ? "#34d399" : T.text2, borderColor: session.completed ? "#10b98166" : T.border }}>
               <Check className="w-4 h-4" />{session.completed ? "Hecho" : "Completar"}
             </button>
@@ -757,10 +801,9 @@ function MonthlyView({ userId, refreshKey }: { userId: number; refreshKey: numbe
         if (cancelled) return;
         setWeeks(plans.map((p, i) => {
           const planSessions = p.sesiones.map(s => toSession(s, mondays[i]));
-          const extraSessions = buildExtraSessions(planSessions, p.actividades_garmin, mondays[i]);
           return {
             monday: mondays[i],
-            sessions: [...planSessions, ...extraSessions],
+            sessions: applyGarminMatching(planSessions, p.actividades_garmin, mondays[i]),
             kmPlanificados: p.stats.km_planificados,
             kmRealizados: p.stats.km_realizados,
           };
@@ -1149,12 +1192,10 @@ export function LandingPage() {
         getPlanSemana(userId, toISODate(prevMonday)),
       ]);
       const currPlanSessions = curr.sesiones.map(s => toSession(s, currMonday));
-      const currExtras = buildExtraSessions(currPlanSessions, curr.actividades_garmin, currMonday);
-      setSessions([...currPlanSessions, ...currExtras]);
+      setSessions(applyGarminMatching(currPlanSessions, curr.actividades_garmin, currMonday));
       setWeekStats(curr.stats);
       const prevPlanSessions = prev.sesiones.map(s => toSession(s, prevMonday));
-      const prevExtras = buildExtraSessions(prevPlanSessions, prev.actividades_garmin, prevMonday);
-      setPrevSessions([...prevPlanSessions, ...prevExtras]);
+      setPrevSessions(applyGarminMatching(prevPlanSessions, prev.actividades_garmin, prevMonday));
     } catch {
       setWeekError("No se pudo cargar el plan de esta semana.");
     } finally {
@@ -1213,8 +1254,9 @@ export function LandingPage() {
   }, []);
 
   const handleToggle = useCallback((id: string) => {
-    setSessions(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
     const target = sessions.find(s => s.id === id);
+    if (target?.garminBacked) return; // sincronizada de Garmin — no se puede desmarcar
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
     const nextCompleted = target ? !target.completed : true;
     actualizarSesionCompleta(Number(id), { completado: nextCompleted }).catch(() => {
       setSessions(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
