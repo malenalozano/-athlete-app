@@ -413,6 +413,9 @@ export interface SesionPlan {
   completado: number;
   km_planificados: number | null;
   km_realizados: number | null;
+  ritmo_esperado: string | null;
+  fc_esperado: string | null;
+  fc_reposo_dia_siguiente: number | null;
 }
 
 export interface ActividadGarmin {

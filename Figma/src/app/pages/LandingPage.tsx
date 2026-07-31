@@ -79,6 +79,11 @@ interface Session {
   kmPlanificados?: number;
   garminBacked?: boolean; // completada porque hay actividad Garmin ese día — no se puede desmarcar
   extraKm?: number; // km de déficit de sesiones pasadas redistribuidos aquí (se muestra en rojo)
+  ritmoEsperado?: string | null; // objetivo de ritmo, extraído de "detalles" por el backend
+  fcEsperado?: string | null;    // objetivo de FC, idem
+  fcReposoDiaSiguiente?: number | null; // solo TL: FC de reposo el día después
+  ritmoReal?: number | null; // min/km reales, de la actividad Garmin emparejada
+  fcReal?: number | null;    // FC media real, idem
 }
 
 // ── Date / mapping helpers ──────────────────────────────────────────────────
@@ -161,6 +166,9 @@ function toSession(s: SesionPlan, monday: Date): Session {
     origin: "plan",
     kmRealizados,
     kmPlanificados: s.km_planificados ?? undefined,
+    ritmoEsperado: s.ritmo_esperado,
+    fcEsperado: s.fc_esperado,
+    fcReposoDiaSiguiente: s.fc_reposo_dia_siguiente,
   };
 }
 
@@ -207,6 +215,8 @@ function applyGarminMatching(planSessions: Session[], actividades: ActividadGarm
           garminBacked: true,
           kmRealizados: km > 0.1 ? Math.round(km * 10) / 10 : s.kmRealizados,
           metric: s.kmPlanificados ? `${km > 0.1 ? Math.round(km * 10) / 10 : (s.kmRealizados ?? "?")}/${s.kmPlanificados} km` : s.metric,
+          ritmoReal: a.ritmo_medio ?? null,
+          fcReal: a.fc_media ?? null,
         });
       } else if (s.type === "fuerza" && isPastOrToday && noRunningUsed < noRunning.length) {
         noRunningUsed++;
@@ -1415,62 +1425,149 @@ function ProgressView({ weekStats, dashboard, loadingDashboard, todayMacro }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPARATOR VIEW (semana actual vs. semana anterior, datos reales)
 // ─────────────────────────────────────────────────────────────────────────────
-const COMPARE_SUBS: { sub: Subtype; title: string; tag: string }[] = [
-  { sub: "RB",  title: "Rodajes Base",           tag: "Ritmo en Zona 2" },
-  { sub: "CAL", title: "Series de Calidad",      tag: "Zonas 4 y 5" },
-  { sub: "TL",  title: "Tirada Larga (Fondo)",   tag: "Resistencia" },
-];
 
-function ComparatorView({ currentSessions, prevSessions }: {
-  currentSessions: Session[]; prevSessions: Session[];
+// Sesiones de calidad activas por macrociclo (NORMAS_ENTRENAMIENTO_v2) — se
+// alternan semana impar/par dentro del macrociclo, así que cada una tiene su
+// propia fila (si esta semana tocó Fartlek, la fila de Progresiva sale vacía).
+const QUALITY_ROWS_BY_MACRO: Record<string, { key: string; label: string }[]> = {
+  M1: [{ key: "Fartlek", label: "Fartlek" }, { key: "Progresiva", label: "Progresivas" }],
+  M2: [{ key: "Intervalos", label: "Intervalos Largos" }, { key: "Tempo Run", label: "Tempo" }],
+  M3: [{ key: "VO2max", label: "Intervalos VO2max" }, { key: "Tempo Largo", label: "Tempo Largo" }],
+  M4: [{ key: "", label: "Calidad de mantenimiento" }],
+};
+
+function findQualitySession(sessions: Session[], key: string): Session | undefined {
+  const calidad = sessions.filter(s => s.subtype === "CAL");
+  if (!key) return calidad[0];
+  return calidad.find(s => s.title.includes(key));
+}
+
+function formatRitmoReal(ritmo?: number | null): string | null {
+  return ritmo ? `${formatPace(ritmo)} min/km` : null;
+}
+
+/** Ritmo/FC real (si la sesión está completada) vs esperado — o solo el
+ * esperado si todavía no se ha completado. */
+function RitmoFcCompare({ session }: { session?: Session }) {
+  if (!session) return <p className="text-[11px] italic" style={{ color: T.text3 }}>Sin sesión</p>;
+  const esperado = [session.ritmoEsperado, session.fcEsperado].filter(Boolean).join(" · ") || "—";
+  const realParts = [
+    formatRitmoReal(session.ritmoReal),
+    session.fcReal ? `${Math.round(session.fcReal)} ppm` : null,
+  ].filter(Boolean);
+  const real = session.completed && realParts.length ? realParts.join(" · ") : null;
+
+  return (
+    <>
+      {real ? (
+        <>
+          <p className="font-black text-sm" style={{ color: T.text1 }}>{real}</p>
+          <p className="text-[10px]" style={{ color: T.text3 }}>Esperado: {esperado}</p>
+        </>
+      ) : (
+        <p className="font-black text-sm" style={{ color: T.text2 }}>Esperado: {esperado}</p>
+      )}
+      {session.type === "carrera" && session.subtype === "TL" && session.fcReposoDiaSiguiente != null && (
+        <p className="text-[10px]" style={{ color: T.text3 }}>FC reposo día siguiente: {Math.round(session.fcReposoDiaSiguiente)} ppm</p>
+      )}
+    </>
+  );
+}
+
+function CardHeader({ subKey, title, tag }: { subKey: Subtype; title: string; tag: string }) {
+  const c = SUB[subKey];
+  return (
+    <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: `${c.bg}60`, borderBottom: `1px solid ${T.border}80` }}>
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${c.color}20`, border: `1px solid ${c.color}50` }}>
+          <span className="text-[9px] font-black" style={{ color: c.color }}>{subKey}</span>
+        </div>
+        <span className="text-xs font-black" style={{ color: T.text1 }}>{title}</span>
+      </div>
+      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${c.color}15`, color: c.color }}>{tag}</span>
+    </div>
+  );
+}
+
+function ComparatorView({ currentSessions, prevSessions, macrocicloLabel }: {
+  currentSessions: Session[]; prevSessions: Session[]; macrocicloLabel: string;
 }) {
+  const rb = { curr: currentSessions.find(s => s.subtype === "RB"), prev: prevSessions.find(s => s.subtype === "RB") };
+  const tl = { curr: currentSessions.find(s => s.subtype === "TL"), prev: prevSessions.find(s => s.subtype === "TL") };
+  const qualityRows = QUALITY_ROWS_BY_MACRO[macrocicloLabel] ?? QUALITY_ROWS_BY_MACRO.M1;
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {COMPARE_SUBS.map(({ sub, title, tag }) => {
-          const c = SUB[sub];
-          const curr = currentSessions.find(s => s.subtype === sub);
-          const prev = prevSessions.find(s => s.subtype === sub);
-          return (
-            <div key={sub} className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${T.border}80`, background: "rgba(15,23,42,0.6)" }}>
-              <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: `${c.bg}60`, borderBottom: `1px solid ${T.border}80` }}>
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${c.color}20`, border: `1px solid ${c.color}50` }}>
-                    <span className="text-[9px] font-black" style={{ color: c.color }}>{sub}</span>
-                  </div>
-                  <span className="text-xs font-black" style={{ color: T.text1 }}>{title}</span>
-                </div>
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${c.color}15`, color: c.color }}>{tag}</span>
-              </div>
-              <div className="p-3.5 grid grid-cols-2 gap-4">
-                <div className="space-y-1" style={{ borderRight: `1px solid ${T.border}` }}>
-                  <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>SEMANA ANTERIOR</p>
-                  {prev ? (
-                    <>
-                      <p className="font-black text-base" style={{ color: T.text2 }}>{prev.metric || prev.duration || "—"}</p>
-                      {prev.notes && <p className="text-[10px] italic" style={{ color: T.text3 }}>{prev.notes}</p>}
-                      <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded mt-1" style={{ color: prev.completed ? T.success : T.text3, background: prev.completed ? `${T.success}15` : "transparent" }}>
-                        {prev.completed ? "Completado" : "No completado"}
-                      </span>
-                    </>
-                  ) : <p className="text-[11px] italic" style={{ color: T.text3 }}>Sin sesión</p>}
-                </div>
-                <div className="space-y-1 pl-3">
-                  <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: c.color }}>SEMANA ACTUAL</p>
-                  {curr ? (
-                    <>
-                      <p className="font-black text-base" style={{ color: T.text1 }}>{curr.metric || curr.duration || "—"}</p>
-                      {curr.notes && <p className="text-[10px] italic" style={{ color: c.color }}>{curr.notes}</p>}
-                      <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded mt-1" style={{ color: curr.completed ? T.success : c.color, background: curr.completed ? `${T.success}15` : `${c.color}15` }}>
-                        {curr.completed ? "Completado" : "Programado"}
-                      </span>
-                    </>
-                  ) : <p className="text-[11px] italic" style={{ color: T.text3 }}>Sin sesión</p>}
-                </div>
-              </div>
+        {/* RB */}
+        <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${T.border}80`, background: "rgba(15,23,42,0.6)" }}>
+          <CardHeader subKey="RB" title="Rodajes Base" tag="Ritmo en Zona 2" />
+          <div className="p-3.5 grid grid-cols-2 gap-4">
+            <div className="space-y-1" style={{ borderRight: `1px solid ${T.border}` }}>
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>SEMANA ANTERIOR</p>
+              <RitmoFcCompare session={rb.prev} />
             </div>
-          );
-        })}
+            <div className="space-y-1 pl-3">
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: SUB.RB.color }}>SEMANA ACTUAL</p>
+              <RitmoFcCompare session={rb.curr} />
+            </div>
+          </div>
+        </div>
+
+        {/* CAL — una fila por cada sesión de calidad activa en este macrociclo */}
+        <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${T.border}80`, background: "rgba(15,23,42,0.6)" }}>
+          <CardHeader subKey="CAL" title="Series de Calidad" tag={macrocicloLabel} />
+          <div className="divide-y" style={{ borderColor: T.border }}>
+            {qualityRows.map(row => {
+              const curr = findQualitySession(currentSessions, row.key);
+              const prev = findQualitySession(prevSessions, row.key);
+              return (
+                <div key={row.label} className="p-3.5">
+                  <p className="text-[10px] font-black uppercase tracking-wide mb-2" style={{ color: SUB.CAL.color }}>{row.label}</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1" style={{ borderRight: `1px solid ${T.border}` }}>
+                      <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>ANTERIOR</p>
+                      {prev ? (
+                        <>
+                          <p className="font-black text-sm" style={{ color: T.text2 }}>{prev.metric || prev.duration || "—"}</p>
+                          <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ color: prev.completed ? T.success : T.text3, background: prev.completed ? `${T.success}15` : "transparent" }}>
+                            {prev.completed ? "Completado" : "No completado"}
+                          </span>
+                        </>
+                      ) : <p className="text-[11px] italic" style={{ color: T.text3 }}>Sin sesión</p>}
+                    </div>
+                    <div className="space-y-1 pl-3">
+                      <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: SUB.CAL.color }}>ACTUAL</p>
+                      {curr ? (
+                        <>
+                          <p className="font-black text-sm" style={{ color: T.text1 }}>{curr.metric || curr.duration || "—"}</p>
+                          <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ color: curr.completed ? T.success : SUB.CAL.color, background: curr.completed ? `${T.success}15` : `${SUB.CAL.color}15` }}>
+                            {curr.completed ? "Completado" : "Programado"}
+                          </span>
+                        </>
+                      ) : <p className="text-[11px] italic" style={{ color: T.text3 }}>Sin sesión</p>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* TL */}
+        <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${T.border}80`, background: "rgba(15,23,42,0.6)" }}>
+          <CardHeader subKey="TL" title="Tirada Larga (Fondo)" tag="Resistencia" />
+          <div className="p-3.5 grid grid-cols-2 gap-4">
+            <div className="space-y-1" style={{ borderRight: `1px solid ${T.border}` }}>
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>SEMANA ANTERIOR</p>
+              <RitmoFcCompare session={tl.prev} />
+            </div>
+            <div className="space-y-1 pl-3">
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: SUB.TL.color }}>SEMANA ACTUAL</p>
+              <RitmoFcCompare session={tl.curr} />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1735,7 +1832,7 @@ export function LandingPage() {
             <ProgressView weekStats={weekStats} dashboard={dashboard} loadingDashboard={loadingDashboard} todayMacro={todayMacro} />
           )}
           {activeTab === "comparador" && (
-            <ComparatorView currentSessions={sessions} prevSessions={prevSessions} />
+            <ComparatorView currentSessions={sessions} prevSessions={prevSessions} macrocicloLabel={weekMeta.macrocicloLabel} />
           )}
 
           {toast && (

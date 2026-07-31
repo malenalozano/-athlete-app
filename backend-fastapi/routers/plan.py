@@ -346,6 +346,24 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
     # Auto-migrar sesiones Progresiva antiguas (bloque Z4 imposible: > km total)
     sesiones = _migrar_progresiva_legacy(conn, sesiones)
 
+    # Ritmo/FC objetivo (extraídos de "detalles") y, para la Tirada Larga, la FC de
+    # reposo del día siguiente — para la tab Comparar (real vs esperado).
+    for s in sesiones:
+        s["ritmo_esperado"], s["fc_esperado"] = _parse_ritmo_fc(s.get("detalles"))
+        s["fc_reposo_dia_siguiente"] = None
+        if (s.get("sesion") or "").startswith("Tirada"):
+            try:
+                dia_siguiente = (datetime.strptime(s["fecha"], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                row = conn.execute(
+                    """SELECT fc_reposo FROM datos_biometricos_premium
+                       WHERE usuario_id = ? AND fecha = ? AND fc_reposo IS NOT NULL LIMIT 1""",
+                    (usuario_id, dia_siguiente),
+                ).fetchone()
+                if row:
+                    s["fc_reposo_dia_siguiente"] = row[0]
+            except Exception:
+                pass
+
     # Estadísticas semana
     km_plan = sum(s["km_planificados"] or 0 for s in sesiones)
     km_real = sum(s["km_realizados"] or 0 for s in sesiones)
@@ -1579,6 +1597,24 @@ def _construir_sesiones(
 def _inicio_semana(fecha_str: str) -> str:
     d = datetime.strptime(fecha_str, "%Y-%m-%d")
     return (d - timedelta(days=d.weekday())).strftime("%Y-%m-%d")
+
+
+def _parse_ritmo_fc(detalles: str | None) -> tuple[str | None, str | None]:
+    """Extrae el ritmo y la FC objetivo del texto de 'detalles' de una sesión (ya
+    generado por _detalles_tl / _detalles_calidad_* con ese formato consistente),
+    para exponerlos como campos estructurados en vez de tener que reparsear texto
+    libre en el frontend."""
+    if not detalles:
+        return None, None
+    ritmo = None
+    m = re.search(r'([<>]?\d:\d{2}(?:-\d:\d{2})?)\s*min/km', detalles)
+    if m:
+        ritmo = f"{m.group(1)} min/km"
+    fc = None
+    m = re.search(r'FC\s*([<>]?\d+(?:-\d+)?)\s*ppm', detalles)
+    if m:
+        fc = f"{m.group(1)} ppm"
+    return ritmo, fc
 
 
 def _calcular_fase_nombre(objetivo_tipo: str | None, fecha_objetivo: str | None) -> str:
