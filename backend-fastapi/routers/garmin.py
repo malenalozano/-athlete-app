@@ -326,7 +326,13 @@ def _do_sync_inner(conn, usuario_id: int) -> dict:
         try:
             hrv_data = client.get_hrv_data(dia_str)
             hrv_summary = (hrv_data or {}).get("hrvSummary") or {}
-            hrv_ms = hrv_summary.get("lastNight") or hrv_summary.get("weeklyAvg")
+            # La clave real de garminconnect es "lastNightAvg" (no "lastNight") — se
+            # prueban varias variantes por si la API cambia el nombre entre versiones.
+            hrv_ms = (
+                hrv_summary.get("lastNightAvg")
+                or hrv_summary.get("lastNight")
+                or hrv_summary.get("weeklyAvg")
+            )
             if hrv_ms:
                 result["hrv"] = hrv_ms
         except Exception:

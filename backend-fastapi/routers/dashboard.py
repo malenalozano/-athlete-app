@@ -228,18 +228,24 @@ def dashboard(usuario_id: int):
     except Exception:
         pass
 
-    # Ritmo medio semanal running (últimas 8 semanas), en min/km.
-    # Solo carreras con FC < 150 ppm (Zona 2) para medir evolución aeróbica.
+    # Ritmo medio semanal (últimas 8 semanas), en min/km — SOLO Tirada Larga y
+    # Rodaje Base (las sesiones "aeróbicas de referencia" del plan), no cualquier
+    # carrera. Se cruza con plan_entrenamiento por fecha para saber qué actividad
+    # corresponde a una TL/RB real (nombres siempre empiezan por "Tirada"/"Rodaje").
     # ritmo_medio ya está en decimal min/km (calculado en _upsert_actividad como
     # (duracion_seg/60) / (distancia_m/1000)), NO dividir de nuevo.
     ritmo_rows = conn.execute(
-        f"""SELECT strftime('%W', fecha) as semana, AVG(ritmo_medio) as ritmo
-           FROM actividades_garmin
-           WHERE usuario_id = ? AND fecha >= ?
-             AND tipo_deporte IN {RUNNING_TIPOS_SQL}
-             AND ritmo_medio IS NOT NULL AND ritmo_medio > 0
-             AND fc_media IS NOT NULL AND fc_media < 150
-           GROUP BY strftime('%W', fecha)
+        f"""SELECT strftime('%W', ag.fecha) as semana, AVG(ag.ritmo_medio) as ritmo
+           FROM actividades_garmin ag
+           WHERE ag.usuario_id = ? AND ag.fecha >= ?
+             AND ag.tipo_deporte IN {RUNNING_TIPOS_SQL}
+             AND ag.ritmo_medio IS NOT NULL AND ag.ritmo_medio > 0
+             AND EXISTS (
+                 SELECT 1 FROM plan_entrenamiento pe
+                 WHERE pe.usuario_id = ag.usuario_id AND pe.fecha = ag.fecha
+                   AND (pe.sesion LIKE 'Tirada%' OR pe.sesion LIKE 'Rodaje%')
+             )
+           GROUP BY strftime('%W', ag.fecha)
            ORDER BY semana ASC LIMIT 8""",
         (usuario_id, (hoy - timedelta(days=56)).isoformat()),
     ).fetchall()

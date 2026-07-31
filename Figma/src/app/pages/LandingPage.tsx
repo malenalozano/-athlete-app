@@ -1271,9 +1271,6 @@ function ProgressView({ weekStats, dashboard, loadingDashboard, todayMacro }: {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        <h2 className="text-base font-bold flex items-center gap-2" style={{ color: T.text1 }}>
-          <Award className="w-4 h-4" style={{ color: "#22d3ee" }} /> Rendimiento y Volumen
-        </h2>
 
         {/* Bar chart */}
         <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
@@ -1555,6 +1552,7 @@ export function LandingPage() {
       });
       const prevPlanSessions = prev.sesiones.map(s => toSession(s, prevMonday));
       setPrevSessions(applyGarminMatching(prevPlanSessions, prev.actividades_garmin, prevMonday));
+      setPlanVersion(v => v + 1); // avisa a MonthlyView (y a quien más dependa) de que el plan cambió
     } catch {
       setWeekError("No se pudo cargar el plan de esta semana.");
     } finally {
@@ -1567,6 +1565,7 @@ export function LandingPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncState, setSyncState] = useState<"idle" | "success" | "error">("idle");
   const [syncedAt, setSyncedAt] = useState(0);
+  const [planVersion, setPlanVersion] = useState(0);
 
   const handleSync = useCallback(async () => {
     if (!userId || syncing) return;
@@ -1730,7 +1729,7 @@ export function LandingPage() {
             />
           )}
           {activeTab === "calendario" && calView === "mensual" && userId && (
-            <MonthlyView userId={userId} refreshKey={syncedAt} />
+            <MonthlyView userId={userId} refreshKey={planVersion} />
           )}
           {activeTab === "progreso" && (
             <ProgressView weekStats={weekStats} dashboard={dashboard} loadingDashboard={loadingDashboard} todayMacro={todayMacro} />
