@@ -383,6 +383,7 @@ export interface PlanSemana {
   sesiones: SesionPlan[];
   actividades_garmin: ActividadGarmin[];
   stats: { km_planificados: number; km_realizados: number; sesiones_completadas: number; total_sesiones: number };
+  es_descarga: boolean;
   fase: string;
   coach_tip: string;
 }

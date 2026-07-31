@@ -862,7 +862,7 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
 function WeeklyView({
   sessions, loading, error, weekLabel, onPrevWeek, onNextWeek,
   onToggle, onSave, onDelete, onMove, onAdd,
-  userId, monday, onApplied, showToast,
+  userId, monday, onApplied, showToast, esDescarga,
 }: {
   sessions: Session[]; loading: boolean; error: string | null; weekLabel: string;
   onPrevWeek: () => void; onNextWeek: () => void;
@@ -875,6 +875,7 @@ function WeeklyView({
   monday: Date;
   onApplied: () => void;
   showToast: (text: string, kind?: "error" | "success") => void;
+  esDescarga: boolean;
 }) {
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
@@ -884,7 +885,14 @@ function WeeklyView({
   return (
     <div className="flex flex-col h-full">
       {/* TopBar */}
-      <header className="px-5 py-3 shrink-0 flex justify-end" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
+      <header className="px-5 py-3 shrink-0 flex items-center justify-end gap-2" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
+        {/* Pastilla carga/descarga */}
+        <span className="text-[10px] px-3 py-2 rounded-full font-black"
+          style={esDescarga
+            ? { background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid #10b98150" }
+            : { background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid #3b82f650" }}>
+          {esDescarga ? "Descarga" : "Carga"}
+        </span>
         {/* Reorder button */}
         <button onClick={() => setIsReorderMode(p => !p)}
           className="flex items-center gap-1.5 text-xs px-3.5 py-2 rounded-full font-black transition-all"
@@ -1355,6 +1363,7 @@ export function LandingPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [prevSessions, setPrevSessions] = useState<Session[]>([]);
   const [weekStats, setWeekStats] = useState<{ km_planificados: number; km_realizados: number } | null>(null);
+  const [weekEsDescarga, setWeekEsDescarga] = useState(false);
   const [loadingWeek, setLoadingWeek] = useState(true);
   const [weekError, setWeekError] = useState<string | null>(null);
 
@@ -1380,6 +1389,7 @@ export function LandingPage() {
       const currPlanSessions = curr.sesiones.map(s => toSession(s, currMonday));
       setSessions(applyDeficitRedistribution(applyGarminMatching(currPlanSessions, curr.actividades_garmin, currMonday), currMonday));
       setWeekStats(curr.stats);
+      setWeekEsDescarga(curr.es_descarga);
       const prevPlanSessions = prev.sesiones.map(s => toSession(s, prevMonday));
       setPrevSessions(applyGarminMatching(prevPlanSessions, prev.actividades_garmin, prevMonday));
     } catch {
@@ -1553,6 +1563,7 @@ export function LandingPage() {
               onToggle={handleToggle} onSave={handleSave} onDelete={handleDelete}
               onMove={handleMove} onAdd={handleAdd}
               userId={userId} monday={monday} onApplied={fetchWeek} showToast={showToast}
+              esDescarga={weekEsDescarga}
             />
           )}
           {activeTab === "calendario" && calView === "mensual" && userId && (

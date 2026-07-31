@@ -250,6 +250,10 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
     fecha_objetivo = perfil_row[1] if perfil_row else None
     fase = _calcular_fase_nombre(objetivo_tipo, fecha_objetivo)
 
+    # Cadencia 3 semanas de carga + 1 de descarga (cada 4ª semana ISO) — informativo,
+    # para que el usuario sepa en qué tipo de semana está.
+    es_descarga = (inicio.isocalendar()[1] % 4 == 0)
+
     return {
         "semana_inicio": fecha_inicio,
         "sesiones": sesiones,
@@ -260,6 +264,7 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
             "sesiones_completadas": completadas,
             "total_sesiones": len(sesiones),
         },
+        "es_descarga": es_descarga,
         "fase": fase,
         "coach_tip": _coach_tip(fase, km_real, len(sesiones)),
     }
