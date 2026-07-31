@@ -177,6 +177,7 @@ function toSession(s: SesionPlan, monday: Date): Session {
  * Se recalcula en cada fetch, así que mover una sesión al día de una actividad
  * suelta la "consume" automáticamente (la extra desaparece, la movida se marca). */
 function applyGarminMatching(planSessions: Session[], actividades: ActividadGarmin[], monday: Date): Session[] {
+  const todayIso = toISODate(new Date());
   const byDay = new Map<number, ActividadGarmin[]>();
   for (const a of actividades) {
     const dayIndex = differenceInCalendarDays(parseISO(a.fecha), monday);
@@ -194,22 +195,27 @@ function applyGarminMatching(planSessions: Session[], actividades: ActividadGarm
     const daySessions = planSessions.filter(s => s.dayIndex === dayIndex);
     const running = acts.filter(a => esActividadRunning(a.tipo_deporte));
     const noRunning = acts.filter(a => !esActividadRunning(a.tipo_deporte));
+    // Match por día+tipo, sin exigir que `completado` ya esté a true en BD — así una
+    // sesión recién regenerada (id nuevo, completado=0) se sigue reconociendo si ese
+    // día ya hay actividad Garmin correspondiente, en vez de quedar como "extra".
+    const isPastOrToday = toISODate(addDays(monday, dayIndex)) <= todayIso;
 
     let runningUsed = 0;
     let noRunningUsed = 0;
     daySessions.forEach(s => {
-      if (s.type === "carrera" && s.completed && runningUsed < running.length) {
+      if (s.type === "carrera" && isPastOrToday && runningUsed < running.length) {
         const a = running[runningUsed++];
         const km = (a.distancia_m || 0) / 1000;
         updatedPlanSessions.push({
           ...s,
+          completed: true,
           garminBacked: true,
           kmRealizados: km > 0.1 ? Math.round(km * 10) / 10 : s.kmRealizados,
           metric: s.kmPlanificados ? `${km > 0.1 ? Math.round(km * 10) / 10 : (s.kmRealizados ?? "?")}/${s.kmPlanificados} km` : s.metric,
         });
-      } else if (s.type === "fuerza" && s.completed && noRunningUsed < noRunning.length) {
+      } else if (s.type === "fuerza" && isPastOrToday && noRunningUsed < noRunning.length) {
         noRunningUsed++;
-        updatedPlanSessions.push({ ...s, garminBacked: true });
+        updatedPlanSessions.push({ ...s, completed: true, garminBacked: true });
       } else {
         updatedPlanSessions.push(s);
       }
@@ -230,6 +236,7 @@ function applyGarminMatching(planSessions: Session[], actividades: ActividadGarm
         completed: true,
         garminBacked: true,
         origin: "garmin",
+        kmRealizados: km > 0.1 ? Math.round(km * 10) / 10 : undefined,
       });
     });
   }
@@ -254,6 +261,14 @@ function applyDeficitRedistribution(sessions: Session[], monday: Date): Session[
     const shortfall = planificado - realizado;
     if (shortfall > 0.05) deficit += shortfall;
   });
+
+  // Km corridos de más (actividades Garmin sin sesión planificada, "extra") cuentan
+  // para el total semanal y reducen el déficit — no son km perdidos.
+  const extraRunningKm = sessions
+    .filter(s => s.type === "carrera" && s.origin === "garmin")
+    .reduce((sum, s) => sum + (s.kmRealizados ?? 0), 0);
+  deficit = Math.max(0, deficit - extraRunningKm);
+
   if (deficit <= 0.05) return sessions;
 
   const targets = carreraSessions
@@ -871,15 +886,15 @@ function WeeklyView({
       </header>
 
       {/* Week navigator */}
-      <div className="px-4 py-2.5 flex items-center justify-between shrink-0" style={{ background: "rgba(15,23,42,0.8)", border: `1px solid ${T.border}`, margin: "0 16px 12px", borderRadius: 16 }}>
-        <button onClick={onPrevWeek} className="w-10 h-10 flex items-center justify-center rounded-xl" style={{ background: T.bgSurf, border: `1px solid ${T.border}`, color: "#22d3ee" }}>
+      <div className="px-4 py-2.5 flex items-center justify-between shrink-0" style={{ background: T.bgSurf, border: "1px solid #22d3ee40", margin: "0 16px 12px", borderRadius: 16, boxShadow: "0 4px 16px rgba(0,0,0,0.25)" }}>
+        <button onClick={onPrevWeek} className="w-10 h-10 flex items-center justify-center rounded-xl" style={{ background: "rgba(34,211,238,0.12)", border: "1px solid #22d3ee50", color: "#22d3ee" }}>
           <ChevronLeft className="w-5 h-5" />
         </button>
         <div className="text-center">
-          <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>PROGRAMA SEMANAL</p>
+          <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#22d3ee" }}>PROGRAMA SEMANAL</p>
           <p className="text-xs font-bold" style={{ color: T.text1 }}>{weekLabel}</p>
         </div>
-        <button onClick={onNextWeek} className="w-10 h-10 flex items-center justify-center rounded-xl" style={{ background: T.bgSurf, border: `1px solid ${T.border}`, color: "#22d3ee" }}>
+        <button onClick={onNextWeek} className="w-10 h-10 flex items-center justify-center rounded-xl" style={{ background: "rgba(34,211,238,0.12)", border: "1px solid #22d3ee50", color: "#22d3ee" }}>
           <ChevronRight className="w-5 h-5" />
         </button>
       </div>
