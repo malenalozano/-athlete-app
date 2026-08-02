@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import {
   Calendar, TrendingUp, Award, ChevronLeft, ChevronRight,
   ArrowLeftRight, X, Clock, Flame, Plus, Check, Save, Trash2,
-  RefreshCw, ArrowRight, Zap, ListChecks,
+  RefreshCw, ArrowRight, Zap, ListChecks, Activity, Home, Shield, Footprints,
 } from "lucide-react";
 import {
   addDays, addMonths, addWeeks, differenceInCalendarDays, format,
@@ -80,6 +80,7 @@ interface Session {
   garminBacked?: boolean; // completada porque hay actividad Garmin ese día — no se puede desmarcar
   extraKm?: number; // km de déficit de sesiones pasadas redistribuidos aquí (se muestra en rojo)
   garminActId?: string; // id_actividad Garmin — solo en origin "garmin", para clasificar manualmente RB/CAL/TL
+  compareCount?: number; // fila agregada del Comparador (varias sesiones del mismo subtipo en la semana) — nº de sesiones promediadas
   ritmoEsperado?: string | null; // objetivo de ritmo, extraído de "detalles" por el backend
   fcEsperado?: string | null;    // objetivo de FC, idem
   fcReposoDiaSiguiente?: number | null; // solo TL: FC de reposo el día después
@@ -476,11 +477,6 @@ function CardExtra({ session, onClassify }: { session: Session; onClassify?: () 
           <Check className="w-3.5 h-3.5 shrink-0" style={{ color: c.color }} />
         </div>
       </div>
-      {clasificable && (
-        <p className="mt-1 text-[9px] italic" style={{ color: T.text3 }}>
-          Toca para cambiar clasificación (RB por defecto)
-        </p>
-      )}
     </div>
   );
 }
@@ -1306,6 +1302,14 @@ function MonthlyView({ userId, refreshKey }: { userId: number; refreshKey: numbe
 // ─────────────────────────────────────────────────────────────────────────────
 // PLAN VIEW (plan de carrera completo, semana por semana — solo tipo + km)
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Icono representativo de la sesión del día: escudo para fuerza, fuego para
+ * calidad/series, zapatilla para el resto de carrera (RB/TL). */
+function iconForSesionPlan(tipo: string, sesion: string) {
+  if ((tipo || "").toLowerCase() === "fuerza") return Shield;
+  return classifySubtype(tipo, sesion) === "CAL" ? Flame : Footprints;
+}
+
 function PlanView({ userId }: { userId: number }) {
   const [plan, setPlan] = useState<PlanCompleto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1320,43 +1324,118 @@ function PlanView({ userId }: { userId: number }) {
     return () => { cancelled = true; };
   }, [userId]);
 
-  const totalKm = plan?.semanas.reduce((a, w) => a + w.km_planificados, 0) ?? 0;
+  const hoy = new Date();
+  const todayIso = toISODate(hoy);
+  const mesLabel = capitalize(format(hoy, "MMM", { locale: es })).replace(".", "");
+  const kmMes = useMemo(() => {
+    if (!plan) return 0;
+    let total = 0;
+    for (const w of plan.semanas) {
+      for (const s of w.sesiones) {
+        const d = parseISO(s.fecha);
+        if (d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear()) {
+          total += s.km_planificados || 0;
+        }
+      }
+    }
+    return total;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan]);
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
         {loading && <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Cargando plan…</p>}
         {!loading && (!plan || plan.semanas.length === 0) && (
           <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin plan generado todavía</p>
         )}
         {!loading && plan && plan.semanas.length > 0 && (
           <>
-            <div className="rounded-xl p-3 flex items-center justify-between" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
-              <span className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>{plan.semanas.length} semanas planificadas</span>
-              <span className="text-xs font-black" style={{ color: "#4ade80" }}>{totalKm.toFixed(0)} km totales</span>
-            </div>
-            {plan.semanas.map(w => (
-              <div key={w.semana_inicio} className="rounded-xl p-3" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-black uppercase" style={{ color: T.text2 }}>
-                    Semana del {capitalize(format(parseISO(w.semana_inicio), "d 'de' MMM", { locale: es }))}
-                  </span>
-                  <span className="text-[10px] font-black" style={{ color: "#4ade80" }}>{w.km_planificados.toFixed(1)} km</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {w.sesiones.map((s, j) => {
-                    const sub = classifySubtype(s.tipo, s.sesion);
-                    const c = SUB[sub];
-                    return (
-                      <span key={j} className="rounded px-1.5 py-1 text-[9px] font-bold flex items-center gap-1"
-                        style={{ background: c.bg, color: c.color, border: `1px solid ${c.color}55` }}>
-                        {c.label}{s.km_planificados ? ` · ${s.km_planificados}k` : ""}
-                      </span>
-                    );
-                  })}
-                </div>
+            {/* HERO — resumen del mes */}
+            <div className="rounded-[28px] p-6 flex items-center justify-between"
+              style={{ background: T.bgSurf, border: `1px solid ${T.border}`, boxShadow: "0 10px 28px rgba(0,0,0,0.3)" }}>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>
+                  Volumen mes ({mesLabel})
+                </p>
+                <p className="flex items-baseline gap-2 mt-1.5 flex-wrap">
+                  <span className="text-4xl font-black leading-none" style={{ color: T.text1 }}>{Math.round(kmMes)}</span>
+                  <span className="text-sm font-medium" style={{ color: T.text2 }}>km totales</span>
+                </p>
               </div>
-            ))}
+              <div className="w-16 h-16 rounded-full flex items-center justify-center shrink-0 ml-3"
+                style={{ border: "4px solid #4ade8055", background: "rgba(74,222,128,0.08)" }}>
+                <Activity className="w-7 h-7" style={{ color: "#4ade80" }} />
+              </div>
+            </div>
+
+            {/* Lista de semanas */}
+            <div className="space-y-4">
+              {plan.semanas.map((w, i) => {
+                const monday = parseISO(w.semana_inicio);
+                const sunday = addDays(monday, 6);
+                const isActive = todayIso >= w.semana_inicio && todayIso <= toISODate(sunday);
+                return (
+                  <div key={w.semana_inicio} className="rounded-2xl overflow-hidden"
+                    style={{
+                      border: `1px solid ${isActive ? "#22d3ee60" : T.border}`,
+                      background: "rgba(15,23,42,0.6)",
+                      boxShadow: isActive ? "0 0 0 1px #22d3ee40, 0 10px 28px rgba(34,211,238,0.18)" : "none",
+                    }}>
+                    {/* Cabecera semanal */}
+                    <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: `1px solid ${T.border}` }}>
+                      <div className="min-w-0">
+                        <p className="text-sm font-black" style={{ color: T.text1 }}>Semana {i + 1}</p>
+                        <p className="text-[10px] font-medium mt-0.5" style={{ color: T.text3 }}>
+                          {format(monday, "d", { locale: es })} - {capitalize(format(sunday, "d MMM", { locale: es }))}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0 ml-3">
+                        <p className="text-[9px] font-black uppercase" style={{ color: T.text3 }}>Volumen</p>
+                        <p className="text-sm font-black mt-0.5" style={{ color: "#4ade80" }}>{w.km_planificados.toFixed(0)} km</p>
+                      </div>
+                    </div>
+
+                    {/* Cuerpo: 7 días */}
+                    <div className="px-2 py-2 space-y-1">
+                      {Array.from({ length: 7 }).map((_, dIdx) => {
+                        const dayDate = addDays(monday, dIdx);
+                        const iso = toISODate(dayDate);
+                        const isToday = iso === todayIso;
+                        const daySessions = w.sesiones.filter(s => s.fecha === iso);
+                        const kmDia = daySessions.reduce((a, s) => a + (s.km_planificados || 0), 0);
+                        const primera = daySessions[0];
+                        const Icon = daySessions.length === 0 ? Home : iconForSesionPlan(primera.tipo, primera.sesion);
+                        const iconColor = daySessions.length === 0
+                          ? T.text3
+                          : SUB[classifySubtype(primera.tipo, primera.sesion)].color;
+                        return (
+                          <div key={dIdx} className="flex items-center gap-2 px-2 py-2 rounded-lg"
+                            style={isToday ? {
+                              border: `1px solid ${T.border}`,
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+                              background: "rgba(255,255,255,0.03)",
+                            } : undefined}>
+                            <span className="w-9 shrink-0 text-[9px] font-black uppercase" style={{ color: isToday ? "#22d3ee" : T.text3 }}>
+                              {capitalize(format(dayDate, "EEE", { locale: es })).slice(0, 3)}
+                            </span>
+                            <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                              <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: iconColor }} />
+                              <span className="text-xs font-bold truncate" style={{ color: daySessions.length === 0 ? T.text3 : T.text1 }}>
+                                {daySessions.length === 0 ? "Descanso" : daySessions.map(s => s.sesion).join(" + ")}
+                              </span>
+                            </div>
+                            <span className="w-14 shrink-0 text-right text-xs font-black" style={{ color: T.text1 }}>
+                              {kmDia > 0 ? `${kmDia.toFixed(1).replace(".0", "")} km` : "-"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </>
         )}
       </div>
@@ -1384,10 +1463,6 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
 }) {
   const bars = dashboard?.running_trend ?? [];
   const paceTrend = dashboard?.ritmo_trend ?? [];
-  const totalKm = bars.reduce((a, b) => a + b.km, 0);
-  const pctChange = bars.length >= 2 && bars[bars.length - 2].km > 0
-    ? Math.round(((bars[bars.length - 1].km - bars[bars.length - 2].km) / bars[bars.length - 2].km) * 100)
-    : null;
 
   const paceMin = paceTrend.length ? Math.min(...paceTrend.map(p => p.ritmo)) : 0;
   const paceMax = paceTrend.length ? Math.max(...paceTrend.map(p => p.ritmo)) : 0;
@@ -1432,6 +1507,25 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+
+        {/* KMS semana actual + HRV de hoy */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="p-4 rounded-xl" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
+            <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>KMS SEMANA ACTUAL</p>
+            <p className="text-xl font-black mt-1" style={{ color: "#818cf8" }}>{weeklyKms.toFixed(1)} km</p>
+            <div className="w-full h-1.5 rounded-full mt-2 overflow-hidden" style={{ background: T.border }}>
+              <div className="h-full rounded-full" style={{ width: `${weeklyPlan ? Math.min((weeklyKms / weeklyPlan) * 100, 100) : 0}%`, background: "linear-gradient(90deg,#22d3ee,#4f46e5)" }} />
+            </div>
+            <span className="text-[8px] font-bold mt-1 block" style={{ color: T.text3 }}>Planificado: {weeklyPlan.toFixed(1)} km</span>
+          </div>
+          <div className="p-4 rounded-xl" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
+            <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>HRV DE HOY</p>
+            <p className="text-xl font-black mt-1" style={{ color: hrvHoy !== null ? "#34d399" : T.text3 }}>
+              {hrvHoy !== null ? `${hrvHoy} ms` : "—"}
+            </p>
+            {hrvHoy === null && <span className="text-[9px]" style={{ color: T.text3 }}>Sin dato de hoy todavía</span>}
+          </div>
+        </div>
 
         {/* Line chart km semanales (SVG) */}
         <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
@@ -1498,34 +1592,6 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
           )}
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="p-4 rounded-xl" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
-            <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>KMS ({bars.length || 8} SEMANAS)</p>
-            <p className="text-xl font-black mt-1" style={{ color: "#22d3ee" }}>{totalKm.toFixed(1)} km</p>
-            {pctChange !== null && (
-              <span className="text-[9px] font-bold" style={{ color: pctChange >= 0 ? T.success : "#f87171" }}>
-                {pctChange >= 0 ? "▲" : "▼"} {Math.abs(pctChange)}% vs. semana anterior
-              </span>
-            )}
-          </div>
-          <div className="p-4 rounded-xl" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
-            <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>KMS SEMANA ACTUAL</p>
-            <p className="text-xl font-black mt-1" style={{ color: "#818cf8" }}>{weeklyKms.toFixed(1)} km</p>
-            <div className="w-full h-1.5 rounded-full mt-2 overflow-hidden" style={{ background: T.border }}>
-              <div className="h-full rounded-full" style={{ width: `${weeklyPlan ? Math.min((weeklyKms / weeklyPlan) * 100, 100) : 0}%`, background: "linear-gradient(90deg,#22d3ee,#4f46e5)" }} />
-            </div>
-            <span className="text-[8px] font-bold mt-1 block" style={{ color: T.text3 }}>Planificado: {weeklyPlan.toFixed(1)} km</span>
-          </div>
-          <div className="p-4 rounded-xl col-span-2" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
-            <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>HRV DE HOY</p>
-            <p className="text-xl font-black mt-1" style={{ color: hrvHoy !== null ? "#34d399" : T.text3 }}>
-              {hrvHoy !== null ? `${hrvHoy} ms` : "—"}
-            </p>
-            {hrvHoy === null && <span className="text-[9px]" style={{ color: T.text3 }}>Sin dato de hoy todavía (se importa con la sincronización de Garmin)</span>}
-          </div>
-        </div>
-
         {/* Macrociclos (NORMAS_ENTRENAMIENTO_v2) */}
         <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
           <h3 className="text-xs font-black uppercase tracking-wide mb-3" style={{ color: T.text2 }}>Macrociclos del plan</h3>
@@ -1588,6 +1654,31 @@ const QUALITY_ROWS_BY_MACRO: Record<string, { key: string; label: string }[]> = 
   M4: [{ key: "", label: "Calidad de mantenimiento" }],
 };
 
+/** Agrega todas las sesiones de un subtipo (RB/TL) en la semana — puede haber
+ * más de una (p.ej. una carrera "extra" de Garmin reclasificada como RB) — en
+ * una sola fila con km sumados y ritmo/FC promediados entre las completadas. */
+function aggregateSubtype(sessions: Session[], subtype: Subtype): Session | undefined {
+  const matches = sessions.filter(s => s.subtype === subtype);
+  if (matches.length === 0) return undefined;
+  if (matches.length === 1) return matches[0];
+
+  const ritmos = matches.map(s => s.ritmoReal).filter((v): v is number => v != null && v > 0);
+  const fcs = matches.map(s => s.fcReal).filter((v): v is number => v != null && v > 0);
+  const kmReal = matches.reduce((sum, s) => sum + (s.kmRealizados ?? 0), 0);
+  const kmPlan = matches.reduce((sum, s) => sum + (s.kmPlanificados ?? 0), 0);
+
+  return {
+    ...matches[0],
+    metric: (kmPlan > 0 || kmReal > 0) ? `${kmReal.toFixed(1)}/${kmPlan.toFixed(1)} km` : matches[0].metric,
+    ritmoReal: ritmos.length ? ritmos.reduce((a, b) => a + b, 0) / ritmos.length : null,
+    fcReal: fcs.length ? fcs.reduce((a, b) => a + b, 0) / fcs.length : null,
+    completed: matches.some(s => s.completed),
+    kmRealizados: kmReal,
+    kmPlanificados: kmPlan,
+    compareCount: matches.length,
+  };
+}
+
 function findQualitySession(sessions: Session[], key: string): Session | undefined {
   const calidad = sessions.filter(s => s.subtype === "CAL");
   if (!key) return calidad[0];
@@ -1635,6 +1726,9 @@ function CompareColumn({ session, showDetail }: { session?: Session; showDetail?
     <div className="space-y-1 text-center">
       <p className="font-black text-sm" style={{ color: T.text1 }}>{session.metric || "—"}</p>
       <p className="font-black text-sm" style={{ color: real ? T.text2 : T.text3 }}>{real ?? "—"}</p>
+      {session.compareCount && session.compareCount > 1 && (
+        <p className="text-[9px] italic" style={{ color: T.text3 }}>Promedio de {session.compareCount} sesiones</p>
+      )}
       {session.type === "carrera" && session.subtype === "TL" && session.fcReposoDiaSiguiente != null && (
         <p className="text-[10px]" style={{ color: T.text3 }}>FC reposo día siguiente: {Math.round(session.fcReposoDiaSiguiente)} ppm</p>
       )}
@@ -1663,8 +1757,8 @@ function CardHeader({ subKey, title, tag }: { subKey: Subtype; title: string; ta
 function ComparatorView({ currentSessions, prevSessions, macrocicloLabel }: {
   currentSessions: Session[]; prevSessions: Session[]; macrocicloLabel: string;
 }) {
-  const rb = { curr: currentSessions.find(s => s.subtype === "RB"), prev: prevSessions.find(s => s.subtype === "RB") };
-  const tl = { curr: currentSessions.find(s => s.subtype === "TL"), prev: prevSessions.find(s => s.subtype === "TL") };
+  const rb = { curr: aggregateSubtype(currentSessions, "RB"), prev: aggregateSubtype(prevSessions, "RB") };
+  const tl = { curr: aggregateSubtype(currentSessions, "TL"), prev: aggregateSubtype(prevSessions, "TL") };
   const qualityRows = QUALITY_ROWS_BY_MACRO[macrocicloLabel] ?? QUALITY_ROWS_BY_MACRO.M1;
 
   return (
