@@ -334,7 +334,7 @@ function checkSeparaciones(sessions: Session[], macrociclo: number): string[] {
 // ─────────────────────────────────────────────────────────────────────────────
 // BADGE
 // ─────────────────────────────────────────────────────────────────────────────
-function Badge({ sub, size = "sm" }: { sub: Subtype; size?: "sm" | "xs" }) {
+function Badge({ sub, size = "sm", label }: { sub: Subtype; size?: "sm" | "xs"; label?: string }) {
   const c = SUB[sub];
   const px = size === "xs" ? "4px 6px" : "4px 8px";
   const fs = size === "xs" ? 8 : 9;
@@ -343,7 +343,7 @@ function Badge({ sub, size = "sm" }: { sub: Subtype; size?: "sm" | "xs" }) {
       className="rounded font-black uppercase tracking-wider inline-block"
       style={{ background: c.bg, color: c.color, border: `1px solid ${c.color}55`, boxShadow: c.glow, padding: px, fontSize: fs, lineHeight: "14px" }}
     >
-      {c.label}
+      {label ?? c.label}
     </span>
   );
 }
@@ -441,11 +441,9 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
       )}
       {/* Top row */}
       <div className="flex items-center justify-between">
-        <Badge sub={session.subtype} />
+        <Badge sub={session.subtype} label="Gym" />
         <div className="flex items-center gap-2 shrink-0">
-          {session.metric && (
-            <span className="text-[11px] font-semibold" style={{ color: locked ? "#34d399" : "#f1f5f9" }}>{session.metric}</span>
-          )}
+          <span className="text-[11px] font-semibold" style={{ color: locked ? "#34d399" : "#f1f5f9" }}>{SUB[session.subtype].label}</span>
           {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
         </div>
       </div>
