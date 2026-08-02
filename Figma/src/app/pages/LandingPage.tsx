@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import {
   Calendar, TrendingUp, Award, ChevronLeft, ChevronRight,
   ArrowLeftRight, X, Clock, Flame, Plus, Check, Save, Trash2,
-  RefreshCw, ArrowRight, Zap, ListChecks, Activity, Home, Shield, Footprints,
+  RefreshCw, ArrowRight, Zap, ListChecks, Home, Shield, Footprints,
 } from "lucide-react";
 import {
   addDays, addMonths, addWeeks, differenceInCalendarDays, format,
@@ -1310,9 +1310,26 @@ function iconForSesionPlan(tipo: string, sesion: string) {
   return classifySubtype(tipo, sesion) === "CAL" ? Flame : Footprints;
 }
 
+/** Nombre corto y homogéneo de la sesión: "Rodaje Base", "Tirada Larga",
+ * "Calidad: Fartlek", "Push"/"Pull"/"Pierna" — nada del texto largo original. */
+function nombreSesionPlan(tipo: string, sesion: string): string {
+  const sub = classifySubtype(tipo, sesion);
+  switch (sub) {
+    case "RB": return "Rodaje Base";
+    case "TL": return "Tirada Larga";
+    case "CAL": return `Calidad: ${sesion}`;
+    case "PUSH": return "Push";
+    case "PULL": return "Pull";
+    case "PIERNA": return "Pierna";
+    default: return sesion;
+  }
+}
+
 function PlanView({ userId }: { userId: number }) {
   const [plan, setPlan] = useState<PlanCompleto | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showCarrera, setShowCarrera] = useState(true);
+  const [showFuerza, setShowFuerza] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -1324,49 +1341,29 @@ function PlanView({ userId }: { userId: number }) {
     return () => { cancelled = true; };
   }, [userId]);
 
-  const hoy = new Date();
-  const todayIso = toISODate(hoy);
-  const mesLabel = capitalize(format(hoy, "MMM", { locale: es })).replace(".", "");
-  const kmMes = useMemo(() => {
-    if (!plan) return 0;
-    let total = 0;
-    for (const w of plan.semanas) {
-      for (const s of w.sesiones) {
-        const d = parseISO(s.fecha);
-        if (d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear()) {
-          total += s.km_planificados || 0;
-        }
-      }
-    }
-    return total;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan]);
+  const todayIso = toISODate(new Date());
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {loading && <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Cargando plan…</p>}
         {!loading && (!plan || plan.semanas.length === 0) && (
           <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin plan generado todavía</p>
         )}
         {!loading && plan && plan.semanas.length > 0 && (
           <>
-            {/* HERO — resumen del mes */}
-            <div className="rounded-[28px] p-6 flex items-center justify-between"
-              style={{ background: T.bgSurf, border: `1px solid ${T.border}`, boxShadow: "0 10px 28px rgba(0,0,0,0.3)" }}>
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>
-                  Volumen mes ({mesLabel})
-                </p>
-                <p className="flex items-baseline gap-2 mt-1.5 flex-wrap">
-                  <span className="text-4xl font-black leading-none" style={{ color: T.text1 }}>{Math.round(kmMes)}</span>
-                  <span className="text-sm font-medium" style={{ color: T.text2 }}>km totales</span>
-                </p>
-              </div>
-              <div className="w-16 h-16 rounded-full flex items-center justify-center shrink-0 ml-3"
-                style={{ border: "4px solid #4ade8055", background: "rgba(74,222,128,0.08)" }}>
-                <Activity className="w-7 h-7" style={{ color: "#4ade80" }} />
-              </div>
+            {/* Filtros */}
+            <div className="flex items-center gap-4 px-1">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={showCarrera} onChange={e => setShowCarrera(e.target.checked)}
+                  className="w-4 h-4 rounded accent-cyan-400" />
+                <span className="text-[11px] font-bold" style={{ color: showCarrera ? SUB.RB.color : T.text3 }}>Carrera</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={showFuerza} onChange={e => setShowFuerza(e.target.checked)}
+                  className="w-4 h-4 rounded accent-orange-400" />
+                <span className="text-[11px] font-bold" style={{ color: showFuerza ? SUB.PUSH.color : T.text3 }}>Fuerza</span>
+              </label>
             </div>
 
             {/* Lista de semanas */}
@@ -1402,8 +1399,15 @@ function PlanView({ userId }: { userId: number }) {
                         const dayDate = addDays(monday, dIdx);
                         const iso = toISODate(dayDate);
                         const isToday = iso === todayIso;
-                        const daySessions = w.sesiones.filter(s => s.fecha === iso);
-                        const kmDia = daySessions.reduce((a, s) => a + (s.km_planificados || 0), 0);
+                        const daySessionsAll = w.sesiones.filter(s => s.fecha === iso);
+                        const daySessions = daySessionsAll.filter(s =>
+                          (s.tipo || "").toLowerCase() === "fuerza" ? showFuerza : showCarrera
+                        );
+                        if (daySessionsAll.length > 0 && daySessions.length === 0) return null;
+
+                        const kmDia = daySessions
+                          .filter(s => (s.tipo || "").toLowerCase() !== "fuerza")
+                          .reduce((a, s) => a + (s.km_planificados || 0), 0);
                         const primera = daySessions[0];
                         const Icon = daySessions.length === 0 ? Home : iconForSesionPlan(primera.tipo, primera.sesion);
                         const iconColor = daySessions.length === 0
@@ -1422,7 +1426,7 @@ function PlanView({ userId }: { userId: number }) {
                             <div className="flex-1 min-w-0 flex items-center gap-1.5">
                               <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: iconColor }} />
                               <span className="text-xs font-bold truncate" style={{ color: daySessions.length === 0 ? T.text3 : T.text1 }}>
-                                {daySessions.length === 0 ? "Descanso" : daySessions.map(s => s.sesion).join(" + ")}
+                                {daySessions.length === 0 ? "Descanso" : daySessions.map(s => nombreSesionPlan(s.tipo, s.sesion)).join(" + ")}
                               </span>
                             </div>
                             <span className="w-14 shrink-0 text-right text-xs font-black" style={{ color: T.text1 }}>
