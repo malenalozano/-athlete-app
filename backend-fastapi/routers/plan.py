@@ -51,6 +51,7 @@ class GenerarSemanaRequest(BaseModel):
     fecha_inicio: str
     km_total: Optional[float] = None  # Si se proporciona, sobreescribe el cálculo automático
     incluir_calidad: bool = True  # Si es False, las sesiones de calidad se sustituyen por Rodaje Base
+    incluir_fuerza: bool = False  # Si es False (por defecto), no se generan sesiones de Fuerza esta semana
     dry_run: bool = False  # Si es True, solo calcula y devuelve las sesiones, no las guarda
     ciclo_override: Optional[str] = None  # "carga1" | "carga2" | "carga3" | "descarga" — fuerza el tipo de semana
 
@@ -62,6 +63,7 @@ class AplicarSemanaRequest(BaseModel):
 
 class RegenerarTotalRequest(BaseModel):
     semanas: int = 4  # Cuántas semanas futuras regenerar (incluye la actual)
+    incluir_fuerza: bool = False  # Si es False (por defecto), no se generan sesiones de Fuerza
 
 
 FARTLEK_REPS_MAX = 10  # Máximo absoluto de reps según NORMAS ENTRENAMIENTO.pdf
@@ -878,6 +880,7 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
         conn, usuario_id, fecha_inicio, macrociclo, km_total, tipo_calidad,
         semana_ant_inicio, semana_ant_fin, semanas_en_macro,
         v2_info.get("sub_fase") if v2_info else None,
+        incluir_fuerza=body.incluir_fuerza,
     )
 
     # Si semáforo rojo, añadir advertencia a sesiones de calidad
@@ -1129,7 +1132,7 @@ def regenerar_total(usuario_id: int, body: RegenerarTotalRequest):
 
         km_sem = min(km_sem, 80.0)
 
-        _generar_semana_interna(conn, usuario_id, fecha_sem, km_sem, fecha_objetivo_str=fecha_objetivo_regen, v2_info=v2_info)
+        _generar_semana_interna(conn, usuario_id, fecha_sem, km_sem, fecha_objetivo_str=fecha_objetivo_regen, v2_info=v2_info, incluir_fuerza=body.incluir_fuerza)
         semanas_generadas.append({"semana_inicio": fecha_sem, "km_total": km_sem, "descarga": es_descarga})
 
     conn.commit()
@@ -1146,6 +1149,7 @@ def regenerar_total(usuario_id: int, body: RegenerarTotalRequest):
 def _generar_semana_interna(
     conn, usuario_id: int, fecha_inicio_str: str, km_total: float,
     fecha_objetivo_str: str | None = None, v2_info: dict | None = None,
+    incluir_fuerza: bool = True,
 ):
     """Genera y guarda las sesiones de una semana con km_total dado, sin commit.
     Si v2_info viene dado (calendario NORMAS_ENTRENAMIENTO_v2 de dos carreras), se usa
@@ -1213,6 +1217,7 @@ def _generar_semana_interna(
     sesiones_plan, km_tl, km_rg, km_calidad, km_rb = _distribuir_km_y_construir_sesiones(
         conn, usuario_id, fecha_inicio, macrociclo, km_total, tipo_calidad,
         semana_ant_inicio, semana_ant_fin, semanas_en_macro, sub_fase,
+        incluir_fuerza=incluir_fuerza,
     )
 
     ahora = datetime.now().isoformat()
@@ -1370,6 +1375,7 @@ def _distribuir_km_y_construir_sesiones(
     macrociclo: int, km_total: float, tipo_calidad: str,
     semana_ant_inicio: str, semana_ant_fin: str,
     semana_en_macro: int, sub_fase: str | None,
+    incluir_fuerza: bool = True,
 ) -> tuple[list, float, float, float, float]:
     """Reparte el volumen semanal en TL/RG/calidad/RB y construye las 7 sesiones de
     la semana. Compartido por generar_semana y _generar_semana_interna (regenerar-total)
@@ -1425,7 +1431,7 @@ def _distribuir_km_y_construir_sesiones(
 
     sesiones_plan = _construir_sesiones(
         fecha_inicio, tipo_calidad, macrociclo, km_calidad_sesion, km_rb, km_rg, km_tl,
-        fartlek_reps, prog_bloque_min, sub_fase=sub_fase
+        fartlek_reps, prog_bloque_min, sub_fase=sub_fase, incluir_fuerza=incluir_fuerza
     )
 
     # Mac1: Fartlek/Progresiva calculan su km real desde la estructura de la sesión
@@ -1456,6 +1462,7 @@ def _construir_sesiones(
     fartlek_reps: int,
     prog_bloque_min: int,
     sub_fase: str | None = None,
+    incluir_fuerza: bool = True,
 ) -> list:
     """Construye la lista de sesiones para una semana según las NORMAS DE ENTRENAMIENTO:
     Mac1: Lun=Pull · Mar=Calidad · Mié=Push · Jue=RB · Vie=Pierna · Sáb=TL · Dom=RG
@@ -1621,6 +1628,9 @@ def _construir_sesiones(
                     sesiones.append({"fecha": fecha_dia, "tipo": "Descanso", "sesion": "Descanso",
                         "detalles": "Descanso total o caminata suave. Pies frescos para mañana.",
                         "duracion_min": 0, "intensidad": "Muy baja", "km_planificados": None})
+
+    if not incluir_fuerza:
+        sesiones = [s for s in sesiones if s["tipo"] != "Fuerza"]
 
     return sesiones
 

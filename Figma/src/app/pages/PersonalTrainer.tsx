@@ -17,6 +17,7 @@ const [resumen, setResumen] = useState<ResumenEntrenador | null>(null);
   const [generando, setGenerando] = useState(false);
   const [planGenerado, setPlanGenerado] = useState<PlanGenerado | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
+  const [incluirFuerza, setIncluirFuerza] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -37,7 +38,7 @@ const [resumen, setResumen] = useState<ResumenEntrenador | null>(null);
       const lunes = new Date(hoy);
       lunes.setDate(hoy.getDate() + diff);
       const fechaInicio = lunes.toISOString().split("T")[0];
-      const plan = await generarPlanSemana(userId, fechaInicio);
+      const plan = await generarPlanSemana(userId, fechaInicio, undefined, { incluirFuerza });
       setPlanGenerado(plan);
     } catch (e: unknown) {
       setPlanError(e instanceof Error ? e.message : "Error generando el plan");
@@ -140,6 +141,16 @@ const [resumen, setResumen] = useState<ResumenEntrenador | null>(null);
                       className="bg-[#0E1117] border-[#C9FF00]/30 text-white resize-none"
                     />
                   </div>
+
+                  <label className="flex items-center gap-2 text-sm text-white cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={incluirFuerza}
+                      onChange={(e) => setIncluirFuerza(e.target.checked)}
+                      className="accent-[#C9FF00] h-4 w-4"
+                    />
+                    Incluir sesiones de fuerza
+                  </label>
 
                   <Button
                     onClick={handleGenerarPlan}

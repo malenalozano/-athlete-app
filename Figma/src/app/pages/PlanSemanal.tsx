@@ -1892,6 +1892,7 @@ function GenerarPlanInner() {
   const [kmEditValue, setKmEditValue] = useState<string>("");
   const [kmEditing, setKmEditing] = useState(false);
   const [regenMsg, setRegenMsg] = useState<string | null>(null);
+  const [incluirFuerza, setIncluirFuerza] = useState(false);
 
   const displayDays = useMemo(
     () => applyGarminOverlay(days, planData?.actividades_garmin ?? []),
@@ -1987,7 +1988,7 @@ function GenerarPlanInner() {
     setRegenMsg(null);
     try {
       const semanaInicio = getWeekStart(currentWeek);
-      const result = await generarPlanSemana(userId, semanaInicio);
+      const result = await generarPlanSemana(userId, semanaInicio, undefined, { incluirFuerza });
       setRegenMsg(`Semana regenerada: ${result.km_total} km · ${result.tipo_semana}`);
       loadPlan(currentWeek);
       loadMonthCalendar(currentWeek);
@@ -2003,7 +2004,7 @@ function GenerarPlanInner() {
     setLoadingRegen("total");
     setRegenMsg(null);
     try {
-      const result = await regenerarPlanTotal(userId, 4);
+      const result = await regenerarPlanTotal(userId, 4, incluirFuerza);
       setRegenMsg(`Plan total regenerado: ${result.semanas_regeneradas} semanas · base ${result.km_base_real} km/sem`);
       loadPlan(currentWeek);
       loadMonthCalendar(currentWeek);
@@ -2023,7 +2024,7 @@ function GenerarPlanInner() {
     setRegenMsg(null);
     try {
       const semanaInicio = getWeekStart(currentWeek);
-      const result = await generarPlanSemana(userId, semanaInicio, km);
+      const result = await generarPlanSemana(userId, semanaInicio, km, { incluirFuerza });
       setRegenMsg(`Semana recalculada a ${km} km · distribución ajustada`);
       loadPlan(currentWeek);
       loadMonthCalendar(currentWeek);
@@ -2212,6 +2213,15 @@ function GenerarPlanInner() {
           </div>
           {userId !== 2 && (
           <div className="flex flex-col gap-2">
+            <label className="flex items-center gap-2 text-xs text-[#8B949E] font-medium cursor-pointer select-none px-1">
+              <input
+                type="checkbox"
+                checked={incluirFuerza}
+                onChange={(e) => setIncluirFuerza(e.target.checked)}
+                className="accent-[#C9FF00] h-3.5 w-3.5"
+              />
+              Incluir sesiones de fuerza al regenerar
+            </label>
             <button
               onClick={handleRegenerarSemana}
               disabled={loadingRegen !== null}

@@ -283,7 +283,7 @@ export function generarPlanSemana(
   usuarioId: number,
   fechaInicio: string,
   kmTotal?: number,
-  opts?: { incluirCalidad?: boolean; dryRun?: boolean; cicloOverride?: CicloOverride }
+  opts?: { incluirCalidad?: boolean; incluirFuerza?: boolean; dryRun?: boolean; cicloOverride?: CicloOverride }
 ) {
   return req<PlanGenerado>(`/plan/${usuarioId}/generar-semana`, {
     method: "POST",
@@ -291,6 +291,7 @@ export function generarPlanSemana(
       fecha_inicio: fechaInicio,
       km_total: kmTotal ?? null,
       incluir_calidad: opts?.incluirCalidad ?? true,
+      incluir_fuerza: opts?.incluirFuerza ?? false,
       dry_run: opts?.dryRun ?? false,
       ciclo_override: opts?.cicloOverride ?? null,
     }),
@@ -304,10 +305,10 @@ export function aplicarSemanaGenerada(usuarioId: number, fechaInicio: string, se
   });
 }
 
-export function regenerarPlanTotal(usuarioId: number, semanas = 4) {
+export function regenerarPlanTotal(usuarioId: number, semanas = 4, incluirFuerza = false) {
   return req<{ ok: boolean; km_base_real: number; semanas_regeneradas: number; detalle: { semana_inicio: string; km_total: number; descarga: boolean }[] }>(
     `/plan/${usuarioId}/regenerar-total`,
-    { method: "POST", body: JSON.stringify({ semanas }) }
+    { method: "POST", body: JSON.stringify({ semanas, incluir_fuerza: incluirFuerza }) }
   );
 }
 
