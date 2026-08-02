@@ -441,11 +441,11 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
       )}
       {/* Top row */}
       <div className="flex items-center justify-between">
-        <Badge sub={session.subtype} label="Gym" />
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[11px] font-semibold" style={{ color: locked ? "#34d399" : "#f1f5f9" }}>{SUB[session.subtype].label}</span>
-          {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
+        <div className="flex items-center gap-2 min-w-0">
+          <Badge sub={session.subtype} label="Gym" />
+          <span className="text-xs font-bold line-clamp-1" style={{ color: T.text1 }}>{SUB[session.subtype].label}</span>
         </div>
+        {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
       </div>
     </div>
   );
