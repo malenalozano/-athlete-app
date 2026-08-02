@@ -45,13 +45,18 @@ def _upsert_actividad(conn, usuario_id: int, act: dict):
     fecha_raw = act.get("startTimeLocal") or act.get("startTimeGMT") or ""
     fecha = fecha_raw[:10] if fecha_raw else None
 
+    existente = conn.execute(
+        "SELECT subtipo_manual FROM actividades_garmin WHERE id_actividad = ?", (act_id,)
+    ).fetchone()
+    subtipo_manual = existente[0] if existente else None
+
     conn.execute(
         """INSERT OR REPLACE INTO actividades_garmin
            (id_actividad, usuario_id, fecha, tipo_deporte, distancia_m, tiempo_seg,
-            ritmo_medio, fc_media, fc_max, cadencia_media)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ritmo_medio, fc_media, fc_max, cadencia_media, subtipo_manual)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (act_id, usuario_id, fecha, tipo, distancia, duracion,
-         ritmo, fc_media, fc_max, cadencia),
+         ritmo, fc_media, fc_max, cadencia, subtipo_manual),
     )
 
 
@@ -499,6 +504,26 @@ def get_actividades(usuario_id: int, dias: int = 30):
             else f"{int(seg//60)}min"
         )
     return actividades
+
+
+class SubtipoManualUpdate(BaseModel):
+    subtipo: Optional[str] = None  # "RB" | "CAL" | "TL" | null para quitar la clasificación
+
+
+@router.patch("/actividad/{id_actividad}/subtipo")
+def clasificar_actividad_extra(id_actividad: str, body: SubtipoManualUpdate):
+    """Clasifica manualmente una actividad Garmin sin sesión planificada (RB/CAL/TL)
+    para que cuente en el Comparador como si fuera una sesión de ese tipo."""
+    if body.subtipo is not None and body.subtipo not in ("RB", "CAL", "TL"):
+        raise HTTPException(status_code=400, detail="subtipo debe ser RB, CAL, TL o null")
+    conn = get_db()
+    conn.execute(
+        "UPDATE actividades_garmin SET subtipo_manual = ? WHERE id_actividad = ?",
+        (body.subtipo, id_actividad),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
 
 
 @router.get("/{usuario_id}/stats")

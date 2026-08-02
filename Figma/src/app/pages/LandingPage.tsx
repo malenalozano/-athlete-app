@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import {
   Calendar, TrendingUp, Award, ChevronLeft, ChevronRight,
   ArrowLeftRight, X, Clock, Flame, Plus, Check, Save, Trash2,
-  RefreshCw, ArrowRight, Zap,
+  RefreshCw, ArrowRight, Zap, ListChecks,
 } from "lucide-react";
 import {
   addDays, addMonths, addWeeks, differenceInCalendarDays, format,
@@ -13,9 +13,9 @@ import { es } from "date-fns/locale";
 import { useUser } from "../context/UserContext";
 import { esActividadRunning } from "../lib/running";
 import {
-  actualizarSesionCompleta, aplicarSemanaGenerada, borrarSesion, crearSesion, generarPlanSemana,
-  getDashboard, getPlanSemana, sincronizarGarmin,
-  type ActividadGarmin, type CicloOverride, type DashboardData, type SesionGenerada, type SesionPlan,
+  actualizarSesionCompleta, aplicarSemanaGenerada, borrarSesion, clasificarActividadExtra, crearSesion, generarPlanSemana,
+  getDashboard, getPlanCompleto, getPlanSemana, sincronizarGarmin,
+  type ActividadGarmin, type CicloOverride, type DashboardData, type PlanCompleto, type SesionGenerada, type SesionPlan,
 } from "../api";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -79,6 +79,7 @@ interface Session {
   kmPlanificados?: number;
   garminBacked?: boolean; // completada porque hay actividad Garmin ese día — no se puede desmarcar
   extraKm?: number; // km de déficit de sesiones pasadas redistribuidos aquí (se muestra en rojo)
+  garminActId?: string; // id_actividad Garmin — solo en origin "garmin", para clasificar manualmente RB/CAL/TL
   ritmoEsperado?: string | null; // objetivo de ritmo, extraído de "detalles" por el backend
   fcEsperado?: string | null;    // objetivo de FC, idem
   fcReposoDiaSiguiente?: number | null; // solo TL: FC de reposo el día después
@@ -229,11 +230,12 @@ function applyGarminMatching(planSessions: Session[], actividades: ActividadGarm
     const leftover = [...running.slice(runningUsed), ...noRunning.slice(noRunningUsed)];
     leftover.forEach((a, i) => {
       const km = (a.distancia_m || 0) / 1000;
+      const esRunning = esActividadRunning(a.tipo_deporte);
       extras.push({
         id: `garmin-${dayIndex}-${i}-${a.fecha}-${a.tipo_deporte}`,
         dayIndex,
-        type: esActividadRunning(a.tipo_deporte) ? "carrera" : "fuerza",
-        subtype: "EXTRA",
+        type: esRunning ? "carrera" : "fuerza",
+        subtype: esRunning ? (a.subtipo_manual ?? "RB") : "EXTRA",
         title: humanizarTipoActividad(a.tipo_deporte),
         duration: formatDuracion(a.tiempo_seg ? Math.round(a.tiempo_seg / 60) : null),
         metric: km > 0.1 ? `${km.toFixed(1)} km` : "",
@@ -242,6 +244,10 @@ function applyGarminMatching(planSessions: Session[], actividades: ActividadGarm
         garminBacked: true,
         origin: "garmin",
         kmRealizados: km > 0.1 ? Math.round(km * 10) / 10 : undefined,
+        kmPlanificados: km > 0.1 ? Math.round(km * 10) / 10 : undefined,
+        garminActId: a.id_actividad,
+        ritmoReal: a.ritmo_medio ?? null,
+        fcReal: a.fc_media ?? null,
       });
     });
   }
@@ -389,24 +395,19 @@ function CardCarrera({ session, isReorderMode, onToggle, onOpen, onReorderTap }:
       )}
       {/* Top row */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <Badge sub={session.subtype} />
           <span className="text-xs font-bold line-clamp-1" style={{ color: T.text1 }}>{session.title}</span>
         </div>
-        {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
-      </div>
-      {/* Bottom row */}
-      <div className="mt-2 flex items-center justify-between text-[11px]" style={{ color: T.text2 }}>
-        <div className="flex items-center gap-1">
-          <Clock className="w-3 h-3" style={{ color: T.text3 }} />
-          <span>{session.duration}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {session.metric && (
+            <span className="text-[11px] font-semibold" style={{ color: locked ? "#34d399" : "#f1f5f9" }}>
+              {session.metric}
+              {session.extraKm ? <span style={{ color: "#f87171" }}> +{session.extraKm.toFixed(1).replace(".0", "")}km</span> : null}
+            </span>
+          )}
+          {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
         </div>
-        {session.metric && (
-          <span className="font-semibold" style={{ color: locked ? "#34d399" : "#f1f5f9" }}>
-            {session.metric}
-            {session.extraKm ? <span style={{ color: "#f87171" }}> +{session.extraKm.toFixed(1).replace(".0", "")}km</span> : null}
-          </span>
-        )}
       </div>
     </div>
   );
@@ -440,11 +441,12 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
       {/* Top row */}
       <div className="flex items-center justify-between">
         <Badge sub={session.subtype} />
-        {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
-      </div>
-      <div className="mt-2 flex items-center gap-1 text-[11px]" style={{ color: T.text2 }}>
-        <Clock className="w-3 h-3" style={{ color: T.text3 }} />
-        <span>{session.duration}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {session.metric && (
+            <span className="text-[11px] font-semibold" style={{ color: locked ? "#34d399" : "#f1f5f9" }}>{session.metric}</span>
+          )}
+          {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
+        </div>
       </div>
     </div>
   );
@@ -453,26 +455,32 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // CARD EXTRA (actividad Garmin hecha pero no planificada — solo lectura)
 // ─────────────────────────────────────────────────────────────────────────────
-function CardExtra({ session }: { session: Session }) {
-  const c = SUB.EXTRA;
+function CardExtra({ session, onClassify }: { session: Session; onClassify?: () => void }) {
+  const c = SUB[session.subtype];
+  const clasificable = session.type === "carrera" && !!onClassify;
   return (
-    <div className="p-3 rounded-xl relative" style={{ background: `${c.bg}55`, border: `1px solid ${c.color}40` }}>
+    <div
+      onClick={clasificable ? onClassify : undefined}
+      className={`p-3 rounded-xl relative ${clasificable ? "cursor-pointer" : ""}`}
+      style={{ background: `${c.bg}55`, border: `1px solid ${c.color}40` }}
+    >
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Badge sub="EXTRA" />
+        <div className="flex items-center gap-2 min-w-0">
+          <Badge sub={session.subtype} />
           <span className="text-xs font-bold line-clamp-1" style={{ color: T.text1 }}>{session.title}</span>
         </div>
-        <Check className="w-3.5 h-3.5 shrink-0" style={{ color: c.color }} />
-      </div>
-      <div className="mt-2 flex items-center justify-between text-[11px]" style={{ color: T.text2 }}>
-        <div className="flex items-center gap-1">
-          <Clock className="w-3 h-3" style={{ color: T.text3 }} />
-          <span>{session.duration}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {session.metric && (
+            <span className="text-[11px] font-semibold" style={{ color: "#f1f5f9" }}>{session.metric}</span>
+          )}
+          <Check className="w-3.5 h-3.5 shrink-0" style={{ color: c.color }} />
         </div>
-        {session.metric && (
-          <span className="font-semibold" style={{ color: "#f1f5f9" }}>{session.metric}</span>
-        )}
       </div>
+      {clasificable && (
+        <p className="mt-1 text-[9px] italic" style={{ color: T.text3 }}>
+          Toca para cambiar clasificación (RB por defecto)
+        </p>
+      )}
     </div>
   );
 }
@@ -480,9 +488,10 @@ function CardExtra({ session }: { session: Session }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // DAY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
-function DayBlock({ dayLabel, sessions, isReorderMode, onToggle, onOpen, onReorderTap }: {
+function DayBlock({ dayLabel, sessions, isReorderMode, onToggle, onOpen, onReorderTap, onClassifyExtra }: {
   dayLabel: string; sessions: Session[]; isReorderMode: boolean;
   onToggle: (id: string) => void; onOpen: (s: Session) => void; onReorderTap: (s: Session) => void;
+  onClassifyExtra?: (s: Session) => void;
 }) {
   return (
     <div className="rounded-2xl p-3" style={{ background: "rgba(30,41,59,0.55)", border: `1px solid ${T.border}` }}>
@@ -494,7 +503,7 @@ function DayBlock({ dayLabel, sessions, isReorderMode, onToggle, onOpen, onReord
       {/* Session cards */}
       <div className="space-y-2">
         {sessions.map(s => s.origin === "garmin"
-          ? <CardExtra key={s.id} session={s} />
+          ? <CardExtra key={s.id} session={s} onClassify={onClassifyExtra ? () => onClassifyExtra(s) : undefined} />
           : s.type === "carrera"
             ? <CardCarrera key={s.id} session={s} isReorderMode={isReorderMode}
                 onToggle={() => onToggle(s.id)} onOpen={() => onOpen(s)}
@@ -638,6 +647,68 @@ function ReorderModal({ session, days, onMove, onClose }: {
           ))}
         </div>
         <button onClick={onClose} className="w-full py-2.5 rounded-xl text-xs font-bold" style={{ background: T.border, color: T.text2 }}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLASSIFY EXTRA MODAL (actividad Garmin no planificada → RB/CAL/TL para el Comparador)
+// ─────────────────────────────────────────────────────────────────────────────
+function ClassifyExtraModal({ session, onClose, onDone, showToast }: {
+  session: Session; onClose: () => void; onDone: () => void;
+  showToast: (text: string, kind?: "error" | "success") => void;
+}) {
+  const [saving, setSaving] = useState(false);
+
+  const elegir = async (subtipo: "RB" | "CAL" | "TL" | null) => {
+    if (!session.garminActId) return;
+    setSaving(true);
+    try {
+      await clasificarActividadExtra(session.garminActId, subtipo);
+      showToast(subtipo ? `Clasificada como ${subtipo}.` : "Clasificación quitada.", "success");
+      onDone();
+    } catch {
+      showToast("No se pudo clasificar la actividad.", "error");
+      setSaving(false);
+    }
+  };
+
+  const OPCIONES: { key: "RB" | "CAL" | "TL"; label: string }[] = [
+    { key: "RB", label: "Rodaje Base" },
+    { key: "CAL", label: "Calidad / Series" },
+    { key: "TL", label: "Tirada Larga" },
+  ];
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(2,6,23,0.8)", backdropFilter: "blur(4px)" }}>
+      <div className="w-full rounded-3xl p-5 space-y-4" style={{ background: T.bgSurf, border: `1px solid ${T.border}` }}>
+        <div className="text-center">
+          <h3 className="text-sm font-bold" style={{ color: T.text1 }}>¿Qué tipo de carrera fue?</h3>
+          <p className="text-xs mt-1 font-semibold" style={{ color: T.text2 }}>{session.title} · {session.metric || "—"}</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {OPCIONES.map(o => (
+            <button key={o.key} disabled={saving} onClick={() => elegir(o.key)}
+              className="py-3 rounded-xl text-[10px] font-black border transition-all active:scale-95 disabled:opacity-50"
+              style={{
+                background: session.subtype === o.key ? SUB[o.key].bg : T.bgApp,
+                color: SUB[o.key].color,
+                border: `1px solid ${SUB[o.key].color}55`,
+              }}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+        {session.subtype !== "EXTRA" && (
+          <button disabled={saving} onClick={() => elegir(null)}
+            className="w-full py-2.5 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: T.border, color: T.text2 }}>
+            Quitar clasificación
+          </button>
+        )}
+        <button disabled={saving} onClick={onClose} className="w-full py-2.5 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: T.bgApp, color: T.text3, border: `1px solid ${T.border}` }}>
           Cancelar
         </button>
       </div>
@@ -928,6 +999,7 @@ function WeeklyView({
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [reorderingSession, setReorderingSession] = useState<Session | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [classifyingExtra, setClassifyingExtra] = useState<Session | null>(null);
 
   const avisoDistribucion = weekMeta.distribucion && weekMeta.distribucion.includes("⚠️") ? weekMeta.distribucion : null;
   const macrocicloNum = parseInt(weekMeta.macrocicloLabel.replace("M", ""), 10) || 1;
@@ -968,6 +1040,12 @@ function WeeklyView({
             }}>
             <ArrowLeftRight className="w-3.5 h-3.5" />
             {isReorderMode && "Listo"}
+          </button>
+          {/* Add session button */}
+          <button onClick={() => setIsAdding(true)}
+            className="w-9 h-9 rounded-full flex items-center justify-center transition-all"
+            style={{ background: "linear-gradient(135deg,#06b6d4,#4f46e5)", color: "#fff" }}>
+            <Plus className="w-4 h-4" />
           </button>
         </div>
       </header>
@@ -1015,19 +1093,13 @@ function WeeklyView({
             onToggle={onToggle}
             onOpen={s => setEditingSession(s)}
             onReorderTap={s => setReorderingSession(s)}
+            onClassifyExtra={s => setClassifyingExtra(s)}
           />
         ))}
         {!loading && !error && (
           <RegenerarPlanCard userId={userId} monday={monday} onApplied={onApplied} showToast={showToast} />
         )}
       </div>
-
-      {/* FAB */}
-      <button onClick={() => setIsAdding(true)}
-        className="absolute bottom-24 right-4 w-14 h-14 rounded-full flex items-center justify-center shadow-lg z-30 transition-all hover:scale-105"
-        style={{ background: "linear-gradient(135deg,#06b6d4,#4f46e5)", boxShadow: "0 8px 24px rgba(6,182,212,0.35)" }}>
-        <Plus className="w-6 h-6 text-white" />
-      </button>
 
       {/* Modals */}
       {editingSession && (
@@ -1043,6 +1115,10 @@ function WeeklyView({
       )}
       {isAdding && (
         <AddSessionModal days={DAYS} onAdd={onAdd} onClose={() => setIsAdding(false)} />
+      )}
+      {classifyingExtra && (
+        <ClassifyExtraModal session={classifyingExtra} onClose={() => setClassifyingExtra(null)}
+          onDone={() => { setClassifyingExtra(null); onApplied(); }} showToast={showToast} />
       )}
     </div>
   );
@@ -1228,6 +1304,67 @@ function MonthlyView({ userId, refreshKey }: { userId: number; refreshKey: numbe
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PLAN VIEW (plan de carrera completo, semana por semana — solo tipo + km)
+// ─────────────────────────────────────────────────────────────────────────────
+function PlanView({ userId }: { userId: number }) {
+  const [plan, setPlan] = useState<PlanCompleto | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    getPlanCompleto(userId)
+      .then(d => { if (!cancelled) setPlan(d); })
+      .catch(() => { if (!cancelled) setPlan(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  const totalKm = plan?.semanas.reduce((a, w) => a + w.km_planificados, 0) ?? 0;
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {loading && <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Cargando plan…</p>}
+        {!loading && (!plan || plan.semanas.length === 0) && (
+          <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin plan generado todavía</p>
+        )}
+        {!loading && plan && plan.semanas.length > 0 && (
+          <>
+            <div className="rounded-xl p-3 flex items-center justify-between" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
+              <span className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>{plan.semanas.length} semanas planificadas</span>
+              <span className="text-xs font-black" style={{ color: "#4ade80" }}>{totalKm.toFixed(0)} km totales</span>
+            </div>
+            {plan.semanas.map(w => (
+              <div key={w.semana_inicio} className="rounded-xl p-3" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase" style={{ color: T.text2 }}>
+                    Semana del {capitalize(format(parseISO(w.semana_inicio), "d 'de' MMM", { locale: es }))}
+                  </span>
+                  <span className="text-[10px] font-black" style={{ color: "#4ade80" }}>{w.km_planificados.toFixed(1)} km</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {w.sesiones.map((s, j) => {
+                    const sub = classifySubtype(s.tipo, s.sesion);
+                    const c = SUB[sub];
+                    return (
+                      <span key={j} className="rounded px-1.5 py-1 text-[9px] font-bold flex items-center gap-1"
+                        style={{ background: c.bg, color: c.color, border: `1px solid ${c.color}55` }}>
+                        {c.label}{s.km_planificados ? ` · ${s.km_planificados}k` : ""}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PROGRESS VIEW (datos reales de /dashboard: running_trend, ritmo_trend, semana_actual)
 // ─────────────────────────────────────────────────────────────────────────────
 const MACROCICLOS_INFO: { num: 1 | 2 | 3 | 4; nombre: string; color: string }[] = [
@@ -1237,8 +1374,7 @@ const MACROCICLOS_INFO: { num: 1 | 2 | 3 | 4; nombre: string; color: string }[] 
   { num: 4, nombre: "Tapering", color: "#f97316" },
 ];
 
-function ProgressView({ weekStats, dashboard, loadingDashboard, todayMacro }: {
-  weekStats: { km_planificados: number; km_realizados: number } | null;
+function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
   dashboard: DashboardData | null;
   loadingDashboard: boolean;
   todayMacro: {
@@ -1248,7 +1384,6 @@ function ProgressView({ weekStats, dashboard, loadingDashboard, todayMacro }: {
 }) {
   const bars = dashboard?.running_trend ?? [];
   const paceTrend = dashboard?.ritmo_trend ?? [];
-  const maxBar = Math.max(1, ...bars.map(b => b.km));
   const totalKm = bars.reduce((a, b) => a + b.km, 0);
   const pctChange = bars.length >= 2 && bars[bars.length - 2].km > 0
     ? Math.round(((bars[bars.length - 1].km - bars[bars.length - 2].km) / bars[bars.length - 2].km) * 100)
@@ -1270,8 +1405,24 @@ function ProgressView({ weekStats, dashboard, loadingDashboard, todayMacro }: {
     ? `${pacePath} L ${pacePoints[pacePoints.length - 1].x} 120 L ${pacePoints[0].x} 120 Z`
     : "";
 
-  const weeklyKms = weekStats?.km_realizados ?? 0;
-  const weeklyPlan = weekStats?.km_planificados ?? 0;
+  const kmMin = bars.length ? Math.min(...bars.map(b => b.km)) : 0;
+  const kmMax = bars.length ? Math.max(...bars.map(b => b.km)) : 0;
+  const kmRange = kmMax - kmMin || 1;
+  const kmPoints = bars.map((b, i) => {
+    const x = bars.length > 1 ? 10 + (i / (bars.length - 1)) * 280 : 150;
+    const norm = (b.km - kmMin) / kmRange;
+    const y = 105 - norm * 90;
+    return { x, y, km: b.km, semana: b.semana };
+  });
+  const kmPath = kmPoints.length
+    ? "M " + kmPoints.map(p => `${p.x} ${p.y}`).join(" L ")
+    : "";
+  const kmAreaPath = kmPoints.length
+    ? `${kmPath} L ${kmPoints[kmPoints.length - 1].x} 120 L ${kmPoints[0].x} 120 Z`
+    : "";
+
+  const weeklyKms = dashboard?.semana_actual?.km_realizados ?? 0;
+  const weeklyPlan = dashboard?.semana_actual?.km_planificados ?? 0;
 
   const todayIso = toISODate(new Date());
   const hrvHoy = dashboard?.hrv_data?.find(h => h.fecha === todayIso)?.hrv_ms ?? null;
@@ -1282,34 +1433,35 @@ function ProgressView({ weekStats, dashboard, loadingDashboard, todayMacro }: {
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
-        {/* Bar chart */}
+        {/* Line chart km semanales (SVG) */}
         <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
           <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Volumen semanal (últimas {bars.length || 8} semanas)</h3>
           {loadingDashboard && <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Cargando…</p>}
           {!loadingDashboard && bars.length === 0 && (
             <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos de Garmin suficientes todavía</p>
           )}
-          {!loadingDashboard && bars.length > 0 && (
-            <div className="h-40 w-full flex items-end justify-between px-2 relative">
-              <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-                <div className="border-b text-[8px] pt-1" style={{ borderColor: T.border + "80", color: T.text3 }}>{maxBar.toFixed(0)} km</div>
-                <div className="text-[8px]" style={{ color: T.text3 }}>0 km</div>
-              </div>
-              {bars.map((b, i) => {
-                const h = Math.round((b.km / maxBar) * 140);
-                const active = i === bars.length - 1;
-                return (
-                  <div key={i} className="flex flex-col items-center z-10 group">
-                    <span className="text-[9px] font-black mb-1 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "#22d3ee" }}>{b.km}k</span>
-                    <div className="w-6 rounded-t-lg" style={{
-                      height: Math.max(h, 2),
-                      background: active ? "linear-gradient(to top,#06b6d4,#4f46e5)" : T.border,
-                      boxShadow: active ? "0 0 12px rgba(6,182,212,0.3)" : "none",
-                    }} />
-                    <span className="text-[10px] font-medium mt-2" style={{ color: T.text2 }}>{b.semana}</span>
-                  </div>
-                );
-              })}
+          {!loadingDashboard && kmPoints.length >= 2 && (
+            <div className="h-40 w-full relative">
+              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 130">
+                <defs>
+                  <linearGradient id="line-grad-km" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
+                    <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d={kmAreaPath} fill="url(#line-grad-km)" />
+                <path d={kmPath} fill="none" stroke="#4ade80" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                {kmPoints.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={i === kmPoints.length - 1 ? 5 : 4}
+                    fill={i === kmPoints.length - 1 ? "#10b981" : "#16a34a"} stroke="#fff" strokeWidth="1.5" />
+                ))}
+                {kmPoints.map((p, i) => (
+                  <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
+                    fill={i === kmPoints.length - 1 ? "#34d399" : T.text3} fontSize="8" fontWeight="bold">
+                    {p.km.toFixed(1)}k
+                  </text>
+                ))}
+              </svg>
             </div>
           )}
         </div>
@@ -1446,31 +1598,50 @@ function formatRitmoReal(ritmo?: number | null): string | null {
   return ritmo ? `${formatPace(ritmo)} min/km` : null;
 }
 
-/** Ritmo/FC real (si la sesión está completada) vs esperado — o solo el
- * esperado si todavía no se ha completado. */
-function RitmoFcCompare({ session }: { session?: Session }) {
-  if (!session) return <p className="text-[11px] italic" style={{ color: T.text3 }}>Sin sesión</p>;
-  const esperado = [session.ritmoEsperado, session.fcEsperado].filter(Boolean).join(" · ") || "—";
+/** Detalle extra de la sesión de calidad según su tipo, extraído de `notes`
+ * (detalles generados por el backend): reps de Fartlek, bloque de Progresiva,
+ * series×distancia de Intervalos. Tempo no añade nada. */
+function qualityDetail(session?: Session): string | null {
+  if (!session) return null;
+  const title = session.title.toLowerCase();
+  const notes = session.notes || "";
+  if (title.includes("fartlek")) {
+    const m = notes.match(/(\d+)×\(1'@/);
+    return m ? `${m[1]} reps` : null;
+  }
+  if (title.includes("progresiva")) {
+    const m = notes.match(/(\d+)\s*min Z1\b/);
+    return m ? `${m[1]} mins B3` : null;
+  }
+  if (title.includes("intervalo")) {
+    const m = notes.match(/(\d+)×\((\d+)m/);
+    return m ? `${m[1]}x${m[2]}` : null;
+  }
+  return null;
+}
+
+/** Columna de comparación: km hechos/planificados centrado arriba, ritmo/FC
+ * reales debajo (sin valores esperados). */
+function CompareColumn({ session, showDetail }: { session?: Session; showDetail?: boolean }) {
+  if (!session) return <p className="text-[11px] italic text-center" style={{ color: T.text3 }}>Sin sesión</p>;
   const realParts = [
     formatRitmoReal(session.ritmoReal),
     session.fcReal ? `${Math.round(session.fcReal)} ppm` : null,
   ].filter(Boolean);
   const real = session.completed && realParts.length ? realParts.join(" · ") : null;
+  const detail = showDetail ? qualityDetail(session) : null;
 
   return (
-    <>
-      {real ? (
-        <>
-          <p className="font-black text-sm" style={{ color: T.text1 }}>{real}</p>
-          <p className="text-[10px]" style={{ color: T.text3 }}>Esperado: {esperado}</p>
-        </>
-      ) : (
-        <p className="font-black text-sm" style={{ color: T.text2 }}>Esperado: {esperado}</p>
-      )}
+    <div className="space-y-1 text-center">
+      <p className="font-black text-sm" style={{ color: T.text1 }}>{session.metric || "—"}</p>
+      <p className="font-black text-sm" style={{ color: real ? T.text2 : T.text3 }}>{real ?? "—"}</p>
       {session.type === "carrera" && session.subtype === "TL" && session.fcReposoDiaSiguiente != null && (
         <p className="text-[10px]" style={{ color: T.text3 }}>FC reposo día siguiente: {Math.round(session.fcReposoDiaSiguiente)} ppm</p>
       )}
-    </>
+      {detail && (
+        <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ color: SUB.CAL.color, background: `${SUB.CAL.color}15` }}>{detail}</span>
+      )}
+    </div>
   );
 }
 
@@ -1504,12 +1675,12 @@ function ComparatorView({ currentSessions, prevSessions, macrocicloLabel }: {
           <CardHeader subKey="RB" title="Rodajes Base" tag="Ritmo en Zona 2" />
           <div className="p-3.5 grid grid-cols-2 gap-4">
             <div className="space-y-1" style={{ borderRight: `1px solid ${T.border}` }}>
-              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>SEMANA ANTERIOR</p>
-              <RitmoFcCompare session={rb.prev} />
+              <p className="text-[9px] font-black uppercase tracking-widest text-center" style={{ color: T.text3 }}>SEMANA ANTERIOR</p>
+              <CompareColumn session={rb.prev} />
             </div>
             <div className="space-y-1 pl-3">
-              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: SUB.RB.color }}>SEMANA ACTUAL</p>
-              <RitmoFcCompare session={rb.curr} />
+              <p className="text-[9px] font-black uppercase tracking-widest text-center" style={{ color: SUB.RB.color }}>SEMANA ACTUAL</p>
+              <CompareColumn session={rb.curr} />
             </div>
           </div>
         </div>
@@ -1526,26 +1697,12 @@ function ComparatorView({ currentSessions, prevSessions, macrocicloLabel }: {
                   <p className="text-[10px] font-black uppercase tracking-wide mb-2" style={{ color: SUB.CAL.color }}>{row.label}</p>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1" style={{ borderRight: `1px solid ${T.border}` }}>
-                      <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>ANTERIOR</p>
-                      {prev ? (
-                        <>
-                          <p className="font-black text-sm" style={{ color: T.text2 }}>{prev.metric || prev.duration || "—"}</p>
-                          <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ color: prev.completed ? T.success : T.text3, background: prev.completed ? `${T.success}15` : "transparent" }}>
-                            {prev.completed ? "Completado" : "No completado"}
-                          </span>
-                        </>
-                      ) : <p className="text-[11px] italic" style={{ color: T.text3 }}>Sin sesión</p>}
+                      <p className="text-[9px] font-black uppercase tracking-widest text-center" style={{ color: T.text3 }}>ANTERIOR</p>
+                      <CompareColumn session={prev} showDetail />
                     </div>
                     <div className="space-y-1 pl-3">
-                      <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: SUB.CAL.color }}>ACTUAL</p>
-                      {curr ? (
-                        <>
-                          <p className="font-black text-sm" style={{ color: T.text1 }}>{curr.metric || curr.duration || "—"}</p>
-                          <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ color: curr.completed ? T.success : SUB.CAL.color, background: curr.completed ? `${T.success}15` : `${SUB.CAL.color}15` }}>
-                            {curr.completed ? "Completado" : "Programado"}
-                          </span>
-                        </>
-                      ) : <p className="text-[11px] italic" style={{ color: T.text3 }}>Sin sesión</p>}
+                      <p className="text-[9px] font-black uppercase tracking-widest text-center" style={{ color: SUB.CAL.color }}>ACTUAL</p>
+                      <CompareColumn session={curr} showDetail />
                     </div>
                   </div>
                 </div>
@@ -1559,12 +1716,12 @@ function ComparatorView({ currentSessions, prevSessions, macrocicloLabel }: {
           <CardHeader subKey="TL" title="Tirada Larga (Fondo)" tag="Resistencia" />
           <div className="p-3.5 grid grid-cols-2 gap-4">
             <div className="space-y-1" style={{ borderRight: `1px solid ${T.border}` }}>
-              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>SEMANA ANTERIOR</p>
-              <RitmoFcCompare session={tl.prev} />
+              <p className="text-[9px] font-black uppercase tracking-widest text-center" style={{ color: T.text3 }}>SEMANA ANTERIOR</p>
+              <CompareColumn session={tl.prev} />
             </div>
             <div className="space-y-1 pl-3">
-              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: SUB.TL.color }}>SEMANA ACTUAL</p>
-              <RitmoFcCompare session={tl.curr} />
+              <p className="text-[9px] font-black uppercase tracking-widest text-center" style={{ color: SUB.TL.color }}>SEMANA ACTUAL</p>
+              <CompareColumn session={tl.curr} />
             </div>
           </div>
         </div>
@@ -1579,7 +1736,7 @@ function ComparatorView({ currentSessions, prevSessions, macrocicloLabel }: {
 export function LandingPage() {
   const { userId } = useUser();
 
-  const [activeTab, setActiveTab] = useState<"calendario" | "progreso" | "comparador">("calendario");
+  const [activeTab, setActiveTab] = useState<"calendario" | "progreso" | "comparador" | "plan">("progreso");
   const [calView, setCalView] = useState<"semanal" | "mensual">("semanal");
 
   const [weekOffset, setWeekOffset] = useState(0);
@@ -1763,8 +1920,9 @@ export function LandingPage() {
   }, [userId, monday, fetchWeek]);
 
   const NAV = [
-    { key: "calendario", icon: Calendar, label: "Calendario" },
     { key: "progreso",   icon: TrendingUp, label: "Progreso" },
+    { key: "calendario", icon: Calendar, label: "Calendario" },
+    { key: "plan",       icon: ListChecks, label: "Plan" },
     { key: "comparador", icon: Award, label: "Comparar" },
   ] as const;
 
@@ -1829,7 +1987,10 @@ export function LandingPage() {
             <MonthlyView userId={userId} refreshKey={planVersion} />
           )}
           {activeTab === "progreso" && (
-            <ProgressView weekStats={weekStats} dashboard={dashboard} loadingDashboard={loadingDashboard} todayMacro={todayMacro} />
+            <ProgressView dashboard={dashboard} loadingDashboard={loadingDashboard} todayMacro={todayMacro} />
+          )}
+          {activeTab === "plan" && userId && (
+            <PlanView userId={userId} />
           )}
           {activeTab === "comparador" && (
             <ComparatorView currentSessions={sessions} prevSessions={prevSessions} macrocicloLabel={weekMeta.macrocicloLabel} />

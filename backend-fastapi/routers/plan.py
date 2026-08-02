@@ -371,13 +371,13 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
 
     # Actividades Garmin de la semana (para km reales si no hay km_realizados)
     garmin_rows = conn.execute(
-        """SELECT fecha, tipo_deporte, distancia_m, tiempo_seg, ritmo_medio, fc_media
+        """SELECT id_actividad, fecha, tipo_deporte, distancia_m, tiempo_seg, ritmo_medio, fc_media, subtipo_manual
            FROM actividades_garmin
            WHERE usuario_id = ? AND fecha >= ? AND fecha <= ?
            ORDER BY fecha ASC""",
         (usuario_id, fecha_inicio, fin),
     ).fetchall()
-    garmin_cols = ["fecha", "tipo_deporte", "distancia_m", "tiempo_seg", "ritmo_medio", "fc_media"]
+    garmin_cols = ["id_actividad", "fecha", "tipo_deporte", "distancia_m", "tiempo_seg", "ritmo_medio", "fc_media", "subtipo_manual"]
     actividades_garmin = [dict(zip(garmin_cols, r)) for r in garmin_rows]
 
     # Si no hay km_real en plan pero hay Garmin, usar Garmin — solo carrera/cinta,
@@ -548,6 +548,37 @@ def borrar_sesion(sesion_id: int):
     conn.commit()
     conn.close()
     return {"ok": True}
+
+
+@router.get("/{usuario_id}/completo")
+def get_plan_completo(usuario_id: int):
+    """Plan de carrera completo, semana por semana, solo con tipo de sesión y km
+    (resumen ligero para la vista 'Plan' — sin cruce con Garmin ni cálculo de fase)."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT fecha, tipo, sesion, km_planificados, semana_inicio
+           FROM plan_entrenamiento
+           WHERE usuario_id = ?
+           ORDER BY fecha ASC""",
+        (usuario_id,),
+    ).fetchall()
+    conn.close()
+
+    semanas: dict[str, dict] = {}
+    for fecha, tipo, sesion, km_planificados, semana_inicio in rows:
+        semana = semanas.setdefault(semana_inicio, {"semana_inicio": semana_inicio, "sesiones": [], "km_planificados": 0.0})
+        semana["sesiones"].append({
+            "fecha": fecha,
+            "tipo": tipo,
+            "sesion": sesion,
+            "km_planificados": km_planificados,
+        })
+        semana["km_planificados"] += km_planificados or 0
+
+    lista = sorted(semanas.values(), key=lambda w: w["semana_inicio"])
+    for w in lista:
+        w["km_planificados"] = round(w["km_planificados"], 1)
+    return {"semanas": lista}
 
 
 def _calcular_semanas_en_macro(fecha: datetime, macrociclo: int) -> int:

@@ -274,6 +274,9 @@ _SCHEMA = [
     # maratón de test antes del maratón final)
     "ALTER TABLE usuarios ADD COLUMN fecha_objetivo_intermedio TEXT",
     "ALTER TABLE usuarios ADD COLUMN objetivo_intermedio_nombre TEXT",
+    # Clasificación manual de actividades Garmin "extra" (sin sesión planificada) —
+    # el usuario elige si contaban como RB/CAL/TL para que entren en el Comparador.
+    "ALTER TABLE actividades_garmin ADD COLUMN subtipo_manual TEXT",
     # Intra-entreno nutrition log
     """CREATE TABLE IF NOT EXISTS intra_entreno_tests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

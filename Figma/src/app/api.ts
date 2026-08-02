@@ -56,6 +56,10 @@ export function getPlanSemana(usuarioId: number, fechaInicio: string) {
   return req<PlanSemana>(`/plan/${usuarioId}/semana/${fechaInicio}`);
 }
 
+export function getPlanCompleto(usuarioId: number) {
+  return req<PlanCompleto>(`/plan/${usuarioId}/completo`);
+}
+
 export function actualizarSesion(sesionId: number, completado: boolean, kmRealizados?: number) {
   return req<{ ok: boolean }>(`/plan/sesion/${sesionId}`, {
     method: "PATCH",
@@ -402,6 +406,14 @@ export interface PlanSemana {
   coach_tip: string;
 }
 
+export interface PlanCompleto {
+  semanas: {
+    semana_inicio: string;
+    km_planificados: number;
+    sesiones: { fecha: string; tipo: string; sesion: string; km_planificados: number | null }[];
+  }[];
+}
+
 export interface SesionPlan {
   id: number;
   fecha: string;
@@ -420,6 +432,7 @@ export interface SesionPlan {
 
 export interface ActividadGarmin {
   id?: string;
+  id_actividad?: string;
   fecha: string;
   tipo_deporte: string;
   distancia_m: number;
@@ -430,6 +443,14 @@ export interface ActividadGarmin {
   cadencia_media: number | null;
   km?: number;
   duracion_fmt?: string;
+  subtipo_manual?: "RB" | "CAL" | "TL" | null;
+}
+
+export function clasificarActividadExtra(idActividad: string, subtipo: "RB" | "CAL" | "TL" | null) {
+  return req<{ ok: boolean }>(`/garmin/actividad/${encodeURIComponent(idActividad)}/subtipo`, {
+    method: "PATCH",
+    body: JSON.stringify({ subtipo }),
+  });
 }
 
 export interface HrvEntry {
