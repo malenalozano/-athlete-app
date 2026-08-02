@@ -4,6 +4,7 @@ import {
   Calendar, TrendingUp, Award, ChevronLeft, ChevronRight,
   ArrowLeftRight, X, Clock, Flame, Plus, Check, Save, Trash2,
   RefreshCw, ArrowRight, Zap, ListChecks, Home, Shield, Footprints,
+  Flag, Trophy, Pencil,
 } from "lucide-react";
 import {
   addDays, addMonths, addWeeks, differenceInCalendarDays, format,
@@ -1455,6 +1456,127 @@ const MACROCICLOS_INFO: { num: 1 | 2 | 3 | 4; nombre: string; color: string }[] 
   { num: 4, nombre: "Tapering", color: "#f97316" },
 ];
 
+// ── Countdown de carreras (Media de Ávila / Maratón de Sevilla) ────────────
+
+function useCountdown(targetDateIso: string | null | undefined) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!targetDateIso) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [targetDateIso]);
+  if (!targetDateIso) return null;
+  const target = new Date(`${targetDateIso}T00:00:00`).getTime();
+  const diff = Math.max(0, target - now);
+  return {
+    days: Math.floor(diff / 86400000),
+    hours: Math.floor((diff % 86400000) / 3600000),
+    minutes: Math.floor((diff % 3600000) / 60000),
+    seconds: Math.floor((diff % 60000) / 1000),
+    done: diff <= 0,
+  };
+}
+
+function raceDistanceKm(nombre: string): number | null {
+  const s = nombre.toLowerCase();
+  if (s.includes("media") || s.includes("21")) return 21.0975;
+  if (s.includes("marat") || s.includes("42")) return 42.195;
+  return null;
+}
+
+function formatDistanciaKm(km: number): string {
+  return km > 30 ? `${km.toFixed(3)} km` : `${km.toFixed(1)} km`;
+}
+
+function parseTiempoMeta(objetivo: string | null | undefined): string | null {
+  if (!objetivo) return null;
+  const m = objetivo.match(/(\d+):(\d{2})/);
+  return m ? `${m[1]}h ${m[2]}m` : null;
+}
+
+function RaceCountdownCard({ categoria, nombre, fecha, fechaInicioEntreno, distanciaKm, tiempoMeta, ritmo }: {
+  categoria: string; nombre: string; fecha: string;
+  fechaInicioEntreno: string | null; distanciaKm: number | null;
+  tiempoMeta: string | null; ritmo: string | null;
+}) {
+  const cd = useCountdown(fecha);
+  if (!cd) return null;
+
+  let semanaActual: number | null = null;
+  let semanaTotal: number | null = null;
+  let pct = 0;
+  if (fechaInicioEntreno) {
+    const start = new Date(`${fechaInicioEntreno}T00:00:00`).getTime();
+    const end = new Date(`${fecha}T00:00:00`).getTime();
+    if (end > start) {
+      semanaTotal = Math.ceil((end - start) / (7 * 86400000));
+      semanaActual = Math.min(semanaTotal, Math.max(1, Math.ceil((Date.now() - start) / (7 * 86400000))));
+      pct = Math.min(100, Math.max(0, Math.round(((Date.now() - start) / (end - start)) * 100)));
+    }
+  }
+
+  const esPrincipal = categoria.toLowerCase().includes("principal");
+
+  return (
+    <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-start gap-2">
+          {esPrincipal
+            ? <Trophy className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "#facc15" }} />
+            : <Flag className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "#38bdf8" }} />}
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>{categoria}</p>
+            <p className="text-sm font-black" style={{ color: T.text1 }}>{nombre}</p>
+          </div>
+        </div>
+        <Link to="/perfil" className="p-1.5 rounded-lg shrink-0" style={{ background: "rgba(148,163,184,0.1)" }}>
+          <Pencil className="h-3.5 w-3.5" style={{ color: T.text3 }} />
+        </Link>
+      </div>
+
+      {cd.done ? (
+        <p className="text-center text-sm font-black py-3" style={{ color: "#34d399" }}>¡Ya llegó el día!</p>
+      ) : (
+        <div className="grid grid-cols-4 gap-2 mb-3">
+          {([["DÍAS", cd.days], ["HORAS", cd.hours], ["MIN", cd.minutes], ["SEG", cd.seconds]] as const).map(([label, value]) => (
+            <div key={label} className="rounded-xl py-2 text-center" style={{ background: "rgba(15,23,42,0.6)" }}>
+              <p className="text-xl font-black tabular-nums" style={{ color: T.text1 }}>{String(value).padStart(2, "0")}</p>
+              <p className="text-[8px] font-black uppercase tracking-widest mt-0.5" style={{ color: T.text3 }}>{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {semanaActual != null && semanaTotal != null && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold" style={{ color: T.text3 }}>Semana {semanaActual} de {semanaTotal}</span>
+            <span className="text-[10px] font-bold" style={{ color: T.text2 }}>{pct}%</span>
+          </div>
+          <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: T.border }}>
+            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: "linear-gradient(90deg,#22d3ee,#4f46e5)" }} />
+          </div>
+        </div>
+      )}
+
+      <div className="flex">
+        <div className="flex-1 text-center px-1" style={{ borderRight: `1px solid ${T.border}` }}>
+          <p className="text-[8px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>Distancia</p>
+          <p className="text-xs font-black mt-0.5" style={{ color: T.text1 }}>{distanciaKm ? formatDistanciaKm(distanciaKm) : "—"}</p>
+        </div>
+        <div className="flex-1 text-center px-1" style={{ borderRight: `1px solid ${T.border}` }}>
+          <p className="text-[8px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>Tiempo meta</p>
+          <p className="text-xs font-black mt-0.5" style={{ color: T.text1 }}>{tiempoMeta ?? "—"}</p>
+        </div>
+        <div className="flex-1 text-center px-1">
+          <p className="text-[8px] font-black uppercase tracking-widest" style={{ color: T.text3 }}>Ritmo medio</p>
+          <p className="text-xs font-black mt-0.5" style={{ color: T.text1 }}>{ritmo ?? "—"}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
   dashboard: DashboardData | null;
   loadingDashboard: boolean;
@@ -1505,10 +1627,35 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
   const hrvHoy = dashboard?.hrv_data?.find(h => h.fecha === todayIso)?.hrv_ms ?? null;
 
   const macrocicloActual = todayMacro ? parseInt(todayMacro.macrocicloLabel.replace("M", ""), 10) : null;
+  const perfil = dashboard?.perfil;
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+
+        {/* Cuentas atrás: Media de Ávila (test) + Maratón de Sevilla (objetivo) */}
+        {perfil?.fecha_objetivo_intermedio && (
+          <RaceCountdownCard
+            categoria="Test de Preparación"
+            nombre={perfil.objetivo_intermedio_nombre || "Media Maratón"}
+            fecha={perfil.fecha_objetivo_intermedio}
+            fechaInicioEntreno={perfil.fecha_inicio_entrenamiento ?? null}
+            distanciaKm={raceDistanceKm(perfil.objetivo_intermedio_nombre || "media")}
+            tiempoMeta={null}
+            ritmo={null}
+          />
+        )}
+        {perfil?.fecha_objetivo && (
+          <RaceCountdownCard
+            categoria="Objetivo Principal"
+            nombre="Maratón de Sevilla"
+            fecha={perfil.fecha_objetivo}
+            fechaInicioEntreno={perfil.fecha_inicio_entrenamiento ?? null}
+            distanciaKm={42.195}
+            tiempoMeta={parseTiempoMeta(perfil.objetivo)}
+            ritmo={perfil.ritmo || null}
+          />
+        )}
 
         {/* KMS semana actual + HRV de hoy */}
         <div className="grid grid-cols-2 gap-3">
