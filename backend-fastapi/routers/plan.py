@@ -1150,18 +1150,29 @@ def _parsear_csv_plan(contenido: str, fecha_inicio: str) -> list[dict]:
     except ValueError:
         raise HTTPException(status_code=400, detail="Formato de fecha_inicio inválido (YYYY-MM-DD)")
 
+    hoy = datetime.now().date()
+
     sesiones: list[dict] = []
+    omitidas_pasado = 0
     for row in reader:
         sesion_planificada = (row.get("Sesión Planificada") or "").strip()
         tipo_csv = (row.get("Tipo de Sesión") or "").strip()
         if not sesion_planificada and not tipo_csv:
             continue  # fila vacía
 
+        fecha_fila = fecha_actual
+        fecha_actual += timedelta(days=1)
+
+        if fecha_fila.date() < hoy:
+            # Los días pasados mantienen las sesiones que ya se hicieron; no se sobrescriben.
+            omitidas_pasado += 1
+            continue
+
         tipo, sesion = _mapear_tipo_sesion(tipo_csv, sesion_planificada)
         km_planificados = _parse_km_planificados(sesion_planificada) if tipo != "Descanso" else None
 
         sesiones.append({
-            "fecha": fecha_actual.strftime("%Y-%m-%d"),
+            "fecha": fecha_fila.strftime("%Y-%m-%d"),
             "tipo": tipo,
             "sesion": sesion,
             "detalles": sesion_planificada or None,
@@ -1169,11 +1180,12 @@ def _parsear_csv_plan(contenido: str, fecha_inicio: str) -> list[dict]:
             "intensidad": None,
             "km_planificados": km_planificados,
         })
-        fecha_actual += timedelta(days=1)
 
-    if not sesiones:
+    if not sesiones and not omitidas_pasado:
         raise HTTPException(status_code=400, detail="El CSV no contiene sesiones")
-    return sesiones
+    if not sesiones:
+        raise HTTPException(status_code=400, detail="Todas las sesiones del CSV caen en días pasados; no hay nada que importar")
+    return sesiones, omitidas_pasado
 
 
 @router.post("/{usuario_id}/importar-csv")
@@ -1185,6 +1197,9 @@ async def importar_plan_csv(
 ):
     """Importa un plan de entrenamiento desde un CSV (ver formato en CSV_COLUMNAS_REQUERIDAS).
     La primera fila de datos se asigna a fecha_inicio y cada fila siguiente al día siguiente.
+    Las filas cuya fecha cae en el pasado se omiten (esos días conservan lo ya realizado).
+    Para las fechas restantes se borra cualquier sesión existente en el plan antes de
+    insertar las nuevas (sustitución, no acumulación).
     Con dry_run=true solo se devuelve la previsualización, sin guardar nada."""
     crudo = await file.read()
     try:
@@ -1192,13 +1207,18 @@ async def importar_plan_csv(
     except UnicodeDecodeError:
         contenido = crudo.decode("latin-1")
 
-    sesiones = _parsear_csv_plan(contenido, fecha_inicio)
+    sesiones, omitidas_pasado = _parsear_csv_plan(contenido, fecha_inicio)
 
     if dry_run:
-        return {"ok": True, "sesiones": sesiones}
+        return {"ok": True, "sesiones": sesiones, "omitidas_pasado": omitidas_pasado}
 
     conn = get_db()
     ahora = datetime.now().isoformat()
+    fechas = [s["fecha"] for s in sesiones]
+    conn.execute(
+        f"""DELETE FROM plan_entrenamiento WHERE usuario_id = ? AND fecha IN ({",".join("?" * len(fechas))})""",
+        (usuario_id, *fechas),
+    )
     for s in sesiones:
         semana_inicio = _inicio_semana(s["fecha"])
         conn.execute(
@@ -1211,7 +1231,7 @@ async def importar_plan_csv(
         )
     conn.commit()
     conn.close()
-    return {"ok": True, "sesiones_importadas": len(sesiones)}
+    return {"ok": True, "sesiones_importadas": len(sesiones), "omitidas_pasado": omitidas_pasado}
 
 
 @router.post("/{usuario_id}/regenerar-total")

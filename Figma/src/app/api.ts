@@ -309,6 +309,7 @@ export interface ImportarPlanCsvResult {
   ok: boolean;
   sesiones?: SesionGenerada[];
   sesiones_importadas?: number;
+  omitidas_pasado?: number;
 }
 
 export async function importarPlanCsv(
