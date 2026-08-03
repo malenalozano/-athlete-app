@@ -246,7 +246,7 @@ function applyGarminMatching(planSessions: Session[], actividades: ActividadGarm
         id: `garmin-${dayIndex}-${i}-${a.fecha}-${a.tipo_deporte}`,
         dayIndex,
         type: esRunning ? "carrera" : "fuerza",
-        subtype: a.subtipo_manual ?? "EXTRA",
+        subtype: esRunning ? (a.subtipo_manual ?? "RB") : "EXTRA",
         title: humanizarTipoActividad(a.tipo_deporte),
         duration: formatDuracion(a.tiempo_seg ? Math.round(a.tiempo_seg / 60) : null),
         metric: km > 0.1 ? `${km.toFixed(1)} km` : "",
@@ -994,6 +994,7 @@ function ImportarPlanCsvCard({ userId, onApplied, showToast }: {
   const [csvFechaInicio, setCsvFechaInicio] = useState("");
   const [importando, setImportando] = useState(false);
   const [preview, setPreview] = useState<SesionGenerada[] | null>(null);
+  const [omitidasPasado, setOmitidasPasado] = useState(0);
 
   const handlePrevisualizar = async () => {
     if (!csvFile || !csvFechaInicio) return;
@@ -1002,6 +1003,7 @@ function ImportarPlanCsvCard({ userId, onApplied, showToast }: {
     try {
       const res = await importarPlanCsv(userId, csvFechaInicio, csvFile, true);
       setPreview(res.sesiones ?? []);
+      setOmitidasPasado(res.omitidas_pasado ?? 0);
     } catch {
       showToast("No se pudo leer el CSV.");
     } finally {
@@ -1014,7 +1016,12 @@ function ImportarPlanCsvCard({ userId, onApplied, showToast }: {
     setImportando(true);
     try {
       const res = await importarPlanCsv(userId, csvFechaInicio, csvFile, false);
-      showToast(`Se importaron ${res.sesiones_importadas ?? 0} sesiones.`, "success");
+      const omitidas = res.omitidas_pasado ?? 0;
+      showToast(
+        `Se importaron ${res.sesiones_importadas ?? 0} sesiones` +
+        (omitidas > 0 ? ` (${omitidas} de días pasados no se tocaron).` : "."),
+        "success"
+      );
       setPreview(null);
       setCsvFile(null);
       setOpen(false);
@@ -1062,6 +1069,8 @@ Día del mes,Día de la semana,Sesión Planificada,Tipo de Sesión
                     <li><span className="font-semibold" style={{ color: T.text1 }}>Sesión Planificada:</span> texto libre, ej. "6 km suaves" o "8 km progresión". Si incluye "X km" o "X-Y km", la app extrae los kilómetros automáticamente.</li>
                     <li><span className="font-semibold" style={{ color: T.text1 }}>Tipo de Sesión:</span> uno de: <code style={{ color: "#22d3ee" }}>Descanso</code>, <code style={{ color: "#22d3ee" }}>Rodaje Base</code>, <code style={{ color: "#22d3ee" }}>Tirada Larga</code>, <code style={{ color: "#22d3ee" }}>Fuerza</code>, <code style={{ color: "#22d3ee" }}>Calidad</code>, <code style={{ color: "#22d3ee" }}>Series</code>, <code style={{ color: "#22d3ee" }}>Intervalos</code>, <code style={{ color: "#22d3ee" }}>Umbral</code>, <code style={{ color: "#22d3ee" }}>Tempo</code> o <code style={{ color: "#22d3ee" }}>Fartlek</code>.</li>
                     <li>Cada fila se asigna a un día consecutivo, empezando por la <span className="font-semibold" style={{ color: T.text1 }}>fecha de inicio</span> que indiques abajo.</li>
+                    <li>Las sesiones que ya haya en el plan para esos días se <span className="font-semibold" style={{ color: T.text1 }}>sustituyen</span> por las del CSV.</li>
+                    <li>Las filas que caigan en <span className="font-semibold" style={{ color: T.text1 }}>días pasados</span> se ignoran — esos días conservan lo que ya hiciste.</li>
                   </ul>
                   <p className="pt-1">Ejemplo:</p>
                   <pre className="rounded-lg p-3 text-xs overflow-x-auto whitespace-pre" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>
@@ -1111,6 +1120,11 @@ Día del mes,Día de la semana,Sesión Planificada,Tipo de Sesión
               <p className="text-[9px] font-black uppercase tracking-wider" style={{ color: T.text3 }}>
                 Previsualización ({preview.length} sesiones)
               </p>
+              {omitidasPasado > 0 && (
+                <p className="text-[10px] font-bold" style={{ color: "#facc15" }}>
+                  {omitidasPasado} fila{omitidasPasado === 1 ? "" : "s"} de días pasados se ignora{omitidasPasado === 1 ? "" : "n"} (se mantiene lo ya hecho).
+                </p>
+              )}
               {preview.map((s, i) => {
                 const fecha = new Date(s.fecha + "T12:00:00");
                 const diaNombre = fecha.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
