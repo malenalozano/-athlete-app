@@ -238,6 +238,12 @@ function SleepAnalysis({ score: scoreProp, hours: hoursProp }: { score?: number 
   );
 }
 
+// Rango HRV normal de la usuaria (ms) — fuera de rango se marca en rojo
+const HRV_RANGO_NORMAL = { min: 71, max: 92 };
+function hrvFueraDeRango(hrv: number | null): boolean {
+  return hrv !== null && (hrv < HRV_RANGO_NORMAL.min || hrv > HRV_RANGO_NORMAL.max);
+}
+
 // Readiness HRV Card
 function ReadinessCard({ hrv: hrvProp }: { hrv?: number | null } = {}) {
   const hrv = hrvProp ?? null;
@@ -250,13 +256,17 @@ function ReadinessCard({ hrv: hrvProp }: { hrv?: number | null } = {}) {
       </div>
     );
   }
+  const fueraDeRango = hrvFueraDeRango(hrv);
+  const colorAccent = fueraDeRango ? "#F43F5E" : "#22C55E";
+  const colorAccentBg = fueraDeRango ? "rgba(244,63,94,0.15)" : "rgba(34,197,94,0.15)";
+  const colorAccentBorder = fueraDeRango ? "rgba(244,63,94,0.4)" : "rgba(34,197,94,0.4)";
   return (
     <div
       className="rounded-2xl p-5 flex flex-col gap-3"
-      style={{ background: "rgba(22,27,34,0.9)", border: "1px solid rgba(34,197,94,0.25)" }}
+      style={{ background: "rgba(22,27,34,0.9)", border: `1px solid ${fueraDeRango ? "rgba(244,63,94,0.25)" : "rgba(34,197,94,0.25)"}` }}
     >
       <div className="flex items-center gap-2">
-        <Brain className="h-4 w-4 text-green-400" />
+        <Brain className="h-4 w-4" style={{ color: colorAccent }} />
         <span className="text-xs font-bold text-[#8B949E] uppercase tracking-widest">Readiness</span>
       </div>
 
@@ -275,7 +285,7 @@ function ReadinessCard({ hrv: hrvProp }: { hrv?: number | null } = {}) {
               dataKey="value"
               strokeWidth={0}
             >
-              <Cell fill="#22C55E" />
+              <Cell fill={colorAccent} />
               <Cell fill="rgba(48,54,61,0.6)" />
             </Pie>
           </PieChart>
@@ -285,12 +295,12 @@ function ReadinessCard({ hrv: hrvProp }: { hrv?: number | null } = {}) {
           </div>
         </div>
         <div className="text-center">
-          <p className="text-xs font-bold text-green-400">HRV</p>
+          <p className="text-xs font-bold" style={{ color: colorAccent }}>HRV</p>
           <div
             className="mt-1 px-3 py-1 rounded-full text-xs font-bold"
-            style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.4)", color: "#22C55E" }}
+            style={{ background: colorAccentBg, border: `1px solid ${colorAccentBorder}`, color: colorAccent }}
           >
-            ✓ Lista para entrenar
+            {fueraDeRango ? `⚠ Fuera de rango (${HRV_RANGO_NORMAL.min}-${HRV_RANGO_NORMAL.max} ms)` : "✓ Lista para entrenar"}
           </div>
         </div>
       </div>

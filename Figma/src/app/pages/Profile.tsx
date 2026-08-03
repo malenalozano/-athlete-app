@@ -75,6 +75,9 @@ function fmtHours(h: number | null): string {
 
 const DAY_SHORT = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
+// Rango HRV normal de la usuaria (ms) — fuera de rango se marca en rojo
+const HRV_RANGO_NORMAL = { min: 71, max: 92 };
+
 // ── Sincronización ─────────────────────────────────────────────────────────────
 
 function Sincronizacion({ biometrico, stats, userId, perfil, onSyncComplete }: { biometrico: EntradaBiometrica[]; stats: GarminStats | null; userId: number | null; perfil: PerfilUsuario | null; onSyncComplete: () => void }) {
@@ -90,8 +93,11 @@ function Sincronizacion({ biometrico, stats, userId, perfil, onSyncComplete }: {
     ? `${stats.ultima_actividad.fecha} · ${stats.ultima_actividad.tipo}`
     : "Sin sincronizar";
 
+  const hrvValorAyer = yesterdayEntry?.hrv_ms != null ? Math.round(yesterdayEntry.hrv_ms) : null;
+  const hrvFueraDeRango = hrvValorAyer !== null && (hrvValorAyer < HRV_RANGO_NORMAL.min || hrvValorAyer > HRV_RANGO_NORMAL.max);
+
   const garminMetrics = [
-    { label: "HRV", value: yesterdayEntry?.hrv_ms != null ? String(Math.round(yesterdayEntry.hrv_ms)) : "—", unit: "ms", icon: Activity, color: "#C9FF00", bg: "rgba(201,255,0,0.1)", border: "rgba(201,255,0,0.25)" },
+    { label: "HRV", value: hrvValorAyer != null ? String(hrvValorAyer) : "—", unit: "ms", icon: Activity, color: hrvFueraDeRango ? "#F43F5E" : "#C9FF00", bg: hrvFueraDeRango ? "rgba(244,63,94,0.1)" : "rgba(201,255,0,0.1)", border: hrvFueraDeRango ? "rgba(244,63,94,0.25)" : "rgba(201,255,0,0.25)" },
     { label: "Sueño", value: yesterdayEntry?.horas_totales != null ? fmtHours(yesterdayEntry.horas_totales) : "—", unit: "", icon: Moon, color: "#A855F7", bg: "rgba(168,85,247,0.1)", border: "rgba(168,85,247,0.25)" },
     { label: "FC Reposo", value: yesterdayEntry?.fc_reposo != null ? String(yesterdayEntry.fc_reposo) : "—", unit: "bpm", icon: Heart, color: "#F43F5E", bg: "rgba(244,63,94,0.1)", border: "rgba(244,63,94,0.25)" },
     { label: "Body Battery", value: (todayEntry ?? yesterdayEntry)?.body_battery != null ? String((todayEntry ?? yesterdayEntry)!.body_battery) : "—", unit: "/100", icon: Zap, color: "#00D4FF", bg: "rgba(0,212,255,0.1)", border: "rgba(0,212,255,0.25)" },

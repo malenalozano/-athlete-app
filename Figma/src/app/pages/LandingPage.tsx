@@ -19,6 +19,12 @@ import {
   type ActividadGarmin, type CicloOverride, type DashboardData, type PlanCompleto, type SesionGenerada, type SesionPlan,
 } from "../api";
 
+// Rango HRV normal de la usuaria (ms) — fuera de rango se marca en rojo
+const HRV_RANGO_NORMAL = { min: 71, max: 92 };
+function hrvFueraDeRango(hrv: number | null): boolean {
+  return hrv !== null && (hrv < HRV_RANGO_NORMAL.min || hrv > HRV_RANGO_NORMAL.max);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS (exact spec hex codes)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1494,11 +1500,43 @@ function parseTiempoMeta(objetivo: string | null | undefined): string | null {
   return m ? `${m[1]}h ${m[2]}m` : null;
 }
 
-function RaceCountdownCard({ categoria, nombre, fecha, fechaInicioEntreno, distanciaKm, tiempoMeta, ritmo }: {
-  categoria: string; nombre: string; fecha: string;
+type RaceCountdownData = {
+  key: string; categoria: string; nombre: string; fecha: string;
   fechaInicioEntreno: string | null; distanciaKm: number | null;
   tiempoMeta: string | null; ritmo: string | null;
-}) {
+};
+
+function RaceCountdownTabsCard({ races }: { races: RaceCountdownData[] }) {
+  const [active, setActive] = useState(0);
+  if (!races.length) return null;
+  const idx = Math.min(active, races.length - 1);
+
+  return (
+    <div>
+      {races.length > 1 && (
+        <div className="flex gap-1.5 mb-2">
+          {races.map((r, i) => (
+            <button
+              key={r.key}
+              onClick={() => setActive(i)}
+              className="flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition-colors"
+              style={{
+                background: i === idx ? "rgba(201,255,0,0.12)" : "rgba(148,163,184,0.08)",
+                color: i === idx ? "#C9FF00" : T.text3,
+                border: `1px solid ${i === idx ? "#C9FF0080" : "transparent"}`,
+              }}
+            >
+              {r.nombre}
+            </button>
+          ))}
+        </div>
+      )}
+      <RaceCountdownCard {...races[idx]} />
+    </div>
+  );
+}
+
+function RaceCountdownCard({ categoria, nombre, fecha, fechaInicioEntreno, distanciaKm, tiempoMeta, ritmo }: RaceCountdownData) {
   const cd = useCountdown(fecha);
   if (!cd) return null;
 
@@ -1633,29 +1671,35 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
-        {/* Cuentas atrás: Media de Ávila (test) + Maratón de Sevilla (objetivo) */}
-        {perfil?.fecha_objetivo_intermedio && (
-          <RaceCountdownCard
-            categoria="Test de Preparación"
-            nombre={perfil.objetivo_intermedio_nombre || "Media Maratón"}
-            fecha={perfil.fecha_objetivo_intermedio}
-            fechaInicioEntreno={perfil.fecha_inicio_entrenamiento ?? null}
-            distanciaKm={raceDistanceKm(perfil.objetivo_intermedio_nombre || "media")}
-            tiempoMeta={null}
-            ritmo={null}
-          />
-        )}
-        {perfil?.fecha_objetivo && (
-          <RaceCountdownCard
-            categoria="Objetivo Principal"
-            nombre="Maratón de Sevilla"
-            fecha={perfil.fecha_objetivo}
-            fechaInicioEntreno={perfil.fecha_inicio_entrenamiento ?? null}
-            distanciaKm={42.195}
-            tiempoMeta={parseTiempoMeta(perfil.objetivo)}
-            ritmo={perfil.ritmo || null}
-          />
-        )}
+        {/* Cuentas atrás: Media de Ávila (test) + Maratón de Sevilla (objetivo), con pestañas */}
+        {(() => {
+          const races: RaceCountdownData[] = [];
+          if (perfil?.fecha_objetivo_intermedio) {
+            races.push({
+              key: "intermedio",
+              categoria: "Test de Preparación",
+              nombre: perfil.objetivo_intermedio_nombre || "Media Maratón",
+              fecha: perfil.fecha_objetivo_intermedio,
+              fechaInicioEntreno: perfil.fecha_inicio_entrenamiento ?? null,
+              distanciaKm: raceDistanceKm(perfil.objetivo_intermedio_nombre || "media"),
+              tiempoMeta: null,
+              ritmo: null,
+            });
+          }
+          if (perfil?.fecha_objetivo) {
+            races.push({
+              key: "principal",
+              categoria: "Objetivo Principal",
+              nombre: "Maratón de Sevilla",
+              fecha: perfil.fecha_objetivo,
+              fechaInicioEntreno: perfil.fecha_inicio_entrenamiento ?? null,
+              distanciaKm: 42.195,
+              tiempoMeta: parseTiempoMeta(perfil.objetivo),
+              ritmo: perfil.ritmo || null,
+            });
+          }
+          return <RaceCountdownTabsCard races={races} />;
+        })()}
 
         {/* KMS semana actual + HRV de hoy */}
         <div className="grid grid-cols-2 gap-3">
@@ -1669,10 +1713,11 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
           </div>
           <div className="p-4 rounded-xl" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
             <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>HRV DE HOY</p>
-            <p className="text-xl font-black mt-1" style={{ color: hrvHoy !== null ? "#34d399" : T.text3 }}>
+            <p className="text-xl font-black mt-1" style={{ color: hrvHoy === null ? T.text3 : hrvFueraDeRango(hrvHoy) ? "#f43f5e" : "#34d399" }}>
               {hrvHoy !== null ? `${hrvHoy} ms` : "—"}
             </p>
             {hrvHoy === null && <span className="text-[9px]" style={{ color: T.text3 }}>Sin dato de hoy todavía</span>}
+            {hrvFueraDeRango(hrvHoy) && <span className="text-[9px] font-bold" style={{ color: "#f43f5e" }}>Fuera de rango normal ({HRV_RANGO_NORMAL.min}-{HRV_RANGO_NORMAL.max} ms)</span>}
           </div>
         </div>
 
