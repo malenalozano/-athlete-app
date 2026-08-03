@@ -1,10 +1,16 @@
 import json
 import sqlite3
-import urllib.error
-import urllib.request
 from pathlib import Path
 
+import requests
+
 from config import settings
+
+# Sesión HTTP compartida y reutilizada entre requests: evita repetir el
+# handshake TCP/TLS con Turso en cada query (antes: 1 conexión nueva por
+# .execute(), con endpoints que hacen decenas de queries secuenciales).
+_turso_session = requests.Session()
+_turso_session.headers.update({"Content-Type": "application/json"})
 
 
 def _hrana_arg(v) -> dict:
@@ -93,22 +99,20 @@ class TursoHTTPConnection:
 
     def _send_stmts(self, stmts: list[dict]) -> list[dict]:
         """stmts: lista de {"sql": str, "args"?: list[dict-hrana]}."""
-        requests = [{"type": "execute", "stmt": s} for s in stmts]
-        requests.append({"type": "close"})
-        payload = json.dumps({"requests": requests}).encode("utf-8")
-        req = urllib.request.Request(
-            self._pipeline_url,
-            data=payload,
-            headers={"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"},
-            method="POST",
-        )
+        body = [{"type": "execute", "stmt": s} for s in stmts]
+        body.append({"type": "close"})
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read())
-                return data.get("results", [])
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")
-            raise sqlite3.OperationalError(f"Turso HTTP {e.code}: {body[:300]}")
+            resp = _turso_session.post(
+                self._pipeline_url,
+                data=json.dumps({"requests": body}),
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json().get("results", [])
+        except requests.exceptions.HTTPError as e:
+            text = e.response.text if e.response is not None else ""
+            raise sqlite3.OperationalError(f"Turso HTTP {e.response.status_code if e.response is not None else '?'}: {text[:300]}")
 
     def cursor(self):
         return _TursoCursor(self)
