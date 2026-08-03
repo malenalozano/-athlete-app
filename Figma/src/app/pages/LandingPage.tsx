@@ -1854,13 +1854,14 @@ const QUALITY_ROWS_BY_MACRO: Record<string, { key: string; label: string }[]> = 
   M4: [{ key: "", label: "Calidad de mantenimiento" }],
 };
 
-/** Agrega todas las sesiones de un subtipo (RB/TL) en la semana — puede haber
- * más de una (p.ej. una carrera "extra" de Garmin reclasificada como RB) — en
- * una sola fila con km sumados y ritmo/FC promediados entre las completadas. */
+/** Agrega todas las sesiones PLANIFICADAS de un subtipo (RB/TL) en la semana —
+ * puede haber más de una — en una sola fila con km sumados y ritmo/FC
+ * promediados entre las completadas. Las actividades "extra" de Garmin (no
+ * planificadas, origin "garmin") se excluyen: no cuentan como RB/TL planeado,
+ * para no inflar el total esperado ni el hecho con carreras fuera del plan. */
 function aggregateSubtype(sessions: Session[], subtype: Subtype): Session | undefined {
-  const matches = sessions.filter(s => s.subtype === subtype);
+  const matches = sessions.filter(s => s.subtype === subtype && s.origin === "plan");
   if (matches.length === 0) return undefined;
-  if (matches.length === 1) return matches[0];
 
   const ritmos = matches.map(s => s.ritmoReal).filter((v): v is number => v != null && v > 0);
   const fcs = matches.map(s => s.fcReal).filter((v): v is number => v != null && v > 0);
@@ -1869,13 +1870,12 @@ function aggregateSubtype(sessions: Session[], subtype: Subtype): Session | unde
 
   return {
     ...matches[0],
-    metric: (kmPlan > 0 || kmReal > 0) ? `${kmReal.toFixed(1)}/${kmPlan.toFixed(1)} km` : matches[0].metric,
     ritmoReal: ritmos.length ? ritmos.reduce((a, b) => a + b, 0) / ritmos.length : null,
     fcReal: fcs.length ? fcs.reduce((a, b) => a + b, 0) / fcs.length : null,
     completed: matches.some(s => s.completed),
     kmRealizados: kmReal,
     kmPlanificados: kmPlan,
-    compareCount: matches.length,
+    compareCount: matches.length > 1 ? matches.length : undefined,
   };
 }
 
@@ -1921,10 +1921,15 @@ function CompareColumn({ session, showDetail }: { session?: Session; showDetail?
   ].filter(Boolean);
   const real = session.completed && realParts.length ? realParts.join(" · ") : null;
   const detail = showDetail ? qualityDetail(session) : null;
+  const km = session.kmPlanificados
+    ? (session.completed && session.kmRealizados != null
+        ? `${session.kmRealizados.toFixed(1)}/${session.kmPlanificados.toFixed(1)} km`
+        : `${session.kmPlanificados.toFixed(1)} km`)
+    : session.metric || "—";
 
   return (
     <div className="space-y-1 text-center">
-      <p className="font-black text-sm" style={{ color: T.text1 }}>{session.metric || "—"}</p>
+      <p className="font-black text-sm" style={{ color: T.text1 }}>{km}</p>
       <p className="font-black text-sm" style={{ color: real ? T.text2 : T.text3 }}>{real ?? "—"}</p>
       {session.compareCount && session.compareCount > 1 && (
         <p className="text-[9px] italic" style={{ color: T.text3 }}>Promedio de {session.compareCount} sesiones</p>
