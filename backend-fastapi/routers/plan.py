@@ -1,10 +1,12 @@
 import sys
 import os
 import re
+import csv
+import io
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 
 from database import get_db
@@ -555,14 +557,18 @@ def borrar_sesion(sesion_id: int):
 @router.get("/{usuario_id}/completo")
 def get_plan_completo(usuario_id: int):
     """Plan de carrera completo, semana por semana, solo con tipo de sesión y km
-    (resumen ligero para la vista 'Plan' — sin cruce con Garmin ni cálculo de fase)."""
+    (resumen ligero para la vista 'Plan' — sin cruce con Garmin ni cálculo de fase).
+    Solo semana actual en adelante — las semanas pasadas pueden contener datos
+    de pruebas antiguas (formato legacy) que ya no reflejan el plan real."""
     conn = get_db()
+    hoy = datetime.now().date()
+    semana_inicio_actual = (hoy - timedelta(days=hoy.weekday())).isoformat()
     rows = conn.execute(
         """SELECT fecha, tipo, sesion, km_planificados, semana_inicio
            FROM plan_entrenamiento
-           WHERE usuario_id = ?
+           WHERE usuario_id = ? AND semana_inicio >= ?
            ORDER BY fecha ASC""",
-        (usuario_id,),
+        (usuario_id, semana_inicio_actual),
     ).fetchall()
     conn.close()
 
