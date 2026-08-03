@@ -1857,22 +1857,26 @@ const QUALITY_ROWS_BY_MACRO: Record<string, { key: string; label: string }[]> = 
   M4: [{ key: "", label: "Calidad de mantenimiento" }],
 };
 
-/** Agrega todas las sesiones PLANIFICADAS de un subtipo (RB/TL) en la semana —
- * puede haber más de una — en una sola fila con km sumados y ritmo/FC
- * promediados entre las completadas. Las actividades "extra" de Garmin (no
- * planificadas, origin "garmin") se excluyen: no cuentan como RB/TL planeado,
- * para no inflar el total esperado ni el hecho con carreras fuera del plan. */
+/** Agrega todas las sesiones de un subtipo (RB/TL) en la semana en una sola
+ * fila. El km ESPERADO solo suma sesiones realmente planificadas (origin
+ * "plan"), para no inflarse con carreras extra de Garmin sin plan. El km
+ * HECHO (y ritmo/FC reales) suma TODAS las sesiones de ese subtipo, incluidas
+ * las "extra" de Garmin ya clasificadas como este subtipo — si no, un
+ * entrenamiento real quedaría sin contar. */
 function aggregateSubtype(sessions: Session[], subtype: Subtype): Session | undefined {
-  const matches = sessions.filter(s => s.subtype === subtype && s.origin === "plan");
+  const matches = sessions.filter(s => s.subtype === subtype);
   if (matches.length === 0) return undefined;
+
+  const planMatches = matches.filter(s => s.origin === "plan");
+  const base = planMatches[0] ?? matches[0];
 
   const ritmos = matches.map(s => s.ritmoReal).filter((v): v is number => v != null && v > 0);
   const fcs = matches.map(s => s.fcReal).filter((v): v is number => v != null && v > 0);
   const kmReal = matches.reduce((sum, s) => sum + (s.kmRealizados ?? 0), 0);
-  const kmPlan = matches.reduce((sum, s) => sum + (s.kmPlanificados ?? 0), 0);
+  const kmPlan = planMatches.reduce((sum, s) => sum + (s.kmPlanificados ?? 0), 0);
 
   return {
-    ...matches[0],
+    ...base,
     ritmoReal: ritmos.length ? ritmos.reduce((a, b) => a + b, 0) / ritmos.length : null,
     fcReal: fcs.length ? fcs.reduce((a, b) => a + b, 0) / fcs.length : null,
     completed: matches.some(s => s.completed),
