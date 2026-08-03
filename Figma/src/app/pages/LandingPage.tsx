@@ -843,6 +843,7 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
   const [open, setOpen] = useState(false);
   const [kmObjetivo, setKmObjetivo] = useState("");
   const [incluirCalidad, setIncluirCalidad] = useState(true);
+  const [incluirFuerza, setIncluirFuerza] = useState(false);
   const [cicloOverride, setCicloOverride] = useState<"" | CicloOverride>("");
   const [generating, setGenerating] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -854,9 +855,9 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
     try {
       const km = kmObjetivo.trim() ? parseFloat(kmObjetivo) : undefined;
       const res = await generarPlanSemana(userId, toISODate(monday), km, {
-        incluirCalidad, dryRun: true, cicloOverride: cicloOverride || undefined,
+        incluirCalidad, incluirFuerza, dryRun: true, cicloOverride: cicloOverride || undefined,
       });
-      setPreview(res.sesiones.filter(s => s.tipo === "Carrera"));
+      setPreview(res.sesiones.filter(s => s.tipo === "Carrera" || (incluirFuerza && s.tipo === "Fuerza")));
     } catch {
       showToast("No se pudo generar la previsualización.");
     } finally {
@@ -925,6 +926,11 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
               <input type="checkbox" checked={incluirCalidad} onChange={e => setIncluirCalidad(e.target.checked)}
                 className="w-4 h-4 rounded" />
               <span className="text-[10px] font-bold" style={{ color: T.text2 }}>Sesión de calidad</span>
+            </label>
+            <label className="flex items-center gap-2 pb-2.5 cursor-pointer">
+              <input type="checkbox" checked={incluirFuerza} onChange={e => setIncluirFuerza(e.target.checked)}
+                className="w-4 h-4 rounded" />
+              <span className="text-[10px] font-bold" style={{ color: T.text2 }}>Incluir sesiones de fuerza</span>
             </label>
           </div>
 
