@@ -843,7 +843,7 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
   const [open, setOpen] = useState(false);
   const [kmObjetivo, setKmObjetivo] = useState("");
   const [incluirCalidad, setIncluirCalidad] = useState(true);
-  const [incluirFuerza, setIncluirFuerza] = useState(false);
+  const [incluirFuerza, setIncluirFuerza] = useState(true);
   const [cicloOverride, setCicloOverride] = useState<"" | CicloOverride>("");
   const [generating, setGenerating] = useState(false);
   const [applying, setApplying] = useState(false);
