@@ -558,18 +558,31 @@ def borrar_sesion(sesion_id: int):
 def get_plan_completo(usuario_id: int):
     """Plan de carrera completo, semana por semana, solo con tipo de sesión y km
     (resumen ligero para la vista 'Plan' — sin cruce con Garmin ni cálculo de fase).
-    Solo semana actual en adelante — las semanas pasadas pueden contener datos
-    de pruebas antiguas (formato legacy) que ya no reflejan el plan real."""
+    Solo desde el inicio real del plan (fecha_inicio_entrenamiento) — las semanas
+    anteriores pueden contener datos de pruebas antiguas (formato legacy) que ya
+    no reflejan el plan real. Si no hay fecha de inicio guardada, se muestra todo."""
     conn = get_db()
-    hoy = datetime.now().date()
-    semana_inicio_actual = (hoy - timedelta(days=hoy.weekday())).isoformat()
-    rows = conn.execute(
-        """SELECT fecha, tipo, sesion, km_planificados, semana_inicio
-           FROM plan_entrenamiento
-           WHERE usuario_id = ? AND semana_inicio >= ?
-           ORDER BY fecha ASC""",
-        (usuario_id, semana_inicio_actual),
-    ).fetchall()
+    perfil_row = conn.execute(
+        "SELECT fecha_inicio_entrenamiento FROM usuarios WHERE id = ?", (usuario_id,)
+    ).fetchone()
+    fecha_inicio_plan = perfil_row[0] if perfil_row else None
+
+    if fecha_inicio_plan:
+        rows = conn.execute(
+            """SELECT fecha, tipo, sesion, km_planificados, semana_inicio
+               FROM plan_entrenamiento
+               WHERE usuario_id = ? AND fecha >= ?
+               ORDER BY fecha ASC""",
+            (usuario_id, fecha_inicio_plan),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT fecha, tipo, sesion, km_planificados, semana_inicio
+               FROM plan_entrenamiento
+               WHERE usuario_id = ?
+               ORDER BY fecha ASC""",
+            (usuario_id,),
+        ).fetchall()
     conn.close()
 
     semanas: dict[str, dict] = {}
