@@ -4,7 +4,7 @@ import {
   Calendar, TrendingUp, Award, ChevronLeft, ChevronRight,
   ArrowLeftRight, X, Clock, Flame, Plus, Check, Save, Trash2,
   RefreshCw, ArrowRight, Zap, ListChecks, Home, Shield, Footprints,
-  Flag, Trophy, Pencil,
+  Flag, Trophy, Pencil, Upload, HelpCircle,
 } from "lucide-react";
 import {
   addDays, addMonths, addWeeks, differenceInCalendarDays, format,
@@ -13,9 +13,10 @@ import {
 import { es } from "date-fns/locale";
 import { useUser } from "../context/UserContext";
 import { esActividadRunning } from "../lib/running";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
 import {
   actualizarSesionCompleta, aplicarSemanaGenerada, borrarSesion, clasificarActividadExtra, crearSesion, generarPlanSemana,
-  getDashboard, getPlanCompleto, getPlanSemana, sincronizarGarmin,
+  getDashboard, getPlanCompleto, getPlanSemana, importarPlanCsv, sincronizarGarmin,
   type ActividadGarmin, type CicloOverride, type DashboardData, type PlanCompleto, type SesionGenerada, type SesionPlan,
 } from "../api";
 
@@ -245,7 +246,7 @@ function applyGarminMatching(planSessions: Session[], actividades: ActividadGarm
         id: `garmin-${dayIndex}-${i}-${a.fecha}-${a.tipo_deporte}`,
         dayIndex,
         type: esRunning ? "carrera" : "fuerza",
-        subtype: esRunning ? (a.subtipo_manual ?? "RB") : "EXTRA",
+        subtype: a.subtipo_manual ?? "EXTRA",
         title: humanizarTipoActividad(a.tipo_deporte),
         duration: formatDuracion(a.tiempo_seg ? Math.round(a.tiempo_seg / 60) : null),
         metric: km > 0.1 ? `${km.toFixed(1)} km` : "",
@@ -979,6 +980,159 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// IMPORTAR PLAN DESDE CSV — sube una hoja de entreno (csv) y la app la
+// convierte en sesiones. Con "Previsualizar" se puede revisar antes de
+// guardar; "Importar" guarda directamente en el plan.
+// ─────────────────────────────────────────────────────────────────────────────
+function ImportarPlanCsvCard({ userId, onApplied, showToast }: {
+  userId: number;
+  onApplied: () => void;
+  showToast: (text: string, kind?: "error" | "success") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvFechaInicio, setCsvFechaInicio] = useState("");
+  const [importando, setImportando] = useState(false);
+  const [preview, setPreview] = useState<SesionGenerada[] | null>(null);
+
+  const handlePrevisualizar = async () => {
+    if (!csvFile || !csvFechaInicio) return;
+    setImportando(true);
+    setPreview(null);
+    try {
+      const res = await importarPlanCsv(userId, csvFechaInicio, csvFile, true);
+      setPreview(res.sesiones ?? []);
+    } catch {
+      showToast("No se pudo leer el CSV.");
+    } finally {
+      setImportando(false);
+    }
+  };
+
+  const handleImportar = async () => {
+    if (!csvFile || !csvFechaInicio) return;
+    setImportando(true);
+    try {
+      const res = await importarPlanCsv(userId, csvFechaInicio, csvFile, false);
+      showToast(`Se importaron ${res.sesiones_importadas ?? 0} sesiones.`, "success");
+      setPreview(null);
+      setCsvFile(null);
+      setOpen(false);
+      onApplied();
+    } catch {
+      showToast("No se pudo importar el CSV.");
+    } finally {
+      setImportando(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl p-4 mt-2" style={{ background: "rgba(15,23,42,0.6)", border: `1px solid ${T.border}` }}>
+      <button onClick={() => setOpen(p => !p)} className="w-full flex items-center justify-between">
+        <span className="flex items-center gap-2 text-xs font-black" style={{ color: T.text1 }}>
+          <Upload className="w-4 h-4" style={{ color: "#22d3ee" }} /> Importar plan (CSV)
+        </span>
+        <ChevronRight className="w-4 h-4 transition-transform" style={{ color: T.text3, transform: open ? "rotate(90deg)" : "none" }} />
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px]" style={{ color: T.text3 }}>Sube una hoja de entreno en CSV.</p>
+            <Dialog>
+              <DialogTrigger asChild>
+                <button type="button" className="flex items-center gap-1 text-[10px] font-bold" style={{ color: "#22d3ee" }}>
+                  <HelpCircle className="w-3.5 h-3.5" /> Formato del CSV
+                </button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg" style={{ background: T.bgSurf, border: `1px solid ${T.border}`, color: T.text1 }}>
+                <DialogHeader>
+                  <DialogTitle style={{ color: T.text1 }}>Formato del CSV para importar</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 text-sm" style={{ color: T.text2 }}>
+                  <p>
+                    El archivo debe ser un <span className="font-semibold" style={{ color: T.text1 }}>CSV</span> con estas
+                    4 columnas exactas en la primera fila (cabecera):
+                  </p>
+                  <pre className="rounded-lg p-3 text-xs overflow-x-auto" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: "#22d3ee" }}>
+Día del mes,Día de la semana,Sesión Planificada,Tipo de Sesión
+                  </pre>
+                  <ul className="list-disc pl-5 space-y-1.5">
+                    <li><span className="font-semibold" style={{ color: T.text1 }}>Día del mes / Día de la semana:</span> solo informativos, no se usan para calcular la fecha.</li>
+                    <li><span className="font-semibold" style={{ color: T.text1 }}>Sesión Planificada:</span> texto libre, ej. "6 km suaves" o "8 km progresión". Si incluye "X km" o "X-Y km", la app extrae los kilómetros automáticamente.</li>
+                    <li><span className="font-semibold" style={{ color: T.text1 }}>Tipo de Sesión:</span> uno de: <code style={{ color: "#22d3ee" }}>Descanso</code>, <code style={{ color: "#22d3ee" }}>Rodaje Base</code>, <code style={{ color: "#22d3ee" }}>Tirada Larga</code>, <code style={{ color: "#22d3ee" }}>Fuerza</code>, <code style={{ color: "#22d3ee" }}>Calidad</code>, <code style={{ color: "#22d3ee" }}>Series</code>, <code style={{ color: "#22d3ee" }}>Intervalos</code>, <code style={{ color: "#22d3ee" }}>Umbral</code>, <code style={{ color: "#22d3ee" }}>Tempo</code> o <code style={{ color: "#22d3ee" }}>Fartlek</code>.</li>
+                    <li>Cada fila se asigna a un día consecutivo, empezando por la <span className="font-semibold" style={{ color: T.text1 }}>fecha de inicio</span> que indiques abajo.</li>
+                  </ul>
+                  <p className="pt-1">Ejemplo:</p>
+                  <pre className="rounded-lg p-3 text-xs overflow-x-auto whitespace-pre" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>
+{`3,Lunes,Descanso,Descanso
+4,Martes,4 km suaves,Rodaje Base
+5,Miércoles,Descanso,Descanso
+6,Jueves,5 km suaves,Rodaje Base
+7,Viernes,Fuerza (En casa),Fuerza
+8,Sábado,7 km suaves,Rodaje Base
+9,Domingo,6-8 km suaves,Tirada Larga`}
+                  </pre>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Fecha 1ª fila del CSV</label>
+              <input type="date" value={csvFechaInicio}
+                onChange={e => { setCsvFechaInicio(e.target.value); setPreview(null); }}
+                className="w-full rounded-xl py-2.5 px-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Archivo CSV</label>
+              <input type="file" accept=".csv,text/csv"
+                onChange={e => { setCsvFile(e.target.files?.[0] ?? null); setPreview(null); }}
+                className="w-full text-xs rounded-xl py-2 px-2 outline-none file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold"
+                style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }} />
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={handlePrevisualizar} disabled={!csvFile || !csvFechaInicio || importando}
+              className="flex-1 py-2.5 rounded-xl text-xs font-black disabled:opacity-60" style={{ background: T.border, color: T.text1 }}>
+              {importando ? "Leyendo…" : "Previsualizar"}
+            </button>
+            <button onClick={handleImportar} disabled={!csvFile || !csvFechaInicio || importando}
+              className="flex-1 py-2.5 rounded-xl text-xs font-black text-white flex items-center justify-center gap-2 disabled:opacity-60"
+              style={{ background: "linear-gradient(135deg,#06b6d4,#4f46e5)" }}>
+              <Save className="w-4 h-4" /> {importando ? "Importando…" : "Importar"}
+            </button>
+          </div>
+
+          {preview && (
+            <div className="space-y-2 pt-1 max-h-72 overflow-y-auto">
+              <p className="text-[9px] font-black uppercase tracking-wider" style={{ color: T.text3 }}>
+                Previsualización ({preview.length} sesiones)
+              </p>
+              {preview.map((s, i) => {
+                const fecha = new Date(s.fecha + "T12:00:00");
+                const diaNombre = fecha.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
+                return (
+                  <div key={i} className="rounded-xl p-2.5 flex items-center gap-2" style={{ background: T.bgApp, border: `1px solid ${T.border}` }}>
+                    <span className="text-[9px] font-black w-14 shrink-0" style={{ color: "#818cf8" }}>{diaNombre}</span>
+                    <span className="flex-1 min-w-0 text-xs font-bold truncate" style={{ color: T.text1 }}>{s.sesion}</span>
+                    {s.km_planificados != null && (
+                      <span className="text-xs font-bold" style={{ color: "#22d3ee" }}>{s.km_planificados} km</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WEEKLY VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 function WeeklyView({
@@ -1106,7 +1260,10 @@ function WeeklyView({
           />
         ))}
         {!loading && !error && (
-          <RegenerarPlanCard userId={userId} monday={monday} onApplied={onApplied} showToast={showToast} />
+          <>
+            <RegenerarPlanCard userId={userId} monday={monday} onApplied={onApplied} showToast={showToast} />
+            <ImportarPlanCsvCard userId={userId} onApplied={onApplied} showToast={showToast} />
+          </>
         )}
       </div>
 
@@ -1427,25 +1584,55 @@ function PlanView({ userId }: { userId: number }) {
                         const iconColor = daySessions.length === 0
                           ? T.text3
                           : SUB[classifySubtype(primera.tipo, primera.sesion)].color;
+
+                        // Actividades Garmin de ese día que no encajan con ninguna sesión
+                        // planificada (más actividades que sesiones de ese tipo) — se
+                        // muestran como "extra" para no perder entrenos fuera del plan.
+                        const dayActs = (w.actividades_garmin ?? []).filter(a => a.fecha === iso);
+                        const runningActs = dayActs.filter(a => esActividadRunning(a.tipo_deporte));
+                        const noRunningActs = dayActs.filter(a => !esActividadRunning(a.tipo_deporte));
+                        const runningPlanned = daySessionsAll.filter(s => (s.tipo || "").toLowerCase() !== "fuerza").length;
+                        const fuerzaPlanned = daySessionsAll.filter(s => (s.tipo || "").toLowerCase() === "fuerza").length;
+                        const extras = [
+                          ...runningActs.slice(runningPlanned).map(a => ({ a, esRunning: true })),
+                          ...noRunningActs.slice(fuerzaPlanned).map(a => ({ a, esRunning: false })),
+                        ].filter(({ esRunning }) => esRunning ? showCarrera : showFuerza);
+
                         return (
-                          <div key={dIdx} className="flex items-center gap-2 px-2 py-2 rounded-lg"
-                            style={isToday ? {
-                              border: `1px solid ${T.border}`,
-                              boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
-                              background: "rgba(255,255,255,0.03)",
-                            } : undefined}>
-                            <span className="w-9 shrink-0 text-[9px] font-black uppercase" style={{ color: isToday ? "#22d3ee" : T.text3 }}>
-                              {capitalize(format(dayDate, "EEE", { locale: es })).slice(0, 3)}
-                            </span>
-                            <div className="flex-1 min-w-0 flex items-center gap-1.5">
-                              <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: iconColor }} />
-                              <span className="text-xs font-bold truncate" style={{ color: daySessions.length === 0 ? T.text3 : T.text1 }}>
-                                {daySessions.length === 0 ? "Descanso" : daySessions.map(s => nombreSesionPlan(s.tipo, s.sesion)).join(" + ")}
+                          <div key={dIdx}>
+                            <div className="flex items-center gap-2 px-2 py-2 rounded-lg"
+                              style={isToday ? {
+                                border: `1px solid ${T.border}`,
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+                                background: "rgba(255,255,255,0.03)",
+                              } : undefined}>
+                              <span className="w-9 shrink-0 text-[9px] font-black uppercase" style={{ color: isToday ? "#22d3ee" : T.text3 }}>
+                                {capitalize(format(dayDate, "EEE", { locale: es })).slice(0, 3)}
+                              </span>
+                              <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                                <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: iconColor }} />
+                                <span className="text-xs font-bold truncate" style={{ color: daySessions.length === 0 ? T.text3 : T.text1 }}>
+                                  {daySessions.length === 0 ? "Descanso" : daySessions.map(s => nombreSesionPlan(s.tipo, s.sesion)).join(" + ")}
+                                </span>
+                              </div>
+                              <span className="w-14 shrink-0 text-right text-xs font-black" style={{ color: T.text1 }}>
+                                {kmDia > 0 ? `${kmDia.toFixed(1).replace(".0", "")} km` : "-"}
                               </span>
                             </div>
-                            <span className="w-14 shrink-0 text-right text-xs font-black" style={{ color: T.text1 }}>
-                              {kmDia > 0 ? `${kmDia.toFixed(1).replace(".0", "")} km` : "-"}
-                            </span>
+                            {extras.map(({ a, esRunning }, extraIdx) => {
+                              const km = (a.distancia_m || 0) / 1000;
+                              return (
+                                <div key={extraIdx} className="flex items-center gap-2 px-2 py-1.5 rounded-lg ml-9" style={{ background: "rgba(244,63,94,0.06)" }}>
+                                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded" style={{ color: "#f43f5e", background: "rgba(244,63,94,0.15)" }}>Extra</span>
+                                  <span className="flex-1 min-w-0 truncate text-[11px] font-bold" style={{ color: T.text2 }}>
+                                    {humanizarTipoActividad(a.tipo_deporte)}
+                                  </span>
+                                  <span className="w-14 shrink-0 text-right text-xs font-black" style={{ color: "#f43f5e" }}>
+                                    {esRunning && km > 0.1 ? `${km.toFixed(1).replace(".0", "")} km` : ""}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         );
                       })}
