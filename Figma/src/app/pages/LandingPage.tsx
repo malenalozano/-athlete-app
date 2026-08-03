@@ -16,7 +16,7 @@ import { esActividadRunning } from "../lib/running";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
 import {
   actualizarSesionCompleta, aplicarSemanaGenerada, borrarSesion, clasificarActividadExtra, crearSesion, generarPlanSemana,
-  getDashboard, getPlanCompleto, getPlanSemana, importarPlanCsv, sincronizarGarmin,
+  getDashboard, getPlanCompleto, getPlanSemana, importarPlanCsv, regenerarPlanTotal, sincronizarGarmin,
   type ActividadGarmin, type CicloOverride, type DashboardData, type PlanCompleto, type SesionGenerada, type SesionPlan,
 } from "../api";
 
@@ -887,7 +887,14 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
     setApplying(true);
     try {
       await aplicarSemanaGenerada(userId, toISODate(monday), preview);
-      showToast("Plan de carrera actualizado.", "success");
+      try {
+        // Recalcula también las semanas futuras (a partir de la siguiente),
+        // para que el resto del plan parta del nuevo volumen de esta semana.
+        await regenerarPlanTotal(userId, 30, incluirFuerza, false);
+        showToast("Plan actualizado: esta semana y las siguientes recalculadas.", "success");
+      } catch {
+        showToast("Semana actualizada, pero no se pudieron recalcular las semanas futuras.", "error");
+      }
       setPreview(null);
       setOpen(false);
       onApplied();

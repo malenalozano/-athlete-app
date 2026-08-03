@@ -332,10 +332,10 @@ export async function importarPlanCsv(
   return res.json();
 }
 
-export function regenerarPlanTotal(usuarioId: number, semanas = 4, incluirFuerza = false) {
+export function regenerarPlanTotal(usuarioId: number, semanas = 4, incluirFuerza = false, incluirSemanaActual = true) {
   return req<{ ok: boolean; km_base_real: number; semanas_regeneradas: number; detalle: { semana_inicio: string; km_total: number; descarga: boolean }[] }>(
     `/plan/${usuarioId}/regenerar-total`,
-    { method: "POST", body: JSON.stringify({ semanas, incluir_fuerza: incluirFuerza }) }
+    { method: "POST", body: JSON.stringify({ semanas, incluir_fuerza: incluirFuerza, incluir_semana_actual: incluirSemanaActual }) }
   );
 }
 

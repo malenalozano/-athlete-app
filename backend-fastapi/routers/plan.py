@@ -1298,6 +1298,8 @@ def regenerar_total(usuario_id: int, body: RegenerarTotalRequest):
     semanas_generadas = []
     dias_hasta_lunes = hoy.weekday()
     semana_actual = hoy - timedelta(days=dias_hasta_lunes)
+    if not body.incluir_semana_actual:
+        semana_actual += timedelta(weeks=1)
 
     for n in range(body.semanas):
         fecha_sem_dt = semana_actual + timedelta(weeks=n)
