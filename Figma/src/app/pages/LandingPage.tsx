@@ -42,7 +42,7 @@ const T = {
   reorderTx:"#020617",
 } as const;
 
-type Subtype = "RB" | "RG" | "CAL" | "TL" | "PUSH" | "PULL" | "PIERNA" | "EXTRA";
+type Subtype = "RB" | "RG" | "CAL" | "TL" | "PUSH" | "PULL" | "FULL" | "PIERNA" | "EXTRA";
 
 const SUB: Record<Subtype, { bg: string; color: string; glow: string; label: string }> = {
   RB:     { bg: "#083344", color: "#22d3ee", glow: "0 0 8px rgba(34,211,238,0.3)",   label: "RB" },
@@ -51,6 +51,7 @@ const SUB: Record<Subtype, { bg: string; color: string; glow: string; label: str
   TL:     { bg: "#172554", color: "#60a5fa", glow: "0 0 8px rgba(96,165,250,0.35)",  label: "TL" },
   PUSH:   { bg: "#431407", color: "#f97316", glow: "0 0 8px rgba(249,115,22,0.25)",  label: "PUSH" },
   PULL:   { bg: "#451a03", color: "#f59e0b", glow: "0 0 6px rgba(245,158,11,0.2)",   label: "PULL" },
+  FULL:   { bg: "#3730a3", color: "#818cf8", glow: "0 0 6px rgba(129,140,248,0.25)", label: "FULL" },
   PIERNA: { bg: "#450a0a", color: "#ef4444", glow: "0 0 6px rgba(239,68,68,0.2)",    label: "PIERNA" },
   EXTRA:  { bg: "#2e1065", color: "#a855f7", glow: "0 0 8px rgba(168,85,247,0.35)",  label: "EXTRA" },
 };
@@ -143,6 +144,7 @@ function classifySubtype(tipo: string, sesion: string): Subtype {
   const s = (sesion || "").toLowerCase();
   if (isFuerza) {
     if (s.includes("pierna")) return "PIERNA";
+    if (s.includes("full")) return "FULL";
     if (s.includes("push")) return "PUSH";
     return "PULL";
   }
@@ -156,7 +158,7 @@ function defaultTitleFor(type: "carrera" | "fuerza", subtype: Subtype): string {
   if (type === "carrera") {
     return subtype === "RB" ? "Rodaje Base Zona 2" : subtype === "RG" ? "Regenerativo Z1" : subtype === "TL" ? "Tirada Larga" : "Series de Calidad";
   }
-  return subtype === "PIERNA" ? "Pierna" : subtype === "PUSH" ? "Push" : "Pull";
+  return subtype === "PIERNA" ? "Pierna" : subtype === "PUSH" ? "Push" : subtype === "FULL" ? "Full" : "Pull";
 }
 
 function toSession(s: SesionPlan, monday: Date): Session {
@@ -738,7 +740,7 @@ function AddSessionModal({ days, onAdd, onClose }: {
   const [saving, setSaving] = useState(false);
 
   const runSubs: Subtype[] = ["RB", "TL", "CAL"];
-  const strSubs: Subtype[] = ["PUSH", "PULL", "PIERNA"];
+  const strSubs: Subtype[] = ["PUSH", "PULL", "FULL", "PIERNA"];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -778,7 +780,7 @@ function AddSessionModal({ days, onAdd, onClose }: {
         {/* Subtype */}
         <div>
           <label className="text-[10px] font-black uppercase tracking-wider mb-2 block" style={{ color: T.text3 }}>Categoría</label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className={type === "carrera" ? "grid grid-cols-3 gap-2" : "grid grid-cols-4 gap-2"}>
             {(type === "carrera" ? runSubs : strSubs).map(st => {
               const c = SUB[st];
               const active = subtype === st;
@@ -786,7 +788,7 @@ function AddSessionModal({ days, onAdd, onClose }: {
                 <button key={st} type="button" onClick={() => setSubtype(st)}
                   className="py-2 rounded-xl text-xs font-black border transition-all"
                   style={{ background: active ? c.bg : T.bgApp, borderColor: active ? c.color : T.border, color: active ? c.color : T.text3, boxShadow: active ? c.glow : "none" }}>
-                  {st === "RB" ? "RB (Rodaje)" : st === "TL" ? "TL (Larga)" : st === "CAL" ? "Calidad" : st === "PUSH" ? "Push" : st === "PULL" ? "Pull" : "Pierna"}
+                  {st === "RB" ? "RB (Rodaje)" : st === "TL" ? "TL (Larga)" : st === "CAL" ? "Calidad" : st === "PUSH" ? "Push" : st === "PULL" ? "Pull" : st === "FULL" ? "Full" : "Pierna"}
                 </button>
               );
             })}
@@ -991,17 +993,16 @@ function ImportarPlanCsvCard({ userId, onApplied, showToast }: {
 }) {
   const [open, setOpen] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [csvFechaInicio, setCsvFechaInicio] = useState("");
   const [importando, setImportando] = useState(false);
   const [preview, setPreview] = useState<SesionGenerada[] | null>(null);
   const [omitidasPasado, setOmitidasPasado] = useState(0);
 
   const handlePrevisualizar = async () => {
-    if (!csvFile || !csvFechaInicio) return;
+    if (!csvFile) return;
     setImportando(true);
     setPreview(null);
     try {
-      const res = await importarPlanCsv(userId, csvFechaInicio, csvFile, true);
+      const res = await importarPlanCsv(userId, csvFile, true);
       setPreview(res.sesiones ?? []);
       setOmitidasPasado(res.omitidas_pasado ?? 0);
     } catch {
@@ -1012,10 +1013,10 @@ function ImportarPlanCsvCard({ userId, onApplied, showToast }: {
   };
 
   const handleImportar = async () => {
-    if (!csvFile || !csvFechaInicio) return;
+    if (!csvFile) return;
     setImportando(true);
     try {
-      const res = await importarPlanCsv(userId, csvFechaInicio, csvFile, false);
+      const res = await importarPlanCsv(userId, csvFile, false);
       const omitidas = res.omitidas_pasado ?? 0;
       showToast(
         `Se importaron ${res.sesiones_importadas ?? 0} sesiones` +
@@ -1059,56 +1060,47 @@ function ImportarPlanCsvCard({ userId, onApplied, showToast }: {
                 <div className="space-y-3 text-sm" style={{ color: T.text2 }}>
                   <p>
                     El archivo debe ser un <span className="font-semibold" style={{ color: T.text1 }}>CSV</span> con estas
-                    4 columnas exactas en la primera fila (cabecera):
+                    columnas en la primera fila (cabecera) — "Día de la semana" es opcional, solo de apoyo:
                   </p>
                   <pre className="rounded-lg p-3 text-xs overflow-x-auto" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: "#22d3ee" }}>
-Día del mes,Día de la semana,Sesión Planificada,Tipo de Sesión
+Fecha,Día de la semana,Sesión Planificada,Tipo de Sesión
                   </pre>
                   <ul className="list-disc pl-5 space-y-1.5">
-                    <li><span className="font-semibold" style={{ color: T.text1 }}>Día del mes / Día de la semana:</span> solo informativos, no se usan para calcular la fecha.</li>
-                    <li><span className="font-semibold" style={{ color: T.text1 }}>Sesión Planificada:</span> texto libre, ej. "6 km suaves" o "8 km progresión". Si incluye "X km" o "X-Y km", la app extrae los kilómetros automáticamente.</li>
-                    <li><span className="font-semibold" style={{ color: T.text1 }}>Tipo de Sesión:</span> uno de: <code style={{ color: "#22d3ee" }}>Descanso</code>, <code style={{ color: "#22d3ee" }}>Rodaje Base</code>, <code style={{ color: "#22d3ee" }}>Tirada Larga</code>, <code style={{ color: "#22d3ee" }}>Fuerza</code>, <code style={{ color: "#22d3ee" }}>Calidad</code>, <code style={{ color: "#22d3ee" }}>Series</code>, <code style={{ color: "#22d3ee" }}>Intervalos</code>, <code style={{ color: "#22d3ee" }}>Umbral</code>, <code style={{ color: "#22d3ee" }}>Tempo</code> o <code style={{ color: "#22d3ee" }}>Fartlek</code>.</li>
-                    <li>Cada fila se asigna a un día consecutivo, empezando por la <span className="font-semibold" style={{ color: T.text1 }}>fecha de inicio</span> que indiques abajo.</li>
-                    <li>Las sesiones que ya haya en el plan para esos días se <span className="font-semibold" style={{ color: T.text1 }}>sustituyen</span> por las del CSV.</li>
+                    <li><span className="font-semibold" style={{ color: T.text1 }}>Fecha:</span> fecha completa de esa sesión, ej. <code style={{ color: "#22d3ee" }}>3/8/2026</code> (D/M/AAAA) o <code style={{ color: "#22d3ee" }}>2026-08-03</code> (AAAA-MM-DD).</li>
+                    <li><span className="font-semibold" style={{ color: T.text1 }}>Sesión Planificada:</span> texto libre, ej. "6 km suaves" o "8 km progresión". Si incluye "X km" o "X-Y km", la app extrae los kilómetros automáticamente. Déjala <span className="font-semibold" style={{ color: T.text1 }}>en blanco</span> para un día de descanso. Si el Tipo de Sesión es <code style={{ color: "#22d3ee" }}>Fuerza</code>, escribe aquí cuál: <code style={{ color: "#22d3ee" }}>Push</code>, <code style={{ color: "#22d3ee" }}>Pull</code>, <code style={{ color: "#22d3ee" }}>Full</code> o <code style={{ color: "#22d3ee" }}>Pierna</code>.</li>
+                    <li><span className="font-semibold" style={{ color: T.text1 }}>Tipo de Sesión:</span> uno de: <code style={{ color: "#22d3ee" }}>Descanso</code>, <code style={{ color: "#22d3ee" }}>Rodaje Base</code>, <code style={{ color: "#22d3ee" }}>Tirada Larga</code>, <code style={{ color: "#22d3ee" }}>Fuerza</code>, <code style={{ color: "#22d3ee" }}>Calidad</code>, <code style={{ color: "#22d3ee" }}>Series</code>, <code style={{ color: "#22d3ee" }}>Intervalos</code>, <code style={{ color: "#22d3ee" }}>Umbral</code>, <code style={{ color: "#22d3ee" }}>Tempo</code> o <code style={{ color: "#22d3ee" }}>Fartlek</code> (también puede ir en blanco para descanso).</li>
+                    <li>Las sesiones que ya haya en el plan para esas fechas se <span className="font-semibold" style={{ color: T.text1 }}>sustituyen</span> por las del CSV.</li>
                     <li>Las filas que caigan en <span className="font-semibold" style={{ color: T.text1 }}>días pasados</span> se ignoran — esos días conservan lo que ya hiciste.</li>
                   </ul>
                   <p className="pt-1">Ejemplo:</p>
                   <pre className="rounded-lg p-3 text-xs overflow-x-auto whitespace-pre" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>
-{`3,Lunes,Descanso,Descanso
-4,Martes,4 km suaves,Rodaje Base
-5,Miércoles,Descanso,Descanso
-6,Jueves,5 km suaves,Rodaje Base
-7,Viernes,Fuerza (En casa),Fuerza
-8,Sábado,7 km suaves,Rodaje Base
-9,Domingo,6-8 km suaves,Tirada Larga`}
+{`3/8/2026,Lunes,,
+4/8/2026,Martes,4 km suaves,Rodaje Base
+5/8/2026,Miércoles,,
+6/8/2026,Jueves,5 km suaves,Rodaje Base
+7/8/2026,Viernes,Push,Fuerza
+8/8/2026,Sábado,7 km suaves,Rodaje Base
+9/8/2026,Domingo,6-8 km suaves,Tirada Larga`}
                   </pre>
                 </div>
               </DialogContent>
             </Dialog>
           </div>
 
-          <div className="grid grid-cols-1 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Fecha 1ª fila del CSV</label>
-              <input type="date" value={csvFechaInicio}
-                onChange={e => { setCsvFechaInicio(e.target.value); setPreview(null); }}
-                className="w-full rounded-xl py-2.5 px-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Archivo CSV</label>
-              <input type="file" accept=".csv,text/csv"
-                onChange={e => { setCsvFile(e.target.files?.[0] ?? null); setPreview(null); }}
-                className="w-full text-xs rounded-xl py-2 px-2 outline-none file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold"
-                style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }} />
-            </div>
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Archivo CSV</label>
+            <input type="file" accept=".csv,text/csv"
+              onChange={e => { setCsvFile(e.target.files?.[0] ?? null); setPreview(null); }}
+              className="w-full text-xs rounded-xl py-2 px-2 outline-none file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold"
+              style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }} />
           </div>
 
           <div className="flex gap-2">
-            <button onClick={handlePrevisualizar} disabled={!csvFile || !csvFechaInicio || importando}
+            <button onClick={handlePrevisualizar} disabled={!csvFile || importando}
               className="flex-1 py-2.5 rounded-xl text-xs font-black disabled:opacity-60" style={{ background: T.border, color: T.text1 }}>
               {importando ? "Leyendo…" : "Previsualizar"}
             </button>
-            <button onClick={handleImportar} disabled={!csvFile || !csvFechaInicio || importando}
+            <button onClick={handleImportar} disabled={!csvFile || importando}
               className="flex-1 py-2.5 rounded-xl text-xs font-black text-white flex items-center justify-center gap-2 disabled:opacity-60"
               style={{ background: "linear-gradient(135deg,#06b6d4,#4f46e5)" }}>
               <Save className="w-4 h-4" /> {importando ? "Importando…" : "Importar"}
@@ -1468,10 +1460,10 @@ function MonthlyView({ userId, refreshKey }: { userId: number; refreshKey: numbe
               </div>
               <div className="space-y-1.5 pl-2.5" style={{ borderLeft: `1px solid ${T.border}` }}>
                 <p className="font-black uppercase tracking-wide" style={{ color: T.reorder }}>Fuerza</p>
-                {(["PUSH","PULL","PIERNA"] as Subtype[]).map(k => (
+                {(["PUSH","PULL","FULL","PIERNA"] as Subtype[]).map(k => (
                   <div key={k} className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-sm" style={{ background: SUB[k].color, boxShadow: SUB[k].glow }} />
-                    <span>{k === "PUSH" ? "Push (Empuje)" : k === "PULL" ? "Pull (Tirón)" : "Pierna"}</span>
+                    <span>{k === "PUSH" ? "Push (Empuje)" : k === "PULL" ? "Pull (Tirón)" : k === "FULL" ? "Full (Cuerpo entero)" : "Pierna"}</span>
                   </div>
                 ))}
               </div>
@@ -1505,6 +1497,7 @@ function nombreSesionPlan(tipo: string, sesion: string): string {
     case "CAL": return `Calidad: ${sesion}`;
     case "PUSH": return "Push";
     case "PULL": return "Pull";
+    case "FULL": return "Full";
     case "PIERNA": return "Pierna";
     default: return sesion;
   }

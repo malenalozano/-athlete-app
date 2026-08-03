@@ -314,12 +314,10 @@ export interface ImportarPlanCsvResult {
 
 export async function importarPlanCsv(
   usuarioId: number,
-  fechaInicio: string,
   file: File,
   dryRun = false
 ): Promise<ImportarPlanCsvResult> {
   const form = new FormData();
-  form.append("fecha_inicio", fechaInicio);
   form.append("dry_run", String(dryRun));
   form.append("file", file);
 

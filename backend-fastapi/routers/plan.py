@@ -66,6 +66,7 @@ class AplicarSemanaRequest(BaseModel):
 class RegenerarTotalRequest(BaseModel):
     semanas: int = 4  # Cuántas semanas futuras regenerar (incluye la actual)
     incluir_fuerza: bool = False  # Si es False (por defecto), no se generan sesiones de Fuerza
+    incluir_semana_actual: bool = True  # Si es False, empieza a regenerar desde la semana siguiente
 
 
 FARTLEK_REPS_MAX = 10  # Máximo absoluto de reps según NORMAS ENTRENAMIENTO.pdf
@@ -1091,7 +1092,21 @@ def aplicar_semana(usuario_id: int, body: AplicarSemanaRequest):
     return {"ok": True, "sesiones_aplicadas": len(sesiones_carrera)}
 
 
-CSV_COLUMNAS_REQUERIDAS = ["Día del mes", "Día de la semana", "Sesión Planificada", "Tipo de Sesión"]
+CSV_COLUMNAS_REQUERIDAS = ["Fecha", "Sesión Planificada", "Tipo de Sesión"]
+_FECHA_FORMATOS = ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"]
+
+
+def _parse_fecha_fila(texto: str) -> str:
+    texto = (texto or "").strip()
+    for fmt in _FECHA_FORMATOS:
+        try:
+            return datetime.strptime(texto, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    raise HTTPException(
+        status_code=400,
+        detail=f"Fecha inválida en el CSV: '{texto}'. Usa el formato AAAA-MM-DD (ej. 2026-08-04).",
+    )
 
 # Tipo de Sesión (columna del CSV) -> (tipo interno, etiqueta de sesión)
 _CSV_TIPO_MAP = {
@@ -1123,13 +1138,21 @@ def _parse_km_planificados(texto: str) -> float | None:
 
 def _mapear_tipo_sesion(tipo_csv: str, sesion_planificada: str) -> tuple[str, str]:
     tipo, sesion = _CSV_TIPO_MAP.get((tipo_csv or "").strip().lower(), (None, None))
+    if tipo == "Fuerza":
+        # La columna "Sesión Planificada" indica qué tipo de gimnasio es:
+        # Push / Pull / Full / Pierna. Se guarda tal cual para que el frontend
+        # lo clasifique (classifySubtype busca esas palabras en el texto).
+        return "Fuerza", (sesion_planificada or "Fuerza").strip()
     if tipo is not None:
         return tipo, sesion
+    if not (tipo_csv or "").strip() and not (sesion_planificada or "").strip():
+        # Fila de descanso con las celdas de sesión en blanco (formato habitual del CSV).
+        return "Descanso", "Descanso"
     # Tipo no reconocido: se guarda tal cual como sesión de tipo "Carrera"
     return "Carrera", (tipo_csv or sesion_planificada or "Sesión").strip()
 
 
-def _parsear_csv_plan(contenido: str, fecha_inicio: str) -> list[dict]:
+def _parsear_csv_plan(contenido: str) -> tuple[list[dict], int]:
     contenido = contenido.lstrip("﻿")
     try:
         reader = csv.DictReader(io.StringIO(contenido))
@@ -1145,25 +1168,23 @@ def _parsear_csv_plan(contenido: str, fecha_inicio: str) -> list[dict]:
                    f"Columnas requeridas: {', '.join(CSV_COLUMNAS_REQUERIDAS)}",
         )
 
-    try:
-        fecha_actual = datetime.strptime(fecha_inicio, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Formato de fecha_inicio inválido (YYYY-MM-DD)")
+    filas = list(reader)
+    if not filas:
+        raise HTTPException(status_code=400, detail="El CSV no contiene sesiones")
 
     hoy = datetime.now().date()
 
     sesiones: list[dict] = []
     omitidas_pasado = 0
-    for row in reader:
+    for row in filas:
         sesion_planificada = (row.get("Sesión Planificada") or "").strip()
         tipo_csv = (row.get("Tipo de Sesión") or "").strip()
-        if not sesion_planificada and not tipo_csv:
+        if not sesion_planificada and not tipo_csv and not (row.get("Fecha") or "").strip():
             continue  # fila vacía
 
-        fecha_fila = fecha_actual
-        fecha_actual += timedelta(days=1)
+        fecha_fila = _parse_fecha_fila(row.get("Fecha"))
 
-        if fecha_fila.date() < hoy:
+        if datetime.strptime(fecha_fila, "%Y-%m-%d").date() < hoy:
             # Los días pasados mantienen las sesiones que ya se hicieron; no se sobrescriben.
             omitidas_pasado += 1
             continue
@@ -1172,7 +1193,7 @@ def _parsear_csv_plan(contenido: str, fecha_inicio: str) -> list[dict]:
         km_planificados = _parse_km_planificados(sesion_planificada) if tipo != "Descanso" else None
 
         sesiones.append({
-            "fecha": fecha_fila.strftime("%Y-%m-%d"),
+            "fecha": fecha_fila,
             "tipo": tipo,
             "sesion": sesion,
             "detalles": sesion_planificada or None,
@@ -1191,23 +1212,22 @@ def _parsear_csv_plan(contenido: str, fecha_inicio: str) -> list[dict]:
 @router.post("/{usuario_id}/importar-csv")
 async def importar_plan_csv(
     usuario_id: int,
-    fecha_inicio: str = Form(...),
     dry_run: bool = Form(False),
     file: UploadFile = File(...),
 ):
     """Importa un plan de entrenamiento desde un CSV (ver formato en CSV_COLUMNAS_REQUERIDAS).
-    La primera fila de datos se asigna a fecha_inicio y cada fila siguiente al día siguiente.
-    Las filas cuya fecha cae en el pasado se omiten (esos días conservan lo ya realizado).
-    Para las fechas restantes se borra cualquier sesión existente en el plan antes de
-    insertar las nuevas (sustitución, no acumulación).
-    Con dry_run=true solo se devuelve la previsualización, sin guardar nada."""
+    Cada fila trae su propia fecha completa en la columna 'Fecha'. Las filas cuya fecha
+    cae en el pasado se omiten (esos días conservan lo ya realizado). Para las fechas
+    restantes se borra cualquier sesión existente en el plan antes de insertar las nuevas
+    (sustitución, no acumulación). Con dry_run=true solo se devuelve la previsualización,
+    sin guardar nada."""
     crudo = await file.read()
     try:
         contenido = crudo.decode("utf-8-sig")
     except UnicodeDecodeError:
         contenido = crudo.decode("latin-1")
 
-    sesiones, omitidas_pasado = _parsear_csv_plan(contenido, fecha_inicio)
+    sesiones, omitidas_pasado = _parsear_csv_plan(contenido)
 
     if dry_run:
         return {"ok": True, "sesiones": sesiones, "omitidas_pasado": omitidas_pasado}
