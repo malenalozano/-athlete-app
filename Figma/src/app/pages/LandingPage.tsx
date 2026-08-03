@@ -41,10 +41,11 @@ const T = {
   reorderTx:"#020617",
 } as const;
 
-type Subtype = "RB" | "CAL" | "TL" | "PUSH" | "PULL" | "PIERNA" | "EXTRA";
+type Subtype = "RB" | "RG" | "CAL" | "TL" | "PUSH" | "PULL" | "PIERNA" | "EXTRA";
 
 const SUB: Record<Subtype, { bg: string; color: string; glow: string; label: string }> = {
   RB:     { bg: "#083344", color: "#22d3ee", glow: "0 0 8px rgba(34,211,238,0.3)",   label: "RB" },
+  RG:     { bg: "#083344", color: "#67e8f9", glow: "0 0 8px rgba(103,232,249,0.3)",  label: "RG" },
   CAL:    { bg: "#0c4a6e", color: "#38bdf8", glow: "0 0 8px rgba(56,189,248,0.3)",   label: "CAL" },
   TL:     { bg: "#172554", color: "#60a5fa", glow: "0 0 8px rgba(96,165,250,0.35)",  label: "TL" },
   PUSH:   { bg: "#431407", color: "#f97316", glow: "0 0 8px rgba(249,115,22,0.25)",  label: "PUSH" },
@@ -145,13 +146,14 @@ function classifySubtype(tipo: string, sesion: string): Subtype {
     return "PULL";
   }
   if (s.includes("tirada")) return "TL";
-  if (s.includes("rodaje") || s.includes("regenerativo") || s.includes("descanso")) return "RB";
+  if (s.includes("regenerativo")) return "RG";
+  if (s.includes("rodaje") || s.includes("descanso")) return "RB";
   return "CAL";
 }
 
 function defaultTitleFor(type: "carrera" | "fuerza", subtype: Subtype): string {
   if (type === "carrera") {
-    return subtype === "RB" ? "Rodaje Base Zona 2" : subtype === "TL" ? "Tirada Larga" : "Series de Calidad";
+    return subtype === "RB" ? "Rodaje Base Zona 2" : subtype === "RG" ? "Regenerativo Z1" : subtype === "TL" ? "Tirada Larga" : "Series de Calidad";
   }
   return subtype === "PIERNA" ? "Pierna" : subtype === "PUSH" ? "Push" : "Pull";
 }
@@ -1327,6 +1329,7 @@ function nombreSesionPlan(tipo: string, sesion: string): string {
   const sub = classifySubtype(tipo, sesion);
   switch (sub) {
     case "RB": return "Rodaje Base";
+    case "RG": return "Regenerativo";
     case "TL": return "Tirada Larga";
     case "CAL": return `Calidad: ${sesion}`;
     case "PUSH": return "Push";
