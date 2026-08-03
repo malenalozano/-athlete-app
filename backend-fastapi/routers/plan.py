@@ -575,6 +575,13 @@ def get_plan_completo(usuario_id: int):
                ORDER BY fecha ASC""",
             (usuario_id, fecha_inicio_plan),
         ).fetchall()
+        garmin_rows = conn.execute(
+            """SELECT fecha, tipo_deporte, distancia_m, tiempo_seg, subtipo_manual
+               FROM actividades_garmin
+               WHERE usuario_id = ? AND fecha >= ?
+               ORDER BY fecha ASC""",
+            (usuario_id, fecha_inicio_plan),
+        ).fetchall()
     else:
         rows = conn.execute(
             """SELECT fecha, tipo, sesion, km_planificados, semana_inicio
@@ -583,11 +590,18 @@ def get_plan_completo(usuario_id: int):
                ORDER BY fecha ASC""",
             (usuario_id,),
         ).fetchall()
+        garmin_rows = conn.execute(
+            """SELECT fecha, tipo_deporte, distancia_m, tiempo_seg, subtipo_manual
+               FROM actividades_garmin
+               WHERE usuario_id = ?
+               ORDER BY fecha ASC""",
+            (usuario_id,),
+        ).fetchall()
     conn.close()
 
     semanas: dict[str, dict] = {}
     for fecha, tipo, sesion, km_planificados, semana_inicio in rows:
-        semana = semanas.setdefault(semana_inicio, {"semana_inicio": semana_inicio, "sesiones": [], "km_planificados": 0.0})
+        semana = semanas.setdefault(semana_inicio, {"semana_inicio": semana_inicio, "sesiones": [], "km_planificados": 0.0, "actividades_garmin": []})
         semana["sesiones"].append({
             "fecha": fecha,
             "tipo": tipo,
@@ -595,6 +609,19 @@ def get_plan_completo(usuario_id: int):
             "km_planificados": km_planificados,
         })
         semana["km_planificados"] += km_planificados or 0
+
+    # Actividades Garmin de cada semana — para detectar en el frontend qué entrenos
+    # se hicieron fuera del plan (no encajan con ninguna sesión planificada ese día).
+    for fecha, tipo_deporte, distancia_m, tiempo_seg, subtipo_manual in garmin_rows:
+        lunes = (datetime.strptime(fecha, "%Y-%m-%d") - timedelta(days=datetime.strptime(fecha, "%Y-%m-%d").weekday())).strftime("%Y-%m-%d")
+        semana = semanas.setdefault(lunes, {"semana_inicio": lunes, "sesiones": [], "km_planificados": 0.0, "actividades_garmin": []})
+        semana["actividades_garmin"].append({
+            "fecha": fecha,
+            "tipo_deporte": tipo_deporte,
+            "distancia_m": distancia_m,
+            "tiempo_seg": tiempo_seg,
+            "subtipo_manual": subtipo_manual,
+        })
 
     lista = sorted(semanas.values(), key=lambda w: w["semana_inicio"])
     for w in lista:
