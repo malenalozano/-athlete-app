@@ -1635,13 +1635,15 @@ function PlanView({ userId }: { userId: number }) {
                             </div>
                             {extras.map(({ a, esRunning }, extraIdx) => {
                               const km = (a.distancia_m || 0) / 1000;
+                              const sub = esRunning ? (a.subtipo_manual ?? "RB") : "EXTRA";
+                              const c = SUB[sub as Subtype];
                               return (
-                                <div key={extraIdx} className="flex items-center gap-2 px-2 py-1.5 rounded-lg ml-9" style={{ background: "rgba(244,63,94,0.06)" }}>
-                                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded" style={{ color: "#f43f5e", background: "rgba(244,63,94,0.15)" }}>Extra</span>
+                                <div key={extraIdx} className="flex items-center gap-2 px-2 py-1.5 rounded-lg ml-9" style={{ background: `${c.bg}30` }}>
+                                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded" style={{ color: c.color, background: `${c.color}15` }}>{c.label}</span>
                                   <span className="flex-1 min-w-0 truncate text-[11px] font-bold" style={{ color: T.text2 }}>
                                     {humanizarTipoActividad(a.tipo_deporte)}
                                   </span>
-                                  <span className="w-14 shrink-0 text-right text-xs font-black" style={{ color: "#f43f5e" }}>
+                                  <span className="w-14 shrink-0 text-right text-xs font-black" style={{ color: c.color }}>
                                     {esRunning && km > 0.1 ? `${km.toFixed(1).replace(".0", "")} km` : ""}
                                   </span>
                                 </div>
