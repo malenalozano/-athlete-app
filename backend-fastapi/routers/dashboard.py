@@ -25,12 +25,14 @@ def dashboard(usuario_id: int):
 
     # Perfil
     row = conn.execute(
-        "SELECT id, nombre, genero, objetivo, nivel, fcmax, objetivo_tipo, fecha_objetivo, fecha_inicio_entrenamiento FROM usuarios WHERE id = ?",
+        "SELECT id, nombre, genero, objetivo, nivel, fcmax, objetivo_tipo, fecha_objetivo, fecha_inicio_entrenamiento, "
+        "ritmo, fecha_objetivo_intermedio, objetivo_intermedio_nombre FROM usuarios WHERE id = ?",
         (usuario_id,),
     ).fetchone()
     perfil = dict(zip(
-        ["id", "nombre", "genero", "objetivo", "nivel", "fcmax", "objetivo_tipo", "fecha_objetivo", "fecha_inicio_entrenamiento"],
-        row or [usuario_id, "Atleta", "Mujer", "", "Intermedio", None, "maraton", None, None]
+        ["id", "nombre", "genero", "objetivo", "nivel", "fcmax", "objetivo_tipo", "fecha_objetivo", "fecha_inicio_entrenamiento",
+         "ritmo", "fecha_objetivo_intermedio", "objetivo_intermedio_nombre"],
+        row or [usuario_id, "Atleta", "Mujer", "", "Intermedio", None, "maraton", None, None, None, None, None]
     ))
 
     # Fase macrociclo
