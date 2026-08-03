@@ -1051,6 +1051,129 @@ def aplicar_semana(usuario_id: int, body: AplicarSemanaRequest):
     return {"ok": True, "sesiones_aplicadas": len(sesiones_carrera)}
 
 
+CSV_COLUMNAS_REQUERIDAS = ["Día del mes", "Día de la semana", "Sesión Planificada", "Tipo de Sesión"]
+
+# Tipo de Sesión (columna del CSV) -> (tipo interno, etiqueta de sesión)
+_CSV_TIPO_MAP = {
+    "descanso": ("Descanso", "Descanso"),
+    "rodaje base": ("Carrera", "Rodaje Base"),
+    "tirada larga": ("Carrera", "Tirada Larga"),
+    "fuerza": ("Fuerza", "Fuerza"),
+    "calidad": ("Carrera", "Calidad"),
+    "series": ("Carrera", "Series"),
+    "intervalos": ("Carrera", "Intervalos"),
+    "umbral": ("Carrera", "Umbral"),
+    "tempo": ("Carrera", "Tempo"),
+    "fartlek": ("Carrera", "Fartlek"),
+}
+
+_KM_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:-\s*(\d+(?:[.,]\d+)?)\s*)?km", re.IGNORECASE)
+
+
+def _parse_km_planificados(texto: str) -> float | None:
+    if not texto:
+        return None
+    m = _KM_RE.search(texto)
+    if not m:
+        return None
+    a = float(m.group(1).replace(",", "."))
+    b = float(m.group(2).replace(",", ".")) if m.group(2) else None
+    return round((a + b) / 2, 2) if b is not None else a
+
+
+def _mapear_tipo_sesion(tipo_csv: str, sesion_planificada: str) -> tuple[str, str]:
+    tipo, sesion = _CSV_TIPO_MAP.get((tipo_csv or "").strip().lower(), (None, None))
+    if tipo is not None:
+        return tipo, sesion
+    # Tipo no reconocido: se guarda tal cual como sesión de tipo "Carrera"
+    return "Carrera", (tipo_csv or sesion_planificada or "Sesión").strip()
+
+
+def _parsear_csv_plan(contenido: str, fecha_inicio: str) -> list[dict]:
+    contenido = contenido.lstrip("﻿")
+    try:
+        reader = csv.DictReader(io.StringIO(contenido))
+    except Exception:
+        raise HTTPException(status_code=400, detail="No se pudo leer el CSV")
+
+    headers = [h.strip() for h in (reader.fieldnames or [])]
+    faltantes = [c for c in CSV_COLUMNAS_REQUERIDAS if c not in headers]
+    if faltantes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Faltan columnas en el CSV: {', '.join(faltantes)}. "
+                   f"Columnas requeridas: {', '.join(CSV_COLUMNAS_REQUERIDAS)}",
+        )
+
+    try:
+        fecha_actual = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Formato de fecha_inicio inválido (YYYY-MM-DD)")
+
+    sesiones: list[dict] = []
+    for row in reader:
+        sesion_planificada = (row.get("Sesión Planificada") or "").strip()
+        tipo_csv = (row.get("Tipo de Sesión") or "").strip()
+        if not sesion_planificada and not tipo_csv:
+            continue  # fila vacía
+
+        tipo, sesion = _mapear_tipo_sesion(tipo_csv, sesion_planificada)
+        km_planificados = _parse_km_planificados(sesion_planificada) if tipo != "Descanso" else None
+
+        sesiones.append({
+            "fecha": fecha_actual.strftime("%Y-%m-%d"),
+            "tipo": tipo,
+            "sesion": sesion,
+            "detalles": sesion_planificada or None,
+            "duracion_min": None,
+            "intensidad": None,
+            "km_planificados": km_planificados,
+        })
+        fecha_actual += timedelta(days=1)
+
+    if not sesiones:
+        raise HTTPException(status_code=400, detail="El CSV no contiene sesiones")
+    return sesiones
+
+
+@router.post("/{usuario_id}/importar-csv")
+async def importar_plan_csv(
+    usuario_id: int,
+    fecha_inicio: str = Form(...),
+    dry_run: bool = Form(False),
+    file: UploadFile = File(...),
+):
+    """Importa un plan de entrenamiento desde un CSV (ver formato en CSV_COLUMNAS_REQUERIDAS).
+    La primera fila de datos se asigna a fecha_inicio y cada fila siguiente al día siguiente.
+    Con dry_run=true solo se devuelve la previsualización, sin guardar nada."""
+    crudo = await file.read()
+    try:
+        contenido = crudo.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        contenido = crudo.decode("latin-1")
+
+    sesiones = _parsear_csv_plan(contenido, fecha_inicio)
+
+    if dry_run:
+        return {"ok": True, "sesiones": sesiones}
+
+    conn = get_db()
+    ahora = datetime.now().isoformat()
+    for s in sesiones:
+        semana_inicio = _inicio_semana(s["fecha"])
+        conn.execute(
+            """INSERT INTO plan_entrenamiento
+               (usuario_id, semana_inicio, fecha, tipo, sesion, detalles, duracion_min,
+                intensidad, km_planificados, creado_en)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (usuario_id, semana_inicio, s["fecha"], s["tipo"], s["sesion"],
+             s["detalles"], s["duracion_min"], s["intensidad"], s["km_planificados"], ahora),
+        )
+    conn.commit()
+    conn.close()
+    return {"ok": True, "sesiones_importadas": len(sesiones)}
+
+
 @router.post("/{usuario_id}/regenerar-total")
 def regenerar_total(usuario_id: int, body: RegenerarTotalRequest):
     """Regenera el plan completo desde la semana actual hacia adelante.

@@ -305,6 +305,34 @@ export function aplicarSemanaGenerada(usuarioId: number, fechaInicio: string, se
   });
 }
 
+export interface ImportarPlanCsvResult {
+  ok: boolean;
+  sesiones?: SesionGenerada[];
+  sesiones_importadas?: number;
+}
+
+export async function importarPlanCsv(
+  usuarioId: number,
+  fechaInicio: string,
+  file: File,
+  dryRun = false
+): Promise<ImportarPlanCsvResult> {
+  const form = new FormData();
+  form.append("fecha_inicio", fechaInicio);
+  form.append("dry_run", String(dryRun));
+  form.append("file", file);
+
+  const res = await fetch(`${BASE}/plan/${usuarioId}/importar-csv`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`API ${res.status}: ${err}`);
+  }
+  return res.json();
+}
+
 export function regenerarPlanTotal(usuarioId: number, semanas = 4, incluirFuerza = false) {
   return req<{ ok: boolean; km_base_real: number; semanas_regeneradas: number; detalle: { semana_inicio: string; km_total: number; descarga: boolean }[] }>(
     `/plan/${usuarioId}/regenerar-total`,

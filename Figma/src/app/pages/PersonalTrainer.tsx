@@ -1,14 +1,15 @@
 import { Header } from "../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Brain, MessageSquare } from "lucide-react";
+import { Brain, MessageSquare, Upload, HelpCircle } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
-import { useState, useEffect } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
+import { useState, useEffect, useRef } from "react";
 import { useUser } from "../context/UserContext";
-import { getResumenEntrenador, getPerfil, generarPlanSemana, type ResumenEntrenador, type PerfilUsuario, type PlanGenerado, type SesionGenerada } from "../api";
+import { getResumenEntrenador, getPerfil, generarPlanSemana, importarPlanCsv, type ResumenEntrenador, type PerfilUsuario, type PlanGenerado, type SesionGenerada } from "../api";
 
 export function PersonalTrainer() {
   const { userId } = useUser();
@@ -18,6 +19,14 @@ const [resumen, setResumen] = useState<ResumenEntrenador | null>(null);
   const [planGenerado, setPlanGenerado] = useState<PlanGenerado | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [incluirFuerza, setIncluirFuerza] = useState(false);
+
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvFechaInicio, setCsvFechaInicio] = useState("");
+  const [importando, setImportando] = useState(false);
+  const [csvPreview, setCsvPreview] = useState<SesionGenerada[] | null>(null);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [csvOk, setCsvOk] = useState<string | null>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -44,6 +53,39 @@ const [resumen, setResumen] = useState<ResumenEntrenador | null>(null);
       setPlanError(e instanceof Error ? e.message : "Error generando el plan");
     } finally {
       setGenerando(false);
+    }
+  };
+
+  const handlePrevisualizarCsv = async () => {
+    if (!userId || !csvFile || !csvFechaInicio) return;
+    setImportando(true);
+    setCsvError(null);
+    setCsvOk(null);
+    setCsvPreview(null);
+    try {
+      const res = await importarPlanCsv(userId, csvFechaInicio, csvFile, true);
+      setCsvPreview(res.sesiones ?? []);
+    } catch (e: unknown) {
+      setCsvError(e instanceof Error ? e.message : "Error leyendo el CSV");
+    } finally {
+      setImportando(false);
+    }
+  };
+
+  const handleConfirmarImportacionCsv = async () => {
+    if (!userId || !csvFile || !csvFechaInicio) return;
+    setImportando(true);
+    setCsvError(null);
+    try {
+      const res = await importarPlanCsv(userId, csvFechaInicio, csvFile, false);
+      setCsvOk(`Se importaron ${res.sesiones_importadas ?? 0} sesiones correctamente.`);
+      setCsvPreview(null);
+      setCsvFile(null);
+      if (csvInputRef.current) csvInputRef.current.value = "";
+    } catch (e: unknown) {
+      setCsvError(e instanceof Error ? e.message : "Error importando el CSV");
+    } finally {
+      setImportando(false);
     }
   };
 
@@ -162,6 +204,125 @@ const [resumen, setResumen] = useState<ResumenEntrenador | null>(null);
                 </CardContent>
               </Card>
             </div>
+
+            {/* Importar Plan desde CSV */}
+            <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-white text-base flex items-center gap-2">
+                  <Upload className="h-4 w-4 text-[#C9FF00]" />
+                  Importar Plan (CSV)
+                </CardTitle>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-xs text-[#8B949E] hover:text-[#C9FF00] transition-colors"
+                    >
+                      <HelpCircle className="h-4 w-4" />
+                      Ayuda: formato del CSV
+                    </button>
+                  </DialogTrigger>
+                  <DialogContent className="bg-[#161B22] border border-[#C9FF00]/30 text-white max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle className="text-white">Formato del CSV para importar</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3 text-sm text-[#8B949E]">
+                      <p>
+                        El archivo debe ser un <span className="text-white font-semibold">CSV</span> con estas
+                        4 columnas exactas en la primera fila (cabecera):
+                      </p>
+                      <pre className="bg-[#0E1117] border border-[#30363D] rounded-lg p-3 text-xs text-[#C9FF00] overflow-x-auto">
+Día del mes,Día de la semana,Sesión Planificada,Tipo de Sesión
+                      </pre>
+                      <ul className="list-disc pl-5 space-y-1.5">
+                        <li><span className="text-white font-semibold">Día del mes / Día de la semana:</span> solo informativos, no se usan para calcular la fecha.</li>
+                        <li><span className="text-white font-semibold">Sesión Planificada:</span> texto libre, ej. "6 km suaves" o "8 km progresión". Si incluye "X km" o "X-Y km", la app extrae los kilómetros automáticamente.</li>
+                        <li><span className="text-white font-semibold">Tipo de Sesión:</span> uno de: <code className="text-[#C9FF00]">Descanso</code>, <code className="text-[#C9FF00]">Rodaje Base</code>, <code className="text-[#C9FF00]">Tirada Larga</code>, <code className="text-[#C9FF00]">Fuerza</code>, <code className="text-[#C9FF00]">Calidad</code>, <code className="text-[#C9FF00]">Series</code>, <code className="text-[#C9FF00]">Intervalos</code>, <code className="text-[#C9FF00]">Umbral</code>, <code className="text-[#C9FF00]">Tempo</code> o <code className="text-[#C9FF00]">Fartlek</code>.</li>
+                        <li>Cada fila del archivo se asigna a un día consecutivo, empezando por la <span className="text-white font-semibold">fecha de inicio</span> que indiques abajo.</li>
+                      </ul>
+                      <p className="pt-1">Ejemplo:</p>
+                      <pre className="bg-[#0E1117] border border-[#30363D] rounded-lg p-3 text-xs text-[#8B949E] overflow-x-auto whitespace-pre">
+{`3,Lunes,Descanso,Descanso
+4,Martes,4 km suaves,Rodaje Base
+5,Miércoles,Descanso,Descanso
+6,Jueves,5 km suaves,Rodaje Base
+7,Viernes,Fuerza (En casa),Fuerza
+8,Sábado,7 km suaves,Rodaje Base
+9,Domingo,6-8 km suaves,Tirada Larga`}
+                      </pre>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-xs text-[#8B949E]">
+                  Sube una hoja de entreno en CSV y la app la convierte automáticamente en sesiones del plan.
+                </p>
+
+                <div>
+                  <Label className="text-white mb-2 block text-sm">Fecha de la primera fila del CSV</Label>
+                  <Input
+                    type="date"
+                    value={csvFechaInicio}
+                    onChange={(e) => { setCsvFechaInicio(e.target.value); setCsvPreview(null); setCsvOk(null); }}
+                    className="bg-[#0E1117] border-[#C9FF00]/30 text-white"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-white mb-2 block text-sm">Archivo CSV</Label>
+                  <input
+                    ref={csvInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(e) => { setCsvFile(e.target.files?.[0] ?? null); setCsvPreview(null); setCsvOk(null); }}
+                    className="w-full text-sm text-[#8B949E] file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-[#C9FF00]/10 file:text-[#C9FF00] file:text-sm file:font-semibold hover:file:bg-[#C9FF00]/20 bg-[#0E1117] border border-[#C9FF00]/30 rounded-lg"
+                  />
+                </div>
+
+                {csvError && <p className="text-red-400 text-sm">{csvError}</p>}
+                {csvOk && <p className="text-[#34d399] text-sm">{csvOk}</p>}
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handlePrevisualizarCsv}
+                    disabled={!csvFile || !csvFechaInicio || importando}
+                    variant="outline"
+                    className="flex-1 border-[#C9FF00]/30 text-white hover:bg-[#C9FF00]/10 disabled:opacity-60"
+                  >
+                    {importando ? "Leyendo..." : "Previsualizar"}
+                  </Button>
+                  <Button
+                    onClick={handleConfirmarImportacionCsv}
+                    disabled={!csvFile || !csvFechaInicio || importando}
+                    className="flex-1 bg-gradient-to-r from-[#C9FF00] to-[#a8d600] text-[#0E1117] hover:from-[#a8d600] hover:to-[#C9FF00] font-bold disabled:opacity-60"
+                  >
+                    {importando ? "Importando..." : "Importar Plan"}
+                  </Button>
+                </div>
+
+                {csvPreview && (
+                  <div className="space-y-2 pt-2 max-h-80 overflow-y-auto">
+                    <p className="text-xs text-[#8B949E] uppercase tracking-widest font-bold">
+                      Previsualización ({csvPreview.length} sesiones)
+                    </p>
+                    {csvPreview.map((s, i) => {
+                      const fecha = new Date(s.fecha + "T12:00:00");
+                      const diaNombre = fecha.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
+                      return (
+                        <div key={i} className="rounded-lg p-2.5 flex items-center gap-3 bg-[#0E1117] border border-[#30363D]">
+                          <span className="shrink-0 text-[10px] font-bold text-[#8B949E] w-16">{diaNombre}</span>
+                          <span className="flex-1 min-w-0 text-sm text-white truncate">{s.sesion}</span>
+                          {s.km_planificados != null && (
+                            <span className="shrink-0 text-xs font-bold text-[#C9FF00]">{s.km_planificados} km</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Plan generado */}
             <Card className="bg-[#161B22] border border-[#C9FF00]/30 rounded-xl">
