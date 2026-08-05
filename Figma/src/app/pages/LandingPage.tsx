@@ -1902,25 +1902,34 @@ const OVERLAY_INFO: Record<OverlayKey, { label: string; color: string }> = {
   fc_reposo: { label: "FC reposo", color: "#f472b6" },
 };
 
+const DAILY_CHART_WINDOW = 14; // días visibles a la vez, para que las barras no se aplasten
+
 function DailyKmOverlayChart({ daily, loading }: {
   daily: { fecha: string; km: number; cadencia: number | null; vfc: number | null; fc_reposo: number | null }[];
   loading: boolean;
 }) {
   const [overlay, setOverlay] = useState<OverlayKey | null>(null);
-  const hasData = daily.some(d => d.km > 0);
+  const [offset, setOffset] = useState(0); // 0 = ventana más reciente; +1 = una ventana hacia atrás
 
-  const n = daily.length;
-  const chartW = 300, chartH = 130, padL = 4, padR = 4, barGap = 1;
-  const kmMax = Math.max(...daily.map(d => d.km), 1);
+  const maxOffset = Math.max(0, Math.ceil(daily.length / DAILY_CHART_WINDOW) - 1);
+  const endIdx = daily.length - offset * DAILY_CHART_WINDOW;
+  const startIdx = Math.max(0, endIdx - DAILY_CHART_WINDOW);
+  const visible = daily.slice(startIdx, endIdx);
+
+  const hasData = visible.some(d => d.km > 0);
+
+  const n = visible.length;
+  const chartW = 300, chartH = 130, padL = 4, padR = 4, barGap = 2;
+  const kmMax = Math.max(...visible.map(d => d.km), 1);
   const barW = n ? (chartW - padL - padR) / n - barGap : 0;
 
-  const overlayVals = overlay ? daily.map(d => d[overlay]).filter((v): v is number => v != null) : [];
+  const overlayVals = overlay ? visible.map(d => d[overlay]).filter((v): v is number => v != null) : [];
   const overlayMin = overlayVals.length ? Math.min(...overlayVals) : 0;
   const overlayMax = overlayVals.length ? Math.max(...overlayVals) : 0;
   const overlayRange = overlayMax - overlayMin || 1;
 
   const overlayPoints = overlay
-    ? daily
+    ? visible
         .map((d, i) => {
           const v = d[overlay];
           if (v == null) return null;
@@ -1934,13 +1943,17 @@ function DailyKmOverlayChart({ daily, loading }: {
     ? "M " + overlayPoints.map(p => `${p.x} ${p.y}`).join(" L ")
     : "";
 
-  // Etiquetas de fecha: máx. ~6 repartidas a lo largo del eje
-  const labelStep = Math.max(1, Math.ceil(n / 6));
+  // Etiquetas de fecha: una de cada 2 días aprox., sin amontonarse
+  const labelStep = Math.max(1, Math.ceil(n / 7));
+
+  const rangoLabel = visible.length
+    ? `${format(parseISO(visible[0].fecha), "d MMM", { locale: es })} – ${format(parseISO(visible[visible.length - 1].fecha), "d MMM", { locale: es })}`
+    : "";
 
   return (
     <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h3 className="text-xs font-black uppercase tracking-wide" style={{ color: T.text2 }}>Km por día (últimos 30 días)</h3>
+        <h3 className="text-xs font-black uppercase tracking-wide" style={{ color: T.text2 }}>Km por día</h3>
         <div className="flex items-center gap-1.5">
           {(Object.keys(OVERLAY_INFO) as OverlayKey[]).map(key => {
             const info = OVERLAY_INFO[key];
@@ -1959,6 +1972,24 @@ function DailyKmOverlayChart({ daily, loading }: {
           })}
         </div>
       </div>
+
+      {/* Navegador de ventana (2 semanas a la vez) */}
+      <div className="flex items-center justify-between mb-2">
+        <button type="button" onClick={() => setOffset(o => Math.min(o + 1, maxOffset))}
+          disabled={offset >= maxOffset}
+          className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-30"
+          style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>
+          <ChevronLeft className="w-3.5 h-3.5" />
+        </button>
+        <span className="text-[10px] font-bold" style={{ color: T.text2 }}>{rangoLabel}</span>
+        <button type="button" onClick={() => setOffset(o => Math.max(o - 1, 0))}
+          disabled={offset <= 0}
+          className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-30"
+          style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
       {loading && <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Cargando…</p>}
       {!loading && !hasData && (
         <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos de Garmin suficientes todavía</p>
@@ -1966,25 +1997,35 @@ function DailyKmOverlayChart({ daily, loading }: {
       {!loading && hasData && (
         <div className="h-44 w-full relative">
           <svg className="w-full h-full absolute inset-0 z-10" viewBox={`0 0 ${chartW} ${chartH + 14}`}>
-            {daily.map((d, i) => {
+            {visible.map((d, i) => {
               const h = kmMax > 0 ? (d.km / kmMax) * 88 : 0;
               const x = padL + i * (barW + barGap);
               const y = 108 - h;
               return d.km > 0 ? (
-                <rect key={i} x={x} y={y} width={Math.max(barW, 0.5)} height={h} rx={0.6}
-                  fill="#4ade80" opacity={0.85} />
+                <g key={i}>
+                  <rect x={x} y={y} width={Math.max(barW, 0.5)} height={h} rx={0.8}
+                    fill="#4ade80" opacity={0.85} />
+                  <text x={x + barW / 2} y={y - 3} fill="#86efac" fontSize="7" fontWeight="bold" textAnchor="middle">
+                    {d.km}
+                  </text>
+                </g>
               ) : null;
             })}
             {overlay && overlayPoints.length >= 2 && (
               <path d={overlayPath} fill="none" stroke={OVERLAY_INFO[overlay].color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             )}
             {overlay && overlayPoints.map((p, i) => (
-              <circle key={i} cx={p.x} cy={p.y} r={1.8} fill={OVERLAY_INFO[overlay].color} stroke="#0E1117" strokeWidth="0.6" />
+              <g key={i}>
+                <circle cx={p.x} cy={p.y} r={2.2} fill={OVERLAY_INFO[overlay].color} stroke="#0E1117" strokeWidth="0.6" />
+                <text x={p.x} y={p.y - 5} fill={OVERLAY_INFO[overlay].color} fontSize="7" fontWeight="bold" textAnchor="middle">
+                  {p.v}
+                </text>
+              </g>
             ))}
-            {daily.map((d, i) => (
+            {visible.map((d, i) => (
               i % labelStep === 0 ? (
                 <text key={i} x={padL + i * (barW + barGap) + barW / 2} y={122} fill={T.text3}
-                  fontSize="7" fontWeight="bold" textAnchor="middle">
+                  fontSize="7.5" fontWeight="bold" textAnchor="middle">
                   {format(parseISO(d.fecha), "d/M")}
                 </text>
               ) : null
