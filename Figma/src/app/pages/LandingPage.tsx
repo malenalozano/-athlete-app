@@ -494,16 +494,23 @@ function CardExtra({ session, onClassify }: { session: Session; onClassify?: () 
 // ─────────────────────────────────────────────────────────────────────────────
 // DAY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
-function DayBlock({ dayLabel, sessions, isReorderMode, onToggle, onOpen, onReorderTap, onClassifyExtra }: {
+function DayBlock({ dayLabel, sessions, isReorderMode, onToggle, onOpen, onReorderTap, onClassifyExtra, isToday }: {
   dayLabel: string; sessions: Session[]; isReorderMode: boolean;
   onToggle: (id: string) => void; onOpen: (s: Session) => void; onReorderTap: (s: Session) => void;
-  onClassifyExtra?: (s: Session) => void;
+  onClassifyExtra?: (s: Session) => void; isToday?: boolean;
 }) {
   return (
-    <div className="rounded-2xl p-3" style={{ background: "rgba(30,41,59,0.55)", border: `1px solid ${T.border}` }}>
+    <div className="rounded-2xl p-3" style={{
+      background: isToday ? "rgba(34,211,238,0.08)" : "rgba(30,41,59,0.55)",
+      border: isToday ? "1px solid #22d3ee80" : `1px solid ${T.border}`,
+      boxShadow: isToday ? "0 0 0 1px rgba(34,211,238,0.15)" : undefined,
+    }}>
       {/* Day header */}
-      <div className="flex items-center justify-center mb-2">
-        <span className="text-[10px] font-black" style={{ color: "#818cf8" }}>{dayLabel}</span>
+      <div className="flex items-center justify-center gap-1.5 mb-2">
+        <span className="text-[10px] font-black" style={{ color: isToday ? "#22d3ee" : "#818cf8" }}>{dayLabel}</span>
+        {isToday && (
+          <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "#22d3ee", color: "#0E1117" }}>HOY</span>
+        )}
       </div>
 
       {/* Session cards */}
@@ -538,7 +545,7 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
 }) {
   const [title, setTitle] = useState(session.title);
   const [duration, setDuration] = useState(session.duration);
-  const [metric, setMetric] = useState(session.metric);
+  const [metric, setMetric] = useState(session.kmPlanificados != null ? String(session.kmPlanificados) : session.metric.replace(/\s*km\s*$/i, ""));
   const [notes, setNotes] = useState(session.notes);
 
   return (
@@ -1267,6 +1274,7 @@ function WeeklyView({
           <DayBlock key={d} dayLabel={d}
             sessions={sessions.filter(s => s.dayIndex === i)}
             isReorderMode={isReorderMode}
+            isToday={isSameDay(addDays(monday, i), new Date())}
             onToggle={onToggle}
             onOpen={s => setEditingSession(s)}
             onReorderTap={s => setReorderingSession(s)}
