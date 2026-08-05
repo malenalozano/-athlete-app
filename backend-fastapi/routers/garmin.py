@@ -134,6 +134,18 @@ def _load_client_from_tokens(conn, usuario_id: int):
         # Algunos stores no tienen is_authenticated; si cargó sin excepción, lo damos por válido
         if hasattr(store, "is_authenticated") and not store.is_authenticated:
             return None
+        # loads() no rellena gc.display_name (solo lo hace gc.login()), y varios
+        # endpoints (get_stats, get_rhr_day, etc.) lo requieren para construir la
+        # URL — sin esto fallan con "Display name is not set" aunque la sesión
+        # esté autenticada. Lo recuperamos aquí igual que hace login().
+        if not getattr(gc, "display_name", None):
+            try:
+                prof = gc.connectapi("/userprofile-service/socialProfile")
+                if isinstance(prof, dict):
+                    gc.display_name = prof.get("displayName")
+                    gc.full_name = prof.get("fullName", "")
+            except Exception:
+                pass
         return gc
     except Exception:
         return None
@@ -351,22 +363,8 @@ def _do_sync_inner(conn, usuario_id: int) -> dict:
                 "body_battery_min": stats.get("bodyBatteryDrainedValue") or stats.get("bodyBatteryLowValue"),
                 "vo2max": stats.get("vo2MaxValue"),
             }
-            # DEBUG TEMPORAL: si no llega restingHeartRate, guardamos las claves
-            # relacionadas con FC que sí trae el payload para encontrar el nombre
-            # correcto del campo (se está investigando por qué fc_reposo dejó de
-            # sincronizarse el 2026-05-20). Quitar en cuanto se resuelva.
-            if result["stats"]["fc_reposo"] is None and isinstance(stats, dict):
-                claves_fc = {
-                    k: v for k, v in stats.items()
-                    if "heart" in k.lower() or "resting" in k.lower() or "hr" in k.lower()
-                }
-                result["stats_debug"] = claves_fc
         except Exception as e:
             logger.warning(f"get_stats() falló para {dia_str}: {e}")
-            # DEBUG TEMPORAL: exponer el error real en la respuesta de sync
-            # (no tenemos acceso a los logs de Render desde aquí). Quitar
-            # en cuanto se resuelva por qué fc_reposo dejó de sincronizarse.
-            result["stats_error"] = f"{type(e).__name__}: {e}"
         try:
             tr = client.get_training_readiness(dia_str)
             readiness = status = None
@@ -456,10 +454,6 @@ def _do_sync_inner(conn, usuario_id: int) -> dict:
                     if day["stats"]:
                         _upsert_biometrico(conn, usuario_id, dia_str, **day["stats"])
                         biometrico_ok += 1
-                    if day.get("stats_debug"):
-                        errores.append(f"DEBUG fc_reposo {dia_str}: {day['stats_debug']}")
-                    if day.get("stats_error"):
-                        errores.append(f"DEBUG stats_error {dia_str}: {day['stats_error']}")
                     if day["readiness"]:
                         _upsert_biometrico(conn, usuario_id, dia_str, **day["readiness"])
                 except Exception:
