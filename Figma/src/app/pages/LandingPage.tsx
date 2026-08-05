@@ -422,6 +422,9 @@ function CardCarrera({ session, isReorderMode, onToggle, onOpen, onReorderTap }:
           {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
         </div>
       </div>
+      {session.notes && (
+        <p className="text-[10px] mt-1.5 line-clamp-2" style={{ color: T.text3 }}>{session.notes}</p>
+      )}
     </div>
   );
 }
@@ -459,6 +462,9 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
         </div>
         {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
       </div>
+      {session.notes && (
+        <p className="text-[10px] mt-1.5 line-clamp-2" style={{ color: T.text3 }}>{session.notes}</p>
+      )}
     </div>
   );
 }
