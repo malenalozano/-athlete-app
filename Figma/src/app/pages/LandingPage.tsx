@@ -4,8 +4,11 @@ import {
   Calendar, TrendingUp, Award, ChevronLeft, ChevronRight,
   ArrowLeftRight, X, Clock, Flame, Plus, Check, Save, Trash2,
   RefreshCw, ArrowRight, Zap, ListChecks, Home, Shield, Footprints,
-  Flag, Trophy, Pencil, Upload, HelpCircle, HeartPulse, AlertTriangle,
+  Flag, Trophy, Pencil, Upload, HelpCircle, HeartPulse, AlertTriangle, Eye,
 } from "lucide-react";
+import {
+  Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
 import {
   addDays, addMonths, addWeeks, differenceInCalendarDays, format,
   getDay, isSameDay, parseISO, startOfMonth, startOfWeek,
@@ -1532,6 +1535,7 @@ function PlanView({ userId }: { userId: number }) {
   const [loading, setLoading] = useState(true);
   const [showCarrera, setShowCarrera] = useState(true);
   const [showFuerza, setShowFuerza] = useState(true);
+  const [showMetricas, setShowMetricas] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1566,10 +1570,21 @@ function PlanView({ userId }: { userId: number }) {
                   className="w-4 h-4 rounded accent-orange-400" />
                 <span className="text-[11px] font-bold" style={{ color: showFuerza ? SUB.PUSH.color : T.text3 }}>Fuerza</span>
               </label>
+              <button onClick={() => setShowMetricas(v => !v)}
+                className="ml-auto flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
+                style={{
+                  background: showMetricas ? "rgba(201,255,0,0.15)" : "transparent",
+                  border: `1px solid ${showMetricas ? "#C9FF00" : T.border}`,
+                }}
+                title="Ver métricas del plan">
+                <Eye className="w-4 h-4" style={{ color: showMetricas ? "#C9FF00" : T.text3 }} />
+              </button>
             </div>
 
+            {showMetricas && <PlanMetricas plan={plan} todayIso={todayIso} />}
+
             {/* Lista de semanas */}
-            <div className="space-y-4">
+            {!showMetricas && <div className="space-y-4">
               {plan.semanas.map((w, i) => {
                 const monday = parseISO(w.semana_inicio);
                 const sunday = addDays(monday, 6);
@@ -1673,10 +1688,53 @@ function PlanView({ userId }: { userId: number }) {
                   </div>
                 );
               })}
-            </div>
+            </div>}
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Gráfica de km semanales del plan: por semana, la parte ya "hecha" (días
+ * pasados o de hoy) en un color y la parte pendiente (días futuros) en otro. */
+function PlanMetricas({ plan, todayIso }: { plan: PlanCompleto; todayIso: string }) {
+  const data = plan.semanas.map((w, i) => {
+    const hecho = w.sesiones
+      .filter(s => (s.tipo || "").toLowerCase() !== "fuerza" && s.fecha <= todayIso)
+      .reduce((a, s) => a + (s.km_planificados || 0), 0);
+    const total = w.km_planificados || 0;
+    const pendiente = Math.max(0, total - hecho);
+    return { semana: `S${i + 1}`, hecho: Math.round(hecho * 10) / 10, pendiente: Math.round(pendiente * 10) / 10, total };
+  });
+
+  return (
+    <div className="rounded-2xl p-4" style={{ border: `1px solid ${T.border}`, background: "rgba(15,23,42,0.6)" }}>
+      <div className="flex items-center gap-4 mb-3">
+        <p className="text-xs font-black uppercase tracking-wide" style={{ color: T.text1 }}>Km semanales del plan</p>
+        <div className="flex items-center gap-1.5 ml-auto">
+          <span className="w-2.5 h-2.5 rounded-sm" style={{ background: T.success }} />
+          <span className="text-[10px] font-bold" style={{ color: T.text3 }}>Hecho</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-sm" style={{ background: T.text3 }} />
+          <span className="text-[10px] font-bold" style={{ color: T.text3 }}>Por hacer</span>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+          <XAxis dataKey="semana" stroke={T.text3} fontSize={11} />
+          <YAxis stroke={T.text3} fontSize={11} unit=" km" />
+          <Tooltip
+            contentStyle={{ background: T.bgSurf, border: `1px solid ${T.border}`, borderRadius: 8 }}
+            labelStyle={{ color: T.text1 }}
+            formatter={(value: number, name: string) => [`${value} km`, name === "hecho" ? "Hecho" : "Por hacer"]}
+          />
+          <Bar dataKey="hecho" stackId="km" name="hecho" fill={T.success} radius={[0, 0, 0, 0]} />
+          <Bar dataKey="pendiente" stackId="km" name="pendiente" fill={T.text3} radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -2057,7 +2115,7 @@ function DailyKmOverlayChart({ daily, loading }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // GRÁFICAS SEMANALES PAGINABLES (Volumen y Ritmo medio) — ventana de 5 semanas
 // ─────────────────────────────────────────────────────────────────────────────
-const WEEKLY_CHART_WINDOW = 4;
+const WEEKLY_CHART_WINDOW = 5;
 
 function useWeeklyWindow<T extends { fecha: string }>(trend: T[]) {
   const [offset, setOffset] = useState(0);
