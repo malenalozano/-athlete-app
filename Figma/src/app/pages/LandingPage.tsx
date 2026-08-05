@@ -2002,13 +2002,8 @@ function DailyKmOverlayChart({ daily, loading }: {
               const x = padL + i * (barW + barGap);
               const y = 108 - h;
               return d.km > 0 ? (
-                <g key={i}>
-                  <rect x={x} y={y} width={Math.max(barW, 0.5)} height={h} rx={0.8}
-                    fill="#4ade80" opacity={0.85} />
-                  <text x={x + barW / 2} y={y - 3} fill="#86efac" fontSize="7" fontWeight="bold" textAnchor="middle">
-                    {d.km}
-                  </text>
-                </g>
+                <rect key={i} x={x} y={y} width={Math.max(barW, 0.5)} height={h} rx={0.8}
+                  fill="#4ade80" opacity={0.85} />
               ) : null;
             })}
             {overlay && overlayPoints.length >= 2 && (
