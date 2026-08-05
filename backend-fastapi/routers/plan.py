@@ -1213,6 +1213,23 @@ def _parsear_csv_plan(contenido: str) -> tuple[list[dict], int]:
         raise HTTPException(status_code=400, detail="El CSV no contiene sesiones")
     if not sesiones:
         raise HTTPException(status_code=400, detail="Todas las sesiones del CSV caen en días pasados; no hay nada que importar")
+
+    # Días dentro del rango del CSV que no vinieron en ninguna fila también son descanso (vacío).
+    fechas_presentes = {s["fecha"] for s in sesiones}
+    fecha_min = min(fechas_presentes)
+    fecha_max = max(fechas_presentes)
+    cursor = datetime.strptime(fecha_min, "%Y-%m-%d").date()
+    fin = datetime.strptime(fecha_max, "%Y-%m-%d").date()
+    while cursor <= fin:
+        fecha_str = cursor.strftime("%Y-%m-%d")
+        if fecha_str not in fechas_presentes:
+            sesiones.append({
+                "fecha": fecha_str, "tipo": "Descanso", "sesion": "Descanso",
+                "detalles": None, "duracion_min": None, "intensidad": None,
+                "km_planificados": None,
+            })
+        cursor += timedelta(days=1)
+
     return sesiones, omitidas_pasado
 
 
