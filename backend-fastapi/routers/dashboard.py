@@ -120,14 +120,17 @@ def dashboard(usuario_id: int):
 
     # Progresión running últimas 8 semanas
     running_trend = conn.execute(
-        f"""SELECT strftime('%W', fecha) as semana, SUM(distancia_m)/1000 as km
+        f"""SELECT strftime('%W', fecha) as semana, SUM(distancia_m)/1000 as km, MIN(fecha) as fecha_ini
            FROM actividades_garmin
            WHERE usuario_id = ? AND fecha >= ? AND tipo_deporte IN {RUNNING_TIPOS_SQL}
            GROUP BY strftime('%W', fecha)
            ORDER BY semana ASC LIMIT 8""",
         (usuario_id, (hoy - timedelta(days=56)).isoformat()),
     ).fetchall()
-    running_trend = [{"semana": f"S{i+1}", "km": round(r[1] or 0, 1)} for i, r in enumerate(running_trend)]
+    running_trend = [
+        {"semana": f"S{i+1}", "km": round(r[1] or 0, 1), "fecha": r[2]}
+        for i, r in enumerate(running_trend)
+    ]
 
     # Progresión de fuerza: ejercicios que subieron peso recientemente o que deben subir.
     # Fuente: historial_ejercicio + ejercicios_catalogo (sistema moderno con subir_peso).
@@ -237,7 +240,7 @@ def dashboard(usuario_id: int):
     # ritmo_medio ya está en decimal min/km (calculado en _upsert_actividad como
     # (duracion_seg/60) / (distancia_m/1000)), NO dividir de nuevo.
     ritmo_rows = conn.execute(
-        f"""SELECT strftime('%W', ag.fecha) as semana, AVG(ag.ritmo_medio) as ritmo
+        f"""SELECT strftime('%W', ag.fecha) as semana, AVG(ag.ritmo_medio) as ritmo, MIN(ag.fecha) as fecha_ini
            FROM actividades_garmin ag
            WHERE ag.usuario_id = ? AND ag.fecha >= ?
              AND ag.tipo_deporte IN {RUNNING_TIPOS_SQL}
@@ -252,7 +255,7 @@ def dashboard(usuario_id: int):
         (usuario_id, (hoy - timedelta(days=56)).isoformat()),
     ).fetchall()
     ritmo_trend = [
-        {"semana": f"S{i+1}", "ritmo": round(r[1] or 0, 2)}
+        {"semana": f"S{i+1}", "ritmo": round(r[1] or 0, 2), "fecha": r[2]}
         for i, r in enumerate(ritmo_rows)
     ]
 

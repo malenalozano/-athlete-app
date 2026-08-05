@@ -386,8 +386,8 @@ export interface DashboardData {
   actividades_recientes: ActividadGarmin[];
   hrv_data: HrvEntry[];
   sleep_data: SleepEntry[];
-  running_trend: { semana: string; km: number }[];
-  ritmo_trend: { semana: string; ritmo: number }[];
+  running_trend: { semana: string; km: number; fecha: string }[];
+  ritmo_trend: { semana: string; ritmo: number; fecha: string }[];
   fuerza_reciente: {
     ejercicio: string;
     grupo: string | null;

@@ -2055,7 +2055,7 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
     const x = paceTrend.length > 1 ? 10 + (i / (paceTrend.length - 1)) * 280 : 150;
     const norm = (p.ritmo - paceMin) / paceRange;
     const y = 15 + norm * 90;
-    return { x, y, ritmo: p.ritmo, semana: p.semana };
+    return { x, y, ritmo: p.ritmo, semana: p.semana, fecha: p.fecha };
   });
   const pacePath = pacePoints.length
     ? "M " + pacePoints.map(p => `${p.x} ${p.y}`).join(" L ")
@@ -2071,7 +2071,7 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
     const x = bars.length > 1 ? 10 + (i / (bars.length - 1)) * 280 : 150;
     const norm = (b.km - kmMin) / kmRange;
     const y = 105 - norm * 90;
-    return { x, y, km: b.km, semana: b.semana };
+    return { x, y, km: b.km, semana: b.semana, fecha: b.fecha };
   });
   const kmPath = kmPoints.length
     ? "M " + kmPoints.map(p => `${p.x} ${p.y}`).join(" L ")
@@ -2162,8 +2162,8 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
             <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos de Garmin suficientes todavía</p>
           )}
           {!loadingDashboard && kmPoints.length >= 2 && (
-            <div className="h-40 w-full relative">
-              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 130">
+            <div className="h-44 w-full relative">
+              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 144">
                 <defs>
                   <linearGradient id="line-grad-km" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
@@ -2182,6 +2182,11 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
                     {p.km.toFixed(1)}k
                   </text>
                 ))}
+                {kmPoints.map((p, i) => (
+                  <text key={i} x={p.x} y={136} fill={T.text3} fontSize="7" fontWeight="bold" textAnchor="middle">
+                    {format(parseISO(p.fecha), "d/M")}
+                  </text>
+                ))}
               </svg>
             </div>
           )}
@@ -2194,8 +2199,8 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
             <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos suficientes todavía</p>
           )}
           {paceTrend.length >= 2 && (
-            <div className="h-40 w-full relative">
-              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 130">
+            <div className="h-44 w-full relative">
+              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 144">
                 <defs>
                   <linearGradient id="line-grad-lp" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.35" />
@@ -2212,6 +2217,11 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
                   <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
                     fill={i === pacePoints.length - 1 ? "#34d399" : T.text3} fontSize="8" fontWeight="bold">
                     {formatPace(p.ritmo)}
+                  </text>
+                ))}
+                {pacePoints.map((p, i) => (
+                  <text key={i} x={p.x} y={136} fill={T.text3} fontSize="7" fontWeight="bold" textAnchor="middle">
+                    {format(parseISO(p.fecha), "d/M")}
                   </text>
                 ))}
               </svg>
