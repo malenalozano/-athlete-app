@@ -363,6 +363,10 @@ def _do_sync_inner(conn, usuario_id: int) -> dict:
                 result["stats_debug"] = claves_fc
         except Exception as e:
             logger.warning(f"get_stats() falló para {dia_str}: {e}")
+            # DEBUG TEMPORAL: exponer el error real en la respuesta de sync
+            # (no tenemos acceso a los logs de Render desde aquí). Quitar
+            # en cuanto se resuelva por qué fc_reposo dejó de sincronizarse.
+            result["stats_error"] = f"{type(e).__name__}: {e}"
         try:
             tr = client.get_training_readiness(dia_str)
             readiness = status = None
@@ -454,6 +458,8 @@ def _do_sync_inner(conn, usuario_id: int) -> dict:
                         biometrico_ok += 1
                     if day.get("stats_debug"):
                         errores.append(f"DEBUG fc_reposo {dia_str}: {day['stats_debug']}")
+                    if day.get("stats_error"):
+                        errores.append(f"DEBUG stats_error {dia_str}: {day['stats_error']}")
                     if day["readiness"]:
                         _upsert_biometrico(conn, usuario_id, dia_str, **day["readiness"])
                 except Exception:
