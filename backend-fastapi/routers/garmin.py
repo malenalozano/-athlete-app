@@ -351,8 +351,8 @@ def _do_sync_inner(conn, usuario_id: int) -> dict:
                 "body_battery_min": stats.get("bodyBatteryDrainedValue") or stats.get("bodyBatteryLowValue"),
                 "vo2max": stats.get("vo2MaxValue"),
             }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"get_stats() falló para {dia_str}: {e}")
         try:
             tr = client.get_training_readiness(dia_str)
             readiness = status = None

@@ -1889,6 +1889,116 @@ function AvisoCard({ id, activo }: { id: AvisoId; activo: boolean }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GRÁFICO KM/DÍA + OVERLAY OPCIONAL (cadencia / VFC / FC reposo)
+// ─────────────────────────────────────────────────────────────────────────────
+type OverlayKey = "cadencia" | "vfc" | "fc_reposo";
+
+const OVERLAY_INFO: Record<OverlayKey, { label: string; color: string }> = {
+  cadencia: { label: "Cadencia", color: "#fb923c" },
+  vfc: { label: "VFC", color: "#a78bfa" },
+  fc_reposo: { label: "FC reposo", color: "#f472b6" },
+};
+
+function DailyKmOverlayChart({ daily, loading }: {
+  daily: { fecha: string; km: number; cadencia: number | null; vfc: number | null; fc_reposo: number | null }[];
+  loading: boolean;
+}) {
+  const [overlay, setOverlay] = useState<OverlayKey | null>(null);
+  const hasData = daily.some(d => d.km > 0);
+
+  const n = daily.length;
+  const chartW = 300, chartH = 130, padL = 4, padR = 4, barGap = 1;
+  const kmMax = Math.max(...daily.map(d => d.km), 1);
+  const barW = n ? (chartW - padL - padR) / n - barGap : 0;
+
+  const overlayVals = overlay ? daily.map(d => d[overlay]).filter((v): v is number => v != null) : [];
+  const overlayMin = overlayVals.length ? Math.min(...overlayVals) : 0;
+  const overlayMax = overlayVals.length ? Math.max(...overlayVals) : 0;
+  const overlayRange = overlayMax - overlayMin || 1;
+
+  const overlayPoints = overlay
+    ? daily
+        .map((d, i) => {
+          const v = d[overlay];
+          if (v == null) return null;
+          const x = padL + i * (barW + barGap) + barW / 2;
+          const y = 108 - ((v - overlayMin) / overlayRange) * 88;
+          return { x, y, v };
+        })
+        .filter((p): p is { x: number; y: number; v: number } => p !== null)
+    : [];
+  const overlayPath = overlayPoints.length
+    ? "M " + overlayPoints.map(p => `${p.x} ${p.y}`).join(" L ")
+    : "";
+
+  // Etiquetas de fecha: máx. ~6 repartidas a lo largo del eje
+  const labelStep = Math.max(1, Math.ceil(n / 6));
+
+  return (
+    <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h3 className="text-xs font-black uppercase tracking-wide" style={{ color: T.text2 }}>Km por día (últimos 30 días)</h3>
+        <div className="flex items-center gap-1.5">
+          {(Object.keys(OVERLAY_INFO) as OverlayKey[]).map(key => {
+            const info = OVERLAY_INFO[key];
+            const active = overlay === key;
+            return (
+              <button key={key} type="button" onClick={() => setOverlay(active ? null : key)}
+                className="text-[9px] font-black uppercase px-2.5 py-1.5 rounded-full transition-all"
+                style={{
+                  background: active ? `${info.color}30` : T.bgApp,
+                  border: `1px solid ${active ? info.color : T.border}`,
+                  color: active ? info.color : T.text3,
+                }}>
+                {info.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {loading && <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Cargando…</p>}
+      {!loading && !hasData && (
+        <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos de Garmin suficientes todavía</p>
+      )}
+      {!loading && hasData && (
+        <div className="h-44 w-full relative">
+          <svg className="w-full h-full absolute inset-0 z-10" viewBox={`0 0 ${chartW} ${chartH + 14}`}>
+            {daily.map((d, i) => {
+              const h = kmMax > 0 ? (d.km / kmMax) * 88 : 0;
+              const x = padL + i * (barW + barGap);
+              const y = 108 - h;
+              return d.km > 0 ? (
+                <rect key={i} x={x} y={y} width={Math.max(barW, 0.5)} height={h} rx={0.6}
+                  fill="#4ade80" opacity={0.85} />
+              ) : null;
+            })}
+            {overlay && overlayPoints.length >= 2 && (
+              <path d={overlayPath} fill="none" stroke={OVERLAY_INFO[overlay].color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            )}
+            {overlay && overlayPoints.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r={1.8} fill={OVERLAY_INFO[overlay].color} stroke="#0E1117" strokeWidth="0.6" />
+            ))}
+            {daily.map((d, i) => (
+              i % labelStep === 0 ? (
+                <text key={i} x={padL + i * (barW + barGap) + barW / 2} y={122} fill={T.text3}
+                  fontSize="7" fontWeight="bold" textAnchor="middle">
+                  {format(parseISO(d.fecha), "d/M")}
+                </text>
+              ) : null
+            ))}
+          </svg>
+        </div>
+      )}
+      {overlay && (
+        <p className="text-[9px] font-semibold mt-1 text-center" style={{ color: OVERLAY_INFO[overlay].color }}>
+          {OVERLAY_INFO[overlay].label}: {overlayMin.toFixed(0)}–{overlayMax.toFixed(0)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
   dashboard: DashboardData | null;
   loadingDashboard: boolean;
@@ -1944,57 +2054,6 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
   const avisos = dashboard?.avisos ?? [];
   const avisosActivos = avisos.filter(a => a.activo);
   const avisosInactivos = avisos.filter(a => !a.activo);
-
-  const cadTrend = dashboard?.cadencia_trend ?? [];
-  const cadMin = cadTrend.length ? Math.min(...cadTrend.map(c => c.cadencia)) : 0;
-  const cadMax = cadTrend.length ? Math.max(...cadTrend.map(c => c.cadencia)) : 0;
-  const cadRange = cadMax - cadMin || 1;
-  const cadPoints = cadTrend.map((c, i) => {
-    const x = cadTrend.length > 1 ? 10 + (i / (cadTrend.length - 1)) * 280 : 150;
-    const norm = (c.cadencia - cadMin) / cadRange;
-    const y = 105 - norm * 90;
-    return { x, y, cadencia: c.cadencia, semana: c.semana };
-  });
-  const cadPath = cadPoints.length
-    ? "M " + cadPoints.map(p => `${p.x} ${p.y}`).join(" L ")
-    : "";
-  const cadAreaPath = cadPoints.length
-    ? `${cadPath} L ${cadPoints[cadPoints.length - 1].x} 120 L ${cadPoints[0].x} 120 Z`
-    : "";
-
-  const vfcTrend = dashboard?.vfc_trend ?? [];
-  const vfcMin = vfcTrend.length ? Math.min(...vfcTrend.map(v => v.vfc)) : 0;
-  const vfcMax = vfcTrend.length ? Math.max(...vfcTrend.map(v => v.vfc)) : 0;
-  const vfcRange = vfcMax - vfcMin || 1;
-  const vfcPoints = vfcTrend.map((v, i) => {
-    const x = vfcTrend.length > 1 ? 10 + (i / (vfcTrend.length - 1)) * 280 : 150;
-    const norm = (v.vfc - vfcMin) / vfcRange;
-    const y = 105 - norm * 90;
-    return { x, y, vfc: v.vfc, semana: v.semana };
-  });
-  const vfcPath = vfcPoints.length
-    ? "M " + vfcPoints.map(p => `${p.x} ${p.y}`).join(" L ")
-    : "";
-  const vfcAreaPath = vfcPoints.length
-    ? `${vfcPath} L ${vfcPoints[vfcPoints.length - 1].x} 120 L ${vfcPoints[0].x} 120 Z`
-    : "";
-
-  const fcrTrend = dashboard?.fc_reposo_trend ?? [];
-  const fcrMin = fcrTrend.length ? Math.min(...fcrTrend.map(f => f.fc_reposo)) : 0;
-  const fcrMax = fcrTrend.length ? Math.max(...fcrTrend.map(f => f.fc_reposo)) : 0;
-  const fcrRange = fcrMax - fcrMin || 1;
-  const fcrPoints = fcrTrend.map((f, i) => {
-    const x = fcrTrend.length > 1 ? 10 + (i / (fcrTrend.length - 1)) * 280 : 150;
-    const norm = (f.fc_reposo - fcrMin) / fcrRange;
-    const y = 105 - norm * 90;
-    return { x, y, fc_reposo: f.fc_reposo, semana: f.semana };
-  });
-  const fcrPath = fcrPoints.length
-    ? "M " + fcrPoints.map(p => `${p.x} ${p.y}`).join(" L ")
-    : "";
-  const fcrAreaPath = fcrPoints.length
-    ? `${fcrPath} L ${fcrPoints[fcrPoints.length - 1].x} 120 L ${fcrPoints[0].x} 120 Z`
-    : "";
 
   return (
     <div className="flex flex-col h-full">
@@ -2158,101 +2217,8 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
           </div>
         </div>
 
-        {/* Line chart VFC (SVG) */}
-        <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
-          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Evolución del VFC (ms)</h3>
-          {!loadingDashboard && vfcTrend.length < 2 && (
-            <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos suficientes todavía</p>
-          )}
-          {vfcTrend.length >= 2 && (
-            <div className="h-40 w-full relative">
-              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 130">
-                <defs>
-                  <linearGradient id="line-grad-vfc" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path d={vfcAreaPath} fill="url(#line-grad-vfc)" />
-                <path d={vfcPath} fill="none" stroke="#a78bfa" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-                {vfcPoints.map((p, i) => (
-                  <circle key={i} cx={p.x} cy={p.y} r={i === vfcPoints.length - 1 ? 5 : 4}
-                    fill={i === vfcPoints.length - 1 ? "#8b5cf6" : "#7c3aed"} stroke="#fff" strokeWidth="1.5" />
-                ))}
-                {vfcPoints.map((p, i) => (
-                  <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
-                    fill={i === vfcPoints.length - 1 ? "#c4b5fd" : T.text3} fontSize="8" fontWeight="bold">
-                    {p.vfc}
-                  </text>
-                ))}
-              </svg>
-            </div>
-          )}
-        </div>
-
-        {/* Line chart cadencia (SVG) */}
-        <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
-          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Evolución de la cadencia (spm)</h3>
-          {!loadingDashboard && cadTrend.length < 2 && (
-            <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos suficientes todavía</p>
-          )}
-          {cadTrend.length >= 2 && (
-            <div className="h-40 w-full relative">
-              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 130">
-                <defs>
-                  <linearGradient id="line-grad-cad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#fb923c" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="#fb923c" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path d={cadAreaPath} fill="url(#line-grad-cad)" />
-                <path d={cadPath} fill="none" stroke="#fb923c" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-                {cadPoints.map((p, i) => (
-                  <circle key={i} cx={p.x} cy={p.y} r={i === cadPoints.length - 1 ? 5 : 4}
-                    fill={i === cadPoints.length - 1 ? "#f97316" : "#ea580c"} stroke="#fff" strokeWidth="1.5" />
-                ))}
-                {cadPoints.map((p, i) => (
-                  <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
-                    fill={i === cadPoints.length - 1 ? "#fdba74" : T.text3} fontSize="8" fontWeight="bold">
-                    {p.cadencia}
-                  </text>
-                ))}
-              </svg>
-            </div>
-          )}
-        </div>
-
-        {/* Line chart FC reposo (SVG) */}
-        <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
-          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Evolución de la FC en reposo (ppm)</h3>
-          {!loadingDashboard && fcrTrend.length < 2 && (
-            <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos suficientes todavía</p>
-          )}
-          {fcrTrend.length >= 2 && (
-            <div className="h-40 w-full relative">
-              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 130">
-                <defs>
-                  <linearGradient id="line-grad-fcr" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f472b6" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="#f472b6" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path d={fcrAreaPath} fill="url(#line-grad-fcr)" />
-                <path d={fcrPath} fill="none" stroke="#f472b6" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-                {fcrPoints.map((p, i) => (
-                  <circle key={i} cx={p.x} cy={p.y} r={i === fcrPoints.length - 1 ? 5 : 4}
-                    fill={i === fcrPoints.length - 1 ? "#ec4899" : "#db2777"} stroke="#fff" strokeWidth="1.5" />
-                ))}
-                {fcrPoints.map((p, i) => (
-                  <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
-                    fill={i === fcrPoints.length - 1 ? "#f9a8d4" : T.text3} fontSize="8" fontWeight="bold">
-                    {p.fc_reposo}
-                  </text>
-                ))}
-              </svg>
-            </div>
-          )}
-        </div>
+        {/* Km diarios + overlay opcional (cadencia / VFC / FC reposo) */}
+        <DailyKmOverlayChart daily={dashboard?.daily_trend ?? []} loading={loadingDashboard} />
 
         {/* Avisos fisiológicos inactivos (verde) */}
         {avisosInactivos.length > 0 && (

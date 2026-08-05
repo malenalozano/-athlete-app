@@ -292,33 +292,41 @@ def dashboard(usuario_id: int):
 
     avisos = _calcular_avisos(hrv_data, cadencia_rb)
 
-    # VFC media semanal (últimas 8 semanas)
-    vfc_rows = conn.execute(
-        """SELECT strftime('%W', fecha) as semana, AVG(hrv_ms) as vfc
-           FROM datos_biometricos_premium
-           WHERE usuario_id = ? AND fecha >= ? AND hrv_ms IS NOT NULL
-           GROUP BY strftime('%W', fecha)
-           ORDER BY semana ASC LIMIT 8""",
-        (usuario_id, (hoy - timedelta(days=56)).isoformat()),
+    # ── Serie diaria (últimos 30 días): km + cadencia + VFC + FC reposo ──────
+    # Base para el gráfico combinado de Progreso (km/día con overlay opcional).
+    daily_km_rows = conn.execute(
+        f"""SELECT fecha, SUM(distancia_m)/1000 as km, AVG(cadencia_media) as cadencia
+           FROM actividades_garmin
+           WHERE usuario_id = ? AND fecha >= ? AND tipo_deporte IN {RUNNING_TIPOS_SQL}
+           GROUP BY fecha""",
+        (usuario_id, hace_30),
     ).fetchall()
-    vfc_trend = [
-        {"semana": f"S{i+1}", "vfc": round(r[1] or 0, 1)}
-        for i, r in enumerate(vfc_rows)
-    ]
+    daily_km = {
+        r[0]: {"km": round(r[1] or 0, 1), "cadencia": round(r[2]) if r[2] is not None else None}
+        for r in daily_km_rows
+    }
+    daily_biom_rows = conn.execute(
+        """SELECT fecha, hrv_ms, fc_reposo FROM datos_biometricos_premium
+           WHERE usuario_id = ? AND fecha >= ?""",
+        (usuario_id, hace_30),
+    ).fetchall()
+    daily_biom = {r[0]: {"vfc": r[1], "fc_reposo": r[2]} for r in daily_biom_rows}
 
-    # FC reposo media semanal (últimas 8 semanas)
-    fc_reposo_rows = conn.execute(
-        """SELECT strftime('%W', fecha) as semana, AVG(fc_reposo) as fc
-           FROM datos_biometricos_premium
-           WHERE usuario_id = ? AND fecha >= ? AND fc_reposo IS NOT NULL
-           GROUP BY strftime('%W', fecha)
-           ORDER BY semana ASC LIMIT 8""",
-        (usuario_id, (hoy - timedelta(days=56)).isoformat()),
-    ).fetchall()
-    fc_reposo_trend = [
-        {"semana": f"S{i+1}", "fc_reposo": round(r[1] or 0)}
-        for i, r in enumerate(fc_reposo_rows)
-    ]
+    daily_trend = []
+    cursor_d = datetime.strptime(hace_30, "%Y-%m-%d").date()
+    while cursor_d <= hoy:
+        fs = cursor_d.isoformat()
+        k = daily_km.get(fs, {})
+        b = daily_biom.get(fs, {})
+        daily_trend.append({
+            "fecha": fs,
+            "km": k.get("km", 0),
+            "cadencia": k.get("cadencia"),
+            "vfc": b.get("vfc"),
+            "fc_reposo": b.get("fc_reposo"),
+        })
+        cursor_d += timedelta(days=1)
+
 
     # ── Sesión de hoy (plan_entrenamiento) ──────────────────────────────────
     plan_hoy_row = conn.execute(
@@ -397,8 +405,7 @@ def dashboard(usuario_id: int):
         "ritmo_trend": ritmo_trend,
         "fuerza_reciente": fuerza_reciente,
         "cadencia_trend": cadencia_trend,
-        "vfc_trend": vfc_trend,
-        "fc_reposo_trend": fc_reposo_trend,
+        "daily_trend": daily_trend,
         "sesion_hoy": sesion_hoy,
         "avisos": avisos,
     }
