@@ -1246,7 +1246,12 @@ async def importar_plan_csv(
         f"""DELETE FROM plan_entrenamiento WHERE usuario_id = ? AND fecha IN ({",".join("?" * len(fechas))})""",
         (usuario_id, *fechas),
     )
+    insertadas = 0
     for s in sesiones:
+        if s["tipo"] == "Descanso":
+            # Día de descanso: se borra la sesión existente (arriba) y no se inserta nada,
+            # así el día queda vacío en el calendario en vez de mostrar una tarjeta de Descanso.
+            continue
         semana_inicio = _inicio_semana(s["fecha"])
         conn.execute(
             """INSERT INTO plan_entrenamiento
@@ -1256,9 +1261,10 @@ async def importar_plan_csv(
             (usuario_id, semana_inicio, s["fecha"], s["tipo"], s["sesion"],
              s["detalles"], s["duracion_min"], s["intensidad"], s["km_planificados"], ahora),
         )
+        insertadas += 1
     conn.commit()
     conn.close()
-    return {"ok": True, "sesiones_importadas": len(sesiones), "omitidas_pasado": omitidas_pasado}
+    return {"ok": True, "sesiones_importadas": insertadas, "omitidas_pasado": omitidas_pasado}
 
 
 @router.post("/{usuario_id}/regenerar-total")
