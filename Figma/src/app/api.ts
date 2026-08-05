@@ -398,6 +398,8 @@ export interface DashboardData {
     repeticiones: number | null;
   }[];
   cadencia_trend: { semana: string; cadencia: number }[];
+  vfc_trend: { semana: string; vfc: number }[];
+  fc_reposo_trend: { semana: string; fc_reposo: number }[];
   avisos: { id: "carga_mal_absorbida" | "fatiga_cadencia" | "sobreentrenamiento"; activo: boolean }[];
   ciclo: {
     fase: string;

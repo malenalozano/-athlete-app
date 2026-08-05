@@ -1962,6 +1962,40 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
     ? `${cadPath} L ${cadPoints[cadPoints.length - 1].x} 120 L ${cadPoints[0].x} 120 Z`
     : "";
 
+  const vfcTrend = dashboard?.vfc_trend ?? [];
+  const vfcMin = vfcTrend.length ? Math.min(...vfcTrend.map(v => v.vfc)) : 0;
+  const vfcMax = vfcTrend.length ? Math.max(...vfcTrend.map(v => v.vfc)) : 0;
+  const vfcRange = vfcMax - vfcMin || 1;
+  const vfcPoints = vfcTrend.map((v, i) => {
+    const x = vfcTrend.length > 1 ? 10 + (i / (vfcTrend.length - 1)) * 280 : 150;
+    const norm = (v.vfc - vfcMin) / vfcRange;
+    const y = 105 - norm * 90;
+    return { x, y, vfc: v.vfc, semana: v.semana };
+  });
+  const vfcPath = vfcPoints.length
+    ? "M " + vfcPoints.map(p => `${p.x} ${p.y}`).join(" L ")
+    : "";
+  const vfcAreaPath = vfcPoints.length
+    ? `${vfcPath} L ${vfcPoints[vfcPoints.length - 1].x} 120 L ${vfcPoints[0].x} 120 Z`
+    : "";
+
+  const fcrTrend = dashboard?.fc_reposo_trend ?? [];
+  const fcrMin = fcrTrend.length ? Math.min(...fcrTrend.map(f => f.fc_reposo)) : 0;
+  const fcrMax = fcrTrend.length ? Math.max(...fcrTrend.map(f => f.fc_reposo)) : 0;
+  const fcrRange = fcrMax - fcrMin || 1;
+  const fcrPoints = fcrTrend.map((f, i) => {
+    const x = fcrTrend.length > 1 ? 10 + (i / (fcrTrend.length - 1)) * 280 : 150;
+    const norm = (f.fc_reposo - fcrMin) / fcrRange;
+    const y = 105 - norm * 90;
+    return { x, y, fc_reposo: f.fc_reposo, semana: f.semana };
+  });
+  const fcrPath = fcrPoints.length
+    ? "M " + fcrPoints.map(p => `${p.x} ${p.y}`).join(" L ")
+    : "";
+  const fcrAreaPath = fcrPoints.length
+    ? `${fcrPath} L ${fcrPoints[fcrPoints.length - 1].x} 120 L ${fcrPoints[0].x} 120 Z`
+    : "";
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
@@ -2014,7 +2048,7 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
             <span className="text-[8px] font-bold mt-1 block" style={{ color: T.text3 }}>Planificado: {weeklyPlan.toFixed(1)} km</span>
           </div>
           <div className="p-4 rounded-xl" style={{ background: "rgba(2,6,23,0.4)", border: `1px solid ${T.border}` }}>
-            <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>HRV DE HOY</p>
+            <p className="text-[10px] font-black uppercase" style={{ color: T.text3 }}>VFC DE HOY</p>
             <p className="text-xl font-black mt-1" style={{ color: hrvHoy === null ? T.text3 : hrvFueraDeRango(hrvHoy) ? "#f43f5e" : "#34d399" }}>
               {hrvHoy !== null ? `${hrvHoy} ms` : "—"}
             </p>
@@ -2124,6 +2158,38 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
           </div>
         </div>
 
+        {/* Line chart VFC (SVG) */}
+        <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
+          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Evolución del VFC (ms)</h3>
+          {!loadingDashboard && vfcTrend.length < 2 && (
+            <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos suficientes todavía</p>
+          )}
+          {vfcTrend.length >= 2 && (
+            <div className="h-40 w-full relative">
+              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 130">
+                <defs>
+                  <linearGradient id="line-grad-vfc" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.35" />
+                    <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d={vfcAreaPath} fill="url(#line-grad-vfc)" />
+                <path d={vfcPath} fill="none" stroke="#a78bfa" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                {vfcPoints.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={i === vfcPoints.length - 1 ? 5 : 4}
+                    fill={i === vfcPoints.length - 1 ? "#8b5cf6" : "#7c3aed"} stroke="#fff" strokeWidth="1.5" />
+                ))}
+                {vfcPoints.map((p, i) => (
+                  <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
+                    fill={i === vfcPoints.length - 1 ? "#c4b5fd" : T.text3} fontSize="8" fontWeight="bold">
+                    {p.vfc}
+                  </text>
+                ))}
+              </svg>
+            </div>
+          )}
+        </div>
+
         {/* Line chart cadencia (SVG) */}
         <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
           <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Evolución de la cadencia (spm)</h3>
@@ -2149,6 +2215,38 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
                   <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
                     fill={i === cadPoints.length - 1 ? "#fdba74" : T.text3} fontSize="8" fontWeight="bold">
                     {p.cadencia}
+                  </text>
+                ))}
+              </svg>
+            </div>
+          )}
+        </div>
+
+        {/* Line chart FC reposo (SVG) */}
+        <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
+          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Evolución de la FC en reposo (ppm)</h3>
+          {!loadingDashboard && fcrTrend.length < 2 && (
+            <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos suficientes todavía</p>
+          )}
+          {fcrTrend.length >= 2 && (
+            <div className="h-40 w-full relative">
+              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 130">
+                <defs>
+                  <linearGradient id="line-grad-fcr" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#f472b6" stopOpacity="0.35" />
+                    <stop offset="100%" stopColor="#f472b6" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d={fcrAreaPath} fill="url(#line-grad-fcr)" />
+                <path d={fcrPath} fill="none" stroke="#f472b6" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                {fcrPoints.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={i === fcrPoints.length - 1 ? 5 : 4}
+                    fill={i === fcrPoints.length - 1 ? "#ec4899" : "#db2777"} stroke="#fff" strokeWidth="1.5" />
+                ))}
+                {fcrPoints.map((p, i) => (
+                  <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
+                    fill={i === fcrPoints.length - 1 ? "#f9a8d4" : T.text3} fontSize="8" fontWeight="bold">
+                    {p.fc_reposo}
                   </text>
                 ))}
               </svg>

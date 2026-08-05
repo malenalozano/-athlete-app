@@ -292,6 +292,34 @@ def dashboard(usuario_id: int):
 
     avisos = _calcular_avisos(hrv_data, cadencia_rb)
 
+    # VFC media semanal (últimas 8 semanas)
+    vfc_rows = conn.execute(
+        """SELECT strftime('%W', fecha) as semana, AVG(hrv_ms) as vfc
+           FROM datos_biometricos_premium
+           WHERE usuario_id = ? AND fecha >= ? AND hrv_ms IS NOT NULL
+           GROUP BY strftime('%W', fecha)
+           ORDER BY semana ASC LIMIT 8""",
+        (usuario_id, (hoy - timedelta(days=56)).isoformat()),
+    ).fetchall()
+    vfc_trend = [
+        {"semana": f"S{i+1}", "vfc": round(r[1] or 0, 1)}
+        for i, r in enumerate(vfc_rows)
+    ]
+
+    # FC reposo media semanal (últimas 8 semanas)
+    fc_reposo_rows = conn.execute(
+        """SELECT strftime('%W', fecha) as semana, AVG(fc_reposo) as fc
+           FROM datos_biometricos_premium
+           WHERE usuario_id = ? AND fecha >= ? AND fc_reposo IS NOT NULL
+           GROUP BY strftime('%W', fecha)
+           ORDER BY semana ASC LIMIT 8""",
+        (usuario_id, (hoy - timedelta(days=56)).isoformat()),
+    ).fetchall()
+    fc_reposo_trend = [
+        {"semana": f"S{i+1}", "fc_reposo": round(r[1] or 0)}
+        for i, r in enumerate(fc_reposo_rows)
+    ]
+
     # ── Sesión de hoy (plan_entrenamiento) ──────────────────────────────────
     plan_hoy_row = conn.execute(
         """SELECT tipo, sesion, detalles, km_planificados
@@ -369,6 +397,8 @@ def dashboard(usuario_id: int):
         "ritmo_trend": ritmo_trend,
         "fuerza_reciente": fuerza_reciente,
         "cadencia_trend": cadencia_trend,
+        "vfc_trend": vfc_trend,
+        "fc_reposo_trend": fc_reposo_trend,
         "sesion_hoy": sesion_hoy,
         "avisos": avisos,
     }
