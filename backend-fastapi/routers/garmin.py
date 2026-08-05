@@ -351,6 +351,16 @@ def _do_sync_inner(conn, usuario_id: int) -> dict:
                 "body_battery_min": stats.get("bodyBatteryDrainedValue") or stats.get("bodyBatteryLowValue"),
                 "vo2max": stats.get("vo2MaxValue"),
             }
+            # DEBUG TEMPORAL: si no llega restingHeartRate, guardamos las claves
+            # relacionadas con FC que sí trae el payload para encontrar el nombre
+            # correcto del campo (se está investigando por qué fc_reposo dejó de
+            # sincronizarse el 2026-05-20). Quitar en cuanto se resuelva.
+            if result["stats"]["fc_reposo"] is None and isinstance(stats, dict):
+                claves_fc = {
+                    k: v for k, v in stats.items()
+                    if "heart" in k.lower() or "resting" in k.lower() or "hr" in k.lower()
+                }
+                result["stats_debug"] = claves_fc
         except Exception as e:
             logger.warning(f"get_stats() falló para {dia_str}: {e}")
         try:
@@ -442,6 +452,8 @@ def _do_sync_inner(conn, usuario_id: int) -> dict:
                     if day["stats"]:
                         _upsert_biometrico(conn, usuario_id, dia_str, **day["stats"])
                         biometrico_ok += 1
+                    if day.get("stats_debug"):
+                        errores.append(f"DEBUG fc_reposo {dia_str}: {day['stats_debug']}")
                     if day["readiness"]:
                         _upsert_biometrico(conn, usuario_id, dia_str, **day["readiness"])
                 except Exception:
