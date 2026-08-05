@@ -1092,7 +1092,7 @@ def aplicar_semana(usuario_id: int, body: AplicarSemanaRequest):
     return {"ok": True, "sesiones_aplicadas": len(sesiones_carrera)}
 
 
-CSV_COLUMNAS_REQUERIDAS = ["Fecha", "Sesión Planificada", "Tipo de Sesión"]
+CSV_COLUMNAS_REQUERIDAS = ["Fecha", "Km", "Tipo de Sesión"]
 _FECHA_FORMATOS = ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"]
 
 
@@ -1115,6 +1115,10 @@ _CSV_TIPO_MAP = {
     "tirada larga": ("Carrera", "Tirada Larga"),
     "fuerza": ("Fuerza", "Fuerza"),
     "calidad": ("Carrera", "Calidad"),
+    "regenerativas": ("Carrera", "Regenerativo"),
+    "regenerativa": ("Carrera", "Regenerativo"),
+    "progresivas": ("Carrera", "Progresiva"),
+    "progresiva": ("Carrera", "Progresiva"),
     "series": ("Carrera", "Series"),
     "intervalos": ("Carrera", "Intervalos"),
     "umbral": ("Carrera", "Umbral"),
@@ -1122,34 +1126,36 @@ _CSV_TIPO_MAP = {
     "fartlek": ("Carrera", "Fartlek"),
 }
 
-_KM_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:-\s*(\d+(?:[.,]\d+)?)\s*)?km", re.IGNORECASE)
+_FUERZA_ETIQUETAS = ("Push", "Pull", "Full", "Pierna")
 
 
-def _parse_km_planificados(texto: str) -> float | None:
+def _parse_km_directo(texto: str) -> float | None:
     if not texto:
         return None
-    m = _KM_RE.search(texto)
-    if not m:
+    texto = texto.strip().replace(",", ".")
+    try:
+        return round(float(texto), 2)
+    except ValueError:
         return None
-    a = float(m.group(1).replace(",", "."))
-    b = float(m.group(2).replace(",", ".")) if m.group(2) else None
-    return round((a + b) / 2, 2) if b is not None else a
 
 
-def _mapear_tipo_sesion(tipo_csv: str, sesion_planificada: str) -> tuple[str, str]:
+def _mapear_tipo_sesion(tipo_csv: str, notas: str) -> tuple[str, str]:
     tipo, sesion = _CSV_TIPO_MAP.get((tipo_csv or "").strip().lower(), (None, None))
     if tipo == "Fuerza":
-        # La columna "Sesión Planificada" indica qué tipo de gimnasio es:
-        # Push / Pull / Full / Pierna. Se guarda tal cual para que el frontend
-        # lo clasifique (classifySubtype busca esas palabras en el texto).
-        return "Fuerza", (sesion_planificada or "Fuerza").strip()
+        # El subtipo de gimnasio (Push/Pull/Full/Pierna) se detecta en el texto
+        # libre de Notas; el frontend lo usa para clasificar la tarjeta.
+        notas_lower = (notas or "").lower()
+        for etiqueta in _FUERZA_ETIQUETAS:
+            if etiqueta.lower() in notas_lower:
+                return "Fuerza", etiqueta
+        return "Fuerza", "Fuerza"
     if tipo is not None:
         return tipo, sesion
-    if not (tipo_csv or "").strip() and not (sesion_planificada or "").strip():
-        # Fila de descanso con las celdas de sesión en blanco (formato habitual del CSV).
+    if not (tipo_csv or "").strip():
+        # Fila de descanso con la celda de tipo en blanco (formato habitual del CSV).
         return "Descanso", "Descanso"
     # Tipo no reconocido: se guarda tal cual como sesión de tipo "Carrera"
-    return "Carrera", (tipo_csv or sesion_planificada or "Sesión").strip()
+    return "Carrera", tipo_csv.strip()
 
 
 def _parsear_csv_plan(contenido: str) -> tuple[list[dict], int]:
@@ -1177,9 +1183,10 @@ def _parsear_csv_plan(contenido: str) -> tuple[list[dict], int]:
     sesiones: list[dict] = []
     omitidas_pasado = 0
     for row in filas:
-        sesion_planificada = (row.get("Sesión Planificada") or "").strip()
+        km_texto = (row.get("Km") or "").strip()
         tipo_csv = (row.get("Tipo de Sesión") or "").strip()
-        if not sesion_planificada and not tipo_csv and not (row.get("Fecha") or "").strip():
+        notas = (row.get("Notas") or "").strip()
+        if not km_texto and not tipo_csv and not notas and not (row.get("Fecha") or "").strip():
             continue  # fila vacía
 
         fecha_fila = _parse_fecha_fila(row.get("Fecha"))
@@ -1189,14 +1196,14 @@ def _parsear_csv_plan(contenido: str) -> tuple[list[dict], int]:
             omitidas_pasado += 1
             continue
 
-        tipo, sesion = _mapear_tipo_sesion(tipo_csv, sesion_planificada)
-        km_planificados = _parse_km_planificados(sesion_planificada) if tipo != "Descanso" else None
+        tipo, sesion = _mapear_tipo_sesion(tipo_csv, notas)
+        km_planificados = _parse_km_directo(km_texto) if tipo != "Descanso" else None
 
         sesiones.append({
             "fecha": fecha_fila,
             "tipo": tipo,
             "sesion": sesion,
-            "detalles": sesion_planificada or None,
+            "detalles": notas or None,
             "duracion_min": None,
             "intensidad": None,
             "km_planificados": km_planificados,

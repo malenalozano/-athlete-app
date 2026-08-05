@@ -1067,27 +1067,28 @@ function ImportarPlanCsvCard({ userId, onApplied, showToast }: {
                 <div className="space-y-3 text-sm" style={{ color: T.text2 }}>
                   <p>
                     El archivo debe ser un <span className="font-semibold" style={{ color: T.text1 }}>CSV</span> con estas
-                    columnas en la primera fila (cabecera) — "Día de la semana" es opcional, solo de apoyo:
+                    columnas en la primera fila (cabecera) — "Día de la semana" y "Notas" son opcionales:
                   </p>
                   <pre className="rounded-lg p-3 text-xs overflow-x-auto" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: "#22d3ee" }}>
-Fecha,Día de la semana,Sesión Planificada,Tipo de Sesión
+Fecha,Día de la semana,Km,Tipo de Sesión,Notas
                   </pre>
                   <ul className="list-disc pl-5 space-y-1.5">
                     <li><span className="font-semibold" style={{ color: T.text1 }}>Fecha:</span> fecha completa de esa sesión, ej. <code style={{ color: "#22d3ee" }}>3/8/2026</code> (D/M/AAAA) o <code style={{ color: "#22d3ee" }}>2026-08-03</code> (AAAA-MM-DD).</li>
-                    <li><span className="font-semibold" style={{ color: T.text1 }}>Sesión Planificada:</span> texto libre, ej. "6 km suaves" o "8 km progresión". Si incluye "X km" o "X-Y km", la app extrae los kilómetros automáticamente. Déjala <span className="font-semibold" style={{ color: T.text1 }}>en blanco</span> para un día de descanso. Si el Tipo de Sesión es <code style={{ color: "#22d3ee" }}>Fuerza</code>, escribe aquí cuál: <code style={{ color: "#22d3ee" }}>Push</code>, <code style={{ color: "#22d3ee" }}>Pull</code>, <code style={{ color: "#22d3ee" }}>Full</code> o <code style={{ color: "#22d3ee" }}>Pierna</code>.</li>
-                    <li><span className="font-semibold" style={{ color: T.text1 }}>Tipo de Sesión:</span> uno de: <code style={{ color: "#22d3ee" }}>Descanso</code>, <code style={{ color: "#22d3ee" }}>Rodaje Base</code>, <code style={{ color: "#22d3ee" }}>Tirada Larga</code>, <code style={{ color: "#22d3ee" }}>Fuerza</code>, <code style={{ color: "#22d3ee" }}>Calidad</code>, <code style={{ color: "#22d3ee" }}>Series</code>, <code style={{ color: "#22d3ee" }}>Intervalos</code>, <code style={{ color: "#22d3ee" }}>Umbral</code>, <code style={{ color: "#22d3ee" }}>Tempo</code> o <code style={{ color: "#22d3ee" }}>Fartlek</code> (también puede ir en blanco para descanso).</li>
+                    <li><span className="font-semibold" style={{ color: T.text1 }}>Km:</span> número de kilómetros de la sesión, ej. <code style={{ color: "#22d3ee" }}>8</code> o <code style={{ color: "#22d3ee" }}>8.5</code>. Déjalo <span className="font-semibold" style={{ color: T.text1 }}>en blanco</span> para un día de descanso.</li>
+                    <li><span className="font-semibold" style={{ color: T.text1 }}>Tipo de Sesión:</span> uno de: <code style={{ color: "#22d3ee" }}>Descanso</code>, <code style={{ color: "#22d3ee" }}>Rodaje Base</code>, <code style={{ color: "#22d3ee" }}>Tirada Larga</code>, <code style={{ color: "#22d3ee" }}>Fuerza</code>, <code style={{ color: "#22d3ee" }}>Calidad</code>, <code style={{ color: "#22d3ee" }}>Regenerativas</code>, <code style={{ color: "#22d3ee" }}>Progresivas</code>, <code style={{ color: "#22d3ee" }}>Intervalos</code>, <code style={{ color: "#22d3ee" }}>Umbral</code>, <code style={{ color: "#22d3ee" }}>Tempo</code> o <code style={{ color: "#22d3ee" }}>Fartlek</code> (también puede ir en blanco para descanso).</li>
+                    <li><span className="font-semibold" style={{ color: T.text1 }}>Notas:</span> texto libre con lo que hay que hacer en la sesión, ej. "6 km suaves Z2" o "8x400m con 2min recuperación". Si el Tipo de Sesión es <code style={{ color: "#22d3ee" }}>Fuerza</code>, indica aquí cuál: <code style={{ color: "#22d3ee" }}>Push</code>, <code style={{ color: "#22d3ee" }}>Pull</code>, <code style={{ color: "#22d3ee" }}>Full</code> o <code style={{ color: "#22d3ee" }}>Pierna</code>.</li>
                     <li>Las sesiones que ya haya en el plan para esas fechas se <span className="font-semibold" style={{ color: T.text1 }}>sustituyen</span> por las del CSV.</li>
                     <li>Las filas que caigan en <span className="font-semibold" style={{ color: T.text1 }}>días pasados</span> se ignoran — esos días conservan lo que ya hiciste.</li>
                   </ul>
                   <p className="pt-1">Ejemplo:</p>
                   <pre className="rounded-lg p-3 text-xs overflow-x-auto whitespace-pre" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>
-{`3/8/2026,Lunes,,
-4/8/2026,Martes,4 km suaves,Rodaje Base
-5/8/2026,Miércoles,,
-6/8/2026,Jueves,5 km suaves,Rodaje Base
-7/8/2026,Viernes,Push,Fuerza
-8/8/2026,Sábado,7 km suaves,Rodaje Base
-9/8/2026,Domingo,6-8 km suaves,Tirada Larga`}
+{`3/8/2026,Lunes,,,
+4/8/2026,Martes,4,Rodaje Base,4 km suaves Z2
+5/8/2026,Miércoles,,,
+6/8/2026,Jueves,5,Rodaje Base,5 km suaves Z2
+7/8/2026,Viernes,,Fuerza,Push
+8/8/2026,Sábado,7,Rodaje Base,7 km suaves Z2
+9/8/2026,Domingo,7,Tirada Larga,7 km ritmo progresivo`}
                   </pre>
                 </div>
               </DialogContent>
