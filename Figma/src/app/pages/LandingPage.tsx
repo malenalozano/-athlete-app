@@ -1902,6 +1902,13 @@ const OVERLAY_INFO: Record<OverlayKey, { label: string; color: string }> = {
   fc_reposo: { label: "FC reposo", color: "#f472b6" },
 };
 
+// Rango de referencia conocido por métrica (solo VFC lo tiene definido en la
+// app — mismo valor que HRV_RANGO_NORMAL). Cadencia y FC reposo no tienen un
+// rango de referencia establecido todavía.
+const OVERLAY_REF_RANGE: Partial<Record<OverlayKey, { min: number; max: number }>> = {
+  vfc: { min: HRV_RANGO_NORMAL.min, max: HRV_RANGO_NORMAL.max },
+};
+
 const DAILY_CHART_WINDOW = 14; // días visibles a la vez, para que las barras no se aplasten
 
 function DailyKmOverlayChart({ daily, loading }: {
@@ -1923,10 +1930,15 @@ function DailyKmOverlayChart({ daily, loading }: {
   const kmMax = Math.max(...visible.map(d => d.km), 1);
   const barW = n ? (chartW - padL - padR) / n - barGap : 0;
 
+  const refRange = overlay ? OVERLAY_REF_RANGE[overlay] : undefined;
   const overlayVals = overlay ? visible.map(d => d[overlay]).filter((v): v is number => v != null) : [];
-  const overlayMin = overlayVals.length ? Math.min(...overlayVals) : 0;
-  const overlayMax = overlayVals.length ? Math.max(...overlayVals) : 0;
+  const overlayDataMin = overlayVals.length ? Math.min(...overlayVals) : 0;
+  const overlayDataMax = overlayVals.length ? Math.max(...overlayVals) : 0;
+  const overlayValsWithRef = refRange ? [...overlayVals, refRange.min, refRange.max] : overlayVals;
+  const overlayMin = overlayValsWithRef.length ? Math.min(...overlayValsWithRef) : 0;
+  const overlayMax = overlayValsWithRef.length ? Math.max(...overlayValsWithRef) : 0;
   const overlayRange = overlayMax - overlayMin || 1;
+  const overlayY = (v: number) => 108 - ((v - overlayMin) / overlayRange) * 88;
 
   const overlayPoints = overlay
     ? visible
@@ -1934,8 +1946,7 @@ function DailyKmOverlayChart({ daily, loading }: {
           const v = d[overlay];
           if (v == null) return null;
           const x = padL + i * (barW + barGap) + barW / 2;
-          const y = 108 - ((v - overlayMin) / overlayRange) * 88;
-          return { x, y, v };
+          return { x, y: overlayY(v), v };
         })
         .filter((p): p is { x: number; y: number; v: number } => p !== null)
     : [];
@@ -1997,6 +2008,11 @@ function DailyKmOverlayChart({ daily, loading }: {
       {!loading && hasData && (
         <div className="h-44 w-full relative">
           <svg className="w-full h-full absolute inset-0 z-10" viewBox={`0 0 ${chartW} ${chartH + 14}`}>
+            {overlay && refRange && (
+              <rect x={padL} y={overlayY(refRange.max)} width={chartW - padL - padR}
+                height={overlayY(refRange.min) - overlayY(refRange.max)}
+                fill={OVERLAY_INFO[overlay].color} opacity={0.12} />
+            )}
             {visible.map((d, i) => {
               const h = kmMax > 0 ? (d.km / kmMax) * 88 : 0;
               const x = padL + i * (barW + barGap);
@@ -2030,7 +2046,8 @@ function DailyKmOverlayChart({ daily, loading }: {
       )}
       {overlay && (
         <p className="text-[9px] font-semibold mt-1 text-center" style={{ color: OVERLAY_INFO[overlay].color }}>
-          {OVERLAY_INFO[overlay].label}: {overlayMin.toFixed(0)}–{overlayMax.toFixed(0)}
+          {OVERLAY_INFO[overlay].label}: {overlayDataMin.toFixed(0)}–{overlayDataMax.toFixed(0)}
+          {refRange && ` · rango de referencia: ${refRange.min}–${refRange.max}`}
         </p>
       )}
     </div>
