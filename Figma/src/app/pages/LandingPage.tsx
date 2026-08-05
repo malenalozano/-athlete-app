@@ -1967,7 +1967,7 @@ const OVERLAY_REF_RANGE: Partial<Record<OverlayKey, { min: number; max: number }
   vfc: { min: HRV_RANGO_NORMAL.min, max: HRV_RANGO_NORMAL.max },
 };
 
-const DAILY_CHART_WINDOW = 35; // 5 semanas visibles a la vez
+const DAILY_CHART_WINDOW = 5; // 5 días visibles a la vez
 
 function DailyKmOverlayChart({ daily, loading }: {
   daily: { fecha: string; km: number; cadencia: number | null; vfc: number | null; fc_reposo: number | null }[];
