@@ -1915,7 +1915,7 @@ function DailyKmOverlayChart({ daily, loading }: {
   daily: { fecha: string; km: number; cadencia: number | null; vfc: number | null; fc_reposo: number | null }[];
   loading: boolean;
 }) {
-  const [overlay, setOverlay] = useState<OverlayKey | null>(null);
+  const [overlay, setOverlay] = useState<OverlayKey | null>("vfc");
   const [offset, setOffset] = useState(0); // 0 = ventana más reciente; +1 = una ventana hacia atrás
 
   const maxOffset = Math.max(0, Math.ceil(daily.length / DAILY_CHART_WINDOW) - 1);
@@ -2019,7 +2019,7 @@ function DailyKmOverlayChart({ daily, loading }: {
               const y = 108 - h;
               return d.km > 0 ? (
                 <rect key={i} x={x} y={y} width={Math.max(barW, 0.5)} height={h} rx={0.8}
-                  fill="#4ade80" opacity={0.85} />
+                  fill="#166534" opacity={0.85} />
               ) : null;
             })}
             {overlay && overlayPoints.length >= 2 && (
@@ -2054,6 +2054,164 @@ function DailyKmOverlayChart({ daily, loading }: {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GRÁFICAS SEMANALES PAGINABLES (Volumen y Ritmo medio) — ventana de 5 semanas
+// ─────────────────────────────────────────────────────────────────────────────
+const WEEKLY_CHART_WINDOW = 5;
+
+function useWeeklyWindow<T extends { fecha: string }>(trend: T[]) {
+  const [offset, setOffset] = useState(0);
+  const maxOffset = Math.max(0, Math.ceil(trend.length / WEEKLY_CHART_WINDOW) - 1);
+  const endIdx = trend.length - offset * WEEKLY_CHART_WINDOW;
+  const startIdx = Math.max(0, endIdx - WEEKLY_CHART_WINDOW);
+  const visible = trend.slice(startIdx, endIdx);
+  const rangoLabel = visible.length
+    ? `${format(parseISO(visible[0].fecha), "d MMM", { locale: es })} – ${format(parseISO(visible[visible.length - 1].fecha), "d MMM", { locale: es })}`
+    : "";
+  return { offset, setOffset, maxOffset, visible, rangoLabel };
+}
+
+function WeekNav({ offset, setOffset, maxOffset, rangoLabel }: {
+  offset: number; setOffset: (fn: (o: number) => number) => void; maxOffset: number; rangoLabel: string;
+}) {
+  return (
+    <div className="flex items-center justify-between mb-2">
+      <button type="button" onClick={() => setOffset(o => Math.min(o + 1, maxOffset))}
+        disabled={offset >= maxOffset}
+        className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-30"
+        style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>
+        <ChevronLeft className="w-3.5 h-3.5" />
+      </button>
+      <span className="text-[10px] font-bold" style={{ color: T.text2 }}>{rangoLabel}</span>
+      <button type="button" onClick={() => setOffset(o => Math.max(o - 1, 0))}
+        disabled={offset <= 0}
+        className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-30"
+        style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>
+        <ChevronRight className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function WeeklyVolumeChart({ trend, loading }: {
+  trend: { semana: string; km: number; fecha: string }[]; loading: boolean;
+}) {
+  const { offset, setOffset, maxOffset, visible, rangoLabel } = useWeeklyWindow(trend);
+
+  const kmMin = visible.length ? Math.min(...visible.map(b => b.km)) : 0;
+  const kmMax = visible.length ? Math.max(...visible.map(b => b.km)) : 0;
+  const kmRange = kmMax - kmMin || 1;
+  const kmPoints = visible.map((b, i) => {
+    const x = visible.length > 1 ? 10 + (i / (visible.length - 1)) * 280 : 150;
+    const norm = (b.km - kmMin) / kmRange;
+    const y = 105 - norm * 90;
+    return { x, y, km: b.km, fecha: b.fecha };
+  });
+  const kmPath = kmPoints.length ? "M " + kmPoints.map(p => `${p.x} ${p.y}`).join(" L ") : "";
+  const kmAreaPath = kmPoints.length
+    ? `${kmPath} L ${kmPoints[kmPoints.length - 1].x} 120 L ${kmPoints[0].x} 120 Z`
+    : "";
+
+  return (
+    <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
+      <h3 className="text-xs font-black uppercase tracking-wide mb-3" style={{ color: T.text2 }}>Volumen semanal</h3>
+      {trend.length > 0 && <WeekNav offset={offset} setOffset={setOffset} maxOffset={maxOffset} rangoLabel={rangoLabel} />}
+      {loading && <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Cargando…</p>}
+      {!loading && trend.length === 0 && (
+        <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos de Garmin suficientes todavía</p>
+      )}
+      {!loading && kmPoints.length >= 2 && (
+        <div className="h-44 w-full relative">
+          <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 144">
+            <defs>
+              <linearGradient id="line-grad-km" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
+                <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={kmAreaPath} fill="url(#line-grad-km)" />
+            <path d={kmPath} fill="none" stroke="#4ade80" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+            {kmPoints.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r={i === kmPoints.length - 1 ? 5 : 4}
+                fill={i === kmPoints.length - 1 ? "#10b981" : "#16a34a"} stroke="#fff" strokeWidth="1.5" />
+            ))}
+            {kmPoints.map((p, i) => (
+              <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
+                fill={i === kmPoints.length - 1 ? "#34d399" : T.text3} fontSize="8" fontWeight="bold">
+                {p.km.toFixed(1)}k
+              </text>
+            ))}
+            {kmPoints.map((p, i) => (
+              <text key={i} x={p.x} y={136} fill={T.text3} fontSize="7" fontWeight="bold" textAnchor="middle">
+                {format(parseISO(p.fecha), "d/M")}
+              </text>
+            ))}
+          </svg>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WeeklyPaceChart({ trend, loading }: {
+  trend: { semana: string; ritmo: number; fecha: string }[]; loading: boolean;
+}) {
+  const { offset, setOffset, maxOffset, visible, rangoLabel } = useWeeklyWindow(trend);
+
+  const paceMin = visible.length ? Math.min(...visible.map(p => p.ritmo)) : 0;
+  const paceMax = visible.length ? Math.max(...visible.map(p => p.ritmo)) : 0;
+  const paceRange = paceMax - paceMin || 1;
+  const pacePoints = visible.map((p, i) => {
+    const x = visible.length > 1 ? 10 + (i / (visible.length - 1)) * 280 : 150;
+    const norm = (p.ritmo - paceMin) / paceRange;
+    const y = 15 + norm * 90;
+    return { x, y, ritmo: p.ritmo, fecha: p.fecha };
+  });
+  const pacePath = pacePoints.length ? "M " + pacePoints.map(p => `${p.x} ${p.y}`).join(" L ") : "";
+  const paceAreaPath = pacePoints.length
+    ? `${pacePath} L ${pacePoints[pacePoints.length - 1].x} 120 L ${pacePoints[0].x} 120 Z`
+    : "";
+
+  return (
+    <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
+      <h3 className="text-xs font-black uppercase tracking-wide mb-3" style={{ color: T.text2 }}>Evolución del ritmo medio (min/km)</h3>
+      {trend.length > 0 && <WeekNav offset={offset} setOffset={setOffset} maxOffset={maxOffset} rangoLabel={rangoLabel} />}
+      {!loading && trend.length < 2 && (
+        <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos suficientes todavía</p>
+      )}
+      {pacePoints.length >= 2 && (
+        <div className="h-44 w-full relative">
+          <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 144">
+            <defs>
+              <linearGradient id="line-grad-lp" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.35" />
+                <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={paceAreaPath} fill="url(#line-grad-lp)" />
+            <path d={pacePath} fill="none" stroke="#22d3ee" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+            {pacePoints.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r={i === pacePoints.length - 1 ? 5 : 4}
+                fill={i === pacePoints.length - 1 ? "#10b981" : "#0891b2"} stroke="#fff" strokeWidth="1.5" />
+            ))}
+            {pacePoints.map((p, i) => (
+              <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
+                fill={i === pacePoints.length - 1 ? "#34d399" : T.text3} fontSize="8" fontWeight="bold">
+                {formatPace(p.ritmo)}
+              </text>
+            ))}
+            {pacePoints.map((p, i) => (
+              <text key={i} x={p.x} y={136} fill={T.text3} fontSize="7" fontWeight="bold" textAnchor="middle">
+                {format(parseISO(p.fecha), "d/M")}
+              </text>
+            ))}
+          </svg>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
   dashboard: DashboardData | null;
   loadingDashboard: boolean;
@@ -2062,41 +2220,6 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
     semanasPorMacrociclo: Record<"1" | "2" | "3" | "4", number> | null;
   } | null;
 }) {
-  const bars = dashboard?.running_trend ?? [];
-  const paceTrend = dashboard?.ritmo_trend ?? [];
-
-  const paceMin = paceTrend.length ? Math.min(...paceTrend.map(p => p.ritmo)) : 0;
-  const paceMax = paceTrend.length ? Math.max(...paceTrend.map(p => p.ritmo)) : 0;
-  const paceRange = paceMax - paceMin || 1;
-  const pacePoints = paceTrend.map((p, i) => {
-    const x = paceTrend.length > 1 ? 10 + (i / (paceTrend.length - 1)) * 280 : 150;
-    const norm = (p.ritmo - paceMin) / paceRange;
-    const y = 15 + norm * 90;
-    return { x, y, ritmo: p.ritmo, semana: p.semana, fecha: p.fecha };
-  });
-  const pacePath = pacePoints.length
-    ? "M " + pacePoints.map(p => `${p.x} ${p.y}`).join(" L ")
-    : "";
-  const paceAreaPath = pacePoints.length
-    ? `${pacePath} L ${pacePoints[pacePoints.length - 1].x} 120 L ${pacePoints[0].x} 120 Z`
-    : "";
-
-  const kmMin = bars.length ? Math.min(...bars.map(b => b.km)) : 0;
-  const kmMax = bars.length ? Math.max(...bars.map(b => b.km)) : 0;
-  const kmRange = kmMax - kmMin || 1;
-  const kmPoints = bars.map((b, i) => {
-    const x = bars.length > 1 ? 10 + (i / (bars.length - 1)) * 280 : 150;
-    const norm = (b.km - kmMin) / kmRange;
-    const y = 105 - norm * 90;
-    return { x, y, km: b.km, semana: b.semana, fecha: b.fecha };
-  });
-  const kmPath = kmPoints.length
-    ? "M " + kmPoints.map(p => `${p.x} ${p.y}`).join(" L ")
-    : "";
-  const kmAreaPath = kmPoints.length
-    ? `${kmPath} L ${kmPoints[kmPoints.length - 1].x} 120 L ${kmPoints[0].x} 120 Z`
-    : "";
-
   const weeklyKms = dashboard?.semana_actual?.km_realizados ?? 0;
   const weeklyPlan = dashboard?.semana_actual?.km_planificados ?? 0;
 
@@ -2171,80 +2294,9 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
           </div>
         </div>
 
-        {/* Line chart km semanales (SVG) */}
-        <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
-          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Volumen semanal (últimas {bars.length || 8} semanas)</h3>
-          {loadingDashboard && <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Cargando…</p>}
-          {!loadingDashboard && bars.length === 0 && (
-            <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos de Garmin suficientes todavía</p>
-          )}
-          {!loadingDashboard && kmPoints.length >= 2 && (
-            <div className="h-44 w-full relative">
-              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 144">
-                <defs>
-                  <linearGradient id="line-grad-km" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path d={kmAreaPath} fill="url(#line-grad-km)" />
-                <path d={kmPath} fill="none" stroke="#4ade80" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-                {kmPoints.map((p, i) => (
-                  <circle key={i} cx={p.x} cy={p.y} r={i === kmPoints.length - 1 ? 5 : 4}
-                    fill={i === kmPoints.length - 1 ? "#10b981" : "#16a34a"} stroke="#fff" strokeWidth="1.5" />
-                ))}
-                {kmPoints.map((p, i) => (
-                  <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
-                    fill={i === kmPoints.length - 1 ? "#34d399" : T.text3} fontSize="8" fontWeight="bold">
-                    {p.km.toFixed(1)}k
-                  </text>
-                ))}
-                {kmPoints.map((p, i) => (
-                  <text key={i} x={p.x} y={136} fill={T.text3} fontSize="7" fontWeight="bold" textAnchor="middle">
-                    {format(parseISO(p.fecha), "d/M")}
-                  </text>
-                ))}
-              </svg>
-            </div>
-          )}
-        </div>
-
-        {/* Line chart (SVG) */}
-        <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
-          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Evolución del ritmo medio (min/km)</h3>
-          {!loadingDashboard && paceTrend.length < 2 && (
-            <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos suficientes todavía</p>
-          )}
-          {paceTrend.length >= 2 && (
-            <div className="h-44 w-full relative">
-              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 144">
-                <defs>
-                  <linearGradient id="line-grad-lp" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path d={paceAreaPath} fill="url(#line-grad-lp)" />
-                <path d={pacePath} fill="none" stroke="#22d3ee" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-                {pacePoints.map((p, i) => (
-                  <circle key={i} cx={p.x} cy={p.y} r={i === pacePoints.length - 1 ? 5 : 4}
-                    fill={i === pacePoints.length - 1 ? "#10b981" : "#0891b2"} stroke="#fff" strokeWidth="1.5" />
-                ))}
-                {pacePoints.map((p, i) => (
-                  <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
-                    fill={i === pacePoints.length - 1 ? "#34d399" : T.text3} fontSize="8" fontWeight="bold">
-                    {formatPace(p.ritmo)}
-                  </text>
-                ))}
-                {pacePoints.map((p, i) => (
-                  <text key={i} x={p.x} y={136} fill={T.text3} fontSize="7" fontWeight="bold" textAnchor="middle">
-                    {format(parseISO(p.fecha), "d/M")}
-                  </text>
-                ))}
-              </svg>
-            </div>
-          )}
-        </div>
+        {/* Volumen semanal + Ritmo medio (paginables, 5 semanas a la vez) */}
+        <WeeklyVolumeChart trend={dashboard?.running_trend ?? []} loading={loadingDashboard} />
+        <WeeklyPaceChart trend={dashboard?.ritmo_trend ?? []} loading={loadingDashboard} />
 
         {/* Macrociclos (NORMAS_ENTRENAMIENTO_v2) */}
         <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
