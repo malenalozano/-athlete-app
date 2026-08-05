@@ -1091,6 +1091,7 @@ Fecha,Día de la semana,Km,Tipo de Sesión,Notas
                     <li><span className="font-semibold" style={{ color: T.text1 }}>Tipo de Sesión:</span> <code style={{ color: "#22d3ee" }}>Rodaje Base</code>, <code style={{ color: "#22d3ee" }}>Tirada Larga</code>, <code style={{ color: "#22d3ee" }}>Fuerza</code>, <code style={{ color: "#22d3ee" }}>Calidad</code>, <code style={{ color: "#22d3ee" }}>Regenerativas</code>, <code style={{ color: "#22d3ee" }}>Progresivas</code>, <code style={{ color: "#22d3ee" }}>Intervalos</code>, <code style={{ color: "#22d3ee" }}>Umbral</code>, <code style={{ color: "#22d3ee" }}>Tempo</code> o <code style={{ color: "#22d3ee" }}>Fartlek</code>.</li>
                     <li><span className="font-semibold" style={{ color: T.text1 }}>Notas:</span> texto libre, ej. "6 km suaves Z2". Para <code style={{ color: "#22d3ee" }}>Fuerza</code>, pon aquí <code style={{ color: "#22d3ee" }}>Push</code>, <code style={{ color: "#22d3ee" }}>Pull</code>, <code style={{ color: "#22d3ee" }}>Full</code> o <code style={{ color: "#22d3ee" }}>Pierna</code>.</li>
                     <li>Fila sin Km/Tipo, o fecha ausente dentro del rango del CSV = <span className="font-semibold" style={{ color: T.text1 }}>día de descanso</span> (queda vacío).</li>
+                    <li>Puedes repetir la misma <span className="font-semibold" style={{ color: T.text1 }}>Fecha</span> en dos filas (ej. Fuerza y Rodaje Base el mismo día) — se importan como dos sesiones distintas ese día.</li>
                     <li>Sustituye el plan existente en el rango de fechas del CSV. Los días pasados no se tocan.</li>
                   </ul>
                   <p className="pt-1">Ejemplo:</p>
@@ -1100,6 +1101,7 @@ Fecha,Día de la semana,Km,Tipo de Sesión,Notas
 5/8/2026,Miércoles,,,
 6/8/2026,Jueves,5,Rodaje Base,5 km suaves Z2
 7/8/2026,Viernes,,Fuerza,Push
+7/8/2026,Viernes,4,Rodaje Base,4 km suaves Z2
 8/8/2026,Sábado,7,Rodaje Base,7 km suaves Z2
 9/8/2026,Domingo,7,Tirada Larga,7 km ritmo progresivo`}
                   </pre>
