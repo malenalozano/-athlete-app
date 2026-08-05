@@ -1909,7 +1909,7 @@ const OVERLAY_REF_RANGE: Partial<Record<OverlayKey, { min: number; max: number }
   vfc: { min: HRV_RANGO_NORMAL.min, max: HRV_RANGO_NORMAL.max },
 };
 
-const DAILY_CHART_WINDOW = 14; // días visibles a la vez, para que las barras no se aplasten
+const DAILY_CHART_WINDOW = 35; // 5 semanas visibles a la vez
 
 function DailyKmOverlayChart({ daily, loading }: {
   daily: { fecha: string; km: number; cadencia: number | null; vfc: number | null; fc_reposo: number | null }[];
@@ -2057,7 +2057,7 @@ function DailyKmOverlayChart({ daily, loading }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // GRÁFICAS SEMANALES PAGINABLES (Volumen y Ritmo medio) — ventana de 5 semanas
 // ─────────────────────────────────────────────────────────────────────────────
-const WEEKLY_CHART_WINDOW = 5;
+const WEEKLY_CHART_WINDOW = 4;
 
 function useWeeklyWindow<T extends { fecha: string }>(trend: T[]) {
   const [offset, setOffset] = useState(0);

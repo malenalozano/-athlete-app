@@ -296,16 +296,15 @@ def dashboard(usuario_id: int):
 
     avisos = _calcular_avisos(hrv_data, cadencia_rb)
 
-    # ── Serie diaria (últimas 4 semanas): km + cadencia + VFC + FC reposo ────
+    # ── Serie diaria (últimas 5 semanas): km + cadencia + VFC + FC reposo ────
     # Base para el gráfico combinado de Progreso (km/día con overlay opcional).
-    # El frontend pagina en ventanas de 14 días dentro de este rango.
-    hace_4sem_daily = (hoy - timedelta(days=28)).isoformat()
+    hace_5sem_daily = (hoy - timedelta(days=35)).isoformat()
     daily_km_rows = conn.execute(
         f"""SELECT fecha, SUM(distancia_m)/1000 as km, AVG(cadencia_media) as cadencia
            FROM actividades_garmin
            WHERE usuario_id = ? AND fecha >= ? AND tipo_deporte IN {RUNNING_TIPOS_SQL}
            GROUP BY fecha""",
-        (usuario_id, hace_4sem_daily),
+        (usuario_id, hace_5sem_daily),
     ).fetchall()
     daily_km = {
         r[0]: {"km": round(r[1] or 0, 1), "cadencia": round(r[2]) if r[2] is not None else None}
@@ -314,12 +313,12 @@ def dashboard(usuario_id: int):
     daily_biom_rows = conn.execute(
         """SELECT fecha, hrv_ms, fc_reposo FROM datos_biometricos_premium
            WHERE usuario_id = ? AND fecha >= ?""",
-        (usuario_id, hace_4sem_daily),
+        (usuario_id, hace_5sem_daily),
     ).fetchall()
     daily_biom = {r[0]: {"vfc": r[1], "fc_reposo": r[2]} for r in daily_biom_rows}
 
     daily_trend = []
-    cursor_d = datetime.strptime(hace_4sem_daily, "%Y-%m-%d").date()
+    cursor_d = datetime.strptime(hace_5sem_daily, "%Y-%m-%d").date()
     while cursor_d <= hoy:
         fs = cursor_d.isoformat()
         k = daily_km.get(fs, {})
