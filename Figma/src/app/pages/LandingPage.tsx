@@ -4,7 +4,7 @@ import {
   Calendar, TrendingUp, Award, ChevronLeft, ChevronRight,
   ArrowLeftRight, X, Clock, Flame, Plus, Check, Save, Trash2,
   RefreshCw, ArrowRight, Zap, ListChecks, Home, Shield, Footprints,
-  Flag, Trophy, Pencil, Upload, HelpCircle,
+  Flag, Trophy, Pencil, Upload, HelpCircle, HeartPulse, AlertTriangle,
 } from "lucide-react";
 import {
   addDays, addMonths, addWeeks, differenceInCalendarDays, format,
@@ -1842,6 +1842,53 @@ function RaceCountdownCard({ categoria, nombre, fecha, fechaInicioEntreno, dista
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AVISOS FISIOLÓGICOS (HRV, FC reposo, cadencia — datos reales de Garmin)
+// ─────────────────────────────────────────────────────────────────────────────
+type AvisoId = "carga_mal_absorbida" | "fatiga_cadencia" | "sobreentrenamiento";
+
+const AVISOS_INFO: Record<AvisoId, { nombre: string; mensaje: string; icon: typeof HeartPulse }> = {
+  carga_mal_absorbida: {
+    nombre: "Carga mal absorbida",
+    icon: HeartPulse,
+    mensaje: "El VFC nocturno ha caído por debajo del rango óptimo dos noches seguidas. Es señal de bajar intensidad esta semana, no de aguantar: el cuerpo no está absorbiendo la carga. Más relevante todavía si además estás en semana de carga.",
+  },
+  fatiga_cadencia: {
+    nombre: "Fatiga acumulada / técnica degradada",
+    icon: Footprints,
+    mensaje: "La cadencia ha caído de forma sostenida en más de dos sesiones de Rodaje Base — indicador de fatiga acumulada.",
+  },
+  sobreentrenamiento: {
+    nombre: "Sobreentrenamiento",
+    icon: AlertTriangle,
+    mensaje: "Subida sostenida de 5+ ppm sobre tu media de frecuencia cardíaca en reposo (mañana): es la señal clásica de sobreentrenamiento o enfermedad incipiente. En semanas de pico es donde más probable resulta que se dispare por encima del rango — si ocurre, es la confirmación objetiva de que toca recortar, no una sugerencia.",
+  },
+};
+
+function AvisoCard({ id, activo }: { id: AvisoId; activo: boolean }) {
+  const [open, setOpen] = useState(false);
+  const info = AVISOS_INFO[id];
+  const Icon = info.icon;
+  const color = activo ? "#f87171" : "#34d399";
+  const bg = activo ? "rgba(248,113,113,0.1)" : "rgba(52,211,153,0.08)";
+  const border = activo ? "#f8717150" : "#34d39950";
+  return (
+    <div onClick={() => setOpen(o => !o)} className="rounded-xl p-3 cursor-pointer transition-all"
+      style={{ background: bg, border: `1px solid ${border}` }}>
+      <div className="flex items-center gap-2">
+        <Icon className="w-4 h-4 shrink-0" style={{ color }} />
+        <span className="text-xs font-bold flex-1" style={{ color }}>{info.nombre}</span>
+        <span className="text-[9px] font-black uppercase tracking-wide shrink-0" style={{ color }}>
+          {activo ? "Activo" : "OK"}
+        </span>
+      </div>
+      {open && (
+        <p className="text-[11px] mt-2 leading-relaxed" style={{ color: T.text2 }}>{info.mensaje}</p>
+      )}
+    </div>
+  );
+}
+
 function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
   dashboard: DashboardData | null;
   loadingDashboard: boolean;
@@ -1894,6 +1941,27 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
   const macrocicloActual = todayMacro ? parseInt(todayMacro.macrocicloLabel.replace("M", ""), 10) : null;
   const perfil = dashboard?.perfil;
 
+  const avisos = dashboard?.avisos ?? [];
+  const avisosActivos = avisos.filter(a => a.activo);
+  const avisosInactivos = avisos.filter(a => !a.activo);
+
+  const cadTrend = dashboard?.cadencia_trend ?? [];
+  const cadMin = cadTrend.length ? Math.min(...cadTrend.map(c => c.cadencia)) : 0;
+  const cadMax = cadTrend.length ? Math.max(...cadTrend.map(c => c.cadencia)) : 0;
+  const cadRange = cadMax - cadMin || 1;
+  const cadPoints = cadTrend.map((c, i) => {
+    const x = cadTrend.length > 1 ? 10 + (i / (cadTrend.length - 1)) * 280 : 150;
+    const norm = (c.cadencia - cadMin) / cadRange;
+    const y = 105 - norm * 90;
+    return { x, y, cadencia: c.cadencia, semana: c.semana };
+  });
+  const cadPath = cadPoints.length
+    ? "M " + cadPoints.map(p => `${p.x} ${p.y}`).join(" L ")
+    : "";
+  const cadAreaPath = cadPoints.length
+    ? `${cadPath} L ${cadPoints[cadPoints.length - 1].x} 120 L ${cadPoints[0].x} 120 Z`
+    : "";
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
@@ -1927,6 +1995,13 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
           }
           return <RaceCountdownTabsCard races={races} />;
         })()}
+
+        {/* Avisos fisiológicos activos (rojo) */}
+        {avisosActivos.length > 0 && (
+          <div className="space-y-2">
+            {avisosActivos.map(a => <AvisoCard key={a.id} id={a.id} activo />)}
+          </div>
+        )}
 
         {/* KMS semana actual + HRV de hoy */}
         <div className="grid grid-cols-2 gap-3">
@@ -2048,6 +2123,45 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
             })}
           </div>
         </div>
+
+        {/* Line chart cadencia (SVG) */}
+        <div className="rounded-2xl p-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
+          <h3 className="text-xs font-black uppercase tracking-wide mb-4" style={{ color: T.text2 }}>Evolución de la cadencia (spm)</h3>
+          {!loadingDashboard && cadTrend.length < 2 && (
+            <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin datos suficientes todavía</p>
+          )}
+          {cadTrend.length >= 2 && (
+            <div className="h-40 w-full relative">
+              <svg className="w-full h-full absolute inset-0 z-10" viewBox="0 0 300 130">
+                <defs>
+                  <linearGradient id="line-grad-cad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#fb923c" stopOpacity="0.35" />
+                    <stop offset="100%" stopColor="#fb923c" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d={cadAreaPath} fill="url(#line-grad-cad)" />
+                <path d={cadPath} fill="none" stroke="#fb923c" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                {cadPoints.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={i === cadPoints.length - 1 ? 5 : 4}
+                    fill={i === cadPoints.length - 1 ? "#f97316" : "#ea580c"} stroke="#fff" strokeWidth="1.5" />
+                ))}
+                {cadPoints.map((p, i) => (
+                  <text key={i} x={Math.min(Math.max(p.x - 12, 4), 260)} y={p.y > 60 ? p.y + 14 : p.y - 8}
+                    fill={i === cadPoints.length - 1 ? "#fdba74" : T.text3} fontSize="8" fontWeight="bold">
+                    {p.cadencia}
+                  </text>
+                ))}
+              </svg>
+            </div>
+          )}
+        </div>
+
+        {/* Avisos fisiológicos inactivos (verde) */}
+        {avisosInactivos.length > 0 && (
+          <div className="space-y-2">
+            {avisosInactivos.map(a => <AvisoCard key={a.id} id={a.id} activo={false} />)}
+          </div>
+        )}
 
         {/* Dashboard link */}
         <div className="flex justify-center pt-2">

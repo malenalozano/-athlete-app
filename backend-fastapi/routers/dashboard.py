@@ -272,6 +272,26 @@ def dashboard(usuario_id: int):
         for i, r in enumerate(cadencia_rows)
     ]
 
+    # Cadencia de los últimos Rodaje Base (para detectar caída sostenida) — mismo
+    # cruce con plan_entrenamiento que ritmo_trend, pero por sesión, no por semana.
+    cadencia_rb_rows = conn.execute(
+        f"""SELECT ag.fecha, ag.cadencia_media
+           FROM actividades_garmin ag
+           WHERE ag.usuario_id = ?
+             AND ag.tipo_deporte IN {RUNNING_TIPOS_SQL}
+             AND ag.cadencia_media IS NOT NULL
+             AND EXISTS (
+                 SELECT 1 FROM plan_entrenamiento pe
+                 WHERE pe.usuario_id = ag.usuario_id AND pe.fecha = ag.fecha
+                   AND pe.sesion LIKE 'Rodaje%'
+             )
+           ORDER BY ag.fecha DESC LIMIT 8""",
+        (usuario_id,),
+    ).fetchall()
+    cadencia_rb = [(r[0], r[1]) for r in reversed(cadencia_rb_rows)]  # orden ascendente
+
+    avisos = _calcular_avisos(hrv_data, cadencia_rb)
+
     # ── Sesión de hoy (plan_entrenamiento) ──────────────────────────────────
     plan_hoy_row = conn.execute(
         """SELECT tipo, sesion, detalles, km_planificados
@@ -350,6 +370,7 @@ def dashboard(usuario_id: int):
         "fuerza_reciente": fuerza_reciente,
         "cadencia_trend": cadencia_trend,
         "sesion_hoy": sesion_hoy,
+        "avisos": avisos,
     }
 
 
@@ -424,3 +445,56 @@ def _calcular_semaforo(hrv_actual, hrv_media, sleep_score, estres, body_battery)
     if razones_ambar:
         return "ambar", "Recuperación moderada: " + "; ".join(razones_ambar)
     return "verde", "Recuperación óptima"
+
+
+# Rango HRV normal de referencia (ms) — mismo valor que usa el frontend
+# (Profile.tsx / LandingPage.tsx / Home.tsx) para marcar HRV fuera de rango.
+HRV_RANGO_NORMAL = (71, 92)
+
+
+def _dias_consecutivos(fecha_a: str, fecha_b: str) -> bool:
+    try:
+        da = datetime.strptime(fecha_a, "%Y-%m-%d").date()
+        db_ = datetime.strptime(fecha_b, "%Y-%m-%d").date()
+        return abs((da - db_).days) == 1
+    except (ValueError, TypeError):
+        return False
+
+
+def _calcular_avisos(hrv_data: list[dict], cadencia_rb: list[tuple]) -> list[dict]:
+    """Avisos fisiológicos basados en datos de Garmin (HRV, FC reposo, cadencia).
+    hrv_data viene ordenado por fecha DESC (más reciente primero)."""
+    avisos = []
+
+    # 1. Carga mal absorbida: HRV nocturna fuera de rango 2 noches seguidas
+    con_hrv = [d for d in hrv_data if d.get("hrv_ms") is not None]
+    activo_hrv = False
+    if len(con_hrv) >= 2 and _dias_consecutivos(con_hrv[0]["fecha"], con_hrv[1]["fecha"]):
+        fuera = lambda d: not (HRV_RANGO_NORMAL[0] <= d["hrv_ms"] <= HRV_RANGO_NORMAL[1])
+        activo_hrv = fuera(con_hrv[0]) and fuera(con_hrv[1])
+    avisos.append({"id": "carga_mal_absorbida", "activo": activo_hrv})
+
+    # 2. Fatiga acumulada / técnica degradada: cadencia cayendo en >2 rodajes base
+    # seguidos por debajo de la media personal previa (umbral 3 spm para evitar ruido).
+    activo_cadencia = False
+    if len(cadencia_rb) >= 5:
+        valores = [c[1] for c in cadencia_rb]  # orden ascendente por fecha
+        baseline = sum(valores[:-3]) / len(valores[:-3])
+        recientes = valores[-3:]
+        if all(v < baseline for v in recientes) and (baseline - sum(recientes) / 3) >= 3:
+            activo_cadencia = True
+    avisos.append({"id": "fatiga_cadencia", "activo": activo_cadencia})
+
+    # 3. Sobreentrenamiento: FC reposo matutina +5ppm sostenida sobre la media reciente
+    activo_fc = False
+    con_fc = [d for d in hrv_data if d.get("fc_reposo") is not None]
+    if len(con_fc) >= 6:
+        recientes = con_fc[:2]
+        base_pool = con_fc[2:]
+        if len(base_pool) >= 4 and _dias_consecutivos(recientes[0]["fecha"], recientes[1]["fecha"]):
+            media_base = sum(d["fc_reposo"] for d in base_pool) / len(base_pool)
+            if all(d["fc_reposo"] >= media_base + 5 for d in recientes):
+                activo_fc = True
+    avisos.append({"id": "sobreentrenamiento", "activo": activo_fc})
+
+    return avisos
