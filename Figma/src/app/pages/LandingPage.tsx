@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import {
   Calendar, TrendingUp, Award, ChevronLeft, ChevronRight,
@@ -1549,6 +1549,9 @@ function PlanView({ userId }: { userId: number }) {
   const [showCarrera, setShowCarrera] = useState(true);
   const [showFuerza, setShowFuerza] = useState(true);
   const [showMetricas, setShowMetricas] = useState(false);
+  const activeWeekRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const STICKY_BAR_H = 56;
 
   useEffect(() => {
     let cancelled = false;
@@ -1562,17 +1565,27 @@ function PlanView({ userId }: { userId: number }) {
 
   const todayIso = toISODate(new Date());
 
+  // Al cargar el plan, saltar directo a la semana actual — el usuario no
+  // debería tener que scrollear para verla.
+  useEffect(() => {
+    if (loading || !plan || showMetricas) return;
+    const el = activeWeekRef.current, container = scrollContainerRef.current;
+    if (!el || !container) return;
+    container.scrollTop = el.offsetTop - container.offsetTop - STICKY_BAR_H;
+  }, [loading, plan, showMetricas]);
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {loading && <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Cargando plan…</p>}
         {!loading && (!plan || plan.semanas.length === 0) && (
           <p className="text-[10px] italic text-center py-8" style={{ color: T.text3 }}>Sin plan generado todavía</p>
         )}
         {!loading && plan && plan.semanas.length > 0 && (
           <>
-            {/* Filtros */}
-            <div className="flex items-center gap-4 px-1">
+            {/* Filtros — fijos arriba al scrollear */}
+            <div className="sticky -top-4 z-10 -mx-4 -mt-4 px-5 py-3 flex items-center gap-4"
+              style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}` }}>
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input type="checkbox" checked={showCarrera} onChange={e => setShowCarrera(e.target.checked)}
                   className="w-4 h-4 rounded accent-cyan-400" />
@@ -1603,7 +1616,7 @@ function PlanView({ userId }: { userId: number }) {
                 const sunday = addDays(monday, 6);
                 const isActive = todayIso >= w.semana_inicio && todayIso <= toISODate(sunday);
                 return (
-                  <div key={w.semana_inicio} className="rounded-2xl overflow-hidden"
+                  <div key={w.semana_inicio} ref={isActive ? activeWeekRef : undefined} className="rounded-2xl overflow-hidden"
                     style={{
                       border: `1px solid ${isActive ? "#22d3ee60" : T.border}`,
                       background: "rgba(15,23,42,0.6)",
