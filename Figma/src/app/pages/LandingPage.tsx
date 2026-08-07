@@ -893,10 +893,48 @@ function AddSessionModal({ days, onAdd, onClose }: {
                 const active = qualityType === qt;
                 const c = SUB.CAL;
                 return (
-                  <button key={qt} type="button" onClick={() => setQualityType(qt)}
+                  <button key={qt} type="button" onClick={() => handleQualityTypeChange(qt)}
                     className="py-2 rounded-xl text-[11px] font-black border transition-all"
                     style={{ background: active ? c.bg : T.bgApp, borderColor: active ? c.color : T.border, color: active ? c.color : T.text3, boxShadow: active ? c.glow : "none" }}>
                     {qt}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* N — reps de Fartlek, ritmo/zona del último tercio de Progresiva, o
+            reps de 2000m en Intervalos. Regenera las notas (y el título en
+            Fartlek/Intervalos) al rellenarlo. */}
+        {type === "carrera" && subtype === "CAL" && qualityType === "Fartlek" && (
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-wider mb-1.5 block" style={{ color: T.text3 }}>N (repeticiones)</label>
+            <input value={qualityN} onChange={e => setQualityN(e.target.value.replace(/[^0-9]/g, ""))} placeholder="Ej: 6" inputMode="numeric"
+              className="w-full rounded-xl py-2 px-3 text-xs font-semibold outline-none"
+              style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }} />
+          </div>
+        )}
+        {type === "carrera" && subtype === "CAL" && qualityType === "Progresiva" && (
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-wider mb-1.5 block" style={{ color: T.text3 }}>N (ritmo/zona último tercio)</label>
+            <input value={qualityN} onChange={e => setQualityN(e.target.value)} placeholder="Ej: ritmo 10K"
+              className="w-full rounded-xl py-2 px-3 text-xs font-semibold outline-none"
+              style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }} />
+          </div>
+        )}
+        {type === "carrera" && subtype === "CAL" && qualityType === "Intervalos" && (
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-wider mb-2 block" style={{ color: T.text3 }}>N (reps de 2000m)</label>
+            <div className="grid grid-cols-3 gap-2">
+              {INTERVALOS_REPS.map(r => {
+                const active = qualityN === r;
+                const c = SUB.CAL;
+                return (
+                  <button key={r} type="button" onClick={() => setQualityN(r)}
+                    className="py-2 rounded-xl text-[11px] font-black border transition-all"
+                    style={{ background: active ? c.bg : T.bgApp, borderColor: active ? c.color : T.border, color: active ? c.color : T.text3, boxShadow: active ? c.glow : "none" }}>
+                    {r}x2000
                   </button>
                 );
               })}
