@@ -2251,7 +2251,7 @@ function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: st
         </div>
       </div>
       <ResponsiveContainer width="100%" height={200}>
-        <AreaChart data={data}>
+        <AreaChart data={data} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="line-grad-plan-km" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
@@ -2260,7 +2260,7 @@ function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: st
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
           <XAxis dataKey="semana" stroke={T.text3} fontSize={11} />
-          <YAxis stroke={T.text3} fontSize={11} unit=" km" />
+          <YAxis stroke={T.text3} fontSize={11} unit=" km" domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.2)]} />
           <Tooltip
             contentStyle={{ background: T.bgSurf, border: `1px solid ${T.border}`, borderRadius: 8 }}
             labelStyle={{ color: T.text1 }}
@@ -2532,7 +2532,9 @@ const AVISOS_INFO: Record<AvisoId, { nombre: string; mensaje: string; icon: type
   },
 };
 
-function AvisoCard({ id, activo }: { id: AvisoId; activo: boolean }) {
+function AvisoCard({ id, activo, dismissed, onToggleDismiss }: {
+  id: AvisoId; activo: boolean; dismissed?: boolean; onToggleDismiss?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const info = AVISOS_INFO[id];
   const Icon = info.icon;
@@ -2552,6 +2554,12 @@ function AvisoCard({ id, activo }: { id: AvisoId; activo: boolean }) {
       {open && (
         <p className="text-[11px] mt-2 leading-relaxed" style={{ color: T.text2 }}>{info.mensaje}</p>
       )}
+      {activo && onToggleDismiss && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onToggleDismiss(); }}
+          className="text-[9px] font-black uppercase tracking-wide mt-2 underline" style={{ color }}>
+          {dismissed ? "Restaurar arriba" : "Descartar"}
+        </button>
+      )}
     </div>
   );
 }
@@ -2559,7 +2567,10 @@ function AvisoCard({ id, activo }: { id: AvisoId; activo: boolean }) {
 /** Misma tarjeta visual que AvisoCard (verde OK / rojo Activo), pero para los
  * 4 chequeos de "Control del plan" (80/20, TL%, progresión, separación) de la
  * semana actual — reflejados aquí en Progreso además de en la pestaña Plan. */
-function ControlCheckCard({ label, detail, ok, icon: Icon }: { label: string; detail: string; ok: boolean; icon: typeof HeartPulse }) {
+function ControlCheckCard({ label, detail, ok, icon: Icon, dismissed, onToggleDismiss }: {
+  label: string; detail: string; ok: boolean; icon: typeof HeartPulse;
+  dismissed?: boolean; onToggleDismiss?: () => void;
+}) {
   const color = ok ? "#34d399" : "#f87171";
   const bg = ok ? "rgba(52,211,153,0.08)" : "rgba(248,113,113,0.1)";
   const border = ok ? "#34d39950" : "#f8717150";
@@ -2573,6 +2584,12 @@ function ControlCheckCard({ label, detail, ok, icon: Icon }: { label: string; de
         </span>
       </div>
       <p className="text-[11px] mt-1.5 ml-6 leading-relaxed" style={{ color: T.text2 }}>{detail}</p>
+      {!ok && onToggleDismiss && (
+        <button type="button" onClick={onToggleDismiss}
+          className="text-[9px] font-black uppercase tracking-wide mt-1.5 ml-6 underline" style={{ color }}>
+          {dismissed ? "Restaurar arriba" : "Descartar"}
+        </button>
+      )}
     </div>
   );
 }
@@ -2957,13 +2974,48 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro, userId }: {
   const perfil = dashboard?.perfil;
 
   const avisos = dashboard?.avisos ?? [];
-  const avisosActivos = avisos.filter(a => a.activo);
-  const avisosInactivos = avisos.filter(a => !a.activo);
 
   // Chequeos de "Control del plan" (80/20, TL%, progresión, separación) de la
   // semana actual — mismas reglas que la pestaña Plan, copiadas aquí en Progreso.
   const controlChecks = useControlChecksSemanaActual(userId);
-  const controlChecksActivos = controlChecks.filter(c => !c.ok);
+
+  // Alertas rojas descartadas: se pulsa "Descartar" y baja abajo (sigue en
+  // rojo) sin desaparecer de arriba. Persiste en localStorage y se limpia
+  // sola cuando la alerta deja de estar activa, para que la próxima vez que
+  // se dispare vuelva a salir arriba.
+  const [descartadas, setDescartadas] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("progreso_alertas_descartadas") || "[]")); }
+    catch { return new Set(); }
+  });
+  const toggleDescartada = (key: string) => {
+    setDescartadas(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem("progreso_alertas_descartadas", JSON.stringify([...next]));
+      return next;
+    });
+  };
+  const activasKeys = new Set([
+    ...avisos.filter(a => a.activo).map(a => `aviso:${a.id}`),
+    ...controlChecks.filter(c => !c.ok).map(c => `check:${c.label}`),
+  ]);
+  useEffect(() => {
+    const obsoletas = [...descartadas].filter(k => !activasKeys.has(k));
+    if (obsoletas.length === 0) return;
+    setDescartadas(prev => {
+      const next = new Set(prev);
+      obsoletas.forEach(k => next.delete(k));
+      localStorage.setItem("progreso_alertas_descartadas", JSON.stringify([...next]));
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avisos.length, controlChecks.length]);
+
+  const avisosActivos = avisos.filter(a => a.activo && !descartadas.has(`aviso:${a.id}`));
+  const avisosDescartados = avisos.filter(a => a.activo && descartadas.has(`aviso:${a.id}`));
+  const avisosInactivos = avisos.filter(a => !a.activo);
+  const controlChecksActivos = controlChecks.filter(c => !c.ok && !descartadas.has(`check:${c.label}`));
+  const controlChecksDescartados = controlChecks.filter(c => !c.ok && descartadas.has(`check:${c.label}`));
   const controlChecksInactivos = controlChecks.filter(c => c.ok);
 
   return (
@@ -3000,11 +3052,12 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro, userId }: {
           return <RaceCountdownTabsCard races={races} />;
         })()}
 
-        {/* Avisos fisiológicos activos (rojo) + Control del plan que falla */}
+        {/* Avisos fisiológicos activos (rojo) + Control del plan que falla —
+            se pueden descartar (botón en la tarjeta) y bajan al bloque de abajo */}
         {(avisosActivos.length > 0 || controlChecksActivos.length > 0) && (
           <div className="space-y-2">
-            {avisosActivos.map(a => <AvisoCard key={a.id} id={a.id} activo />)}
-            {controlChecksActivos.map(c => <ControlCheckCard key={c.label} label={c.label} detail={c.detail} ok={false} icon={c.icon} />)}
+            {avisosActivos.map(a => <AvisoCard key={a.id} id={a.id} activo onToggleDismiss={() => toggleDescartada(`aviso:${a.id}`)} />)}
+            {controlChecksActivos.map(c => <ControlCheckCard key={c.label} label={c.label} detail={c.detail} ok={false} icon={c.icon} onToggleDismiss={() => toggleDescartada(`check:${c.label}`)} />)}
           </div>
         )}
 
@@ -3071,9 +3124,11 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro, userId }: {
         {/* Km diarios + overlay opcional (cadencia / VFC / FC reposo) */}
         <DailyKmOverlayChart daily={dashboard?.daily_trend ?? []} loading={loadingDashboard} />
 
-        {/* Avisos fisiológicos inactivos (verde) + Control del plan que cumple */}
-        {(avisosInactivos.length > 0 || controlChecksInactivos.length > 0) && (
+        {/* Descartadas (rojo, movidas aquí abajo) + inactivas (verde) */}
+        {(avisosDescartados.length > 0 || controlChecksDescartados.length > 0 || avisosInactivos.length > 0 || controlChecksInactivos.length > 0) && (
           <div className="space-y-2">
+            {avisosDescartados.map(a => <AvisoCard key={a.id} id={a.id} activo dismissed onToggleDismiss={() => toggleDescartada(`aviso:${a.id}`)} />)}
+            {controlChecksDescartados.map(c => <ControlCheckCard key={c.label} label={c.label} detail={c.detail} ok={false} icon={c.icon} dismissed onToggleDismiss={() => toggleDescartada(`check:${c.label}`)} />)}
             {avisosInactivos.map(a => <AvisoCard key={a.id} id={a.id} activo={false} />)}
             {controlChecksInactivos.map(c => <ControlCheckCard key={c.label} label={c.label} detail={c.detail} ok icon={c.icon} />)}
           </div>
