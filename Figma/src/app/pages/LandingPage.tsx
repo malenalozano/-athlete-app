@@ -2056,6 +2056,11 @@ function PlanView({ userId, monday, onApplied, showToast }: {
 // ─────────────────────────────────────────────────────────────────────────────
 interface ControlCheck { ok: boolean; na?: boolean; label: string; detail: string; }
 
+// Progresión de volumen: máx. +10% de una semana a la siguiente (NORMAS
+// ENTRENAMIENTO.pdf). Compartido entre el check de "Control del plan" y el
+// gráfico de volumen semanal (marca en rojo si se supera).
+const VOLUMEN_INCREMENTO_MAX = 0.10;
+
 function calcularControlSemana(semanas: PlanCompleto["semanas"], idx: number, esDescarga: boolean | null): ControlCheck[] {
   const w = semanas[idx];
   const runningSes = w.sesiones.filter(s => (s.tipo || "").toLowerCase() !== "fuerza");
@@ -2111,9 +2116,14 @@ function calcularControlSemana(semanas: PlanCompleto["semanas"], idx: number, es
           return { ok, label: label3, detail: ok ? `${bajada.toFixed(0)}% menos que la semana anterior` : `Solo ${bajada.toFixed(0)}% menos que la semana anterior (objetivo -30%)` };
         }
         const objetivo = prevRunning * 1.10;
-        const ok = totalRunning >= objetivo * 0.95;
         const subida = (ratio - 1) * 100;
-        return { ok, label: label3, detail: ok ? `${subida.toFixed(0)}% más que la semana anterior` : `Solo ${subida.toFixed(0)}% más que la semana anterior (objetivo +10%)` };
+        const bajoMinimo = totalRunning < objetivo * 0.95;
+        const excedeMaximo = ratio > 1 + VOLUMEN_INCREMENTO_MAX + 1e-6;
+        const ok = !bajoMinimo && !excedeMaximo;
+        const detail = ok ? `${subida.toFixed(0)}% más que la semana anterior`
+          : excedeMaximo ? `${subida.toFixed(0)}% más que la semana anterior — supera el máximo del +10%`
+          : `Solo ${subida.toFixed(0)}% más que la semana anterior (objetivo +10%)`;
+        return { ok, label: label3, detail };
       })();
 
   // 4) TL separada al menos 3 días de la sesión de calidad (si la hay esa semana)
@@ -2217,10 +2227,6 @@ function PlanControlCard({ plan, todayIso, userId }: { plan: PlanCompleto; today
 }
 
 const PLAN_VOLUMEN_WINDOW = 5;
-
-// Progresión de volumen: máx. +10% de una semana a la siguiente (NORMAS
-// ENTRENAMIENTO.pdf). Si se supera, la semana se marca en rojo en el gráfico.
-const VOLUMEN_INCREMENTO_MAX = 0.10;
 
 function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: string }) {
   const semanasKm = plan.semanas.map((w, i) => {
