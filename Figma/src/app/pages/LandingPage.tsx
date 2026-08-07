@@ -1106,6 +1106,7 @@ Fecha,Día de la semana,Km,Tipo de Sesión,Notas
                     <li>Fila sin Km/Tipo, o fecha ausente dentro del rango del CSV = <span className="font-semibold" style={{ color: T.text1 }}>día de descanso</span> (queda vacío).</li>
                     <li>Puedes repetir la misma <span className="font-semibold" style={{ color: T.text1 }}>Fecha</span> en dos filas (ej. Fuerza y Rodaje Base el mismo día) — se importan como dos sesiones distintas ese día.</li>
                     <li>Sustituye el plan existente en el rango de fechas del CSV. Los días pasados no se tocan.</li>
+                    <li>Si <span className="font-semibold" style={{ color: T.text1 }}>Notas</span> lleva comas, entrecomilla solo ese campo: <code style={{ color: "#22d3ee" }}>...,"texto, con coma"</code>. No pongas comillas alrededor de toda la fila (Excel a veces lo hace mal al exportar) — eso rompe la importación.</li>
                   </ul>
                   <p className="pt-1">Ejemplo:</p>
                   <pre className="rounded-lg p-3 text-xs overflow-x-auto whitespace-pre" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>

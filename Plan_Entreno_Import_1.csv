@@ -1,0 +1,242 @@
+Fecha,Día de la semana,Km,Tipo de Sesión,Notas
+6/8/2026,Jueves,5,Rodaje Base,Rodaje base 5 km
+7/8/2026,Viernes,,Fuerza,Full
+8/8/2026,Sábado,6,Rodaje Base,Rodaje base 6 km
+9/8/2026,Domingo,8,Tirada Larga,Tirada larga 8 km
+10/8/2026,Lunes,3,Regenerativas,Regenerativo 3 km (dia despues de TL)
+11/8/2026,Martes,6,Progresivas,"Progresiva: tercios Z1-Z2-Z4, bloque final 5 min"
+12/8/2026,Miércoles,,,
+13/8/2026,Jueves,7,Rodaje Base,Rodaje base 7 km
+14/8/2026,Viernes,,Fuerza,Full
+15/8/2026,Sábado,,,
+16/8/2026,Domingo,9,Tirada Larga,Tirada larga 9 km
+17/8/2026,Lunes,4,Regenerativas,Regenerativo 4 km (dia despues de TL)
+18/8/2026,Martes,6,Fartlek,Fartlek: 15' Z2 + 6x(1' Z4 + 2' Z1) + 5' Z1
+19/8/2026,Miércoles,,,
+20/8/2026,Jueves,7,Rodaje Base,Rodaje base 7 km
+21/8/2026,Viernes,,Fuerza,Full
+22/8/2026,Sábado,,,
+23/8/2026,Domingo,11,Tirada Larga,Tirada larga 11 km
+24/8/2026,Lunes,2,Regenerativas,Regenerativo 2 km (dia despues de TL)
+25/8/2026,Martes,5,Progresivas,"Progresiva suave: tercios Z1-Z2-Z4, bloque final 5 min"
+26/8/2026,Miércoles,,,
+27/8/2026,Jueves,6,Rodaje Base,Rodaje base 6 km
+28/8/2026,Viernes,,Fuerza,Full
+29/8/2026,Sábado,,,
+30/8/2026,Domingo,7,Tirada Larga,Tirada larga 7 km
+31/8/2026,Lunes,,,
+1/9/2026,Martes,4,Rodaje Base,Suave 4 km
+2/9/2026,Miércoles,,,
+3/9/2026,Jueves,8,Calidad,TEST: 15' calent. + 30' a tope (ref=ultimos 20') + 10' vuelta calma
+4/9/2026,Viernes,,Fuerza,Pull
+4/9/2026,Viernes,4,Rodaje Base,4 km suaves Z2
+5/9/2026,Sábado,4,Rodaje Base,Suave 4 km
+6/9/2026,Domingo,9,Tirada Larga,Tirada larga 9 km
+7/9/2026,Lunes,,Fuerza,Push
+8/9/2026,Martes,,Fuerza,Pierna
+8/9/2026,Martes,4,Rodaje Base,4 km suaves Z2
+9/9/2026,Miércoles,3,Rodaje Base,Suave corto 3 km
+10/9/2026,Jueves,7,Umbral,Umbral: 15' calent + 3x8' a ritmo umbral (rec 2') + 10' vuelta calma
+11/9/2026,Viernes,,Fuerza,Pull
+11/9/2026,Viernes,3,Rodaje Base,3 km suaves Z2
+12/9/2026,Sábado,4,Rodaje Base,Suave 4 km
+13/9/2026,Domingo,12,Tirada Larga,Tirada larga 12 km
+14/9/2026,Lunes,,Fuerza,Push
+15/9/2026,Martes,,Fuerza,Pierna
+15/9/2026,Martes,4,Rodaje Base,4 km suaves Z2
+16/9/2026,Miércoles,4,Rodaje Base,Suave corto 4 km
+17/9/2026,Jueves,7,Umbral,Umbral continuo: 15' calent + 20' a ritmo umbral + 10' vuelta calma
+18/9/2026,Viernes,,Fuerza,Pull
+18/9/2026,Viernes,3,Rodaje Base,3 km suaves Z2
+19/9/2026,Sábado,4,Rodaje Base,Suave 4 km
+20/9/2026,Domingo,15,Tirada Larga,Tirada larga 15 km
+21/9/2026,Lunes,,Fuerza,Push
+22/9/2026,Martes,,Fuerza,Pierna
+22/9/2026,Martes,4,Rodaje Base,4 km suaves Z2
+23/9/2026,Miércoles,3,Rodaje Base,Suave corto 3 km
+24/9/2026,Jueves,5,Rodaje Base,Suave con 6 progresiones de 100m
+25/9/2026,Viernes,,Fuerza,Pull
+25/9/2026,Viernes,3,Rodaje Base,3 km suaves Z2
+26/9/2026,Sábado,3,Rodaje Base,Suave corto 3 km
+27/9/2026,Domingo,9,Tirada Larga,Tirada larga suave 9 km
+28/9/2026,Lunes,,Fuerza,Push
+29/9/2026,Martes,,Fuerza,Pierna
+29/9/2026,Martes,4,Rodaje Base,4 km suaves Z2
+30/9/2026,Miércoles,3,Rodaje Base,Suave corto 3 km
+1/10/2026,Jueves,8,Intervalos,Series: 15' calent + 5x1000m a ritmo VO2max (rec 2') + 10' vuelta calma
+2/10/2026,Viernes,,Fuerza,Pull
+2/10/2026,Viernes,3,Rodaje Base,3 km suaves Z2
+3/10/2026,Sábado,4,Rodaje Base,Suave 4 km
+4/10/2026,Domingo,14,Tirada Larga,Tirada larga 14 km
+5/10/2026,Lunes,,Fuerza,Push
+6/10/2026,Martes,,Fuerza,Pierna
+6/10/2026,Martes,4,Rodaje Base,4 km suaves Z2
+7/10/2026,Miércoles,3,Rodaje Base,Suave corto 3 km
+8/10/2026,Jueves,8,Umbral,Umbral continuo: 15' calent + 25' a ritmo umbral + 10' vuelta calma
+9/10/2026,Viernes,,Fuerza,Pull
+9/10/2026,Viernes,3,Rodaje Base,3 km suaves Z2
+10/10/2026,Sábado,4,Rodaje Base,Suave 4 km
+11/10/2026,Domingo,18,Tirada Larga,Tirada larga 18 km (ultimos 3 km a ritmo Media)
+12/10/2026,Lunes,,Fuerza,Push
+13/10/2026,Martes,,Fuerza,Pierna
+13/10/2026,Martes,4,Rodaje Base,4 km suaves Z2
+14/10/2026,Miércoles,3,Rodaje Base,Suave corto 3 km
+15/10/2026,Jueves,5,Rodaje Base,Suave con 6 progresiones de 100m
+16/10/2026,Viernes,,Fuerza,Pull
+16/10/2026,Viernes,3,Rodaje Base,3 km suaves Z2
+17/10/2026,Sábado,3,Rodaje Base,Suave 3 km
+18/10/2026,Domingo,10,Tirada Larga,Tirada larga suave 10 km
+19/10/2026,Lunes,,Fuerza,Push
+20/10/2026,Martes,,Fuerza,Pierna
+20/10/2026,Martes,5,Rodaje Base,5 km suaves Z2
+21/10/2026,Miércoles,4,Rodaje Base,Suave corto 4 km
+22/10/2026,Jueves,8,Umbral,Umbral: 15' calent + 3x10' a ritmo umbral (rec 2') + 10' vuelta calma
+23/10/2026,Viernes,,Fuerza,Pull
+23/10/2026,Viernes,3,Rodaje Base,3 km suaves Z2
+24/10/2026,Sábado,3,Rodaje Base,Suave 3 km
+25/10/2026,Domingo,21,Tirada Larga,Tirada larga PICO 21 km (ultimos 5 km a ritmo Media)
+26/10/2026,Lunes,,Fuerza,Push
+27/10/2026,Martes,,Fuerza,Pierna
+27/10/2026,Martes,4,Rodaje Base,4 km suaves Z2
+28/10/2026,Miércoles,3,Rodaje Base,Suave corto 3 km
+29/10/2026,Jueves,5,Rodaje Base,"Suave con 6x20'' a ritmo Media (toques de intensidad, no fatiga)"
+30/10/2026,Viernes,3,Rodaje Base,Suave corto 3 km + movilidad
+31/10/2026,Sábado,,,
+1/11/2026,Domingo,14,Tirada Larga,Tirada 14 km con 3 km finales a ritmo Media
+2/11/2026,Lunes,,,
+3/11/2026,Martes,4,Rodaje Base,Suave 4 km
+4/11/2026,Miércoles,,,
+5/11/2026,Jueves,3,Rodaje Base,Suave 3 km con 4x20'' a ritmo Media
+6/11/2026,Viernes,,,
+7/11/2026,Sábado,3,Rodaje Base,Activacion muy suave 3 km + 3 progresiones cortas
+8/11/2026,Domingo,21.1,Tirada Larga,MEDIA MARATON DE AVILA - objetivo B 1:50-1:55 / objetivo A 1:45
+9/11/2026,Lunes,,,
+10/11/2026,Martes,3,Rodaje Base,Suave muy corto 3 km
+11/11/2026,Miércoles,,,
+12/11/2026,Jueves,3,Rodaje Base,Suave muy corto 3 km
+13/11/2026,Viernes,3,Rodaje Base,Suave corto 3 km + movilidad
+14/11/2026,Sábado,,,
+15/11/2026,Domingo,8,Rodaje Base,Suave 8 km
+16/11/2026,Lunes,,Fuerza,Push
+17/11/2026,Martes,,Fuerza,Pierna
+17/11/2026,Martes,4,Rodaje Base,4 km suaves Z2
+18/11/2026,Miércoles,3,Rodaje Base,Suave 3 km
+19/11/2026,Jueves,4,Rodaje Base,Suave 4 km
+20/11/2026,Viernes,,Fuerza,Pull
+20/11/2026,Viernes,3,Rodaje Base,3 km suaves Z2
+21/11/2026,Sábado,3,Rodaje Base,Suave 3 km
+22/11/2026,Domingo,10,Tirada Larga,Tirada suave 10 km
+23/11/2026,Lunes,,Fuerza,Push
+24/11/2026,Martes,,Fuerza,Pierna
+24/11/2026,Martes,4,Rodaje Base,4 km suaves Z2
+25/11/2026,Miércoles,4,Rodaje Base,Suave 4 km
+26/11/2026,Jueves,4,Rodaje Base,Suave con progresiones 4 km
+27/11/2026,Viernes,,Fuerza,Pull
+27/11/2026,Viernes,4,Rodaje Base,4 km suaves Z2
+28/11/2026,Sábado,3,Rodaje Base,Suave 3 km
+29/11/2026,Domingo,15,Tirada Larga,Tirada larga 15 km
+30/11/2026,Lunes,,Fuerza,Push
+1/12/2026,Martes,,Fuerza,Pierna
+1/12/2026,Martes,4,Rodaje Base,4 km suaves Z2
+2/12/2026,Miércoles,3,Rodaje Base,Suave 3 km
+3/12/2026,Jueves,7,Intervalos,Velocidad: 6x400m a ritmo 5K (rec 90'')
+4/12/2026,Viernes,,Fuerza,Pull
+4/12/2026,Viernes,3,Rodaje Base,3 km suaves Z2
+5/12/2026,Sábado,3,Rodaje Base,Suave 3 km
+6/12/2026,Domingo,16,Tirada Larga,Tirada larga 16 km
+7/12/2026,Lunes,,Fuerza,Push
+8/12/2026,Martes,,Fuerza,Pierna
+8/12/2026,Martes,4,Rodaje Base,4 km suaves Z2
+9/12/2026,Miércoles,4,Rodaje Base,Suave 4 km
+10/12/2026,Jueves,9,Intervalos,Series: 5x1000m a ritmo 10K (rec 2')
+11/12/2026,Viernes,,Fuerza,Pull
+11/12/2026,Viernes,3,Rodaje Base,3 km suaves Z2
+12/12/2026,Sábado,3,Rodaje Base,Suave 3 km
+13/12/2026,Domingo,18,Tirada Larga,Tirada larga 18 km
+14/12/2026,Lunes,,Fuerza,Push
+15/12/2026,Martes,,Fuerza,Pierna
+15/12/2026,Martes,5,Rodaje Base,5 km suaves Z2
+16/12/2026,Miércoles,5,Rodaje Base,Rodaje 5 km
+17/12/2026,Jueves,10,Tempo,Ritmo maraton: 2x15' a MP (rec 3')
+18/12/2026,Viernes,,Fuerza,Pull
+18/12/2026,Viernes,5,Rodaje Base,5 km suaves Z2
+19/12/2026,Sábado,5,Rodaje Base,Rodaje 5 km
+20/12/2026,Domingo,20,Tirada Larga,Tirada larga 20 km (ultimos 5 km a MP)
+21/12/2026,Lunes,,Fuerza,Push
+22/12/2026,Martes,,Fuerza,Pierna
+22/12/2026,Martes,3,Rodaje Base,3 km suaves Z2
+23/12/2026,Miércoles,3,Rodaje Base,Suave 3 km
+24/12/2026,Jueves,4,Rodaje Base,Suave con progresiones 4 km
+25/12/2026,Viernes,,Fuerza,Pull
+25/12/2026,Viernes,3,Rodaje Base,3 km suaves Z2
+26/12/2026,Sábado,3,Rodaje Base,Suave 3 km
+27/12/2026,Domingo,14,Tirada Larga,Tirada suave 14 km
+28/12/2026,Lunes,,Fuerza,Push
+29/12/2026,Martes,,Fuerza,Pierna
+29/12/2026,Martes,6,Rodaje Base,6 km suaves Z2
+30/12/2026,Miércoles,6,Rodaje Base,Rodaje 6 km
+31/12/2026,Jueves,8,Intervalos,Velocidad: 8x400m a ritmo 5K (rec 90'')
+1/1/2027,Viernes,,Fuerza,Pull
+1/1/2027,Viernes,5,Rodaje Base,5 km suaves Z2
+2/1/2027,Sábado,6,Rodaje Base,Rodaje 6 km
+3/1/2027,Domingo,23,Tirada Larga,Tirada larga 23 km (ultimos 6 km a MP)
+4/1/2027,Lunes,,Fuerza,Push
+5/1/2027,Martes,,Fuerza,Pierna
+5/1/2027,Martes,7,Rodaje Base,7 km suaves Z2
+6/1/2027,Miércoles,6,Rodaje Base,Rodaje 6 km
+7/1/2027,Jueves,10,Intervalos,Series: 6x1000m a ritmo 10K (rec 2')
+8/1/2027,Viernes,,Fuerza,Pull
+8/1/2027,Viernes,5,Rodaje Base,5 km suaves Z2
+9/1/2027,Sábado,5,Rodaje Base,Rodaje 5 km
+10/1/2027,Domingo,25,Tirada Larga,Tirada larga 25 km
+11/1/2027,Lunes,,Fuerza,Push
+12/1/2027,Martes,,Fuerza,Pierna
+12/1/2027,Martes,6,Rodaje Base,6 km suaves Z2
+13/1/2027,Miércoles,5,Rodaje Base,Rodaje 5 km
+14/1/2027,Jueves,13,Calidad,TEST 10K: calent. + 10 km a tope + vuelta calma (recalibra zonas)
+15/1/2027,Viernes,,Fuerza,Pull
+15/1/2027,Viernes,5,Rodaje Base,5 km suaves Z2
+16/1/2027,Sábado,5,Rodaje Base,Rodaje 5 km
+17/1/2027,Domingo,22,Tirada Larga,"Tirada suave 22 km (post-test, sin exigencia)"
+18/1/2027,Lunes,,Fuerza,Push
+19/1/2027,Martes,,Fuerza,Pierna
+19/1/2027,Martes,7,Rodaje Base,7 km suaves Z2
+20/1/2027,Miércoles,6,Rodaje Base,Rodaje 6 km
+21/1/2027,Jueves,12,Umbral,Umbral continuo: 40' a ritmo umbral
+22/1/2027,Viernes,,Fuerza,Pull
+22/1/2027,Viernes,6,Rodaje Base,6 km suaves Z2
+23/1/2027,Sábado,6,Rodaje Base,Rodaje 6 km
+24/1/2027,Domingo,29,Tirada Larga,Tirada larga 29 km (ultimos 8 km a MP)
+25/1/2027,Lunes,,Fuerza,Push
+26/1/2027,Martes,,Fuerza,Pierna
+26/1/2027,Martes,5,Rodaje Base,5 km suaves Z2
+27/1/2027,Miércoles,5,Rodaje Base,Suave 5 km
+28/1/2027,Jueves,5,Rodaje Base,Suave con progresiones 5 km
+29/1/2027,Viernes,,Fuerza,Pull
+29/1/2027,Viernes,4,Rodaje Base,4 km suaves Z2
+30/1/2027,Sábado,4,Rodaje Base,Suave 4 km
+31/1/2027,Domingo,14,Tirada Larga,Tirada suave 14 km
+1/2/2027,Lunes,,Fuerza,Push
+2/2/2027,Martes,,Fuerza,Pierna
+2/2/2027,Martes,8,Rodaje Base,8 km suaves Z2
+3/2/2027,Miércoles,7,Rodaje Base,Rodaje 7 km
+4/2/2027,Jueves,13,Tempo,Ritmo maraton: 3x15' a MP (rec 3')
+5/2/2027,Viernes,,Fuerza,Pull
+5/2/2027,Viernes,7,Rodaje Base,7 km suaves Z2
+6/2/2027,Sábado,5,Rodaje Base,Rodaje 5 km
+7/2/2027,Domingo,32,Tirada Larga,Tirada larga PICO 32 km (ultimos 10 km a MP)
+8/2/2027,Lunes,,Fuerza,Push
+9/2/2027,Martes,,Fuerza,Pierna
+9/2/2027,Martes,4,Rodaje Base,4 km suaves Z2
+10/2/2027,Miércoles,4,Rodaje Base,Suave 4 km
+11/2/2027,Jueves,7,Rodaje Base,"Suave con 4x3' a MP (toques, sin fatiga)"
+12/2/2027,Viernes,3,Rodaje Base,Suave corto 3 km
+13/2/2027,Sábado,,,
+14/2/2027,Domingo,16,Tirada Larga,Tirada 16 km (ultimos 4 km a MP)
+15/2/2027,Lunes,,,
+16/2/2027,Martes,5,Rodaje Base,Suave 5 km
+17/2/2027,Miércoles,,,
+18/2/2027,Jueves,4,Rodaje Base,Suave 4 km con 3x1' a ritmo maraton
+19/2/2027,Viernes,,,
+20/2/2027,Sábado,4,Rodaje Base,Activacion muy suave 4 km + 3 progresiones cortas
+21/2/2027,Domingo,42.195,Tirada Larga,MARATON DE SEVILLA - 42.195 km - objetivo B sub-3:40 / objetivo A sub-3:30

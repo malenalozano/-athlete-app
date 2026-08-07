@@ -1103,6 +1103,13 @@ def _parse_fecha_fila(texto: str) -> str:
             return datetime.strptime(texto, fmt).strftime("%Y-%m-%d")
         except ValueError:
             continue
+    if "," in texto:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fecha inválida en el CSV: '{texto}'. Parece que toda la fila quedó entre comillas "
+                   f"(pasa a veces al exportar desde Excel) y se leyó como un solo campo. "
+                   f"Entrecomilla solo el texto de Notas si lleva comas, no la fila entera.",
+        )
     raise HTTPException(
         status_code=400,
         detail=f"Fecha inválida en el CSV: '{texto}'. Usa el formato AAAA-MM-DD (ej. 2026-08-04).",
