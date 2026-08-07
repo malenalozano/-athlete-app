@@ -5,7 +5,9 @@ import {
   ArrowLeftRight, X, Clock, Flame, Plus, Check, Save, Trash2,
   RefreshCw, ArrowRight, Zap, ListChecks, Home, Shield, Footprints,
   Flag, Trophy, Pencil, Upload, HelpCircle, HeartPulse, AlertTriangle, Eye,
+  SlidersHorizontal,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
@@ -428,7 +430,7 @@ function CardCarrera({ session, isReorderMode, onToggle, onOpen, onReorderTap }:
               {session.extraKm ? (
                 session.extraKm > 0
                   ? <span style={{ color: "#f87171" }}> +{session.extraKm.toFixed(1).replace(".0", "")}km</span>
-                  : <span style={{ color: "#34d399" }}> {session.extraKm.toFixed(1).replace(".0", "")}km</span>
+                  : <span style={{ color: "#f87171" }}> {session.extraKm.toFixed(1).replace(".0", "")}km</span>
               ) : null}
             </span>
           )}
