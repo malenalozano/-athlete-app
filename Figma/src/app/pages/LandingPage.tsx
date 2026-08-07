@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import {
   Calendar, TrendingUp, Award, ChevronLeft, ChevronRight,
@@ -2447,6 +2447,75 @@ const QUALITY_ROWS_BY_MACRO: Record<string, { key: string; label: string }[]> = 
   M4: [{ key: "", label: "Calidad de mantenimiento" }],
 };
 
+// Todos los tipos de calidad posibles (union de los 4 macrociclos), para el
+// selector manual del comparador. Label es único entre macrociclos, se usa
+// como id de selección.
+const ALL_QUALITY_ROWS: { key: string; label: string }[] = Object.values(QUALITY_ROWS_BY_MACRO).flat();
+
+const CALIDAD_EXTRA_STORAGE_KEY = "comparador_calidad_extra";
+
+function loadCalidadExtra(): string[] {
+  try {
+    const raw = localStorage.getItem(CALIDAD_EXTRA_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Botón junto al tag de macrociclo para activar manualmente filas de calidad
+ * de otros macrociclos. Las del macrociclo actual siempre salen (no se pueden
+ * desmarcar aquí); lo que se marque de más queda fijo hasta que se desmarque. */
+function CalidadSelectorButton({ macroLabels, extraLabels, onToggle }: {
+  macroLabels: Set<string>; extraLabels: string[]; onToggle: (label: string) => void;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+          style={{ background: `${SUB.CAL.color}20`, border: `1px solid ${SUB.CAL.color}50` }}
+          aria-label="Elegir tipos de calidad a mostrar"
+        >
+          <SlidersHorizontal size={11} style={{ color: SUB.CAL.color }} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-56 p-2 rounded-xl"
+        style={{ background: T.bgSurf, border: `1px solid ${T.border}`, color: T.text1 }}
+      >
+        <p className="text-[9px] font-black uppercase tracking-widest px-1 pb-1" style={{ color: T.text3 }}>
+          Mostrar en comparador
+        </p>
+        {ALL_QUALITY_ROWS.map(row => {
+          const isMacro = macroLabels.has(row.label);
+          const checked = isMacro || extraLabels.includes(row.label);
+          return (
+            <label
+              key={row.label}
+              className="flex items-center gap-2 px-1 py-1.5 rounded-lg cursor-pointer"
+              style={{ opacity: isMacro ? 0.6 : 1 }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={isMacro}
+                onChange={() => onToggle(row.label)}
+                className="accent-current"
+                style={{ color: SUB.CAL.color }}
+              />
+              <span className="text-[11px] font-bold">{row.label}</span>
+              {isMacro && <span className="text-[9px] italic ml-auto" style={{ color: T.text3 }}>fijo</span>}
+            </label>
+          );
+        })}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /** Agrega todas las sesiones de un subtipo (RB/TL) en la semana en una sola
  * fila. El km ESPERADO solo suma sesiones realmente planificadas (origin
  * "plan"), para no inflarse con carreras extra de Garmin sin plan. El km
@@ -2541,7 +2610,7 @@ function CompareColumn({ session, showDetail }: { session?: Session; showDetail?
   );
 }
 
-function CardHeader({ subKey, title, tag }: { subKey: Subtype; title: string; tag: string }) {
+function CardHeader({ subKey, title, tag, extra }: { subKey: Subtype; title: string; tag: string; extra?: ReactNode }) {
   const c = SUB[subKey];
   return (
     <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: `${c.bg}60`, borderBottom: `1px solid ${T.border}80` }}>
@@ -2551,7 +2620,10 @@ function CardHeader({ subKey, title, tag }: { subKey: Subtype; title: string; ta
         </div>
         <span className="text-xs font-black" style={{ color: T.text1 }}>{title}</span>
       </div>
-      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${c.color}15`, color: c.color }}>{tag}</span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${c.color}15`, color: c.color }}>{tag}</span>
+        {extra}
+      </div>
     </div>
   );
 }
@@ -2561,7 +2633,24 @@ function ComparatorView({ currentSessions, prevSessions, macrocicloLabel }: {
 }) {
   const rb = { curr: aggregateSubtype(currentSessions, "RB"), prev: aggregateSubtype(prevSessions, "RB") };
   const tl = { curr: aggregateSubtype(currentSessions, "TL"), prev: aggregateSubtype(prevSessions, "TL") };
-  const qualityRows = QUALITY_ROWS_BY_MACRO[macrocicloLabel] ?? QUALITY_ROWS_BY_MACRO.M1;
+  const macroRows = QUALITY_ROWS_BY_MACRO[macrocicloLabel] ?? QUALITY_ROWS_BY_MACRO.M1;
+  const macroLabels = useMemo(() => new Set(macroRows.map(r => r.label)), [macroRows]);
+
+  const [extraLabels, setExtraLabels] = useState<string[]>(loadCalidadExtra);
+  useEffect(() => {
+    localStorage.setItem(CALIDAD_EXTRA_STORAGE_KEY, JSON.stringify(extraLabels));
+  }, [extraLabels]);
+
+  const toggleExtra = useCallback((label: string) => {
+    setExtraLabels(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]);
+  }, []);
+
+  // Filas mostradas: siempre las del macrociclo activo + las marcadas manualmente
+  // (persisten hasta que el usuario las desmarque, sin importar el macrociclo).
+  const qualityRows = useMemo(
+    () => ALL_QUALITY_ROWS.filter(row => macroLabels.has(row.label) || extraLabels.includes(row.label)),
+    [macroLabels, extraLabels],
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -2583,7 +2672,12 @@ function ComparatorView({ currentSessions, prevSessions, macrocicloLabel }: {
 
         {/* CAL — una fila por cada sesión de calidad activa en este macrociclo */}
         <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${T.border}80`, background: "rgba(15,23,42,0.6)" }}>
-          <CardHeader subKey="CAL" title="Series de Calidad" tag={macrocicloLabel} />
+          <CardHeader
+            subKey="CAL"
+            title="Series de Calidad"
+            tag={macrocicloLabel}
+            extra={<CalidadSelectorButton macroLabels={macroLabels} extraLabels={extraLabels} onToggle={toggleExtra} />}
+          />
           <div className="divide-y" style={{ borderColor: T.border }}>
             {qualityRows.map(row => {
               const curr = findQualitySession(currentSessions, row.key);
