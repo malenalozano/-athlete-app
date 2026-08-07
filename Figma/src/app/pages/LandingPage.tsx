@@ -788,6 +788,17 @@ interface NewSessionFields {
 // que usa el generador/comparador, ver QUALITY_ROWS_BY_MACRO más abajo).
 const QUALITY_TYPES = ["Fartlek", "Progresiva", "Intervalos", "Tempo Run", "VO2max", "Tempo Largo"] as const;
 
+// Tipos de calidad con plantilla de notas + campo "N" que se rellena a mano
+// (reps de Fartlek, ritmo/zona del último tercio de la Progresiva, reps de
+// 2000m en Intervalos). Al rellenar N se actualizan las notas (y, en Fartlek
+// e Intervalos, también el título de la sesión).
+const NOTA_FARTLEK = (n: string) => `15' (z2) + ${n || "N"} x [ 1' (z4) + 2' (z1) ] + 5' (z1)`;
+const NOTA_PROGRESIVA = (n: string) => `⅓ (z1) ⅓ (z2) ⅓ ${n || "N"}(z3/4)`;
+const NOTA_INTERVALOS = (n: string) => n
+  ? `[Calentamiento 3km Z2] + [${n}x2000m a 4:40-4:45, recup 2' Z1] + [Enfriamiento 2km Z1]`
+  : `[Calentamiento 3km Z2] + [Series] + [Enfriamiento 2km Z1]. Series de 2000m a 4:40-4:45, recup 2' Z1. Empezar con 3x2000, terminar con 5x2000.`;
+const INTERVALOS_REPS = ["3", "4", "5"] as const;
+
 function AddSessionModal({ days, onAdd, onClose }: {
   days: string[]; onAdd: (fields: NewSessionFields) => Promise<void>; onClose: () => void;
 }) {
@@ -797,16 +808,34 @@ function AddSessionModal({ days, onAdd, onClose }: {
   const [metric, setMetric] = useState("");
   const [notes, setNotes] = useState("");
   const [qualityType, setQualityType] = useState<string>(QUALITY_TYPES[0]);
+  const [qualityN, setQualityN] = useState("");
   const [saving, setSaving] = useState(false);
 
   const runSubs: Subtype[] = ["RB", "TL", "CAL"];
   const strSubs: Subtype[] = ["PUSH", "PULL", "FULL", "PIERNA"];
 
+  // Al elegir Fartlek/Progresiva/Intervalos (o cambiar de una a otra), precarga
+  // la plantilla de notas con N vacío. Al rellenar N, la regenera con el valor.
+  useEffect(() => {
+    if (subtype !== "CAL") return;
+    if (qualityType === "Fartlek") setNotes(NOTA_FARTLEK(qualityN));
+    else if (qualityType === "Progresiva") setNotes(NOTA_PROGRESIVA(qualityN));
+    else if (qualityType === "Intervalos") setNotes(NOTA_INTERVALOS(qualityN));
+  }, [subtype, qualityType, qualityN]);
+
+  const handleQualityTypeChange = (qt: string) => {
+    setQualityType(qt);
+    setQualityN("");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await onAdd({ type, subtype, dayIndex: day, metric, notes, qualityType: subtype === "CAL" ? qualityType : undefined });
+      const tituloCalidad = qualityType === "Fartlek" && qualityN ? `Fartlek ${qualityN}x`
+        : qualityType === "Intervalos" && qualityN ? `Intervalos ${qualityN}x2000`
+        : qualityType;
+      await onAdd({ type, subtype, dayIndex: day, metric, notes, qualityType: subtype === "CAL" ? tituloCalidad : undefined });
       onClose();
     } finally {
       setSaving(false);
@@ -2180,6 +2209,14 @@ function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: st
             dot={(props: any) => {
               const { cx, cy, payload, key } = props;
               return <circle key={key} cx={cx} cy={cy} r={3.5} fill={payload.hecho ? "#10b981" : T.text3} stroke="#fff" strokeWidth={1} />;
+            }}
+            label={(props: any) => {
+              const { x, y, value, index } = props;
+              return (
+                <text key={index} x={x} y={y - 10} textAnchor="middle" fontSize={10} fontWeight={700} fill={T.text1}>
+                  {value} km
+                </text>
+              );
             }} />
         </AreaChart>
       </ResponsiveContainer>
