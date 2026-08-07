@@ -56,7 +56,7 @@ const SUB: Record<Subtype, { bg: string; color: string; glow: string; label: str
   TL:     { bg: "#172554", color: "#60a5fa", glow: "0 0 8px rgba(96,165,250,0.35)",  label: "TL" },
   PUSH:   { bg: "#431407", color: "#f97316", glow: "0 0 8px rgba(249,115,22,0.25)",  label: "PUSH" },
   PULL:   { bg: "#451a03", color: "#f59e0b", glow: "0 0 6px rgba(245,158,11,0.2)",   label: "PULL" },
-  FULL:   { bg: "#3730a3", color: "#818cf8", glow: "0 0 6px rgba(129,140,248,0.25)", label: "FULL" },
+  FULL:   { bg: "#422006", color: "#eab308", glow: "0 0 6px rgba(234,179,8,0.25)",   label: "FULL" },
   PIERNA: { bg: "#450a0a", color: "#ef4444", glow: "0 0 6px rgba(239,68,68,0.2)",    label: "PIERNA" },
   EXTRA:  { bg: "#2e1065", color: "#a855f7", glow: "0 0 8px rgba(168,85,247,0.35)",  label: "EXTRA" },
 };
@@ -2739,7 +2739,14 @@ function ComparatorView({ currentSessions, prevSessions, macrocicloLabel }: {
 export function LandingPage() {
   const { userId } = useUser();
 
-  const [activeTab, setActiveTab] = useState<"calendario" | "progreso" | "comparador" | "plan">("progreso");
+  const [activeTab, setActiveTab] = useState<"calendario" | "progreso" | "comparador" | "plan">(() => {
+    const saved = localStorage.getItem("landing_active_tab");
+    return saved === "calendario" || saved === "progreso" || saved === "comparador" || saved === "plan"
+      ? saved : "progreso";
+  });
+  useEffect(() => {
+    localStorage.setItem("landing_active_tab", activeTab);
+  }, [activeTab]);
   const [calView, setCalView] = useState<"semanal" | "mensual">("semanal");
 
   const [weekOffset, setWeekOffset] = useState(0);
