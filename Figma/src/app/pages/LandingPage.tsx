@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import {
   addDays, addMonths, addWeeks, differenceInCalendarDays, format,
-  getDay, getISOWeek, isSameDay, parseISO, startOfMonth, startOfWeek,
+  getDay, isSameDay, parseISO, startOfMonth, startOfWeek,
 } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUser } from "../context/UserContext";
