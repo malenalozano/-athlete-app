@@ -1827,7 +1827,10 @@ function PlanView({ userId, monday, onApplied, showToast }: {
   const [loading, setLoading] = useState(() => !readCache<PlanCompleto>(planCacheKey));
   const [showCarrera, setShowCarrera] = useState(true);
   const [showFuerza, setShowFuerza] = useState(true);
-  const [showMetricas, setShowMetricas] = useState(false);
+  const [showMetricas, setShowMetricas] = useState(() => localStorage.getItem("plan_show_metricas") === "1");
+  useEffect(() => {
+    localStorage.setItem("plan_show_metricas", showMetricas ? "1" : "0");
+  }, [showMetricas]);
   const [showRegenerar, setShowRegenerar] = useState(false);
   const [showImportarCsv, setShowImportarCsv] = useState(false);
   const activeWeekRef = useRef<HTMLDivElement | null>(null);
@@ -1915,7 +1918,7 @@ function PlanView({ userId, monday, onApplied, showToast }: {
               </button>
             </div>
 
-            {showMetricas && <PlanMetricas plan={plan} todayIso={todayIso} />}
+            {showMetricas && <PlanMetricas plan={plan} todayIso={todayIso} userId={userId} />}
 
             {/* Lista de semanas */}
             {!showMetricas && <div className="space-y-4">
@@ -2053,7 +2056,7 @@ function PlanView({ userId, monday, onApplied, showToast }: {
 // ─────────────────────────────────────────────────────────────────────────────
 interface ControlCheck { ok: boolean; na?: boolean; label: string; detail: string; }
 
-function calcularControlSemana(semanas: PlanCompleto["semanas"], idx: number): ControlCheck[] {
+function calcularControlSemana(semanas: PlanCompleto["semanas"], idx: number, esDescarga: boolean | null): ControlCheck[] {
   const w = semanas[idx];
   const runningSes = w.sesiones.filter(s => (s.tipo || "").toLowerCase() !== "fuerza");
   const kmBy = (subs: string[]) => runningSes
@@ -2092,15 +2095,13 @@ function calcularControlSemana(semanas: PlanCompleto["semanas"], idx: number): C
         return { ok: true, label: "TL entre 30-35% del volumen", detail: `TL al ${(pctTL * 100).toFixed(0)}% del volumen semanal` };
       })();
 
-  // 3) Progresión: +10% en semana de carga, -30% en semana de descarga (ISO week % 4 === 0)
-  const monday = parseISO(w.semana_inicio);
-  const esDescarga = getISOWeek(monday) % 4 === 0;
+  // 3) Progresión: +10% en semana de carga, -30% en semana de descarga (tipo real del backend)
   const label3 = esDescarga ? "Descarga: -30% vs. semana anterior" : "Progresión: +10% vs. semana anterior";
   const prevRunning = idx > 0
     ? semanas[idx - 1].sesiones.filter(s => (s.tipo || "").toLowerCase() !== "fuerza").reduce((a, s) => a + (s.km_planificados || 0), 0)
     : 0;
-  const check3: ControlCheck = idx === 0 || prevRunning === 0
-    ? { ok: true, na: true, label: label3, detail: idx === 0 ? "Primera semana del plan, sin referencia" : "Semana anterior sin km planificados" }
+  const check3: ControlCheck = esDescarga === null || idx === 0 || prevRunning === 0
+    ? { ok: true, na: true, label: label3, detail: esDescarga === null ? "Calculando tipo de semana…" : idx === 0 ? "Primera semana del plan, sin referencia" : "Semana anterior sin km planificados" }
     : (() => {
         const ratio = totalRunning / prevRunning;
         if (esDescarga) {
@@ -2133,7 +2134,7 @@ function calcularControlSemana(semanas: PlanCompleto["semanas"], idx: number): C
   return [check1, check2, check3, check4];
 }
 
-function PlanControlCard({ plan, todayIso }: { plan: PlanCompleto; todayIso: string }) {
+function PlanControlCard({ plan, todayIso, userId }: { plan: PlanCompleto; todayIso: string; userId: number }) {
   const semanas = plan.semanas;
   const currentIdx = semanas.findIndex(w => {
     const monday = parseISO(w.semana_inicio);
@@ -2144,7 +2145,20 @@ function PlanControlCard({ plan, todayIso }: { plan: PlanCompleto; todayIso: str
   const w = semanas[clampedIdx];
   const monday = parseISO(w.semana_inicio);
   const sunday = addDays(monday, 6);
-  const checks = useMemo(() => calcularControlSemana(semanas, clampedIdx), [semanas, clampedIdx]);
+
+  // es_descarga real (motor de planificación) — no se puede deducir en el
+  // cliente porque depende del macrociclo y de overrides manuales guardados.
+  const [esDescarga, setEsDescarga] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setEsDescarga(null);
+    getPlanSemana(userId, w.semana_inicio)
+      .then(res => { if (!cancelled) setEsDescarga(res.es_descarga); })
+      .catch(() => { if (!cancelled) setEsDescarga(null); });
+    return () => { cancelled = true; };
+  }, [userId, w.semana_inicio]);
+
+  const checks = useMemo(() => calcularControlSemana(semanas, clampedIdx, esDescarga), [semanas, clampedIdx, esDescarga]);
 
   return (
     <div className="rounded-2xl p-4 mb-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
@@ -2272,7 +2286,7 @@ function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: st
   );
 }
 
-function PlanMetricas({ plan, todayIso }: { plan: PlanCompleto; todayIso: string }) {
+function PlanMetricas({ plan, todayIso, userId }: { plan: PlanCompleto; todayIso: string; userId: number }) {
   const data = plan.semanas.map((w, i) => {
     const hecho = w.sesiones
       .filter(s => (s.tipo || "").toLowerCase() !== "fuerza" && s.fecha <= todayIso)
@@ -2284,7 +2298,7 @@ function PlanMetricas({ plan, todayIso }: { plan: PlanCompleto; todayIso: string
 
   return (
     <>
-    <PlanControlCard plan={plan} todayIso={todayIso} />
+    <PlanControlCard plan={plan} todayIso={todayIso} userId={userId} />
     <PlanVolumenChart plan={plan} todayIso={todayIso} />
     <div className="rounded-2xl p-4" style={{ border: `1px solid ${T.border}`, background: "rgba(15,23,42,0.6)" }}>
       <div className="flex items-center gap-4 mb-3">
