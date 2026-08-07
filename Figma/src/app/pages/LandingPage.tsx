@@ -780,8 +780,12 @@ function ClassifyExtraModal({ session, onClose, onDone, showToast }: {
 // ADD SESSION MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 interface NewSessionFields {
-  type: "carrera" | "fuerza"; subtype: Subtype; dayIndex: number; metric: string; notes: string;
+  type: "carrera" | "fuerza"; subtype: Subtype; dayIndex: number; metric: string; notes: string; qualityType?: string;
 }
+
+// Tipos de calidad seleccionables al añadir una sesión manual (mismos nombres
+// que usa el generador/comparador, ver QUALITY_ROWS_BY_MACRO más abajo).
+const QUALITY_TYPES = ["Fartlek", "Progresiva", "Intervalos", "Tempo Run", "VO2max", "Tempo Largo"] as const;
 
 function AddSessionModal({ days, onAdd, onClose }: {
   days: string[]; onAdd: (fields: NewSessionFields) => Promise<void>; onClose: () => void;
@@ -791,6 +795,7 @@ function AddSessionModal({ days, onAdd, onClose }: {
   const [day, setDay] = useState(0);
   const [metric, setMetric] = useState("");
   const [notes, setNotes] = useState("");
+  const [qualityType, setQualityType] = useState<string>(QUALITY_TYPES[0]);
   const [saving, setSaving] = useState(false);
 
   const runSubs: Subtype[] = ["RB", "TL", "CAL"];
@@ -800,7 +805,7 @@ function AddSessionModal({ days, onAdd, onClose }: {
     e.preventDefault();
     setSaving(true);
     try {
-      await onAdd({ type, subtype, dayIndex: day, metric, notes });
+      await onAdd({ type, subtype, dayIndex: day, metric, notes, qualityType: subtype === "CAL" ? qualityType : undefined });
       onClose();
     } finally {
       setSaving(false);
@@ -848,6 +853,26 @@ function AddSessionModal({ days, onAdd, onClose }: {
             })}
           </div>
         </div>
+
+        {/* Quality type */}
+        {type === "carrera" && subtype === "CAL" && (
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-wider mb-2 block" style={{ color: T.text3 }}>Tipo de calidad</label>
+            <div className="grid grid-cols-3 gap-2">
+              {QUALITY_TYPES.map(qt => {
+                const active = qualityType === qt;
+                const c = SUB.CAL;
+                return (
+                  <button key={qt} type="button" onClick={() => setQualityType(qt)}
+                    className="py-2 rounded-xl text-[11px] font-black border transition-all"
+                    style={{ background: active ? c.bg : T.bgApp, borderColor: active ? c.color : T.border, color: active ? c.color : T.text3, boxShadow: active ? c.glow : "none" }}>
+                    {qt}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Day */}
         <div>
@@ -3139,7 +3164,7 @@ export function LandingPage() {
         usuario_id: userId,
         fecha,
         tipo: fields.type === "carrera" ? "Carrera" : "Fuerza",
-        sesion: defaultTitleFor(fields.type, fields.subtype),
+        sesion: fields.subtype === "CAL" && fields.qualityType ? fields.qualityType : defaultTitleFor(fields.type, fields.subtype),
         detalles: fields.notes || "Sesión planificada.",
         duracion_min: fields.type === "carrera" ? 45 : 50,
         km_planificados: fields.type === "carrera" ? (parseFloat(fields.metric) || 10) : undefined,
