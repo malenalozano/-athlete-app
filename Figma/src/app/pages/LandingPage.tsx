@@ -1871,8 +1871,10 @@ function PlanView({ userId, monday, onApplied, showToast }: {
 /** Gráfica arriba del todo de la pestaña "ojo": km reales (semanas ya
  * terminadas) o km planificados (semana actual sin terminar / futuras),
  * al estilo de "Volumen semanal" de la pestaña Progreso. */
+const PLAN_VOLUMEN_WINDOW = 5;
+
 function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: string }) {
-  const data = plan.semanas.map((w, i) => {
+  const allData = plan.semanas.map((w, i) => {
     const monday = parseISO(w.semana_inicio);
     const sunday = addDays(monday, 6);
     const terminada = toISODate(sunday) < todayIso;
@@ -1880,12 +1882,36 @@ function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: st
       .filter(a => esActividadRunning(a.tipo_deporte))
       .reduce((a, act) => a + act.distancia_m / 1000, 0);
     const km = terminada ? kmReal : (w.km_planificados || 0);
-    return { semana: `S${i + 1}`, km: Math.round(km * 10) / 10, hecho: terminada };
+    const activa = todayIso >= w.semana_inicio && todayIso <= toISODate(sunday);
+    return { semana: `S${i + 1}`, km: Math.round(km * 10) / 10, hecho: terminada, activa };
   });
+
+  const currentIdx = allData.findIndex(d => d.activa);
+  const maxStart = Math.max(0, allData.length - PLAN_VOLUMEN_WINDOW);
+  const defaultStart = Math.min(maxStart, Math.max(0, currentIdx >= 0 ? currentIdx - 2 : 0));
+  const [start, setStart] = useState(defaultStart);
+  const clampedStart = Math.min(Math.max(start, 0), maxStart);
+  const data = allData.slice(clampedStart, clampedStart + PLAN_VOLUMEN_WINDOW);
+  const canPrev = clampedStart > 0;
+  const canNext = clampedStart < maxStart;
 
   return (
     <div className="rounded-2xl p-4 mb-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
-      <h3 className="text-xs font-black uppercase tracking-wide mb-3" style={{ color: T.text2 }}>Volumen semanal del plan</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-black uppercase tracking-wide" style={{ color: T.text2 }}>Volumen semanal del plan</h3>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => setStart(s => Math.max(0, s - 1))} disabled={!canPrev}
+            className="w-6 h-6 rounded-md flex items-center justify-center disabled:opacity-30"
+            style={{ background: T.bgApp, border: `1px solid ${T.border}` }}>
+            <ChevronLeft className="w-3.5 h-3.5" style={{ color: T.text2 }} />
+          </button>
+          <button type="button" onClick={() => setStart(s => Math.min(maxStart, s + 1))} disabled={!canNext}
+            className="w-6 h-6 rounded-md flex items-center justify-center disabled:opacity-30"
+            style={{ background: T.bgApp, border: `1px solid ${T.border}` }}>
+            <ChevronRight className="w-3.5 h-3.5" style={{ color: T.text2 }} />
+          </button>
+        </div>
+      </div>
       <ResponsiveContainer width="100%" height={200}>
         <AreaChart data={data}>
           <defs>
