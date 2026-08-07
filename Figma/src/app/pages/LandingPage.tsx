@@ -2556,6 +2556,67 @@ function AvisoCard({ id, activo }: { id: AvisoId; activo: boolean }) {
   );
 }
 
+/** Misma tarjeta visual que AvisoCard (verde OK / rojo Activo), pero para los
+ * 4 chequeos de "Control del plan" (80/20, TL%, progresión, separación) de la
+ * semana actual — reflejados aquí en Progreso además de en la pestaña Plan. */
+function ControlCheckCard({ label, detail, ok, icon: Icon }: { label: string; detail: string; ok: boolean; icon: typeof HeartPulse }) {
+  const color = ok ? "#34d399" : "#f87171";
+  const bg = ok ? "rgba(52,211,153,0.08)" : "rgba(248,113,113,0.1)";
+  const border = ok ? "#34d39950" : "#f8717150";
+  return (
+    <div className="rounded-xl p-3" style={{ background: bg, border: `1px solid ${border}` }}>
+      <div className="flex items-center gap-2">
+        <Icon className="w-4 h-4 shrink-0" style={{ color }} />
+        <span className="text-xs font-bold flex-1" style={{ color }}>{label}</span>
+        <span className="text-[9px] font-black uppercase tracking-wide shrink-0" style={{ color }}>
+          {ok ? "OK" : "Activo"}
+        </span>
+      </div>
+      <p className="text-[11px] mt-1.5 ml-6 leading-relaxed" style={{ color: T.text2 }}>{detail}</p>
+    </div>
+  );
+}
+
+const CONTROL_CHECK_ICONS = [Flame, Flag, TrendingUp, ArrowLeftRight] as const;
+
+/** Chequeos de "Control del plan" de la semana actual, calculados con los
+ * mismos datos/reglas que PlanControlCard (pestaña Plan → ojo). Vive aparte
+ * porque Progreso solo tiene `dashboard`, no el PlanCompleto ni es_descarga. */
+function useControlChecksSemanaActual(userId: number | null) {
+  const planCacheKey = userId ? `cache_plancompleto_${userId}` : "";
+  const [plan, setPlan] = useState<PlanCompleto | null>(() => userId ? readCache<PlanCompleto>(planCacheKey) : null);
+  const [esDescarga, setEsDescarga] = useState<boolean | null>(null);
+  const todayIso = toISODate(new Date());
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    getPlanCompleto(userId).then(d => { if (!cancelled) { setPlan(d); writeCache(planCacheKey, d); } }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  const currentIdx = plan?.semanas.findIndex(w => {
+    const monday = parseISO(w.semana_inicio);
+    return todayIso >= w.semana_inicio && todayIso <= toISODate(addDays(monday, 6));
+  }) ?? -1;
+
+  useEffect(() => {
+    if (!userId || !plan || currentIdx < 0) return;
+    let cancelled = false;
+    getPlanSemana(userId, plan.semanas[currentIdx].semana_inicio)
+      .then(res => { if (!cancelled) setEsDescarga(res.es_descarga); })
+      .catch(() => { if (!cancelled) setEsDescarga(null); });
+    return () => { cancelled = true; };
+  }, [userId, plan, currentIdx]);
+
+  return useMemo(() => {
+    if (!plan || currentIdx < 0) return [];
+    return calcularControlSemana(plan.semanas, currentIdx, esDescarga)
+      .filter(c => !c.na)
+      .map((c, i) => ({ ...c, icon: CONTROL_CHECK_ICONS[i] }));
+  }, [plan, currentIdx, esDescarga]);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GRÁFICO KM/DÍA + OVERLAY OPCIONAL (cadencia / VFC / FC reposo)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2877,13 +2938,14 @@ function WeeklyPaceChart({ trend, loading }: {
   );
 }
 
-function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
+function ProgressView({ dashboard, loadingDashboard, todayMacro, userId }: {
   dashboard: DashboardData | null;
   loadingDashboard: boolean;
   todayMacro: {
     macrocicloLabel: string; semanaEnMacro: number | null;
     semanasPorMacrociclo: Record<"1" | "2" | "3" | "4", number> | null;
   } | null;
+  userId: number | null;
 }) {
   const weeklyKms = dashboard?.semana_actual?.km_realizados ?? 0;
   const weeklyPlan = dashboard?.semana_actual?.km_planificados ?? 0;
@@ -2897,6 +2959,12 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
   const avisos = dashboard?.avisos ?? [];
   const avisosActivos = avisos.filter(a => a.activo);
   const avisosInactivos = avisos.filter(a => !a.activo);
+
+  // Chequeos de "Control del plan" (80/20, TL%, progresión, separación) de la
+  // semana actual — mismas reglas que la pestaña Plan, copiadas aquí en Progreso.
+  const controlChecks = useControlChecksSemanaActual(userId);
+  const controlChecksActivos = controlChecks.filter(c => !c.ok);
+  const controlChecksInactivos = controlChecks.filter(c => c.ok);
 
   return (
     <div className="flex flex-col h-full">
@@ -2932,10 +3000,11 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
           return <RaceCountdownTabsCard races={races} />;
         })()}
 
-        {/* Avisos fisiológicos activos (rojo) */}
-        {avisosActivos.length > 0 && (
+        {/* Avisos fisiológicos activos (rojo) + Control del plan que falla */}
+        {(avisosActivos.length > 0 || controlChecksActivos.length > 0) && (
           <div className="space-y-2">
             {avisosActivos.map(a => <AvisoCard key={a.id} id={a.id} activo />)}
+            {controlChecksActivos.map(c => <ControlCheckCard key={c.label} label={c.label} detail={c.detail} ok={false} icon={c.icon} />)}
           </div>
         )}
 
@@ -3002,10 +3071,11 @@ function ProgressView({ dashboard, loadingDashboard, todayMacro }: {
         {/* Km diarios + overlay opcional (cadencia / VFC / FC reposo) */}
         <DailyKmOverlayChart daily={dashboard?.daily_trend ?? []} loading={loadingDashboard} />
 
-        {/* Avisos fisiológicos inactivos (verde) */}
-        {avisosInactivos.length > 0 && (
+        {/* Avisos fisiológicos inactivos (verde) + Control del plan que cumple */}
+        {(avisosInactivos.length > 0 || controlChecksInactivos.length > 0) && (
           <div className="space-y-2">
             {avisosInactivos.map(a => <AvisoCard key={a.id} id={a.id} activo={false} />)}
+            {controlChecksInactivos.map(c => <ControlCheckCard key={c.label} label={c.label} detail={c.detail} ok icon={c.icon} />)}
           </div>
         )}
 
@@ -3622,7 +3692,7 @@ export function LandingPage() {
             <MonthlyView userId={userId} refreshKey={planVersion} />
           )}
           {activeTab === "progreso" && (
-            <ProgressView dashboard={dashboard} loadingDashboard={loadingDashboard} todayMacro={todayMacro} />
+            <ProgressView dashboard={dashboard} loadingDashboard={loadingDashboard} todayMacro={todayMacro} userId={userId} />
           )}
           {activeTab === "plan" && userId && (
             <PlanView userId={userId} monday={monday} onApplied={fetchWeek} showToast={showToast} />
