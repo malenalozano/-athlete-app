@@ -91,7 +91,7 @@ interface Session {
   kmRealizados?: number; // km reales (Garmin) para mostrar "hechos/planeados"
   kmPlanificados?: number;
   garminBacked?: boolean; // completada porque hay actividad Garmin ese día — no se puede desmarcar
-  extraKm?: number; // km de déficit de sesiones pasadas redistribuidos aquí (se muestra en rojo)
+  extraKm?: number; // km de déficit (+, rojo) o superávit (-, verde) de sesiones pasadas redistribuidos aquí
   garminActId?: string; // id_actividad Garmin — solo en origin "garmin", para clasificar manualmente RB/CAL/TL
   compareCount?: number; // fila agregada del Comparador (varias sesiones del mismo subtipo en la semana) — nº de sesiones promediadas
   ritmoEsperado?: string | null; // objetivo de ritmo, extraído de "detalles" por el backend
@@ -273,37 +273,41 @@ function applyGarminMatching(planSessions: Session[], actividades: ActividadGarm
 
 /** Si una sesión de carrera pasada se quedó corta de km (o no se hizo), el déficit se
  * reparte a partes iguales entre las sesiones de carrera de esta semana que aún quedan
- * por hacer (hoy o en el futuro, no completadas) — se muestra como "+X km" en rojo. */
+ * por hacer (hoy o en el futuro, no completadas) — se muestra como "+X km" en rojo.
+ * Si en cambio se corrió de más (sesión completada con más km de los planificados, o
+ * actividad extra sin planificar), ese superávit se descuenta de esas mismas sesiones
+ * futuras — se muestra como "-X km" en verde — para que el total semanal cuadre con
+ * lo realmente entrenado en vez de sumar siempre lo planificado. */
 function applyDeficitRedistribution(sessions: Session[], monday: Date): Session[] {
   const todayIso = toISODate(new Date());
   const carreraSessions = sessions.filter(s => s.type === "carrera" && s.origin === "plan");
 
-  let deficit = 0;
+  // net > 0 → déficit (falta por completar) · net < 0 → superávit (se hizo de más)
+  let net = 0;
   carreraSessions.forEach(s => {
     const fecha = toISODate(addDays(monday, s.dayIndex));
     if (fecha >= todayIso) return; // solo sesiones ya pasadas
     const planificado = s.kmPlanificados ?? 0;
     if (planificado <= 0) return;
     const realizado = s.garminBacked ? (s.kmRealizados ?? 0) : s.completed ? planificado : 0;
-    const shortfall = planificado - realizado;
-    if (shortfall > 0.05) deficit += shortfall;
+    net += planificado - realizado;
   });
 
-  // Km corridos de más (actividades Garmin sin sesión planificada, "extra") cuentan
-  // para el total semanal y reducen el déficit — no son km perdidos.
+  // Km corridos de más (actividades Garmin sin sesión planificada, "extra") también
+  // cuentan para el total semanal — reducen el déficit o aumentan el superávit.
   const extraRunningKm = sessions
     .filter(s => s.type === "carrera" && s.origin === "garmin")
     .reduce((sum, s) => sum + (s.kmRealizados ?? 0), 0);
-  deficit = Math.max(0, deficit - extraRunningKm);
+  net -= extraRunningKm;
 
-  if (deficit <= 0.05) return sessions;
+  if (Math.abs(net) <= 0.05) return sessions;
 
   const targets = carreraSessions
     .filter(s => !s.completed && toISODate(addDays(monday, s.dayIndex)) >= todayIso)
     .sort((a, b) => a.dayIndex - b.dayIndex);
   if (targets.length === 0) return sessions;
 
-  // Reparto ponderado: la Tirada Larga absorbe más déficit que el resto, el
+  // Reparto ponderado: la Tirada Larga absorbe más ajuste que el resto, el
   // Regenerativo (recuperación) el menos posible.
   const pesoDe = (s: Session): number => {
     if (s.subtype === "TL") return 3;
@@ -315,8 +319,10 @@ function applyDeficitRedistribution(sessions: Session[], monday: Date): Session[
 
   const extraPorId = new Map<string, number>();
   targets.forEach(t => {
-    const extra = Math.round(deficit * (pesoDe(t) / pesoTotal) * 10) / 10;
-    if (extra > 0) extraPorId.set(t.id, extra);
+    let extra = Math.round(net * (pesoDe(t) / pesoTotal) * 10) / 10;
+    // Un superávit no puede descontar más km de los que la sesión tiene planificados.
+    if (extra < 0) extra = Math.max(extra, -(t.kmPlanificados ?? 0));
+    if (Math.abs(extra) > 0.05) extraPorId.set(t.id, extra);
   });
   if (extraPorId.size === 0) return sessions;
 
@@ -419,7 +425,11 @@ function CardCarrera({ session, isReorderMode, onToggle, onOpen, onReorderTap }:
           {session.metric && (
             <span className="text-[11px] font-semibold" style={{ color: locked ? "#34d399" : "#f1f5f9" }}>
               {session.metric}
-              {session.extraKm ? <span style={{ color: "#f87171" }}> +{session.extraKm.toFixed(1).replace(".0", "")}km</span> : null}
+              {session.extraKm ? (
+                session.extraKm > 0
+                  ? <span style={{ color: "#f87171" }}> +{session.extraKm.toFixed(1).replace(".0", "")}km</span>
+                  : <span style={{ color: "#34d399" }}> {session.extraKm.toFixed(1).replace(".0", "")}km</span>
+              ) : null}
             </span>
           )}
           {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
@@ -1622,7 +1632,7 @@ function PlanView({ userId }: { userId: number }) {
                         );
                         if (daySessionsAll.length > 0 && daySessions.length === 0) return null;
 
-                        const kmDia = daySessions
+                        const kmDiaPlanificado = daySessions
                           .filter(s => (s.tipo || "").toLowerCase() !== "fuerza")
                           .reduce((a, s) => a + (s.km_planificados || 0), 0);
                         const primera = daySessions[0];
@@ -1639,6 +1649,12 @@ function PlanView({ userId }: { userId: number }) {
                         const noRunningActs = dayActs.filter(a => !esActividadRunning(a.tipo_deporte));
                         const runningPlanned = daySessionsAll.filter(s => (s.tipo || "").toLowerCase() !== "fuerza").length;
                         const fuerzaPlanned = daySessionsAll.filter(s => (s.tipo || "").toLowerCase() === "fuerza").length;
+                        // Si ya se corrió ese día, mostrar los km reales de Garmin en vez
+                        // de los planificados (lo hecho manda sobre lo previsto).
+                        const kmDiaReal = runningActs
+                          .slice(0, runningPlanned)
+                          .reduce((a, act) => a + (act.distancia_m || 0) / 1000, 0);
+                        const kmDia = kmDiaReal > 0 ? kmDiaReal : kmDiaPlanificado;
                         const extras = [
                           ...runningActs.slice(runningPlanned).map(a => ({ a, esRunning: true })),
                           ...noRunningActs.slice(fuerzaPlanned).map(a => ({ a, esRunning: false })),
