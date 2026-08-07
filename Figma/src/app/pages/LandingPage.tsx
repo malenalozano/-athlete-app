@@ -2202,8 +2202,12 @@ function PlanControlCard({ plan, todayIso, userId }: { plan: PlanCompleto; today
 
 const PLAN_VOLUMEN_WINDOW = 5;
 
+// Progresión de volumen: máx. +10% de una semana a la siguiente (NORMAS
+// ENTRENAMIENTO.pdf). Si se supera, la semana se marca en rojo en el gráfico.
+const VOLUMEN_INCREMENTO_MAX = 0.10;
+
 function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: string }) {
-  const allData = plan.semanas.map((w, i) => {
+  const semanasKm = plan.semanas.map((w, i) => {
     const monday = parseISO(w.semana_inicio);
     const sunday = addDays(monday, 6);
     const terminada = toISODate(sunday) < todayIso;
@@ -2213,6 +2217,11 @@ function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: st
     const km = terminada ? kmReal : (w.km_planificados || 0);
     const activa = todayIso >= w.semana_inicio && todayIso <= toISODate(sunday);
     return { semana: `S${i + 1}`, km: Math.round(km * 10) / 10, hecho: terminada, activa };
+  });
+  const allData = semanasKm.map((d, i) => {
+    const prevKm = i > 0 ? semanasKm[i - 1].km : 0;
+    const excede = i > 0 && prevKm > 0 && (d.km - prevKm) / prevKm > VOLUMEN_INCREMENTO_MAX + 1e-6;
+    return { ...d, excede };
   });
 
   const currentIdx = allData.findIndex(d => d.activa);
@@ -2260,13 +2269,15 @@ function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: st
           <Area type="monotone" dataKey="km" stroke="#4ade80" strokeWidth={2.5} fill="url(#line-grad-plan-km)"
             dot={(props: any) => {
               const { cx, cy, payload, key } = props;
-              return <circle key={key} cx={cx} cy={cy} r={3.5} fill={payload.hecho ? "#10b981" : T.text3} stroke="#fff" strokeWidth={1} />;
+              const fill = payload.excede ? "#ef4444" : payload.hecho ? "#10b981" : T.text3;
+              return <circle key={key} cx={cx} cy={cy} r={payload.excede ? 4.5 : 3.5} fill={fill} stroke="#fff" strokeWidth={1} />;
             }}
             label={(props: any) => {
               const { x, y, value, index } = props;
+              const excede = data[index]?.excede;
               return (
-                <text key={index} x={x} y={y - 10} textAnchor="middle" fontSize={10} fontWeight={700} fill={T.text1}>
-                  {value} km
+                <text key={index} x={x} y={y - 10} textAnchor="middle" fontSize={10} fontWeight={700} fill={excede ? "#f87171" : T.text1}>
+                  {value} km{excede ? " ⚠️" : ""}
                 </text>
               );
             }} />
@@ -2280,6 +2291,10 @@ function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: st
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full" style={{ background: T.text3 }} />
           <span className="text-[10px] font-bold" style={{ color: T.text3 }}>Planificado</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#ef4444" }} />
+          <span className="text-[10px] font-bold" style={{ color: T.text3 }}>Sube &gt;10%</span>
         </div>
       </div>
     </div>
