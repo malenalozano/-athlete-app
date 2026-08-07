@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import {
-  Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
   addDays, addMonths, addWeeks, differenceInCalendarDays, format,
@@ -22,8 +22,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import {
   actualizarSesionCompleta, aplicarSemanaGenerada, borrarSesion, clasificarActividadExtra, crearSesion, generarPlanSemana,
   getDashboard, getPlanCompleto, getPlanSemana, importarPlanCsv, regenerarPlanTotal, sincronizarGarmin,
+  fijarCicloOverride, quitarCicloOverride,
   type ActividadGarmin, type CicloOverride, type DashboardData, type PlanCompleto, type SesionGenerada, type SesionPlan,
 } from "../api";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
+} from "../components/ui/dropdown-menu";
 
 // Rango HRV normal de la usuaria (ms) — fuera de rango se marca en rojo
 const HRV_RANGO_NORMAL = { min: 71, max: 92 };
@@ -891,11 +895,11 @@ function AddSessionModal({ days, onAdd, onClose }: {
 // sesiones", que sustituye las sesiones de Carrera planificadas por las nuevas
 // (Fuerza no se toca). Sin sesión de calidad, esos km se rellenan con Rodaje Base.
 // ─────────────────────────────────────────────────────────────────────────────
-function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
+function RegenerarPlanCard({ open, onOpenChange, userId, monday, onApplied, showToast }: {
+  open: boolean; onOpenChange: (open: boolean) => void;
   userId: number; monday: Date; onApplied: () => void;
   showToast: (text: string, kind?: "error" | "success") => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [kmObjetivo, setKmObjetivo] = useState("");
   const [incluirCalidad, setIncluirCalidad] = useState(true);
   const [incluirFuerza, setIncluirFuerza] = useState(true);
@@ -946,7 +950,7 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
         showToast("Semana actualizada, pero no se pudieron recalcular las semanas futuras.", "error");
       }
       setPreview(null);
-      setOpen(false);
+      onOpenChange(false);
       onApplied();
     } catch {
       showToast("No se pudo aplicar el nuevo plan.");
@@ -956,16 +960,15 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
   };
 
   return (
-    <div className="rounded-2xl p-4 mt-2" style={{ background: "rgba(15,23,42,0.6)", border: `1px solid ${T.border}` }}>
-      <button onClick={() => setOpen(p => !p)} className="w-full flex items-center justify-between">
-        <span className="flex items-center gap-2 text-xs font-black" style={{ color: T.text1 }}>
-          <RefreshCw className="w-4 h-4" style={{ color: "#22d3ee" }} /> Rehacer plan de la semana
-        </span>
-        <ChevronRight className="w-4 h-4 transition-transform" style={{ color: T.text3, transform: open ? "rotate(90deg)" : "none" }} />
-      </button>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg" style={{ background: T.bgSurf, border: `1px solid ${T.border}`, color: T.text1 }}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2" style={{ color: T.text1 }}>
+            <RefreshCw className="w-4 h-4" style={{ color: "#22d3ee" }} /> Rehacer plan de la semana
+          </DialogTitle>
+        </DialogHeader>
 
-      {open && (
-        <div className="mt-3 space-y-3">
+        <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Km esta semana</label>
@@ -1033,8 +1036,8 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
             </div>
           )}
         </div>
-      )}
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1043,12 +1046,12 @@ function RegenerarPlanCard({ userId, monday, onApplied, showToast }: {
 // convierte en sesiones. Con "Previsualizar" se puede revisar antes de
 // guardar; "Importar" guarda directamente en el plan.
 // ─────────────────────────────────────────────────────────────────────────────
-function ImportarPlanCsvCard({ userId, onApplied, showToast }: {
+function ImportarPlanCsvCard({ open, onOpenChange, userId, onApplied, showToast }: {
+  open: boolean; onOpenChange: (open: boolean) => void;
   userId: number;
   onApplied: () => void;
   showToast: (text: string, kind?: "error" | "success") => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [importando, setImportando] = useState(false);
   const [preview, setPreview] = useState<SesionGenerada[] | null>(null);
@@ -1082,7 +1085,7 @@ function ImportarPlanCsvCard({ userId, onApplied, showToast }: {
       );
       setPreview(null);
       setCsvFile(null);
-      setOpen(false);
+      onOpenChange(false);
       onApplied();
     } catch {
       showToast("No se pudo importar el CSV.");
@@ -1092,16 +1095,15 @@ function ImportarPlanCsvCard({ userId, onApplied, showToast }: {
   };
 
   return (
-    <div className="rounded-2xl p-4 mt-2" style={{ background: "rgba(15,23,42,0.6)", border: `1px solid ${T.border}` }}>
-      <button onClick={() => setOpen(p => !p)} className="w-full flex items-center justify-between">
-        <span className="flex items-center gap-2 text-xs font-black" style={{ color: T.text1 }}>
-          <Upload className="w-4 h-4" style={{ color: "#22d3ee" }} /> Importar plan (CSV)
-        </span>
-        <ChevronRight className="w-4 h-4 transition-transform" style={{ color: T.text3, transform: open ? "rotate(90deg)" : "none" }} />
-      </button>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg" style={{ background: T.bgSurf, border: `1px solid ${T.border}`, color: T.text1 }}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2" style={{ color: T.text1 }}>
+            <Upload className="w-4 h-4" style={{ color: "#22d3ee" }} /> Importar plan (CSV)
+          </DialogTitle>
+        </DialogHeader>
 
-      {open && (
-        <div className="mt-3 space-y-3">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-[10px]" style={{ color: T.text3 }}>Sube una hoja de entreno en CSV.</p>
             <Dialog>
@@ -1194,8 +1196,8 @@ Fecha,Día de la semana,Km,Tipo de Sesión,Notas
             </div>
           )}
         </div>
-      )}
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1205,7 +1207,7 @@ Fecha,Día de la semana,Km,Tipo de Sesión,Notas
 function WeeklyView({
   sessions, loading, error, weekLabel, onPrevWeek, onNextWeek,
   onToggle, onSave, onDelete, onMove, onAdd,
-  userId, monday, onApplied, showToast, cicloLabel, weekMeta,
+  userId, monday, onApplied, showToast, cicloLabel, weekMeta, cicloOverrideManual,
 }: {
   sessions: Session[]; loading: boolean; error: string | null; weekLabel: string;
   onPrevWeek: () => void; onNextWeek: () => void;
@@ -1224,14 +1226,33 @@ function WeeklyView({
     proximoHitoNombre: string | null; semanasHastaHito: number | null;
     distribucion: string | null;
   };
+  cicloOverrideManual: boolean;
 }) {
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [reorderingSession, setReorderingSession] = useState<Session | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [classifyingExtra, setClassifyingExtra] = useState<Session | null>(null);
+  const [cambiandoCiclo, setCambiandoCiclo] = useState(false);
   const todayRef = useRef<HTMLDivElement | null>(null);
   const daysScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const handleCambiarCiclo = (etiqueta: CicloOverride) => {
+    if (cambiandoCiclo) return;
+    setCambiandoCiclo(true);
+    fijarCicloOverride(userId, toISODate(monday), etiqueta)
+      .then(onApplied)
+      .catch(() => showToast("No se pudo cambiar el tipo de semana.", "error"))
+      .finally(() => setCambiandoCiclo(false));
+  };
+  const handleQuitarOverrideCiclo = () => {
+    if (cambiandoCiclo) return;
+    setCambiandoCiclo(true);
+    quitarCicloOverride(userId, toISODate(monday))
+      .then(onApplied)
+      .catch(() => showToast("No se pudo quitar el override.", "error"))
+      .finally(() => setCambiandoCiclo(false));
+  };
 
   const avisoDistribucion = weekMeta.distribucion && weekMeta.distribucion.includes("⚠️") ? weekMeta.distribucion : null;
   const macrocicloNum = parseInt(weekMeta.macrocicloLabel.replace("M", ""), 10) || 1;
@@ -1264,13 +1285,35 @@ function WeeklyView({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {/* Pastilla carga/descarga */}
-          <span className="text-[10px] px-3 py-2 rounded-full font-black"
-            style={cicloLabel === "Descarga"
-              ? { background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid #10b98150" }
-              : { background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid #3b82f650" }}>
-            {cicloLabel}
-          </span>
+          {/* Pastilla carga/descarga — clicable: permite forzar el tipo de esta
+              semana, y el ciclo se recalcula en cascada desde ahí hacia adelante */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" disabled={cambiandoCiclo} className="disabled:opacity-50">
+                <span className="text-[10px] px-3 py-2 rounded-full font-black cursor-pointer"
+                  style={cicloLabel === "Descarga"
+                    ? { background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid #10b98150" }
+                    : { background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid #3b82f650" }}>
+                  {cicloLabel}{cicloOverrideManual ? " ✎" : ""}
+                </span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-[#161B22] border-[#30363D] text-white">
+              {(["carga1", "carga2", "carga3", "descarga"] as CicloOverride[]).map((etq) => (
+                <DropdownMenuItem key={etq} onClick={() => handleCambiarCiclo(etq)}>
+                  {etq === "descarga" ? "Descarga" : `Carga ${etq.slice(-1)}`}
+                </DropdownMenuItem>
+              ))}
+              {cicloOverrideManual && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleQuitarOverrideCiclo}>
+                    Volver a automático
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           {/* Reorder button */}
           <button onClick={() => setIsReorderMode(p => !p)}
             className={`flex items-center gap-1.5 text-xs font-black transition-all ${isReorderMode ? "px-3.5 py-2 rounded-full" : "w-9 h-9 rounded-full justify-center"}`}
@@ -1343,12 +1386,6 @@ function WeeklyView({
             </div>
           );
         })}
-        {!loading && !error && (
-          <>
-            <RegenerarPlanCard userId={userId} monday={monday} onApplied={onApplied} showToast={showToast} />
-            <ImportarPlanCsvCard userId={userId} onApplied={onApplied} showToast={showToast} />
-          </>
-        )}
       </div>
 
       {/* Modals */}
@@ -1581,16 +1618,27 @@ function nombreSesionPlan(tipo: string, sesion: string): string {
   }
 }
 
-function PlanView({ userId }: { userId: number }) {
+function PlanView({ userId, monday, onApplied, showToast }: {
+  userId: number; monday: Date; onApplied: () => void;
+  showToast: (text: string, kind?: "error" | "success") => void;
+}) {
   const planCacheKey = `cache_plancompleto_${userId}`;
   const [plan, setPlan] = useState<PlanCompleto | null>(() => readCache<PlanCompleto>(planCacheKey));
   const [loading, setLoading] = useState(() => !readCache<PlanCompleto>(planCacheKey));
   const [showCarrera, setShowCarrera] = useState(true);
   const [showFuerza, setShowFuerza] = useState(true);
   const [showMetricas, setShowMetricas] = useState(false);
+  const [showRegenerar, setShowRegenerar] = useState(false);
+  const [showImportarCsv, setShowImportarCsv] = useState(false);
   const activeWeekRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const STICKY_BAR_H = 56;
+
+  const fetchPlan = useCallback(() => {
+    return getPlanCompleto(userId)
+      .then(d => { setPlan(d); writeCache(planCacheKey, d); })
+      .catch(() => { if (!readCache<PlanCompleto>(planCacheKey)) setPlan(null); });
+  }, [userId, planCacheKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1605,6 +1653,11 @@ function PlanView({ userId }: { userId: number }) {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [userId]);
+
+  const handleApplied = useCallback(() => {
+    fetchPlan();
+    onApplied();
+  }, [fetchPlan, onApplied]);
 
   const todayIso = toISODate(new Date());
 
@@ -1639,8 +1692,20 @@ function PlanView({ userId }: { userId: number }) {
                   className="w-4 h-4 rounded accent-orange-400" />
                 <span className="text-[11px] font-bold" style={{ color: showFuerza ? SUB.PUSH.color : T.text3 }}>Fuerza</span>
               </label>
-              <button onClick={() => setShowMetricas(v => !v)}
+              <button onClick={() => setShowRegenerar(true)}
                 className="ml-auto flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
+                style={{ background: "transparent", border: `1px solid ${T.border}` }}
+                title="Rehacer plan de la semana">
+                <RefreshCw className="w-4 h-4" style={{ color: T.text3 }} />
+              </button>
+              <button onClick={() => setShowImportarCsv(true)}
+                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
+                style={{ background: "transparent", border: `1px solid ${T.border}` }}
+                title="Importar plan (CSV)">
+                <Upload className="w-4 h-4" style={{ color: T.text3 }} />
+              </button>
+              <button onClick={() => setShowMetricas(v => !v)}
+                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
                 style={{
                   background: showMetricas ? "rgba(201,255,0,0.15)" : "transparent",
                   border: `1px solid ${showMetricas ? "#C9FF00" : T.border}`,
@@ -1767,12 +1832,72 @@ function PlanView({ userId }: { userId: number }) {
           </>
         )}
       </div>
+
+      <RegenerarPlanCard open={showRegenerar} onOpenChange={setShowRegenerar}
+        userId={userId} monday={monday} onApplied={handleApplied} showToast={showToast} />
+      <ImportarPlanCsvCard open={showImportarCsv} onOpenChange={setShowImportarCsv}
+        userId={userId} onApplied={handleApplied} showToast={showToast} />
     </div>
   );
 }
 
 /** Gráfica de km semanales del plan: por semana, la parte ya "hecha" (días
  * pasados o de hoy) en un color y la parte pendiente (días futuros) en otro. */
+/** Gráfica arriba del todo de la pestaña "ojo": km reales (semanas ya
+ * terminadas) o km planificados (semana actual sin terminar / futuras),
+ * al estilo de "Volumen semanal" de la pestaña Progreso. */
+function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: string }) {
+  const data = plan.semanas.map((w, i) => {
+    const monday = parseISO(w.semana_inicio);
+    const sunday = addDays(monday, 6);
+    const terminada = toISODate(sunday) < todayIso;
+    const kmReal = (w.actividades_garmin ?? [])
+      .filter(a => esActividadRunning(a.tipo_deporte))
+      .reduce((a, act) => a + act.distancia_m / 1000, 0);
+    const km = terminada ? kmReal : (w.km_planificados || 0);
+    return { semana: `S${i + 1}`, km: Math.round(km * 10) / 10, hecho: terminada };
+  });
+
+  return (
+    <div className="rounded-2xl p-4 mb-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
+      <h3 className="text-xs font-black uppercase tracking-wide mb-3" style={{ color: T.text2 }}>Volumen semanal del plan</h3>
+      <ResponsiveContainer width="100%" height={200}>
+        <AreaChart data={data}>
+          <defs>
+            <linearGradient id="line-grad-plan-km" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+          <XAxis dataKey="semana" stroke={T.text3} fontSize={11} />
+          <YAxis stroke={T.text3} fontSize={11} unit=" km" />
+          <Tooltip
+            contentStyle={{ background: T.bgSurf, border: `1px solid ${T.border}`, borderRadius: 8 }}
+            labelStyle={{ color: T.text1 }}
+            formatter={(value: number, _name: string, item) => [`${value} km`, item.payload.hecho ? "Hecho" : "Planificado"]}
+          />
+          <Area type="monotone" dataKey="km" stroke="#4ade80" strokeWidth={2.5} fill="url(#line-grad-plan-km)"
+            dot={(props: any) => {
+              const { cx, cy, payload, key } = props;
+              return <circle key={key} cx={cx} cy={cy} r={3.5} fill={payload.hecho ? "#10b981" : T.text3} stroke="#fff" strokeWidth={1} />;
+            }} />
+        </AreaChart>
+      </ResponsiveContainer>
+      <div className="flex items-center gap-4 mt-2">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#10b981" }} />
+          <span className="text-[10px] font-bold" style={{ color: T.text3 }}>Hecho</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: T.text3 }} />
+          <span className="text-[10px] font-bold" style={{ color: T.text3 }}>Planificado</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PlanMetricas({ plan, todayIso }: { plan: PlanCompleto; todayIso: string }) {
   const data = plan.semanas.map((w, i) => {
     const hecho = w.sesiones
@@ -1784,6 +1909,8 @@ function PlanMetricas({ plan, todayIso }: { plan: PlanCompleto; todayIso: string
   });
 
   return (
+    <>
+    <PlanVolumenChart plan={plan} todayIso={todayIso} />
     <div className="rounded-2xl p-4" style={{ border: `1px solid ${T.border}`, background: "rgba(15,23,42,0.6)" }}>
       <div className="flex items-center gap-4 mb-3">
         <p className="text-xs font-black uppercase tracking-wide" style={{ color: T.text1 }}>Km semanales del plan</p>
@@ -1811,6 +1938,7 @@ function PlanMetricas({ plan, todayIso }: { plan: PlanCompleto; todayIso: string
         </BarChart>
       </ResponsiveContainer>
     </div>
+    </>
   );
 }
 
@@ -2803,6 +2931,7 @@ export function LandingPage() {
     sessions: Session[]; prevSessions: Session[];
     weekStats: { km_planificados: number; km_realizados: number } | null;
     weekCicloLabel: string; weekMeta: WeekMeta;
+    weekCicloOverrideManual: boolean;
   };
   const weekCacheKey = (uid: number, offset: number) => `cache_week_${uid}_${offset}`;
   const initialWeekCache = userId ? readCache<WeekCacheData>(weekCacheKey(userId, 0)) : null;
@@ -2811,6 +2940,7 @@ export function LandingPage() {
   const [prevSessions, setPrevSessions] = useState<Session[]>(initialWeekCache?.prevSessions ?? []);
   const [weekStats, setWeekStats] = useState<{ km_planificados: number; km_realizados: number } | null>(initialWeekCache?.weekStats ?? null);
   const [weekCicloLabel, setWeekCicloLabel] = useState(initialWeekCache?.weekCicloLabel ?? "Carga 1");
+  const [weekCicloOverrideManual, setWeekCicloOverrideManual] = useState(initialWeekCache?.weekCicloOverrideManual ?? false);
   const [weekMeta, setWeekMeta] = useState<WeekMeta>(
     initialWeekCache?.weekMeta ?? { macrocicloLabel: "M1", semanaNum: null, proximoHitoNombre: null, semanasHastaHito: null, distribucion: null },
   );
@@ -2864,6 +2994,7 @@ export function LandingPage() {
       setPrevSessions(cached.prevSessions);
       setWeekStats(cached.weekStats);
       setWeekCicloLabel(cached.weekCicloLabel);
+      setWeekCicloOverrideManual(cached.weekCicloOverrideManual ?? false);
       setWeekMeta(cached.weekMeta);
       setLoadingWeek(false);
     } else {
@@ -2889,6 +3020,7 @@ export function LandingPage() {
       setSessions(finalSessions);
       setWeekStats(curr.stats);
       setWeekCicloLabel(curr.ciclo_label);
+      setWeekCicloOverrideManual(curr.ciclo_override_manual ?? false);
       setWeekMeta(finalMeta);
       const prevPlanSessions = prev.sesiones.map(s => toSession(s, prevMonday));
       const finalPrevSessions = applyGarminMatching(prevPlanSessions, prev.actividades_garmin, prevMonday);
@@ -2896,7 +3028,8 @@ export function LandingPage() {
       setPlanVersion(v => v + 1); // avisa a MonthlyView (y a quien más dependa) de que el plan cambió
       writeCache(cacheKey, {
         sessions: finalSessions, prevSessions: finalPrevSessions,
-        weekStats: curr.stats, weekCicloLabel: curr.ciclo_label, weekMeta: finalMeta,
+        weekStats: curr.stats, weekCicloLabel: curr.ciclo_label,
+        weekCicloOverrideManual: curr.ciclo_override_manual ?? false, weekMeta: finalMeta,
       });
     } catch {
       if (!cached) setWeekError("No se pudo cargar el plan de esta semana.");
@@ -3078,7 +3211,7 @@ export function LandingPage() {
               onToggle={handleToggle} onSave={handleSave} onDelete={handleDelete}
               onMove={handleMove} onAdd={handleAdd}
               userId={userId} monday={monday} onApplied={fetchWeek} showToast={showToast}
-              cicloLabel={weekCicloLabel} weekMeta={weekMeta}
+              cicloLabel={weekCicloLabel} weekMeta={weekMeta} cicloOverrideManual={weekCicloOverrideManual}
             />
           )}
           {activeTab === "calendario" && calView === "mensual" && userId && (
@@ -3088,7 +3221,7 @@ export function LandingPage() {
             <ProgressView dashboard={dashboard} loadingDashboard={loadingDashboard} todayMacro={todayMacro} />
           )}
           {activeTab === "plan" && userId && (
-            <PlanView userId={userId} />
+            <PlanView userId={userId} monday={monday} onApplied={fetchWeek} showToast={showToast} />
           )}
           {activeTab === "comparador" && (
             <ComparatorView currentSessions={sessions} prevSessions={prevSessions} macrocicloLabel={weekMeta.macrocicloLabel} />
