@@ -298,6 +298,19 @@ export function generarPlanSemana(
   });
 }
 
+export function fijarCicloOverride(usuarioId: number, semanaInicio: string, etiqueta: CicloOverride) {
+  return req<{ ok: boolean }>(`/plan/${usuarioId}/ciclo-override`, {
+    method: "POST",
+    body: JSON.stringify({ semana_inicio: semanaInicio, etiqueta }),
+  });
+}
+
+export function quitarCicloOverride(usuarioId: number, semanaInicio: string) {
+  return req<{ ok: boolean }>(`/plan/${usuarioId}/ciclo-override/${semanaInicio}`, {
+    method: "DELETE",
+  });
+}
+
 export function aplicarSemanaGenerada(usuarioId: number, fechaInicio: string, sesiones: SesionGenerada[]) {
   return req<{ ok: boolean; sesiones_aplicadas: number }>(`/plan/${usuarioId}/aplicar-semana`, {
     method: "POST",
@@ -437,6 +450,7 @@ export interface PlanSemana {
   distribucion_intensidad: string | null;
   fase: string;
   coach_tip: string;
+  ciclo_override_manual: boolean;
 }
 
 export interface PlanCompleto {

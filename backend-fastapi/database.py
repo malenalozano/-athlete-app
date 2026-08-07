@@ -202,6 +202,10 @@ _SCHEMA = [
         detalles TEXT, duracion_min INTEGER, intensidad TEXT, creado_en TEXT,
         completado INTEGER DEFAULT 0, km_planificados REAL, km_realizados REAL
     )""",
+    """CREATE TABLE IF NOT EXISTS ciclo_overrides (
+        usuario_id INTEGER, semana_inicio TEXT, pos INTEGER, creado_en TEXT,
+        PRIMARY KEY (usuario_id, semana_inicio)
+    )""",
     """CREATE TABLE IF NOT EXISTS sesiones_fuerza (
         id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT,
         nota_original TEXT, resumen TEXT, created_at TEXT,

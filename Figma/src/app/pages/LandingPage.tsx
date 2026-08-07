@@ -103,6 +103,28 @@ interface Session {
   fcReal?: number | null;    // FC media real, idem
 }
 
+// ── Cache local (stale-while-revalidate) ────────────────────────────────────
+// Guarda la ultima respuesta del backend en localStorage para pintarla al
+// instante al entrar/recargar, mientras se revalida en segundo plano sin
+// mostrar spinners — solo se ve "cargando" la primerísima vez, sin cache.
+
+function readCache<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // localStorage lleno o bloqueado — no es critico, se sigue sin cache
+  }
+}
+
 // ── Date / mapping helpers ──────────────────────────────────────────────────
 
 function mondayFor(weekOffset: number): Date {
@@ -1560,8 +1582,9 @@ function nombreSesionPlan(tipo: string, sesion: string): string {
 }
 
 function PlanView({ userId }: { userId: number }) {
-  const [plan, setPlan] = useState<PlanCompleto | null>(null);
-  const [loading, setLoading] = useState(true);
+  const planCacheKey = `cache_plancompleto_${userId}`;
+  const [plan, setPlan] = useState<PlanCompleto | null>(() => readCache<PlanCompleto>(planCacheKey));
+  const [loading, setLoading] = useState(() => !readCache<PlanCompleto>(planCacheKey));
   const [showCarrera, setShowCarrera] = useState(true);
   const [showFuerza, setShowFuerza] = useState(true);
   const [showMetricas, setShowMetricas] = useState(false);
@@ -1571,10 +1594,14 @@ function PlanView({ userId }: { userId: number }) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (!readCache<PlanCompleto>(planCacheKey)) setLoading(true);
     getPlanCompleto(userId)
-      .then(d => { if (!cancelled) setPlan(d); })
-      .catch(() => { if (!cancelled) setPlan(null); })
+      .then(d => {
+        if (cancelled) return;
+        setPlan(d);
+        writeCache(planCacheKey, d);
+      })
+      .catch(() => { if (!cancelled && !readCache<PlanCompleto>(planCacheKey)) setPlan(null); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [userId]);
@@ -2766,38 +2793,58 @@ export function LandingPage() {
   const [calView, setCalView] = useState<"semanal" | "mensual">("semanal");
 
   const [weekOffset, setWeekOffset] = useState(0);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [prevSessions, setPrevSessions] = useState<Session[]>([]);
-  const [weekStats, setWeekStats] = useState<{ km_planificados: number; km_realizados: number } | null>(null);
-  const [weekCicloLabel, setWeekCicloLabel] = useState("Carga 1");
-  const [weekMeta, setWeekMeta] = useState<{
+
+  type WeekMeta = {
     macrocicloLabel: string; semanaNum: number | null;
     proximoHitoNombre: string | null; semanasHastaHito: number | null;
     distribucion: string | null;
-  }>({ macrocicloLabel: "M1", semanaNum: null, proximoHitoNombre: null, semanasHastaHito: null, distribucion: null });
-  const [loadingWeek, setLoadingWeek] = useState(true);
+  };
+  type WeekCacheData = {
+    sessions: Session[]; prevSessions: Session[];
+    weekStats: { km_planificados: number; km_realizados: number } | null;
+    weekCicloLabel: string; weekMeta: WeekMeta;
+  };
+  const weekCacheKey = (uid: number, offset: number) => `cache_week_${uid}_${offset}`;
+  const initialWeekCache = userId ? readCache<WeekCacheData>(weekCacheKey(userId, 0)) : null;
+
+  const [sessions, setSessions] = useState<Session[]>(initialWeekCache?.sessions ?? []);
+  const [prevSessions, setPrevSessions] = useState<Session[]>(initialWeekCache?.prevSessions ?? []);
+  const [weekStats, setWeekStats] = useState<{ km_planificados: number; km_realizados: number } | null>(initialWeekCache?.weekStats ?? null);
+  const [weekCicloLabel, setWeekCicloLabel] = useState(initialWeekCache?.weekCicloLabel ?? "Carga 1");
+  const [weekMeta, setWeekMeta] = useState<WeekMeta>(
+    initialWeekCache?.weekMeta ?? { macrocicloLabel: "M1", semanaNum: null, proximoHitoNombre: null, semanasHastaHito: null, distribucion: null },
+  );
+  const [loadingWeek, setLoadingWeek] = useState(!initialWeekCache);
   const [weekError, setWeekError] = useState<string | null>(null);
 
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const dashboardCacheKey = userId ? `cache_dashboard_${userId}` : null;
+  const initialDashboard = dashboardCacheKey ? readCache<DashboardData>(dashboardCacheKey) : null;
+  const [dashboard, setDashboard] = useState<DashboardData | null>(initialDashboard);
+  const [loadingDashboard, setLoadingDashboard] = useState(!initialDashboard);
 
   // Macrociclo de HOY, independiente de qué semana esté navegando en Calendario —
   // se usa en la tab Progreso, que debe reflejar el momento real del plan.
-  const [todayMacro, setTodayMacro] = useState<{
+  type TodayMacro = {
     macrocicloLabel: string; semanaEnMacro: number | null;
     semanasPorMacrociclo: Record<"1" | "2" | "3" | "4", number> | null;
-  } | null>(null);
+  };
+  const todayMacroCacheKey = userId ? `cache_todaymacro_${userId}` : null;
+  const [todayMacro, setTodayMacro] = useState<TodayMacro | null>(
+    todayMacroCacheKey ? readCache<TodayMacro>(todayMacroCacheKey) : null,
+  );
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
     getPlanSemana(userId, toISODate(mondayFor(0)))
       .then(d => {
         if (cancelled) return;
-        setTodayMacro({
+        const meta: TodayMacro = {
           macrocicloLabel: d.macrociclo_label,
           semanaEnMacro: d.semana_en_macro,
           semanasPorMacrociclo: d.semanas_por_macrociclo,
-        });
+        };
+        setTodayMacro(meta);
+        writeCache(`cache_todaymacro_${userId}`, meta);
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -2810,7 +2857,18 @@ export function LandingPage() {
 
   const fetchWeek = useCallback(async () => {
     if (!userId) return;
-    setLoadingWeek(true);
+    const cacheKey = weekCacheKey(userId, weekOffset);
+    const cached = readCache<WeekCacheData>(cacheKey);
+    if (cached) {
+      setSessions(cached.sessions);
+      setPrevSessions(cached.prevSessions);
+      setWeekStats(cached.weekStats);
+      setWeekCicloLabel(cached.weekCicloLabel);
+      setWeekMeta(cached.weekMeta);
+      setLoadingWeek(false);
+    } else {
+      setLoadingWeek(true);
+    }
     setWeekError(null);
     const currMonday = mondayFor(weekOffset);
     const prevMonday = addWeeks(currMonday, -1);
@@ -2820,21 +2878,28 @@ export function LandingPage() {
         getPlanSemana(userId, toISODate(prevMonday)),
       ]);
       const currPlanSessions = curr.sesiones.map(s => toSession(s, currMonday));
-      setSessions(applyDeficitRedistribution(applyGarminMatching(currPlanSessions, curr.actividades_garmin, currMonday), currMonday));
-      setWeekStats(curr.stats);
-      setWeekCicloLabel(curr.ciclo_label);
-      setWeekMeta({
+      const finalSessions = applyDeficitRedistribution(applyGarminMatching(currPlanSessions, curr.actividades_garmin, currMonday), currMonday);
+      const finalMeta: WeekMeta = {
         macrocicloLabel: curr.macrociclo_label,
         semanaNum: curr.semana_num,
         proximoHitoNombre: curr.proximo_hito_nombre,
         semanasHastaHito: curr.semanas_hasta_hito,
         distribucion: curr.distribucion_intensidad,
-      });
+      };
+      setSessions(finalSessions);
+      setWeekStats(curr.stats);
+      setWeekCicloLabel(curr.ciclo_label);
+      setWeekMeta(finalMeta);
       const prevPlanSessions = prev.sesiones.map(s => toSession(s, prevMonday));
-      setPrevSessions(applyGarminMatching(prevPlanSessions, prev.actividades_garmin, prevMonday));
+      const finalPrevSessions = applyGarminMatching(prevPlanSessions, prev.actividades_garmin, prevMonday);
+      setPrevSessions(finalPrevSessions);
       setPlanVersion(v => v + 1); // avisa a MonthlyView (y a quien más dependa) de que el plan cambió
+      writeCache(cacheKey, {
+        sessions: finalSessions, prevSessions: finalPrevSessions,
+        weekStats: curr.stats, weekCicloLabel: curr.ciclo_label, weekMeta: finalMeta,
+      });
     } catch {
-      setWeekError("No se pudo cargar el plan de esta semana.");
+      if (!cached) setWeekError("No se pudo cargar el plan de esta semana.");
     } finally {
       setLoadingWeek(false);
     }
@@ -2853,7 +2918,10 @@ export function LandingPage() {
     setSyncState("idle");
     try {
       const res = await sincronizarGarmin(userId);
-      await Promise.all([fetchWeek(), getDashboard(userId).then(setDashboard).catch(() => {})]);
+      await Promise.all([
+        fetchWeek(),
+        getDashboard(userId).then(d => { setDashboard(d); writeCache(`cache_dashboard_${userId}`, d); }).catch(() => {}),
+      ]);
       setSyncedAt(Date.now());
       setSyncState("success");
       const auto = res.sesiones_completadas_auto ?? 0;
@@ -2872,9 +2940,13 @@ export function LandingPage() {
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
-    setLoadingDashboard(true);
+    if (!readCache<DashboardData>(`cache_dashboard_${userId}`)) setLoadingDashboard(true);
     getDashboard(userId)
-      .then(d => { if (!cancelled) setDashboard(d); })
+      .then(d => {
+        if (cancelled) return;
+        setDashboard(d);
+        writeCache(`cache_dashboard_${userId}`, d);
+      })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoadingDashboard(false); });
     return () => { cancelled = true; };

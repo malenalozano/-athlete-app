@@ -77,8 +77,29 @@ FARTLEK_REPS_MAX = 10  # Máximo absoluto de reps según NORMAS ENTRENAMIENTO.pd
 CICLO_CARGA_ANCLA = datetime(2026, 7, 27)
 
 
-def _posicion_ciclo(fecha_inicio: datetime) -> int:
+def _ultimo_override_ciclo(conn, usuario_id: int, fecha_inicio: datetime) -> tuple[datetime, int] | None:
+    """Override manual más reciente (fila de ciclo_overrides) con semana_inicio <= la
+    semana consultada. El usuario lo fija al pulsar la pastilla Carga/Descarga en el
+    calendario y reescribe el ciclo hacia adelante desde esa semana (no toca el pasado)."""
+    row = conn.execute(
+        """SELECT semana_inicio, pos FROM ciclo_overrides
+           WHERE usuario_id = ? AND semana_inicio <= ?
+           ORDER BY semana_inicio DESC LIMIT 1""",
+        (usuario_id, fecha_inicio.strftime("%Y-%m-%d")),
+    ).fetchone()
+    if not row:
+        return None
+    return datetime.strptime(row[0], "%Y-%m-%d"), row[1]
+
+
+def _posicion_ciclo(fecha_inicio: datetime, conn=None, usuario_id: int | None = None) -> int:
     """0=Carga1, 1=Carga2, 2=Carga3, 3=Descarga."""
+    if conn is not None and usuario_id is not None:
+        override = _ultimo_override_ciclo(conn, usuario_id, fecha_inicio)
+        if override:
+            fecha_override, pos_override = override
+            semanas = (fecha_inicio - fecha_override).days // 7
+            return (pos_override + semanas) % 4
     semanas = (fecha_inicio - CICLO_CARGA_ANCLA).days // 7
     return semanas % 4
 
@@ -87,11 +108,16 @@ def _etiqueta_ciclo(pos: int) -> str:
     return "Descarga" if pos == 3 else f"Carga {pos + 1}"
 
 
+_ETIQUETA_A_POS = {"carga1": 0, "carga2": 1, "carga3": 2, "descarga": 3}
+
+
 def _calcular_macrociclo_v2(
     fecha_inicio: datetime,
     plan_start_str: str | None,
     f_inter_str: str | None,
     f_final_str: str | None,
+    conn=None,
+    usuario_id: int | None = None,
 ) -> dict | None:
     """Calendario de macrociclos de NORMAS_ENTRENAMIENTO_v2 (dos carreras: una
     intermedia de test — ej. media maratón — y el maratón final). Devuelve None si
@@ -174,6 +200,17 @@ def _calcular_macrociclo_v2(
         pos = (semana_num - 1) % 4
         es_descarga = pos == 3
         ciclo_label = "Descarga" if es_descarga else f"Carga {pos + 1}"
+
+    # Override manual (pastilla pulsada por el usuario): reescribe el ciclo hacia
+    # adelante desde esa semana. No se aplica en M4 (tapering fijo antes de la carrera).
+    if macrociclo != 4 and conn is not None and usuario_id is not None:
+        override = _ultimo_override_ciclo(conn, usuario_id, fecha_inicio)
+        if override:
+            fecha_override, pos_override = override
+            semanas_desde_override = (fecha_inicio - fecha_override).days // 7
+            pos = (pos_override + semanas_desde_override) % 4
+            es_descarga = pos == 3
+            ciclo_label = "Descarga" if es_descarga else f"Carga {pos + 1}"
 
     # Duración total de cada macrociclo (en semanas), para la barra de progreso.
     # M1 y M4 son fijos; M2/M3 dependen de la distancia real entre las dos carreras.
@@ -412,8 +449,6 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
         except Exception:
             pass
 
-    conn.close()
-
     objetivo_tipo = perfil_row[0] if perfil_row else "maraton"
     fecha_objetivo = perfil_row[1] if perfil_row else None
     objetivo_intermedio_nombre = perfil_row[5] if perfil_row else None
@@ -427,6 +462,8 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
         perfil_row[3] if perfil_row else None,
         perfil_row[4] if perfil_row else None,
         fecha_objetivo,
+        conn,
+        usuario_id,
     )
     if v2_info:
         ciclo_label = v2_info["ciclo_label"]
@@ -440,7 +477,7 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
     else:
         semana_en_macro = None
         semanas_por_macrociclo = None
-        pos_ciclo = _posicion_ciclo(inicio)
+        pos_ciclo = _posicion_ciclo(inicio, conn, usuario_id)
         ciclo_label = _etiqueta_ciclo(pos_ciclo)
         es_descarga = (pos_ciclo == 3)
         mes = inicio.month
@@ -469,7 +506,7 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
     elif proximo_hito == "final":
         proximo_hito_nombre = "objetivo final"
 
-    return {
+    _respuesta_plan_semana = {
         "semana_inicio": fecha_inicio,
         "sesiones": sesiones,
         "actividades_garmin": actividades_garmin,
@@ -491,7 +528,55 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
         "es_descarga": es_descarga,
         "fase": fase,
         "coach_tip": _coach_tip(fase, km_real, len(sesiones)),
+        "ciclo_override_manual": conn.execute(
+            "SELECT 1 FROM ciclo_overrides WHERE usuario_id = ? AND semana_inicio = ?",
+            (usuario_id, fecha_inicio),
+        ).fetchone() is not None,
     }
+    conn.close()
+    return _respuesta_plan_semana
+
+
+class CicloOverrideRequest(BaseModel):
+    semana_inicio: str  # lunes de la semana, "YYYY-MM-DD"
+    etiqueta: str  # "carga1" | "carga2" | "carga3" | "descarga"
+
+
+@router.post("/{usuario_id}/ciclo-override")
+def set_ciclo_override(usuario_id: int, body: CicloOverrideRequest):
+    """Fija manualmente el tipo de una semana (pastilla del calendario) y reescribe
+    el ciclo carga/descarga hacia adelante desde ahí (el pasado no se toca). Ej.: si
+    la semana 3 de carga se marca como Descarga, la siguiente semana pasa a ser
+    Carga 1, la de después Carga 2, etc."""
+    etiqueta = body.etiqueta.strip().lower()
+    if etiqueta not in _ETIQUETA_A_POS:
+        raise HTTPException(status_code=400, detail="Etiqueta inválida. Usa carga1, carga2, carga3 o descarga.")
+    try:
+        datetime.strptime(body.semana_inicio, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Formato fecha inválido (YYYY-MM-DD)")
+
+    conn = get_db()
+    conn.execute(
+        "INSERT OR REPLACE INTO ciclo_overrides (usuario_id, semana_inicio, pos, creado_en) VALUES (?, ?, ?, ?)",
+        (usuario_id, body.semana_inicio, _ETIQUETA_A_POS[etiqueta], datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@router.delete("/{usuario_id}/ciclo-override/{semana_inicio}")
+def borrar_ciclo_override(usuario_id: int, semana_inicio: str):
+    """Quita el override manual de esa semana; vuelve a calcularse automáticamente."""
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM ciclo_overrides WHERE usuario_id = ? AND semana_inicio = ?",
+        (usuario_id, semana_inicio),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
 
 
 @router.patch("/sesion/{sesion_id}")
@@ -729,7 +814,8 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
     semana_iso = fecha_inicio.isocalendar()[1]
     volumen_congelado = False
     v2_info = _calcular_macrociclo_v2(
-        fecha_inicio, fecha_inicio_entreno_str, fecha_objetivo_intermedio_str, fecha_objetivo_str
+        fecha_inicio, fecha_inicio_entreno_str, fecha_objetivo_intermedio_str, fecha_objetivo_str,
+        conn, usuario_id,
     )
     dias_hasta_objetivo = None  # usado en el texto de tapering del camino antiguo
 
@@ -747,7 +833,7 @@ def generar_semana(usuario_id: int, body: GenerarSemanaRequest):
             sesion_calidad_impar, sesion_calidad_par = "Intervalos_VO2max", "Tempo_Largo"
         tipo_calidad = sesion_calidad_impar if semanas_en_macro % 2 != 0 else sesion_calidad_par
     else:
-        pos_ciclo = _posicion_ciclo(fecha_inicio)
+        pos_ciclo = _posicion_ciclo(fecha_inicio, conn, usuario_id)
         es_descarga = (pos_ciclo == 3)
         semanas_desde_descarga = pos_ciclo + 1
         ciclo_label = _etiqueta_ciclo(pos_ciclo)
@@ -1341,7 +1427,10 @@ def regenerar_total(usuario_id: int, body: RegenerarTotalRequest):
     for n in range(body.semanas):
         fecha_sem_dt = semana_actual + timedelta(weeks=n)
         fecha_sem = fecha_sem_dt.strftime("%Y-%m-%d")
-        v2_info = _calcular_macrociclo_v2(fecha_sem_dt, fecha_inicio_entreno_regen, fecha_inter_regen, fecha_objetivo_regen)
+        v2_info = _calcular_macrociclo_v2(
+            fecha_sem_dt, fecha_inicio_entreno_regen, fecha_inter_regen, fecha_objetivo_regen,
+            conn, usuario_id,
+        )
 
         if v2_info:
             es_descarga = v2_info["es_descarga"]
@@ -1360,7 +1449,7 @@ def regenerar_total(usuario_id: int, body: RegenerarTotalRequest):
             else:
                 km_sem = round(km_base * (1.10 ** n), 1)
         else:
-            es_descarga = (_posicion_ciclo(fecha_sem_dt) == 3)
+            es_descarga = (_posicion_ciclo(fecha_sem_dt, conn, usuario_id) == 3)
             dias_obj = None
             if fecha_objetivo_regen:
                 try:

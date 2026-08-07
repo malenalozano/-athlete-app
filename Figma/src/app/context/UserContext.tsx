@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { createContext, useContext, useState, ReactNode } from "react";
 
 interface UserContextType {
   userId: number | null;
@@ -10,19 +10,16 @@ interface UserContextType {
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [userId, setUserId] = useState<number | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
-
-  // Cargar usuario guardado del localStorage
-  useEffect(() => {
-    const savedUserId = localStorage.getItem("athleteUserId");
-    const savedUserName = localStorage.getItem("athleteUserName");
-    
-    if (savedUserId && savedUserName) {
-      setUserId(parseInt(savedUserId));
-      setUserName(savedUserName);
-    }
-  }, []);
+  // Lectura sincrona (lazy init) para que el usuario ya este disponible en el
+  // primer render — evita un ciclo de render "sin usuario" que retrasaba
+  // todas las cargas de datos de las paginas.
+  const [userId, setUserId] = useState<number | null>(() => {
+    const saved = localStorage.getItem("athleteUserId");
+    return saved ? parseInt(saved) : null;
+  });
+  const [userName, setUserName] = useState<string | null>(() => {
+    return localStorage.getItem("athleteUserName");
+  });
 
   const setUser = (id: number, name: string) => {
     setUserId(id);

@@ -8,11 +8,14 @@ import { RUNNING_TIPOS } from "../lib/running";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import {
   getPlanSemana, actualizarSesion, actualizarSesionCompleta, crearSesion, borrarSesion,
-  generarPlanSemana, regenerarPlanTotal,
+  generarPlanSemana, regenerarPlanTotal, fijarCicloOverride, quitarCicloOverride,
   getActividades, getDiarioBiometrico, getEjercicios, getDashboard, registrarSesionFuerza,
   type PlanSemana, type SesionPlan, type ActividadGarmin, type EntradaBiometrica, type DashboardData,
-  type GrupoFuerza, type EjercicioBiblioteca, type RegistroEjercicioInput,
+  type GrupoFuerza, type EjercicioBiblioteca, type RegistroEjercicioInput, type CicloOverride,
 } from "../api";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
+} from "../components/ui/dropdown-menu";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { TouchBackend } from "react-dnd-touch-backend";
 import {
@@ -1899,6 +1902,8 @@ function GenerarPlanInner() {
     [days, planData]
   );
 
+  const [cambiandoCiclo, setCambiandoCiclo] = useState(false);
+
   const loadPlan = useCallback((weekOffset: number) => {
     if (!userId) return;
     const semanaInicio = getWeekStart(weekOffset);
@@ -1913,6 +1918,30 @@ function GenerarPlanInner() {
         setDays(buildEmptyWeek());
       });
   }, [userId]);
+
+  const handleCambiarCiclo = useCallback((etiqueta: CicloOverride) => {
+    if (!userId || !planData?.semana_inicio || cambiandoCiclo) return;
+    setCambiandoCiclo(true);
+    fijarCicloOverride(userId, planData.semana_inicio, etiqueta)
+      .then(() => {
+        loadPlan(currentWeek);
+        loadMonthCalendar(currentWeek);
+      })
+      .catch(() => setRegenMsg("No se pudo cambiar el tipo de semana."))
+      .finally(() => setCambiandoCiclo(false));
+  }, [userId, planData?.semana_inicio, cambiandoCiclo, currentWeek, loadPlan, loadMonthCalendar]);
+
+  const handleQuitarOverrideCiclo = useCallback(() => {
+    if (!userId || !planData?.semana_inicio || cambiandoCiclo) return;
+    setCambiandoCiclo(true);
+    quitarCicloOverride(userId, planData.semana_inicio)
+      .then(() => {
+        loadPlan(currentWeek);
+        loadMonthCalendar(currentWeek);
+      })
+      .catch(() => setRegenMsg("No se pudo quitar el override."))
+      .finally(() => setCambiandoCiclo(false));
+  }, [userId, planData?.semana_inicio, cambiandoCiclo, currentWeek, loadPlan, loadMonthCalendar]);
 
   const loadMonthCalendar = useCallback((weekOffset: number) => {
     if (!userId) return;
@@ -2190,15 +2219,36 @@ function GenerarPlanInner() {
                 </Badge>
               )}
               {planData?.ciclo_label && (
-                <Badge
-                  className={
-                    planData.ciclo_label === "Descarga"
-                      ? "bg-green-400/20 text-green-300 border-green-500/30 text-xs"
-                      : "bg-blue-400/20 text-blue-300 border-blue-500/30 text-xs"
-                  }
-                >
-                  {planData.ciclo_label}
-                </Badge>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" disabled={cambiandoCiclo} className="cursor-pointer disabled:opacity-50">
+                      <Badge
+                        className={
+                          planData.ciclo_label === "Descarga"
+                            ? "bg-green-400/20 text-green-300 border-green-500/30 text-xs hover:bg-green-400/30"
+                            : "bg-blue-400/20 text-blue-300 border-blue-500/30 text-xs hover:bg-blue-400/30"
+                        }
+                      >
+                        {planData.ciclo_label}{planData.ciclo_override_manual ? " ✎" : ""}
+                      </Badge>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="bg-[#161B22] border-[#30363D] text-white">
+                    {(["carga1", "carga2", "carga3", "descarga"] as CicloOverride[]).map((etq) => (
+                      <DropdownMenuItem key={etq} onClick={() => handleCambiarCiclo(etq)}>
+                        {etq === "descarga" ? "Descarga" : `Carga ${etq.slice(-1)}`}
+                      </DropdownMenuItem>
+                    ))}
+                    {planData.ciclo_override_manual && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={handleQuitarOverrideCiclo}>
+                          Volver a automático
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
               <Badge className="bg-green-400/20 text-green-300 border-green-500/30 text-xs">
                 Plan Activo ✓
