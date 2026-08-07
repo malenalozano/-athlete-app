@@ -206,6 +206,10 @@ _SCHEMA = [
         usuario_id INTEGER, semana_inicio TEXT, pos INTEGER, creado_en TEXT,
         PRIMARY KEY (usuario_id, semana_inicio)
     )""",
+    """CREATE TABLE IF NOT EXISTS macrociclo_overrides (
+        usuario_id INTEGER, macrociclo INTEGER, semana_inicio TEXT, creado_en TEXT,
+        PRIMARY KEY (usuario_id, macrociclo)
+    )""",
     """CREATE TABLE IF NOT EXISTS sesiones_fuerza (
         id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER, fecha TEXT,
         nota_original TEXT, resumen TEXT, created_at TEXT,

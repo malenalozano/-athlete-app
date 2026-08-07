@@ -23,7 +23,8 @@ import {
   actualizarSesionCompleta, aplicarSemanaGenerada, borrarSesion, clasificarActividadExtra, crearSesion, generarPlanSemana,
   getDashboard, getPlanCompleto, getPlanSemana, importarPlanCsv, regenerarPlanTotal, sincronizarGarmin,
   fijarCicloOverride, quitarCicloOverride,
-  type ActividadGarmin, type CicloOverride, type DashboardData, type PlanCompleto, type SesionGenerada, type SesionPlan,
+  obtenerMacrociclos, fijarMacrocicloOverride, quitarMacrocicloOverride,
+  type ActividadGarmin, type CicloOverride, type DashboardData, type MacrocicloInfo, type PlanCompleto, type SesionGenerada, type SesionPlan,
 } from "../api";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
@@ -1259,6 +1260,9 @@ function WeeklyView({
   const [isAdding, setIsAdding] = useState(false);
   const [classifyingExtra, setClassifyingExtra] = useState<Session | null>(null);
   const [cambiandoCiclo, setCambiandoCiclo] = useState(false);
+  const [macrociclos, setMacrociclos] = useState<MacrocicloInfo[] | null>(null);
+  const [cargandoMacrociclos, setCargandoMacrociclos] = useState(false);
+  const [editandoMacrociclo, setEditandoMacrociclo] = useState<number | null>(null);
   const todayRef = useRef<HTMLDivElement | null>(null);
   const daysScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -1279,6 +1283,25 @@ function WeeklyView({
       .finally(() => setCambiandoCiclo(false));
   };
 
+  const cargarMacrociclos = () => {
+    setCargandoMacrociclos(true);
+    obtenerMacrociclos(userId, toISODate(monday))
+      .then(d => setMacrociclos(d.macrociclos))
+      .catch(() => showToast("No se pudieron cargar los macrociclos.", "error"))
+      .finally(() => setCargandoMacrociclos(false));
+  };
+  const handleGuardarInicioMacrociclo = (macrociclo: number, semanaInicio: string) => {
+    fijarMacrocicloOverride(userId, macrociclo, semanaInicio)
+      .then(() => { cargarMacrociclos(); onApplied(); })
+      .catch(() => showToast("No se pudo cambiar el macrociclo.", "error"))
+      .finally(() => setEditandoMacrociclo(null));
+  };
+  const handleQuitarOverrideMacrociclo = (macrociclo: number) => {
+    quitarMacrocicloOverride(userId, macrociclo)
+      .then(() => { cargarMacrociclos(); onApplied(); })
+      .catch(() => showToast("No se pudo quitar el override.", "error"));
+  };
+
   const avisoDistribucion = weekMeta.distribucion && weekMeta.distribucion.includes("⚠️") ? weekMeta.distribucion : null;
   const macrocicloNum = parseInt(weekMeta.macrocicloLabel.replace("M", ""), 10) || 1;
   const avisosSeparacion = useMemo(() => checkSeparaciones(sessions, macrocicloNum), [sessions, macrocicloNum]);
@@ -1297,11 +1320,61 @@ function WeeklyView({
       {/* TopBar */}
       <header className="px-5 py-3 shrink-0 flex items-center justify-between gap-2" style={{ background: T.bgSurf, borderBottom: `1px solid ${T.border}80` }}>
         <div className="flex items-center gap-2">
-          {/* Pastilla macrociclo */}
-          <span className="text-[10px] px-3 py-2 rounded-full font-black"
-            style={{ background: "rgba(168,85,247,0.15)", color: "#c084fc", border: "1px solid #a855f750" }}>
-            {weekMeta.macrocicloLabel}
-          </span>
+          {/* Pastilla macrociclo — clicable: muestra M1-M4 con sus semanas y
+              permite mover a mano en qué semana empieza cada uno (no toca las
+              fechas de las carreras, solo dónde caen los límites) */}
+          <DropdownMenu onOpenChange={(open) => { if (open) { setEditandoMacrociclo(null); cargarMacrociclos(); } }}>
+            <DropdownMenuTrigger asChild>
+              <button type="button">
+                <span className="text-[10px] px-3 py-2 rounded-full font-black cursor-pointer"
+                  style={{ background: "rgba(168,85,247,0.15)", color: "#c084fc", border: "1px solid #a855f750" }}>
+                  {weekMeta.macrocicloLabel}
+                </span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="bg-[#161B22] border-[#30363D] text-white w-64">
+              {cargandoMacrociclos && !macrociclos && (
+                <p className="px-2 py-1.5 text-[10px]" style={{ color: T.text3 }}>Cargando…</p>
+              )}
+              {macrociclos === null && !cargandoMacrociclos && (
+                <p className="px-2 py-1.5 text-[10px]" style={{ color: T.text3 }}>
+                  Configura la carrera intermedia en tu perfil para editar macrociclos.
+                </p>
+              )}
+              {macrociclos?.map(m => (
+                <div key={m.macrociclo} className="px-2 py-1.5 rounded-md"
+                  style={m.activo ? { background: "rgba(168,85,247,0.12)" } : undefined}
+                  onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-black" style={{ color: m.activo ? "#c084fc" : T.text1 }}>
+                      M{m.macrociclo} · {m.nombre}
+                    </span>
+                    {m.override_manual && (
+                      <button type="button" className="text-[9px] font-bold underline"
+                        style={{ color: T.text3 }}
+                        onClick={() => handleQuitarOverrideMacrociclo(m.macrociclo)}>
+                        automático
+                      </button>
+                    )}
+                  </div>
+                  {editandoMacrociclo === m.macrociclo ? (
+                    <input type="date" autoFocus defaultValue={m.semana_inicio}
+                      className="mt-1 w-full text-[10px] px-2 py-1 rounded-md"
+                      style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }}
+                      onClick={(e) => e.stopPropagation()}
+                      onBlur={(e) => { if (e.target.value) handleGuardarInicioMacrociclo(m.macrociclo, e.target.value); else setEditandoMacrociclo(null); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditandoMacrociclo(null); }} />
+                  ) : (
+                    <button type="button" className="mt-0.5 text-[10px] font-semibold"
+                      style={{ color: T.text2 }}
+                      onClick={() => setEditandoMacrociclo(m.macrociclo)}>
+                      {format(parseISO(m.semana_inicio), "d MMM", { locale: es })} → {format(parseISO(m.semana_fin), "d MMM", { locale: es })} · {m.semanas_totales} sem
+                    </button>
+                  )}
+                </div>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           {/* Chip próximo hito */}
           {weekMeta.proximoHitoNombre && weekMeta.semanasHastaHito !== null && (
             <span className="text-[10px] px-2.5 py-2 rounded-full font-bold" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>

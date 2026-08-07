@@ -311,6 +311,35 @@ export function quitarCicloOverride(usuarioId: number, semanaInicio: string) {
   });
 }
 
+export type MacrocicloInfo = {
+  macrociclo: number;
+  nombre: string;
+  semana_inicio: string;
+  semana_fin: string;
+  semanas_totales: number;
+  activo: boolean;
+  override_manual: boolean;
+};
+
+export function obtenerMacrociclos(usuarioId: number, fechaInicio: string) {
+  return req<{ disponible: boolean; macrociclo_activo?: number; macrociclos: MacrocicloInfo[] }>(
+    `/plan/${usuarioId}/macrociclos?fecha_inicio=${fechaInicio}`
+  );
+}
+
+export function fijarMacrocicloOverride(usuarioId: number, macrociclo: number, semanaInicio: string) {
+  return req<{ ok: boolean }>(`/plan/${usuarioId}/macrociclo-override/${macrociclo}`, {
+    method: "POST",
+    body: JSON.stringify({ semana_inicio: semanaInicio }),
+  });
+}
+
+export function quitarMacrocicloOverride(usuarioId: number, macrociclo: number) {
+  return req<{ ok: boolean }>(`/plan/${usuarioId}/macrociclo-override/${macrociclo}`, {
+    method: "DELETE",
+  });
+}
+
 export function aplicarSemanaGenerada(usuarioId: number, fechaInicio: string, sesiones: SesionGenerada[]) {
   return req<{ ok: boolean; sesiones_aplicadas: number }>(`/plan/${usuarioId}/aplicar-semana`, {
     method: "POST",

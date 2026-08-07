@@ -111,6 +111,23 @@ def _etiqueta_ciclo(pos: int) -> str:
 _ETIQUETA_A_POS = {"carga1": 0, "carga2": 1, "carga3": 2, "descarga": 3}
 
 
+def _obtener_overrides_macrociclo(conn, usuario_id: int) -> dict[int, datetime]:
+    """Fechas de inicio (lunes) fijadas a mano por el usuario para cada macrociclo,
+    vía la pastilla MX del calendario. Solo las que el usuario haya tocado están
+    en la tabla — el resto sigue calculándose a partir de las carreras."""
+    rows = conn.execute(
+        "SELECT macrociclo, semana_inicio FROM macrociclo_overrides WHERE usuario_id = ?",
+        (usuario_id,),
+    ).fetchall()
+    overrides = {}
+    for macro, semana_inicio in rows:
+        try:
+            overrides[int(macro)] = datetime.strptime(semana_inicio, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            continue
+    return overrides
+
+
 def _calcular_macrociclo_v2(
     fecha_inicio: datetime,
     plan_start_str: str | None,
@@ -124,9 +141,12 @@ def _calcular_macrociclo_v2(
     el usuario no tiene configurada la carrera intermedia, para que el caller use la
     lógica antigua de un solo objetivo (por mes).
 
-    M1 = semanas 1-4 del plan (fijo). M2 = desde semana 5 hasta el taper de la
-    intermedia. M3 = desde la semana siguiente a la intermedia hasta el taper del
-    objetivo final. M4 = las 3 semanas de taper antes del objetivo final.
+    Por defecto: M1 = semanas 1-4 del plan (fijo). M2 = desde semana 5 hasta el
+    taper de la intermedia. M3 = desde la semana siguiente a la intermedia hasta
+    el taper del objetivo final. M4 = las 3 semanas de taper antes del objetivo
+    final. El usuario puede mover a mano la semana de inicio de cada macrociclo
+    desde la pastilla MX (tabla macrociclo_overrides) — eso pisa estos límites
+    por defecto sin tocar las fechas de las carreras.
     """
     if not f_final_str or not f_inter_str:
         return None
@@ -146,47 +166,58 @@ def _calcular_macrociclo_v2(
         plan_start = f_inter - timedelta(weeks=14)  # fallback: 14 semanas de base a la intermedia
 
     monday_plan_start = plan_start - timedelta(days=plan_start.weekday())
-    semana_num = max(1, (fecha_inicio - monday_plan_start).days // 7 + 1)
+    race_week_monday = f_inter - timedelta(days=f_inter.weekday())
+    taper3_start_monday = f_final - timedelta(days=f_final.weekday()) - timedelta(weeks=3)
+    final_week_monday = f_final - timedelta(days=f_final.weekday())
+
+    limites_defecto = {
+        1: monday_plan_start,
+        2: monday_plan_start + timedelta(weeks=4),
+        3: race_week_monday + timedelta(weeks=1),
+        4: taper3_start_monday,
+    }
+    overrides = _obtener_overrides_macrociclo(conn, usuario_id) if conn is not None and usuario_id is not None else {}
+    limites = {k: overrides.get(k, v) for k, v in limites_defecto.items()}
+
+    semana_num = max(1, (fecha_inicio - limites[1]).days // 7 + 1)
 
     dias_inter = (f_inter - fecha_inicio).days
     dias_final = (f_final - fecha_inicio).days
 
-    macrociclo: int
-    sub_fase: str | None = None
     proximo_hito: str | None = None
     semanas_hasta_hito: int | None = None
-
     if dias_inter >= 0:
         proximo_hito, semanas_hasta_hito = "intermedia", dias_inter // 7
-        if dias_inter <= 6:
-            macrociclo, sub_fase = 2, "Semana de carrera"
-        elif dias_inter <= 13:
-            macrociclo, sub_fase = 2, "Taper corto"
-        elif semana_num <= 4:
-            macrociclo = 1
-        else:
-            macrociclo = 2
     elif dias_final >= 0:
         proximo_hito, semanas_hasta_hito = "final", dias_final // 7
+
+    # Macrociclo activo = el de mayor número cuyo límite de inicio ya se alcanzó.
+    macrociclo = 1
+    for num in (2, 3, 4):
+        if fecha_inicio >= limites[num]:
+            macrociclo = num
+
+    sub_fase: str | None = None
+    if macrociclo == 4:
         if dias_final <= 6:
-            macrociclo, sub_fase = 4, "Semana de carrera"
+            sub_fase = "Semana de carrera"
         elif dias_final <= 13:
-            macrociclo, sub_fase = 4, "Taper -2"
+            sub_fase = "Taper -2"
         elif dias_final <= 20:
-            macrociclo, sub_fase = 4, "Taper -3"
+            sub_fase = "Taper -3"
         else:
-            macrociclo = 3
-    else:
-        macrociclo, sub_fase = 4, "Semana de carrera"  # objetivo final ya pasado
+            sub_fase = "Tapering"
+    elif macrociclo == 2 and dias_inter <= 13:
+        sub_fase = "Semana de carrera" if dias_inter <= 6 else "Taper corto"
 
     if macrociclo == 1:
         semana_en_macro = semana_num
     elif macrociclo == 2:
-        semana_en_macro = max(1, semana_num - 4)
+        semana_en_macro = max(1, (fecha_inicio - limites[2]).days // 7 + 1)
     elif macrociclo == 3:
-        semana_en_macro = max(1, (fecha_inicio - f_inter).days // 7 + 1)
+        semana_en_macro = max(1, (fecha_inicio - limites[3]).days // 7 + 1)
     else:
-        semana_en_macro = 1
+        semana_en_macro = max(1, (fecha_inicio - limites[4]).days // 7 + 1)
 
     if macrociclo == 3:
         # Ciclo especial 2 semanas de carga + 1 de descarga
@@ -212,13 +243,15 @@ def _calcular_macrociclo_v2(
             es_descarga = pos == 3
             ciclo_label = "Descarga" if es_descarga else f"Carga {pos + 1}"
 
-    # Duración total de cada macrociclo (en semanas), para la barra de progreso.
-    # M1 y M4 son fijos; M2/M3 dependen de la distancia real entre las dos carreras.
-    race_week_monday = f_inter - timedelta(days=f_inter.weekday())
-    taper3_start_monday = f_final - timedelta(days=f_final.weekday()) - timedelta(weeks=3)
-    semanas_m2 = max(1, (race_week_monday - monday_plan_start).days // 7 + 1 - 4)
-    semanas_m3 = max(1, (taper3_start_monday - (race_week_monday + timedelta(weeks=1))).days // 7 + 1)
-    semanas_por_macrociclo = {1: 4, 2: semanas_m2, 3: semanas_m3, 4: 3}
+    # Duración total de cada macrociclo (en semanas), para la barra de progreso y
+    # para la pastilla MX. M1..M3 = distancia hasta el límite siguiente; M4 = hasta
+    # la semana de la carrera final (incluida).
+    semanas_por_macrociclo = {
+        1: max(1, (limites[2] - limites[1]).days // 7),
+        2: max(1, (limites[3] - limites[2]).days // 7),
+        3: max(1, (limites[4] - limites[3]).days // 7),
+        4: max(1, (final_week_monday + timedelta(weeks=1) - limites[4]).days // 7),
+    }
 
     return {
         "macrociclo": macrociclo,
@@ -231,6 +264,8 @@ def _calcular_macrociclo_v2(
         "semanas_por_macrociclo": semanas_por_macrociclo,
         "proximo_hito": proximo_hito,
         "semanas_hasta_hito": semanas_hasta_hito,
+        "limites_macrociclo": {k: v.strftime("%Y-%m-%d") for k, v in limites.items()},
+        "macrociclo_overrides_manual": sorted(overrides.keys()),
     }
 
 
@@ -573,6 +608,96 @@ def borrar_ciclo_override(usuario_id: int, semana_inicio: str):
     conn.execute(
         "DELETE FROM ciclo_overrides WHERE usuario_id = ? AND semana_inicio = ?",
         (usuario_id, semana_inicio),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+_NOMBRE_MACROCICLO = {1: "Base", 2: "Umbral", 3: "Específico", 4: "Tapering"}
+
+
+@router.get("/{usuario_id}/macrociclos")
+def get_macrociclos(usuario_id: int, fecha_inicio: str):
+    """Lista M1-M4 con su semana de inicio/fin (fecha y nº de semana del plan) para
+    la pastilla MX del calendario. fecha_inicio ancla qué macrociclo está "activo"."""
+    conn = get_db()
+    try:
+        inicio = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+    except ValueError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Formato fecha inválido (YYYY-MM-DD)")
+
+    perfil_row = conn.execute(
+        """SELECT objetivo_tipo, fecha_objetivo, fcmax, fecha_inicio_entrenamiento,
+                  fecha_objetivo_intermedio, objetivo_intermedio_nombre
+           FROM usuarios WHERE id = ?""",
+        (usuario_id,),
+    ).fetchone()
+    if not perfil_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    v2_info = _calcular_macrociclo_v2(
+        inicio, perfil_row[3], perfil_row[4], perfil_row[1], conn, usuario_id,
+    )
+    conn.close()
+    if not v2_info:
+        return {"disponible": False, "macrociclos": []}
+
+    limites = v2_info["limites_macrociclo"]
+    semanas = v2_info["semanas_por_macrociclo"]
+    overrides_manual = set(v2_info["macrociclo_overrides_manual"])
+    macrociclos = []
+    for num in (1, 2, 3, 4):
+        d_inicio = datetime.strptime(limites[num], "%Y-%m-%d")
+        d_fin = d_inicio + timedelta(weeks=semanas[num]) - timedelta(days=1)
+        macrociclos.append({
+            "macrociclo": num,
+            "nombre": _NOMBRE_MACROCICLO[num],
+            "semana_inicio": limites[num],
+            "semana_fin": d_fin.strftime("%Y-%m-%d"),
+            "semanas_totales": semanas[num],
+            "activo": num == v2_info["macrociclo"],
+            "override_manual": num in overrides_manual,
+        })
+    return {"disponible": True, "macrociclo_activo": v2_info["macrociclo"], "macrociclos": macrociclos}
+
+
+class MacrocicloOverrideRequest(BaseModel):
+    semana_inicio: str  # lunes de la semana en que pasa a empezar ese macrociclo, "YYYY-MM-DD"
+
+
+@router.post("/{usuario_id}/macrociclo-override/{macrociclo}")
+def set_macrociclo_override(usuario_id: int, macrociclo: int, body: MacrocicloOverrideRequest):
+    """Fija a mano en qué semana empieza un macrociclo (pastilla MX del calendario).
+    No toca las fechas de las carreras — solo dónde caen los límites M1/M2/M3/M4."""
+    if macrociclo not in (1, 2, 3, 4):
+        raise HTTPException(status_code=400, detail="Macrociclo inválido. Usa 1, 2, 3 o 4.")
+    try:
+        fecha = datetime.strptime(body.semana_inicio, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Formato fecha inválido (YYYY-MM-DD)")
+    semana_inicio_lunes = (fecha - timedelta(days=fecha.weekday())).strftime("%Y-%m-%d")
+
+    conn = get_db()
+    conn.execute(
+        "INSERT OR REPLACE INTO macrociclo_overrides (usuario_id, macrociclo, semana_inicio, creado_en) VALUES (?, ?, ?, ?)",
+        (usuario_id, macrociclo, semana_inicio_lunes, datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@router.delete("/{usuario_id}/macrociclo-override/{macrociclo}")
+def borrar_macrociclo_override(usuario_id: int, macrociclo: int):
+    """Quita el override manual de ese macrociclo; su inicio vuelve a calcularse
+    automáticamente a partir de las fechas de las carreras."""
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM macrociclo_overrides WHERE usuario_id = ? AND macrociclo = ?",
+        (usuario_id, macrociclo),
     )
     conn.commit()
     conn.close()
