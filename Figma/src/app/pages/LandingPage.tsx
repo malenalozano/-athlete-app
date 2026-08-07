@@ -24,7 +24,7 @@ import {
   getDashboard, getPlanCompleto, getPlanSemana, importarPlanCsv, regenerarPlanTotal, sincronizarGarmin,
   fijarCicloOverride, quitarCicloOverride,
   obtenerMacrociclos, fijarMacrocicloOverride, quitarMacrocicloOverride,
-  type ActividadGarmin, type CicloOverride, type DashboardData, type MacrocicloInfo, type PlanCompleto, type SesionGenerada, type SesionPlan,
+  type ActividadGarmin, type CicloOverride, type DashboardData, type MacrocicloInfo, type PlanCompleto, type PlanSemana, type SesionGenerada, type SesionPlan,
 } from "../api";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
@@ -2146,19 +2146,22 @@ function PlanControlCard({ plan, todayIso, userId }: { plan: PlanCompleto; today
   const monday = parseISO(w.semana_inicio);
   const sunday = addDays(monday, 6);
 
-  // es_descarga real (motor de planificación) — no se puede deducir en el
-  // cliente porque depende del macrociclo y de overrides manuales guardados.
-  const [esDescarga, setEsDescarga] = useState<boolean | null>(null);
+  // Datos reales de la semana (motor de planificación) — ciclo_label, es_descarga
+  // y km totales no se pueden deducir en el cliente: dependen del macrociclo y
+  // de overrides manuales guardados en el backend.
+  const [semanaInfo, setSemanaInfo] = useState<PlanSemana | null>(null);
   useEffect(() => {
     let cancelled = false;
-    setEsDescarga(null);
+    setSemanaInfo(null);
     getPlanSemana(userId, w.semana_inicio)
-      .then(res => { if (!cancelled) setEsDescarga(res.es_descarga); })
-      .catch(() => { if (!cancelled) setEsDescarga(null); });
+      .then(res => { if (!cancelled) setSemanaInfo(res); })
+      .catch(() => { if (!cancelled) setSemanaInfo(null); });
     return () => { cancelled = true; };
   }, [userId, w.semana_inicio]);
 
+  const esDescarga = semanaInfo ? semanaInfo.es_descarga : null;
   const checks = useMemo(() => calcularControlSemana(semanas, clampedIdx, esDescarga), [semanas, clampedIdx, esDescarga]);
+  const kmTotales = semanaInfo ? semanaInfo.stats.km_planificados : w.km_planificados;
 
   return (
     <div className="rounded-2xl p-4 mb-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
@@ -2181,6 +2184,19 @@ function PlanControlCard({ plan, todayIso, userId }: { plan: PlanCompleto; today
             <ChevronRight className="w-3.5 h-3.5" style={{ color: T.text2 }} />
           </button>
         </div>
+      </div>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide"
+          style={{
+            background: esDescarga ? "rgba(56,189,248,0.12)" : "rgba(74,222,128,0.12)",
+            border: `1px solid ${esDescarga ? "rgba(56,189,248,0.35)" : "rgba(74,222,128,0.35)"}`,
+            color: esDescarga ? "#38bdf8" : "#4ade80",
+          }}>
+          {semanaInfo ? semanaInfo.ciclo_label : "Cargando…"}
+        </span>
+        <span className="px-2.5 py-1 rounded-lg text-[10px] font-black" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }}>
+          {kmTotales.toFixed(0)} km totales
+        </span>
       </div>
       <div className="space-y-2">
         {checks.map((c, i) => (
