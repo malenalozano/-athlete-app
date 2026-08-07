@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import {
   addDays, addMonths, addWeeks, differenceInCalendarDays, format,
-  getDay, isSameDay, parseISO, startOfMonth, startOfWeek,
+  getDay, getISOWeek, isSameDay, parseISO, startOfMonth, startOfWeek,
 } from "date-fns";
 import { es } from "date-fns/locale";
 import { useUser } from "../context/UserContext";
@@ -1944,6 +1944,146 @@ function PlanView({ userId, monday, onApplied, showToast }: {
 /** Gráfica arriba del todo de la pestaña "ojo": km reales (semanas ya
  * terminadas) o km planificados (semana actual sin terminar / futuras),
  * al estilo de "Volumen semanal" de la pestaña Progreso. */
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTROL DEL PLAN — 4 chequeos de NORMAS ENTRENAMIENTO.pdf sobre la semana
+// seleccionada: 80/20, TL 30-35%, progresión de carga/descarga y separación
+// TL/Calidad. "na" = no aplica (no hay datos suficientes esa semana).
+// ─────────────────────────────────────────────────────────────────────────────
+interface ControlCheck { ok: boolean; na?: boolean; label: string; detail: string; }
+
+function calcularControlSemana(semanas: PlanCompleto["semanas"], idx: number): ControlCheck[] {
+  const w = semanas[idx];
+  const runningSes = w.sesiones.filter(s => (s.tipo || "").toLowerCase() !== "fuerza");
+  const kmBy = (subs: string[]) => runningSes
+    .filter(s => subs.includes(classifySubtype(s.tipo, s.sesion)))
+    .reduce((a, s) => a + (s.km_planificados || 0), 0);
+  const kmCal = kmBy(["CAL"]);
+  const kmTL = kmBy(["TL"]);
+  const totalRunning = kmBy(["RB", "RG", "TL", "CAL"]);
+
+  // 1) Regla 80/20 — máx. 20% del volumen en sesiones de calidad
+  const check1: ControlCheck = totalRunning === 0
+    ? { ok: true, na: true, label: "Regla 80/20", detail: "Sin km planificados esta semana" }
+    : (() => {
+        const pctCal = kmCal / totalRunning;
+        return {
+          ok: pctCal <= 0.20 + 1e-6,
+          label: "Regla 80/20",
+          detail: pctCal <= 0.20
+            ? `Calidad: ${(pctCal * 100).toFixed(0)}% del volumen (máx. 20%)`
+            : `Calidad: ${(pctCal * 100).toFixed(0)}% del volumen — supera el 20% máximo`,
+        };
+      })();
+
+  // 2) TL debe ser 30-35% del volumen total
+  const minTL = totalRunning * 0.30, maxTL = totalRunning * 0.35;
+  const check2: ControlCheck = totalRunning === 0 || kmTL === 0
+    ? { ok: true, na: true, label: "TL entre 30-35% del volumen", detail: kmTL === 0 ? "No hay Tirada Larga esta semana" : "Sin km planificados esta semana" }
+    : (() => {
+        const pctTL = kmTL / totalRunning;
+        if (pctTL < 0.30 - 1e-6) {
+          return { ok: false, label: "TL entre 30-35% del volumen", detail: `TL al ${(pctTL * 100).toFixed(0)}% — faltan ${(minTL - kmTL).toFixed(1)} km para el mínimo` };
+        }
+        if (pctTL > 0.35 + 1e-6) {
+          return { ok: false, label: "TL entre 30-35% del volumen", detail: `TL al ${(pctTL * 100).toFixed(0)}% — sobran ${(kmTL - maxTL).toFixed(1)} km sobre el máximo` };
+        }
+        return { ok: true, label: "TL entre 30-35% del volumen", detail: `TL al ${(pctTL * 100).toFixed(0)}% del volumen semanal` };
+      })();
+
+  // 3) Progresión: +10% en semana de carga, -30% en semana de descarga (ISO week % 4 === 0)
+  const monday = parseISO(w.semana_inicio);
+  const esDescarga = getISOWeek(monday) % 4 === 0;
+  const label3 = esDescarga ? "Descarga: -30% vs. semana anterior" : "Progresión: +10% vs. semana anterior";
+  const prevRunning = idx > 0
+    ? semanas[idx - 1].sesiones.filter(s => (s.tipo || "").toLowerCase() !== "fuerza").reduce((a, s) => a + (s.km_planificados || 0), 0)
+    : 0;
+  const check3: ControlCheck = idx === 0 || prevRunning === 0
+    ? { ok: true, na: true, label: label3, detail: idx === 0 ? "Primera semana del plan, sin referencia" : "Semana anterior sin km planificados" }
+    : (() => {
+        const ratio = totalRunning / prevRunning;
+        if (esDescarga) {
+          const objetivo = prevRunning * 0.70;
+          const ok = totalRunning <= objetivo * 1.05;
+          const bajada = (1 - ratio) * 100;
+          return { ok, label: label3, detail: ok ? `${bajada.toFixed(0)}% menos que la semana anterior` : `Solo ${bajada.toFixed(0)}% menos que la semana anterior (objetivo -30%)` };
+        }
+        const objetivo = prevRunning * 1.10;
+        const ok = totalRunning >= objetivo * 0.95;
+        const subida = (ratio - 1) * 100;
+        return { ok, label: label3, detail: ok ? `${subida.toFixed(0)}% más que la semana anterior` : `Solo ${subida.toFixed(0)}% más que la semana anterior (objetivo +10%)` };
+      })();
+
+  // 4) TL separada al menos 3 días de la sesión de calidad (si la hay esa semana)
+  const tlSes = runningSes.filter(s => classifySubtype(s.tipo, s.sesion) === "TL");
+  const calSes = runningSes.filter(s => classifySubtype(s.tipo, s.sesion) === "CAL");
+  const check4: ControlCheck = tlSes.length === 0 || calSes.length === 0
+    ? { ok: true, na: true, label: "TL separada ≥3 días de Calidad", detail: calSes.length === 0 ? "No hay sesión de calidad esta semana" : "No hay Tirada Larga esta semana" }
+    : (() => {
+        let minGap = Infinity;
+        for (const tl of tlSes) for (const cal of calSes) {
+          const gap = Math.abs(differenceInCalendarDays(parseISO(tl.fecha), parseISO(cal.fecha)));
+          if (gap < minGap) minGap = gap;
+        }
+        const ok = minGap >= 3;
+        return { ok, label: "TL separada ≥3 días de Calidad", detail: ok ? `Separadas por ${minGap} días` : `Solo ${minGap} día${minGap === 1 ? "" : "s"} de separación (mínimo 3)` };
+      })();
+
+  return [check1, check2, check3, check4];
+}
+
+function PlanControlCard({ plan, todayIso }: { plan: PlanCompleto; todayIso: string }) {
+  const semanas = plan.semanas;
+  const currentIdx = semanas.findIndex(w => {
+    const monday = parseISO(w.semana_inicio);
+    return todayIso >= w.semana_inicio && todayIso <= toISODate(addDays(monday, 6));
+  });
+  const [idx, setIdx] = useState(currentIdx >= 0 ? currentIdx : 0);
+  const clampedIdx = Math.min(Math.max(idx, 0), semanas.length - 1);
+  const w = semanas[clampedIdx];
+  const monday = parseISO(w.semana_inicio);
+  const sunday = addDays(monday, 6);
+  const checks = useMemo(() => calcularControlSemana(semanas, clampedIdx), [semanas, clampedIdx]);
+
+  return (
+    <div className="rounded-2xl p-4 mb-4" style={{ background: "rgba(2,6,23,0.5)", border: `1px solid ${T.border}80` }}>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide" style={{ color: T.text2 }}>Control del plan</h3>
+          <p className="text-[10px] font-medium mt-0.5" style={{ color: T.text3 }}>
+            Semana {clampedIdx + 1} · {format(monday, "d", { locale: es })}-{capitalize(format(sunday, "d MMM", { locale: es }))}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={clampedIdx === 0}
+            className="w-6 h-6 rounded-md flex items-center justify-center disabled:opacity-30"
+            style={{ background: T.bgApp, border: `1px solid ${T.border}` }}>
+            <ChevronLeft className="w-3.5 h-3.5" style={{ color: T.text2 }} />
+          </button>
+          <button type="button" onClick={() => setIdx(i => Math.min(semanas.length - 1, i + 1))} disabled={clampedIdx === semanas.length - 1}
+            className="w-6 h-6 rounded-md flex items-center justify-center disabled:opacity-30"
+            style={{ background: T.bgApp, border: `1px solid ${T.border}` }}>
+            <ChevronRight className="w-3.5 h-3.5" style={{ color: T.text2 }} />
+          </button>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {checks.map((c, i) => (
+          <div key={i} className="rounded-xl px-3 py-2.5" style={{
+            background: c.na ? "rgba(255,255,255,0.03)" : c.ok ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.1)",
+            border: `1px solid ${c.na ? T.border : c.ok ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.4)"}`,
+          }}>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.na ? T.text3 : c.ok ? "#4ade80" : "#f87171" }} />
+              <span className="text-[11px] font-black" style={{ color: T.text1 }}>{c.label}</span>
+            </div>
+            <p className="text-[10px] font-semibold mt-1 ml-4" style={{ color: c.na ? T.text3 : c.ok ? "#86efac" : "#fca5a5" }}>{c.detail}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const PLAN_VOLUMEN_WINDOW = 5;
 
 function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: string }) {
@@ -2034,6 +2174,7 @@ function PlanMetricas({ plan, todayIso }: { plan: PlanCompleto; todayIso: string
 
   return (
     <>
+    <PlanControlCard plan={plan} todayIso={todayIso} />
     <PlanVolumenChart plan={plan} todayIso={todayIso} />
     <div className="rounded-2xl p-4" style={{ border: `1px solid ${T.border}`, background: "rgba(15,23,42,0.6)" }}>
       <div className="flex items-center gap-4 mb-3">
