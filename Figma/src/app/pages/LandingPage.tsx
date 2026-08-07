@@ -1208,10 +1208,21 @@ function WeeklyView({
   const [reorderingSession, setReorderingSession] = useState<Session | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [classifyingExtra, setClassifyingExtra] = useState<Session | null>(null);
+  const todayRef = useRef<HTMLDivElement | null>(null);
+  const daysScrollRef = useRef<HTMLDivElement | null>(null);
 
   const avisoDistribucion = weekMeta.distribucion && weekMeta.distribucion.includes("⚠️") ? weekMeta.distribucion : null;
   const macrocicloNum = parseInt(weekMeta.macrocicloLabel.replace("M", ""), 10) || 1;
   const avisosSeparacion = useMemo(() => checkSeparaciones(sessions, macrocicloNum), [sessions, macrocicloNum]);
+
+  // Al entrar en Calendario, saltar directo al día de hoy — sin que el
+  // usuario tenga que scrollear (solo tiene sentido si hoy cae en esta semana).
+  useEffect(() => {
+    if (loading) return;
+    const el = todayRef.current, container = daysScrollRef.current;
+    if (!el || !container) return;
+    container.scrollTop = el.offsetTop - container.offsetTop;
+  }, [loading, monday]);
 
   return (
     <div className="flex flex-col h-full">
@@ -1287,24 +1298,29 @@ function WeeklyView({
       </div>
 
       {/* Days scroll */}
-      <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-3">
+      <div ref={daysScrollRef} className="flex-1 overflow-y-auto px-4 pb-6 space-y-3">
         {loading && (
           <p className="py-8 text-center text-xs font-semibold" style={{ color: T.text3 }}>Cargando plan semanal…</p>
         )}
         {!loading && error && (
           <p className="py-8 text-center text-xs font-semibold" style={{ color: "#f87171" }}>{error}</p>
         )}
-        {!loading && !error && DAYS.map((d, i) => (
-          <DayBlock key={d} dayLabel={d}
-            sessions={sessions.filter(s => s.dayIndex === i)}
-            isReorderMode={isReorderMode}
-            isToday={isSameDay(addDays(monday, i), new Date())}
-            onToggle={onToggle}
-            onOpen={s => setEditingSession(s)}
-            onReorderTap={s => setReorderingSession(s)}
-            onClassifyExtra={s => setClassifyingExtra(s)}
-          />
-        ))}
+        {!loading && !error && DAYS.map((d, i) => {
+          const isToday = isSameDay(addDays(monday, i), new Date());
+          return (
+            <div key={d} ref={isToday ? todayRef : undefined}>
+              <DayBlock dayLabel={d}
+                sessions={sessions.filter(s => s.dayIndex === i)}
+                isReorderMode={isReorderMode}
+                isToday={isToday}
+                onToggle={onToggle}
+                onOpen={s => setEditingSession(s)}
+                onReorderTap={s => setReorderingSession(s)}
+                onClassifyExtra={s => setClassifyingExtra(s)}
+              />
+            </div>
+          );
+        })}
         {!loading && !error && (
           <>
             <RegenerarPlanCard userId={userId} monday={monday} onApplied={onApplied} showToast={showToast} />
