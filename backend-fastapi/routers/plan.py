@@ -443,10 +443,9 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
 
     # Estadísticas semana
     km_plan = sum(s["km_planificados"] or 0 for s in sesiones)
-    km_real = sum(s["km_realizados"] or 0 for s in sesiones)
     completadas = sum(1 for s in sesiones if s["completado"])
 
-    # Actividades Garmin de la semana (para km reales si no hay km_realizados)
+    # Actividades Garmin de la semana
     garmin_rows = conn.execute(
         """SELECT id_actividad, fecha, tipo_deporte, distancia_m, tiempo_seg, ritmo_medio, fc_media, subtipo_manual
            FROM actividades_garmin
@@ -457,14 +456,16 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
     garmin_cols = ["id_actividad", "fecha", "tipo_deporte", "distancia_m", "tiempo_seg", "ritmo_medio", "fc_media", "subtipo_manual"]
     actividades_garmin = [dict(zip(garmin_cols, r)) for r in garmin_rows]
 
-    # Si no hay km_real en plan pero hay Garmin, usar Garmin — solo carrera/cinta,
-    # no bici/natación/etc.
-    if km_real == 0 and actividades_garmin:
-        km_real = round(
-            sum(a["distancia_m"] or 0 for a in actividades_garmin
-                if (a["tipo_deporte"] or "").lower() in RUNNING_TIPOS) / 1000,
-            1,
-        )
+    # km reales = TODA la carrera/cinta corrida esa semana (Garmin), no solo la que
+    # cayó vinculada a una sesión del plan — si no, una carrera suelta sin sesión ese
+    # día (o un día con dos carreras) desaparecía del total "hecho". Único origen de
+    # verdad, igual que /dashboard — nunca se lee km_realizados de plan_entrenamiento
+    # para el agregado semanal.
+    km_real = round(
+        sum(a["distancia_m"] or 0 for a in actividades_garmin
+            if (a["tipo_deporte"] or "").lower() in RUNNING_TIPOS) / 1000,
+        1,
+    )
 
     # Coach recommendation
     perfil_row = conn.execute(

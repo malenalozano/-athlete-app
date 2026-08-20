@@ -4,7 +4,8 @@
 // Debe reflejar backend-fastapi/constants.py::RUNNING_TIPOS.
 export const RUNNING_TIPOS = new Set([
   "running", "trail_running", "treadmill_running", "track_running",
-  "correr", "carrera", "trail", "run", "indoor_running",
+  "correr", "carrera", "trail", "run", "indoor_running", "treadmill",
+  "road_running",
 ]);
 
 export function esActividadRunning(tipoDeporte: string | null | undefined): boolean {

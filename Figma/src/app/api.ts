@@ -530,6 +530,12 @@ export function clasificarActividadExtra(idActividad: string, subtipo: "RB" | "C
   });
 }
 
+export function borrarActividadGarmin(idActividad: string) {
+  return req<{ ok: boolean }>(`/garmin/actividad/${encodeURIComponent(idActividad)}`, {
+    method: "DELETE",
+  });
+}
+
 export interface HrvEntry {
   fecha: string;
   hrv_ms: number | null;

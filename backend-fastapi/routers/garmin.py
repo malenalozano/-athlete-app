@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
 from database import get_db
-from constants import es_actividad_running
+from constants import es_actividad_running, RUNNING_TIPOS_SQL
 
 logger = logging.getLogger(__name__)
 
@@ -538,6 +538,17 @@ def clasificar_actividad_extra(id_actividad: str, body: SubtipoManualUpdate):
     return {"ok": True}
 
 
+@router.delete("/actividad/{id_actividad}")
+def borrar_actividad(id_actividad: str):
+    """Elimina una actividad Garmin sincronizada (p.ej. mal categorizada o duplicada)
+    para que deje de contarse en cualquier cálculo de km. No afecta al plan."""
+    conn = get_db()
+    conn.execute("DELETE FROM actividades_garmin WHERE id_actividad = ?", (id_actividad,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
 @router.get("/{usuario_id}/stats")
 def get_stats(usuario_id: int):
     conn = get_db()
@@ -545,13 +556,17 @@ def get_stats(usuario_id: int):
     semana_inicio = (hoy - timedelta(days=hoy.weekday())).isoformat()
     mes_inicio = hoy.replace(day=1).isoformat()
 
+    # Solo carrera/cinta cuentan como km — el resto de deportes (bici, natación,
+    # senderismo, fuerza...) no deben inflar el volumen de carrera mostrado.
     km_semana = conn.execute(
-        "SELECT COALESCE(SUM(distancia_m)/1000,0) FROM actividades_garmin WHERE usuario_id = ? AND fecha >= ?",
+        f"""SELECT COALESCE(SUM(distancia_m)/1000,0) FROM actividades_garmin
+            WHERE usuario_id = ? AND fecha >= ? AND tipo_deporte IN {RUNNING_TIPOS_SQL}""",
         (usuario_id, semana_inicio),
     ).fetchone()[0]
 
     km_mes = conn.execute(
-        "SELECT COALESCE(SUM(distancia_m)/1000,0) FROM actividades_garmin WHERE usuario_id = ? AND fecha >= ?",
+        f"""SELECT COALESCE(SUM(distancia_m)/1000,0) FROM actividades_garmin
+            WHERE usuario_id = ? AND fecha >= ? AND tipo_deporte IN {RUNNING_TIPOS_SQL}""",
         (usuario_id, mes_inicio),
     ).fetchone()[0]
 

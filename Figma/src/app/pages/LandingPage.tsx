@@ -20,7 +20,7 @@ import { useUser } from "../context/UserContext";
 import { esActividadRunning } from "../lib/running";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
 import {
-  actualizarSesionCompleta, aplicarSemanaGenerada, borrarSesion, clasificarActividadExtra, crearSesion, generarPlanSemana,
+  actualizarSesionCompleta, aplicarSemanaGenerada, borrarActividadGarmin, borrarSesion, clasificarActividadExtra, crearSesion, generarPlanSemana,
   getDashboard, getPlanCompleto, getPlanSemana, importarPlanCsv, regenerarPlanTotal, sincronizarGarmin,
   fijarCicloOverride, quitarCicloOverride,
   obtenerMacrociclos, fijarMacrocicloOverride, quitarMacrocicloOverride,
@@ -90,6 +90,7 @@ const DAYS = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
 interface Session {
   id: string; // String(SesionPlan.id) — usado para llamar a la API
   dayIndex: number; // 0=Lun … 6=Dom, relativo al lunes de la semana mostrada
+  fecha: string; // YYYY-MM-DD real de la sesión — para saber si quedó "no hecha" (pasado sin completar)
   type: "carrera" | "fuerza";
   subtype: Subtype;
   title: string; duration: string; metric: string;
@@ -186,6 +187,15 @@ function classifySubtype(tipo: string, sesion: string): Subtype {
   return "CAL";
 }
 
+/** Sesión planificada de un día ya pasado (antes de hoy) que no se marcó como
+ * hecha ni tiene actividad Garmin que la respalde. Si luego se mueve a hoy o a
+ * un día futuro, `fecha` cambia y deja de contar como "no hecha" — vuelve a
+ * pendiente automáticamente, sin guardar ningún estado aparte. */
+function isMissed(session: Session): boolean {
+  return session.origin === "plan" && !session.completed && !session.garminBacked
+    && session.fecha < toISODate(new Date());
+}
+
 function defaultTitleFor(type: "carrera" | "fuerza", subtype: Subtype): string {
   if (type === "carrera") {
     return subtype === "RB" ? "Rodaje Base Zona 2" : subtype === "RG" ? "Regenerativo Z1" : subtype === "TL" ? "Tirada Larga" : "Series de Calidad";
@@ -200,6 +210,7 @@ function toSession(s: SesionPlan, monday: Date): Session {
   return {
     id: String(s.id),
     dayIndex,
+    fecha: s.fecha,
     type,
     subtype: classifySubtype(s.tipo, s.sesion),
     title: s.sesion,
@@ -279,6 +290,7 @@ function applyGarminMatching(planSessions: Session[], actividades: ActividadGarm
       extras.push({
         id: `garmin-${dayIndex}-${i}-${a.fecha}-${a.tipo_deporte}`,
         dayIndex,
+        fecha: a.fecha,
         type: esRunning ? "carrera" : "fuerza",
         subtype: esRunning ? (a.subtipo_manual ?? "RB") : "EXTRA",
         title: humanizarTipoActividad(a.tipo_deporte),
@@ -401,20 +413,22 @@ function Badge({ sub, size = "sm", label }: { sub: Subtype; size?: "sm" | "xs"; 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPLETE BUTTON
 // ─────────────────────────────────────────────────────────────────────────────
-function CompleteBtn({ completed, locked, onToggle }: { completed: boolean; locked?: boolean; onToggle: () => void }) {
+function CompleteBtn({ completed, locked, missed, onToggle }: { completed: boolean; locked?: boolean; missed?: boolean; onToggle: () => void }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); if (!locked) onToggle(); }}
       className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${locked ? "cursor-default" : ""}`}
-      title={locked ? "Sincronizado con Garmin — no se puede desmarcar" : undefined}
+      title={locked ? "Sincronizado con Garmin — no se puede desmarcar" : missed ? "No se hizo — puedes moverla a hoy o a un día futuro" : undefined}
       style={{
-        background: completed ? "rgba(16,185,129,0.2)" : T.bgSurf,
-        border: `1px solid ${completed ? "#10b98166" : "#334155"}`,
+        background: completed ? "rgba(16,185,129,0.2)" : missed ? "rgba(239,68,68,0.15)" : T.bgSurf,
+        border: `1px solid ${completed ? "#10b98166" : missed ? "#f8717166" : "#334155"}`,
       }}
     >
       {completed
         ? <Check className="w-3.5 h-3.5" style={{ color: "#34d399" }} />
-        : <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#334155" }} />
+        : missed
+          ? <X className="w-3.5 h-3.5" style={{ color: "#f87171" }} />
+          : <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#334155" }} />
       }
     </button>
   );
@@ -428,13 +442,14 @@ function CardCarrera({ session, isReorderMode, onToggle, onOpen, onReorderTap }:
   onToggle: () => void; onOpen: () => void; onReorderTap: () => void;
 }) {
   const locked = !!session.garminBacked;
+  const missed = isMissed(session);
   return (
     <div
       onClick={() => isReorderMode ? onReorderTap() : onOpen()}
       className="p-3 rounded-xl cursor-pointer transition-all relative"
       style={{
-        background: locked ? "rgba(16,185,129,0.14)" : session.completed ? "rgba(15,23,42,0.5)" : T.bgSurf,
-        border: `1px solid ${isReorderMode ? T.reorder + "80" : locked ? "#10b98180" : T.border}`,
+        background: locked ? "rgba(16,185,129,0.14)" : missed ? "rgba(239,68,68,0.08)" : session.completed ? "rgba(15,23,42,0.5)" : T.bgSurf,
+        border: `1px solid ${isReorderMode ? T.reorder + "80" : locked ? "#10b98180" : missed ? "#f8717155" : T.border}`,
         opacity: session.completed && !locked ? 0.7 : 1,
         boxShadow: isReorderMode ? `0 0 0 1px ${T.reorder}60` : locked ? "0 0 0 1px rgba(16,185,129,0.25)" : "none",
       }}
@@ -449,6 +464,11 @@ function CardCarrera({ session, isReorderMode, onToggle, onOpen, onReorderTap }:
         <div className="flex items-center gap-2 min-w-0">
           <Badge sub={session.subtype} />
           <span className="text-xs font-bold line-clamp-1" style={{ color: T.text1 }}>{session.title}</span>
+          {missed && (
+            <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "rgba(239,68,68,0.15)", color: "#f87171" }}>
+              NO HECHA
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {session.metric && (
@@ -461,7 +481,7 @@ function CardCarrera({ session, isReorderMode, onToggle, onOpen, onReorderTap }:
               ) : null}
             </span>
           )}
-          {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
+          {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} missed={missed} onToggle={onToggle} />}
         </div>
       </div>
       {session.notes && (
@@ -474,21 +494,21 @@ function CardCarrera({ session, isReorderMode, onToggle, onOpen, onReorderTap }:
 // ─────────────────────────────────────────────────────────────────────────────
 // CARD FUERZA
 // ─────────────────────────────────────────────────────────────────────────────
-function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
+function CardFuerza({ session, isReorderMode, onToggle, onOpen, onReorderTap }: {
   session: Session; isReorderMode: boolean;
-  onToggle: () => void; onReorderTap: () => void;
+  onToggle: () => void; onOpen: () => void; onReorderTap: () => void;
 }) {
   const locked = !!session.garminBacked;
+  const missed = isMissed(session);
   return (
     <div
-      onClick={() => isReorderMode ? onReorderTap() : undefined}
-      className="p-3 rounded-xl transition-all relative"
+      onClick={() => isReorderMode ? onReorderTap() : onOpen()}
+      className="p-3 rounded-xl cursor-pointer transition-all relative"
       style={{
-        background: locked ? "rgba(16,185,129,0.14)" : session.completed ? "rgba(15,23,42,0.5)" : T.bgSurf,
-        border: `1px solid ${isReorderMode ? T.reorder + "80" : locked ? "#10b98180" : T.border}`,
+        background: locked ? "rgba(16,185,129,0.14)" : missed ? "rgba(239,68,68,0.08)" : session.completed ? "rgba(15,23,42,0.5)" : T.bgSurf,
+        border: `1px solid ${isReorderMode ? T.reorder + "80" : locked ? "#10b98180" : missed ? "#f8717155" : T.border}`,
         opacity: session.completed && !locked ? 0.7 : 1,
         boxShadow: isReorderMode ? `0 0 0 1px ${T.reorder}60` : locked ? "0 0 0 1px rgba(16,185,129,0.25)" : "none",
-        cursor: isReorderMode ? "pointer" : "default",
       }}
     >
       {isReorderMode && (
@@ -501,8 +521,13 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
         <div className="flex items-center gap-2 min-w-0">
           <Badge sub={session.subtype} label="Gym" />
           <span className="text-xs font-bold line-clamp-1" style={{ color: T.text1 }}>{SUB[session.subtype].label}</span>
+          {missed && (
+            <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "rgba(239,68,68,0.15)", color: "#f87171" }}>
+              NO HECHA
+            </span>
+          )}
         </div>
-        {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} onToggle={onToggle} />}
+        {!isReorderMode && <CompleteBtn completed={session.completed} locked={locked} missed={missed} onToggle={onToggle} />}
       </div>
       {session.notes && (
         <p className="text-[10px] mt-1.5 line-clamp-2" style={{ color: T.text3 }}>{session.notes}</p>
@@ -516,7 +541,7 @@ function CardFuerza({ session, isReorderMode, onToggle, onReorderTap }: {
 // ─────────────────────────────────────────────────────────────────────────────
 function CardExtra({ session, onClassify }: { session: Session; onClassify?: () => void }) {
   const c = SUB[session.subtype];
-  const clasificable = session.type === "carrera" && !!onClassify;
+  const clasificable = !!onClassify;
   return (
     <div
       onClick={clasificable ? onClassify : undefined}
@@ -570,7 +595,7 @@ function DayBlock({ dayLabel, sessions, isReorderMode, onToggle, onOpen, onReord
                 onToggle={() => onToggle(s.id)} onOpen={() => onOpen(s)}
                 onReorderTap={() => onReorderTap(s)} />
             : <CardFuerza key={s.id} session={s} isReorderMode={isReorderMode}
-                onToggle={() => onToggle(s.id)} onReorderTap={() => onReorderTap(s)} />
+                onToggle={() => onToggle(s.id)} onOpen={() => onOpen(s)} onReorderTap={() => onReorderTap(s)} />
         )}
         {sessions.length === 0 && (
           <p className="py-2 text-center text-[10px] italic" style={{ color: "#475569" }}>
@@ -595,6 +620,16 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
   const [duration, setDuration] = useState(session.duration);
   const [metric, setMetric] = useState(session.kmPlanificados != null ? String(session.kmPlanificados) : session.metric.replace(/\s*km\s*$/i, ""));
   const [notes, setNotes] = useState(session.notes);
+  const [subtype, setSubtype] = useState<Subtype>(session.subtype);
+
+  const subtypeOptions: { key: Subtype; label: string }[] = session.type === "carrera"
+    ? [{ key: "RB", label: "Rodaje Base" }, { key: "RG", label: "Regenerativo" }, { key: "CAL", label: "Calidad" }, { key: "TL", label: "Tirada Larga" }]
+    : [{ key: "PULL", label: "Pull" }, { key: "PUSH", label: "Push" }, { key: "FULL", label: "Full" }, { key: "PIERNA", label: "Pierna" }];
+
+  const elegirSubtype = (k: Subtype) => {
+    setSubtype(k);
+    setTitle(defaultTitleFor(session.type, k));
+  };
 
   return (
     <div className="absolute inset-0 z-50 flex items-end" style={{ background: "rgba(2,6,23,0.85)", backdropFilter: "blur(4px)" }}>
@@ -617,8 +652,26 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
             <input value={title} onChange={e => setTitle(e.target.value)} className="w-full rounded-xl py-2.5 px-3 text-xs font-bold outline-none focus:border-cyan-500" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
           </div>
 
+          {/* Reclasificar tipo de sesión */}
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Tipo de sesión</label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {subtypeOptions.map(o => (
+                <button key={o.key} onClick={() => elegirSubtype(o.key)}
+                  className="py-2 rounded-lg text-[9px] font-black border transition-all active:scale-95"
+                  style={{
+                    background: subtype === o.key ? SUB[o.key].bg : T.bgApp,
+                    color: SUB[o.key].color,
+                    border: `1px solid ${SUB[o.key].color}55`,
+                  }}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Duration + Metric */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className={`grid gap-3 ${session.type === "carrera" ? "grid-cols-2" : "grid-cols-1"}`}>
             <div className="space-y-1.5">
               <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Duración</label>
               <div className="relative flex items-center">
@@ -626,13 +679,15 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
                 <input value={duration} onChange={e => setDuration(e.target.value)} className="w-full rounded-xl py-2.5 pl-9 pr-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Volumen (km)</label>
-              <div className="relative flex items-center">
-                <Flame className="absolute left-3 w-4 h-4 text-cyan-400" />
-                <input value={metric} onChange={e => setMetric(e.target.value)} className="w-full rounded-xl py-2.5 pl-9 pr-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
+            {session.type === "carrera" && (
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Volumen (km)</label>
+                <div className="relative flex items-center">
+                  <Flame className="absolute left-3 w-4 h-4 text-cyan-400" />
+                  <input value={metric} onChange={e => setMetric(e.target.value)} className="w-full rounded-xl py-2.5 pl-9 pr-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Notes */}
@@ -723,6 +778,7 @@ function ClassifyExtraModal({ session, onClose, onDone, showToast }: {
   showToast: (text: string, kind?: "error" | "success") => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const esRunning = session.type === "carrera";
 
   const elegir = async (subtipo: "RB" | "CAL" | "TL" | null) => {
     if (!session.garminActId) return;
@@ -737,6 +793,19 @@ function ClassifyExtraModal({ session, onClose, onDone, showToast }: {
     }
   };
 
+  const eliminar = async () => {
+    if (!session.garminActId) return;
+    setSaving(true);
+    try {
+      await borrarActividadGarmin(session.garminActId);
+      showToast("Actividad eliminada.", "success");
+      onDone();
+    } catch {
+      showToast("No se pudo eliminar la actividad.", "error");
+      setSaving(false);
+    }
+  };
+
   const OPCIONES: { key: "RB" | "CAL" | "TL"; label: string }[] = [
     { key: "RB", label: "Rodaje Base" },
     { key: "CAL", label: "Calidad / Series" },
@@ -747,28 +816,40 @@ function ClassifyExtraModal({ session, onClose, onDone, showToast }: {
     <div className="absolute inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(2,6,23,0.8)", backdropFilter: "blur(4px)" }}>
       <div className="w-full rounded-3xl p-5 space-y-4" style={{ background: T.bgSurf, border: `1px solid ${T.border}` }}>
         <div className="text-center">
-          <h3 className="text-sm font-bold" style={{ color: T.text1 }}>¿Qué tipo de carrera fue?</h3>
+          <h3 className="text-sm font-bold" style={{ color: T.text1 }}>
+            {esRunning ? "¿Qué tipo de carrera fue?" : "Actividad no planificada"}
+          </h3>
           <p className="text-xs mt-1 font-semibold" style={{ color: T.text2 }}>{session.title} · {session.metric || "—"}</p>
+          {!esRunning && (
+            <p className="text-[10px] mt-1" style={{ color: T.text3 }}>No es carrera ni cinta — no cuenta en el volumen del plan.</p>
+          )}
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {OPCIONES.map(o => (
-            <button key={o.key} disabled={saving} onClick={() => elegir(o.key)}
-              className="py-3 rounded-xl text-[10px] font-black border transition-all active:scale-95 disabled:opacity-50"
-              style={{
-                background: session.subtype === o.key ? SUB[o.key].bg : T.bgApp,
-                color: SUB[o.key].color,
-                border: `1px solid ${SUB[o.key].color}55`,
-              }}>
-              {o.label}
-            </button>
-          ))}
-        </div>
-        {session.subtype !== "EXTRA" && (
+        {esRunning && (
+          <div className="grid grid-cols-3 gap-2">
+            {OPCIONES.map(o => (
+              <button key={o.key} disabled={saving} onClick={() => elegir(o.key)}
+                className="py-3 rounded-xl text-[10px] font-black border transition-all active:scale-95 disabled:opacity-50"
+                style={{
+                  background: session.subtype === o.key ? SUB[o.key].bg : T.bgApp,
+                  color: SUB[o.key].color,
+                  border: `1px solid ${SUB[o.key].color}55`,
+                }}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {esRunning && session.subtype !== "EXTRA" && (
           <button disabled={saving} onClick={() => elegir(null)}
             className="w-full py-2.5 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: T.border, color: T.text2 }}>
             Quitar clasificación
           </button>
         )}
+        <button disabled={saving} onClick={eliminar}
+          className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+          style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
+          <Trash2 className="w-3.5 h-3.5" /> Eliminar actividad
+        </button>
         <button disabled={saving} onClick={onClose} className="w-full py-2.5 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: T.bgApp, color: T.text3, border: `1px solid ${T.border}` }}>
           Cancelar
         </button>
