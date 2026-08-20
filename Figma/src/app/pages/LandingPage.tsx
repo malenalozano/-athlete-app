@@ -3733,11 +3733,13 @@ export function LandingPage() {
     if (target?.garminBacked) return; // sincronizada de Garmin — no se puede desmarcar
     setSessions(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
     const nextCompleted = target ? !target.completed : true;
-    actualizarSesionCompleta(Number(id), { completado: nextCompleted }).catch(() => {
-      setSessions(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
-      showToast("No se pudo guardar el cambio.");
-    });
-  }, [sessions, showToast]);
+    actualizarSesionCompleta(Number(id), { completado: nextCompleted })
+      .then(fetchWeek) // recalcula km_realizados semanales (una sesión marcada a mano cuenta como hecha)
+      .catch(() => {
+        setSessions(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
+        showToast("No se pudo guardar el cambio.");
+      });
+  }, [sessions, showToast, fetchWeek]);
 
   const handleSave = useCallback((id: string, fields: Partial<Session>) => {
     actualizarSesionCompleta(Number(id), {

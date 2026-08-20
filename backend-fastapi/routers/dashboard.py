@@ -59,6 +59,29 @@ def dashboard(usuario_id: int):
     ).fetchone()
     km_semana_val = round(float(km_semana[0] or 0), 1)
 
+    # + sesiones de carrera marcadas como hechas a mano (sin Garmin) en días sin
+    # actividad Garmin de carrera ese día — mismo criterio que /plan/semana, evita
+    # que "completar" manualmente una sesión no mueva el km semanal en ningún sitio.
+    dias_con_garmin_running = {
+        r[0] for r in conn.execute(
+            f"""SELECT DISTINCT fecha FROM actividades_garmin
+                WHERE usuario_id = ? AND fecha >= ? AND tipo_deporte IN {RUNNING_TIPOS_SQL}""",
+            (usuario_id, semana_inicio),
+        ).fetchall()
+    }
+    manuales = conn.execute(
+        """SELECT fecha, km_realizados, km_planificados FROM plan_entrenamiento
+           WHERE usuario_id = ? AND semana_inicio = ? AND completado = 1
+             AND LOWER(tipo) = 'carrera'""",
+        (usuario_id, semana_inicio),
+    ).fetchall()
+    km_manual_val = sum(
+        (km_real if km_real is not None else km_plan) or 0
+        for fecha, km_real, km_plan in manuales
+        if fecha not in dias_con_garmin_running
+    )
+    km_semana_val = round(km_semana_val + km_manual_val, 1)
+
     # Plan KM semana (lo planificado)
     km_plan = conn.execute(
         "SELECT COALESCE(SUM(km_planificados), 0) FROM plan_entrenamiento WHERE usuario_id = ? AND semana_inicio = ?",

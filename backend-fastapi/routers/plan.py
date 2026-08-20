@@ -458,14 +458,28 @@ def get_plan_semana(usuario_id: int, fecha_inicio: str):
 
     # km reales = TODA la carrera/cinta corrida esa semana (Garmin), no solo la que
     # cayó vinculada a una sesión del plan — si no, una carrera suelta sin sesión ese
-    # día (o un día con dos carreras) desaparecía del total "hecho". Único origen de
-    # verdad, igual que /dashboard — nunca se lee km_realizados de plan_entrenamiento
-    # para el agregado semanal.
-    km_real = round(
-        sum(a["distancia_m"] or 0 for a in actividades_garmin
-            if (a["tipo_deporte"] or "").lower() in RUNNING_TIPOS) / 1000,
-        1,
+    # día (o un día con dos carreras) desaparecía del total "hecho".
+    km_garmin = sum(
+        a["distancia_m"] or 0 for a in actividades_garmin
+        if (a["tipo_deporte"] or "").lower() in RUNNING_TIPOS
+    ) / 1000
+
+    # + sesiones marcadas como hechas a mano (sin Garmin) ese día: el usuario dijo
+    # que las hizo, así que cuentan como km reales igual que si viniera de Garmin.
+    # Si ese día ya hay una actividad Garmin de carrera, no se suma aparte — ya está
+    # contada arriba (evita duplicar km cuando la sesión sí tiene Garmin real).
+    dias_con_garmin_running = {
+        a["fecha"] for a in actividades_garmin
+        if (a["tipo_deporte"] or "").lower() in RUNNING_TIPOS
+    }
+    km_manual = sum(
+        (s["km_realizados"] if s["km_realizados"] is not None else s["km_planificados"]) or 0
+        for s in sesiones
+        if s["completado"] and (s.get("tipo") or "").lower() == "carrera"
+        and s["fecha"] not in dias_con_garmin_running
     )
+
+    km_real = round(km_garmin + km_manual, 1)
 
     # Coach recommendation
     perfil_row = conn.execute(
@@ -711,6 +725,15 @@ def actualizar_sesion(sesion_id: int, update: SesionUpdate):
     fields: dict = {}
     if update.completado is not None:
         fields["completado"] = 1 if update.completado else 0
+        # Si el usuario marca la sesión como hecha a mano (sin actividad Garmin que la
+        # respalde) y no manda km_realizados, asumimos que hizo lo planificado — si no,
+        # la sesión quedaba "completada" pero sin sumar km en ningún sitio.
+        if update.completado and update.km_realizados is None:
+            row = conn.execute(
+                "SELECT km_planificados FROM plan_entrenamiento WHERE id = ?", (sesion_id,)
+            ).fetchone()
+            if row and row[0] is not None:
+                fields["km_realizados"] = row[0]
     if update.km_realizados is not None:
         fields["km_realizados"] = update.km_realizados
     if update.sesion is not None:

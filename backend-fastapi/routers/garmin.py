@@ -33,6 +33,12 @@ def _upsert_actividad(conn, usuario_id: int, act: dict):
     if not act_id:
         return
 
+    excluida = conn.execute(
+        "SELECT 1 FROM actividades_garmin_excluidas WHERE id_actividad = ?", (act_id,)
+    ).fetchone()
+    if excluida:
+        return
+
     tipo_raw = (act.get("activityType", {}) or {}).get("typeKey", "") or ""
     tipo = tipo_raw.lower().replace(" ", "_")
 
@@ -540,10 +546,19 @@ def clasificar_actividad_extra(id_actividad: str, body: SubtipoManualUpdate):
 
 @router.delete("/actividad/{id_actividad}")
 def borrar_actividad(id_actividad: str):
-    """Elimina una actividad Garmin sincronizada (p.ej. mal categorizada o duplicada)
-    para que deje de contarse en cualquier cálculo de km. No afecta al plan."""
+    """Elimina una actividad Garmin sincronizada (p.ej. mal categorizada, duplicada o
+    que no se quiere ver) y la excluye de futuras sincronizaciones — si no, el próximo
+    /sync la vuelve a traer de Garmin Connect y reaparece."""
     conn = get_db()
+    row = conn.execute(
+        "SELECT usuario_id FROM actividades_garmin WHERE id_actividad = ?", (id_actividad,)
+    ).fetchone()
+    usuario_id = row[0] if row else None
     conn.execute("DELETE FROM actividades_garmin WHERE id_actividad = ?", (id_actividad,))
+    conn.execute(
+        "INSERT OR REPLACE INTO actividades_garmin_excluidas (id_actividad, usuario_id, excluido_en) VALUES (?, ?, ?)",
+        (id_actividad, usuario_id, datetime.now().isoformat()),
+    )
     conn.commit()
     conn.close()
     return {"ok": True}
