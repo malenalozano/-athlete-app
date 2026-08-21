@@ -2221,7 +2221,7 @@ function PlanView({ userId, monday, onApplied, showToast }: {
 // seleccionada: 80/20, TL 30-35%, progresión de carga/descarga y separación
 // TL/Calidad. "na" = no aplica (no hay datos suficientes esa semana).
 // ─────────────────────────────────────────────────────────────────────────────
-interface ControlCheck { ok: boolean; na?: boolean; label: string; detail: string; }
+interface ControlCheck { ok: boolean; na?: boolean; warn?: boolean; label: string; detail: string; }
 
 // Progresión de volumen: máx. +10% de una semana a la siguiente (NORMAS
 // ENTRENAMIENTO.pdf). Compartido entre el check de "Control del plan" y el
@@ -2286,20 +2286,21 @@ function calcularControlSemana(semanas: PlanCompleto["semanas"], idx: number, es
     : (() => {
         const ratio = totalRunning / prevRunning;
         if (esDescarga) {
-          // Descarga: solo -30% exacto (redondeado) es correcto. Por debajo de -25% o
-          // por encima de -35% es rojo claramente; y dentro de 25-35% pero distinto de
-          // 30% también es rojo — el objetivo es -30%, no "un rango aceptable".
+          // Descarga: -30% exacto (redondeado) es verde. 25-35% sin llegar a 30% (bordes
+          // exclusive) es amarillo — cerca del objetivo, no dispara alarma pero no es exacto.
+          // ≤25% o ≥35% es rojo — demasiado lejos del objetivo -30%.
           const bajada = (1 - ratio) * 100;
           const bajadaRedondeada = Math.round(bajada);
           const ok = bajadaRedondeada === 30;
+          const warn = !ok && bajadaRedondeada > 25 && bajadaRedondeada < 35;
           const detail = ok
             ? `${bajadaRedondeada}% menos que la semana anterior`
-            : bajada < 25
-              ? `Solo ${bajadaRedondeada}% menos que la semana anterior — reduce muy poco (objetivo -30%)`
-              : bajada > 35
-                ? `${bajadaRedondeada}% menos que la semana anterior — reduce demasiado (objetivo -30%)`
-                : `${bajadaRedondeada}% menos que la semana anterior — ajusta al -30% exacto`;
-          return { ok, label: label3, detail };
+            : warn
+              ? `${bajadaRedondeada}% menos que la semana anterior — cerca del objetivo, pero no exacto (-30%)`
+              : bajada <= 25
+                ? `Solo ${bajadaRedondeada}% menos que la semana anterior — reduce muy poco (objetivo -30%)`
+                : `${bajadaRedondeada}% menos que la semana anterior — reduce demasiado (objetivo -30%)`;
+          return { ok, warn, label: label3, detail };
         }
         const objetivo = prevRunning * 1.10;
         const subida = (ratio - 1) * 100;
@@ -2399,14 +2400,14 @@ function PlanControlCard({ plan, todayIso, userId }: { plan: PlanCompleto; today
       <div className="space-y-2">
         {checks.map((c, i) => (
           <div key={i} className="rounded-xl px-3 py-2.5" style={{
-            background: c.na ? "rgba(255,255,255,0.03)" : c.ok ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.1)",
-            border: `1px solid ${c.na ? T.border : c.ok ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.4)"}`,
+            background: c.na ? "rgba(255,255,255,0.03)" : c.ok ? "rgba(34,197,94,0.08)" : c.warn ? "rgba(234,179,8,0.1)" : "rgba(239,68,68,0.1)",
+            border: `1px solid ${c.na ? T.border : c.ok ? "rgba(34,197,94,0.35)" : c.warn ? "rgba(234,179,8,0.4)" : "rgba(239,68,68,0.4)"}`,
           }}>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.na ? T.text3 : c.ok ? "#4ade80" : "#f87171" }} />
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.na ? T.text3 : c.ok ? "#4ade80" : c.warn ? "#facc15" : "#f87171" }} />
               <span className="text-[11px] font-black" style={{ color: T.text1 }}>{c.label}</span>
             </div>
-            <p className="text-[10px] font-semibold mt-1 ml-4" style={{ color: c.na ? T.text3 : c.ok ? "#86efac" : "#fca5a5" }}>{c.detail}</p>
+            <p className="text-[10px] font-semibold mt-1 ml-4" style={{ color: c.na ? T.text3 : c.ok ? "#86efac" : c.warn ? "#fde047" : "#fca5a5" }}>{c.detail}</p>
           </div>
         ))}
       </div>
