@@ -488,6 +488,7 @@ export interface PlanCompleto {
     km_planificados: number;
     sesiones: { fecha: string; tipo: string; sesion: string; km_planificados: number | null }[];
     actividades_garmin: { fecha: string; tipo_deporte: string; distancia_m: number; tiempo_seg: number; subtipo_manual: string | null }[];
+    es_descarga: boolean | null;
   }[];
 }
 

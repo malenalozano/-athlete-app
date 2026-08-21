@@ -803,9 +803,13 @@ def get_plan_completo(usuario_id: int):
     no reflejan el plan real. Si no hay fecha de inicio guardada, se muestra todo."""
     conn = get_db()
     perfil_row = conn.execute(
-        "SELECT fecha_inicio_entrenamiento FROM usuarios WHERE id = ?", (usuario_id,)
+        """SELECT fecha_inicio_entrenamiento, fecha_objetivo, fecha_objetivo_intermedio,
+                  objetivo_intermedio_nombre
+           FROM usuarios WHERE id = ?""",
+        (usuario_id,),
     ).fetchone()
     fecha_inicio_plan = perfil_row[0] if perfil_row else None
+    fecha_objetivo = perfil_row[1] if perfil_row else None
 
     if fecha_inicio_plan:
         rows = conn.execute(
@@ -837,7 +841,6 @@ def get_plan_completo(usuario_id: int):
                ORDER BY fecha ASC""",
             (usuario_id,),
         ).fetchall()
-    conn.close()
 
     semanas: dict[str, dict] = {}
     for fecha, tipo, sesion, km_planificados, semana_inicio in rows:
@@ -866,6 +869,24 @@ def get_plan_completo(usuario_id: int):
     lista = sorted(semanas.values(), key=lambda w: w["semana_inicio"])
     for w in lista:
         w["km_planificados"] = round(w["km_planificados"], 1)
+        # es_descarga por semana — necesario para comparar la progresión de una
+        # semana de carga contra la ÚLTIMA semana de carga (no contra la de
+        # descarga inmediatamente anterior). Usa la misma lógica que /semana,
+        # que ya respeta los overrides manuales de la pastilla Carga/Descarga
+        # (así que también es robusta a ciclos irregulares, p.ej. 2 cargas + descarga).
+        try:
+            inicio_sem = datetime.strptime(w["semana_inicio"], "%Y-%m-%d")
+            v2_info = _calcular_macrociclo_v2(
+                inicio_sem, fecha_inicio_plan, perfil_row[2] if perfil_row else None,
+                fecha_objetivo, conn, usuario_id,
+            )
+            if v2_info:
+                w["es_descarga"] = v2_info["es_descarga"]
+            else:
+                w["es_descarga"] = _posicion_ciclo(inicio_sem, conn, usuario_id) == 3
+        except Exception:
+            w["es_descarga"] = None
+    conn.close()
     return {"semanas": lista}
 
 
