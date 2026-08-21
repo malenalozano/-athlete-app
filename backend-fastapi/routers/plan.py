@@ -1963,6 +1963,14 @@ def _distribuir_km_y_construir_sesiones(
     return sesiones_plan, km_tl, km_rg, km_calidad, km_rb
 
 
+def _es_sesion_calidad(sesion_nombre: str | None) -> bool:
+    """Mismo criterio que classifySubtype en el frontend: una sesión de Carrera es
+    'Calidad' si no es Tirada/Regenerativo/Rodaje/Descanso. Se usa para decidir a qué
+    sesiones se les generan notas automáticas por defecto."""
+    n = (sesion_nombre or "").lower()
+    return not ("tirada" in n or "regenerativo" in n or "rodaje" in n or "descanso" in n)
+
+
 def _construir_sesiones(
     fecha_inicio: datetime,
     tipo_calidad: str,
@@ -2143,6 +2151,15 @@ def _construir_sesiones(
 
     if not incluir_fuerza:
         sesiones = [s for s in sesiones if s["tipo"] != "Fuerza"]
+
+    # Por defecto, solo las sesiones de Calidad llevan notas generadas automáticamente
+    # (estructura de la sesión: reps, ritmos, bloques). RB/RG/TL/Fuerza/Descanso salen
+    # sin notas — el usuario las añade a mano si quiere. Mismo criterio de "calidad" que
+    # el frontend (classifySubtype): todo lo que no sea Tirada/Regenerativo/Rodaje/Descanso
+    # en una sesión de Carrera cuenta como Calidad.
+    for s in sesiones:
+        if s.get("tipo") != "Carrera" or not _es_sesion_calidad(s.get("sesion")):
+            s["detalles"] = None
 
     return sesiones
 
