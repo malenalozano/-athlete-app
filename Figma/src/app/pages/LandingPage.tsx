@@ -2306,9 +2306,11 @@ function calcularControlSemana(semanas: PlanCompleto["semanas"], idx: number, es
         const bajoMinimo = totalRunning < objetivo * 0.95;
         const excedeMaximo = ratio > 1 + VOLUMEN_INCREMENTO_MAX + 1e-6;
         const ok = !bajoMinimo && !excedeMaximo;
-        const detail = ok ? `${subida.toFixed(0)}% más que la semana anterior`
-          : excedeMaximo ? `${subida.toFixed(0)}% más que la semana anterior — supera el máximo del +10%`
-          : `Solo ${subida.toFixed(0)}% más que la semana anterior (objetivo +10%)`;
+        // "semana de carga anterior", no "semana anterior" a secas — si la semana justo
+        // antes fue de descarga, prevIdx ya la salta y compara con la última de carga real.
+        const detail = ok ? `${subida.toFixed(0)}% más que la semana de carga anterior`
+          : excedeMaximo ? `${subida.toFixed(0)}% más que la semana de carga anterior — supera el máximo del +10%`
+          : `Solo ${subida.toFixed(0)}% más que la semana de carga anterior (objetivo +10%)`;
         return { ok, label: label3, detail };
       })();
 
