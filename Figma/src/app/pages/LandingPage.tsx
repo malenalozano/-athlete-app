@@ -2286,10 +2286,20 @@ function calcularControlSemana(semanas: PlanCompleto["semanas"], idx: number, es
     : (() => {
         const ratio = totalRunning / prevRunning;
         if (esDescarga) {
-          const objetivo = prevRunning * 0.70;
-          const ok = totalRunning <= objetivo * 1.05;
+          // Descarga: solo -30% exacto (redondeado) es correcto. Por debajo de -25% o
+          // por encima de -35% es rojo claramente; y dentro de 25-35% pero distinto de
+          // 30% también es rojo — el objetivo es -30%, no "un rango aceptable".
           const bajada = (1 - ratio) * 100;
-          return { ok, label: label3, detail: ok ? `${bajada.toFixed(0)}% menos que la semana anterior` : `Solo ${bajada.toFixed(0)}% menos que la semana anterior (objetivo -30%)` };
+          const bajadaRedondeada = Math.round(bajada);
+          const ok = bajadaRedondeada === 30;
+          const detail = ok
+            ? `${bajadaRedondeada}% menos que la semana anterior`
+            : bajada < 25
+              ? `Solo ${bajadaRedondeada}% menos que la semana anterior — reduce muy poco (objetivo -30%)`
+              : bajada > 35
+                ? `${bajadaRedondeada}% menos que la semana anterior — reduce demasiado (objetivo -30%)`
+                : `${bajadaRedondeada}% menos que la semana anterior — ajusta al -30% exacto`;
+          return { ok, label: label3, detail };
         }
         const objetivo = prevRunning * 1.10;
         const subida = (ratio - 1) * 100;
