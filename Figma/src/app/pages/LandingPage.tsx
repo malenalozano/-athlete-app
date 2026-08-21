@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link } from "react-router";
 import {
   Calendar, TrendingUp, Award, ChevronLeft, ChevronRight,
-  ArrowLeftRight, X, Clock, Flame, Plus, Check, Save, Trash2,
+  ArrowLeftRight, X, Flame, Plus, Check, Save, Trash2,
   RefreshCw, ArrowRight, Zap, ListChecks, Home, Shield, Footprints,
   Flag, Trophy, Pencil, Upload, HelpCircle, HeartPulse, AlertTriangle, Eye,
   SlidersHorizontal,
@@ -617,26 +617,41 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
   onMove: (id: string, dayIndex: number) => void; days: string[];
 }) {
   const [title, setTitle] = useState(session.title);
-  const [duration, setDuration] = useState(session.duration);
   const [metric, setMetric] = useState(session.kmPlanificados != null ? String(session.kmPlanificados) : session.metric.replace(/\s*km\s*$/i, ""));
   const [notes, setNotes] = useState(session.notes);
   const [subtype, setSubtype] = useState<Subtype>(session.subtype);
+  const [selectedDay, setSelectedDay] = useState(session.dayIndex);
+
+  // Detecta el tipo de calidad actual a partir del título guardado, para poder
+  // ofrecer el selector Fartlek/Progresiva/Intervalos/... y permitir cambiarlo.
+  const detectQualityType = (t: string): (typeof QUALITY_TYPES)[number] => {
+    const tl = t.toLowerCase();
+    if (tl.includes("vo2max")) return "VO2max";
+    if (tl.includes("tempo largo")) return "Tempo Largo";
+    if (tl.includes("tempo")) return "Tempo Run";
+    if (tl.includes("intervalos")) return "Intervalos";
+    if (tl.includes("progresiva")) return "Progresiva";
+    return "Fartlek";
+  };
+  const [qualityType, setQualityType] = useState<(typeof QUALITY_TYPES)[number]>(
+    () => detectQualityType(session.title)
+  );
 
   // Sesiones de calidad (Fartlek/Intervalos): el nº de repeticiones no da un km
   // exacto — depende del ritmo real de cada rep. Dejamos editar N y km por
   // separado; cambiar N recalcula km como estimación, pero km sigue siendo
   // editable a mano encima (así el usuario ajusta al km real que le salió).
   const repsRegex = /(\d+)\s*[×x]\s*\(/;
-  const isFartlek = /fartlek/i.test(session.title);
-  const isIntervalos = /intervalos/i.test(session.title) && !/vo2max/i.test(session.title);
-  const isQualityWithReps = session.subtype === "CAL" && (isFartlek || isIntervalos);
+  const isFartlek = qualityType === "Fartlek";
+  const isIntervalos = qualityType === "Intervalos";
+  const isQualityWithReps = subtype === "CAL" && (isFartlek || isIntervalos);
   const repsMatch = session.notes.match(repsRegex);
-  const [reps, setReps] = useState(repsMatch ? repsMatch[1] : "");
+  const [reps, setReps] = useState(repsMatch ? repsMatch[1] : "6");
 
-  const estimarKmDesdeReps = (n: string) => {
+  const estimarKmDesdeReps = (n: string, tipo: "Fartlek" | "Intervalos" = isFartlek ? "Fartlek" : "Intervalos") => {
     const r = parseInt(n, 10);
     if (!r || r <= 0) return null;
-    if (isFartlek) {
+    if (tipo === "Fartlek") {
       const kmWarmup = Math.round((15 / 6.33) * 10) / 10;
       const kmPerRep = Math.round((1 / 4.917 + 2 / 6.5) * 100) / 100;
       const kmCool = Math.round((5 / 7.0) * 10) / 10;
@@ -647,13 +662,33 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
     return Math.round((5 + r * kmPerRep) * 10) / 10;
   };
 
+  const notasParaReps = (tipo: "Fartlek" | "Intervalos", r: string, km: number | null) => {
+    if (tipo === "Fartlek") {
+      return `15' calentamiento Z2 + ${r || "N"}×(1'@4:55min/km + 2' Z1) + 5' Z1.` +
+        (km != null ? ` Total ~${km} km.` : "") +
+        ` Progresión: comenzar con 6 reps, +1 rep cada ciclo de 4 semanas.`;
+    }
+    return `3 km calentamiento Z2 + ${r || "N"}×(2000m @4:40-4:45min/km + 2' Z1) + 2 km Z1.` +
+      (km != null ? ` Total ~${km} km.` : "") +
+      ` Ritmo Zona 5 — si la última serie es >5s más lenta que la 1ª, parar.`;
+  };
+
   const handleRepsChange = (val: string) => {
     const clean = val.replace(/[^0-9]/g, "");
     setReps(clean);
-    const kmEstimado = estimarKmDesdeReps(clean);
-    if (kmEstimado != null) {
-      setMetric(String(kmEstimado));
-      setNotes(prev => prev.replace(repsRegex, `${clean}×(`));
+    const tipo = isFartlek ? "Fartlek" : "Intervalos";
+    const kmEstimado = estimarKmDesdeReps(clean, tipo);
+    if (kmEstimado != null) setMetric(String(kmEstimado));
+    setNotes(notasParaReps(tipo, clean, kmEstimado));
+  };
+
+  const handleQualityTypeChange = (qt: (typeof QUALITY_TYPES)[number]) => {
+    setQualityType(qt);
+    setTitle(qt);
+    if (qt === "Fartlek" || qt === "Intervalos") {
+      const kmEstimado = estimarKmDesdeReps(reps, qt);
+      if (kmEstimado != null) setMetric(String(kmEstimado));
+      setNotes(notasParaReps(qt, reps, kmEstimado));
     }
   };
 
@@ -663,7 +698,7 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
 
   const elegirSubtype = (k: Subtype) => {
     setSubtype(k);
-    setTitle(defaultTitleFor(session.type, k));
+    setTitle(k === "CAL" ? qualityType : defaultTitleFor(session.type, k));
   };
 
   return (
@@ -705,25 +740,36 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
             </div>
           </div>
 
-          {/* Duration + Metric */}
-          <div className={`grid gap-3 ${session.type === "carrera" ? "grid-cols-2" : "grid-cols-1"}`}>
+          {/* Tipo de calidad (solo si subtype === CAL) */}
+          {subtype === "CAL" && (
             <div className="space-y-1.5">
-              <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Duración</label>
-              <div className="relative flex items-center">
-                <Clock className="absolute left-3 w-4 h-4" style={{ color: T.text3 }} />
-                <input value={duration} onChange={e => setDuration(e.target.value)} className="w-full rounded-xl py-2.5 pl-9 pr-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
+              <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Tipo de calidad</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {QUALITY_TYPES.map(qt => {
+                  const active = qualityType === qt;
+                  const c = SUB.CAL;
+                  return (
+                    <button key={qt} type="button" onClick={() => handleQualityTypeChange(qt)}
+                      className="py-2 rounded-lg text-[9px] font-black border transition-all active:scale-95"
+                      style={{ background: active ? c.bg : T.bgApp, borderColor: active ? c.color : T.border, color: active ? c.color : T.text3, boxShadow: active ? c.glow : "none" }}>
+                      {qt}
+                    </button>
+                  );
+                })}
               </div>
             </div>
-            {session.type === "carrera" && (
-              <div className="space-y-1.5">
-                <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Volumen (km)</label>
-                <div className="relative flex items-center">
-                  <Flame className="absolute left-3 w-4 h-4 text-cyan-400" />
-                  <input value={metric} onChange={e => setMetric(e.target.value)} className="w-full rounded-xl py-2.5 pl-9 pr-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
-                </div>
+          )}
+
+          {/* Metric */}
+          {session.type === "carrera" && (
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>Volumen (km)</label>
+              <div className="relative flex items-center">
+                <Flame className="absolute left-3 w-4 h-4 text-cyan-400" />
+                <input value={metric} onChange={e => setMetric(e.target.value)} className="w-full rounded-xl py-2.5 pl-9 pr-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* N repeticiones (Fartlek/Intervalos) — recalcula km estimado, pero el km sigue editable arriba */}
           {isQualityWithReps && (
@@ -742,15 +788,17 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
 
           {/* Move to day */}
           <div className="space-y-2">
-            <h4 className="text-[10px] font-black uppercase tracking-wider" style={{ color: T.reorder }}>Mover entrenamiento</h4>
+            <h4 className="text-[10px] font-black uppercase tracking-wider" style={{ color: T.reorder }}>
+              Mover entrenamiento{selectedDay !== session.dayIndex ? ` → ${days[selectedDay]}` : ""}
+            </h4>
             <div className="flex justify-between gap-1">
               {days.map((d, i) => (
-                <button key={d} onClick={() => onMove(session.id, i)}
+                <button key={d} onClick={() => { setSelectedDay(i); onMove(session.id, i); }}
                   className="flex-1 py-2 rounded-lg text-[10px] font-black border transition-all"
                   style={{
-                    background: session.dayIndex === i ? T.reorder : T.bgApp,
-                    color: session.dayIndex === i ? T.reorderTx : T.text2,
-                    borderColor: session.dayIndex === i ? T.reorder : T.border,
+                    background: selectedDay === i ? T.reorder : T.bgApp,
+                    color: selectedDay === i ? T.reorderTx : T.text2,
+                    borderColor: selectedDay === i ? T.reorder : T.border,
                   }}>
                   {d.substring(0, 3)}
                 </button>
@@ -760,7 +808,7 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
 
           {/* Actions */}
           <div className="flex gap-3">
-            <button onClick={() => { onSave(session.id, { title, duration, metric, notes }); onClose(); }}
+            <button onClick={() => { onSave(session.id, { title, metric, notes }); onClose(); }}
               className="flex-1 py-3 px-4 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2"
               style={{ background: "linear-gradient(135deg,#06b6d4,#4f46e5)", boxShadow: "0 4px 16px rgba(6,182,212,0.25)" }}>
               <Save className="w-4 h-4" /> Guardar
