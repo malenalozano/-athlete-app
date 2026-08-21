@@ -1650,12 +1650,6 @@ function WeeklyView({
               })}
             </PopoverContent>
           </Popover>
-          {/* Chip próximo hito */}
-          {weekMeta.proximoHitoNombre && weekMeta.semanasHastaHito !== null && (
-            <span className="text-[10px] px-2.5 py-2 rounded-full font-bold" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text2 }}>
-              {weekMeta.proximoHitoNombre} en {weekMeta.semanasHastaHito} sem
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-2">
           {/* Pastilla carga/descarga — clicable: permite forzar el tipo de esta
@@ -2273,13 +2267,22 @@ function calcularControlSemana(semanas: PlanCompleto["semanas"], idx: number, es
         return { ok: true, label: "TL entre 30-35% del volumen", detail: `TL al ${(pctTL * 100).toFixed(0)}% del volumen semanal` };
       })();
 
-  // 3) Progresión: +10% en semana de carga, -30% en semana de descarga (tipo real del backend)
-  const label3 = esDescarga ? "Descarga: -30% vs. semana anterior" : "Progresión: +10% vs. semana anterior";
-  const prevRunning = idx > 0
-    ? semanas[idx - 1].sesiones.filter(s => (s.tipo || "").toLowerCase() !== "fuerza").reduce((a, s) => a + (s.km_planificados || 0), 0)
+  // 3) Progresión: +10% en semana de carga, -30% en semana de descarga (tipo real del backend).
+  // Si la semana anterior fue de descarga, la comparación de carga se hace contra la
+  // ÚLTIMA semana de carga real (no contra la descarga) — así no marca falso positivo
+  // al comparar Carga1 con la Descarga previa. Robusto a ciclos irregulares (p.ej.
+  // 2 semanas de carga + 1 de descarga) porque usa el es_descarga real de cada semana,
+  // que ya respeta los overrides manuales.
+  const label3 = esDescarga ? "Descarga: -30% vs. semana anterior" : "Progresión: +10% vs. última semana de carga";
+  let prevIdx = idx - 1;
+  if (!esDescarga) {
+    while (prevIdx >= 0 && semanas[prevIdx].es_descarga) prevIdx--;
+  }
+  const prevRunning = prevIdx >= 0
+    ? semanas[prevIdx].sesiones.filter(s => (s.tipo || "").toLowerCase() !== "fuerza").reduce((a, s) => a + (s.km_planificados || 0), 0)
     : 0;
-  const check3: ControlCheck = esDescarga === null || idx === 0 || prevRunning === 0
-    ? { ok: true, na: true, label: label3, detail: esDescarga === null ? "Calculando tipo de semana…" : idx === 0 ? "Primera semana del plan, sin referencia" : "Semana anterior sin km planificados" }
+  const check3: ControlCheck = esDescarga === null || idx === 0 || prevIdx < 0 || prevRunning === 0
+    ? { ok: true, na: true, label: label3, detail: esDescarga === null ? "Calculando tipo de semana…" : idx === 0 ? "Primera semana del plan, sin referencia" : prevIdx < 0 ? "Sin semana de carga previa de referencia" : "Semana de referencia sin km planificados" }
     : (() => {
         const ratio = totalRunning / prevRunning;
         if (esDescarga) {
@@ -2414,8 +2417,16 @@ function PlanVolumenChart({ plan, todayIso }: { plan: PlanCompleto; todayIso: st
     return { semana: `S${i + 1}`, km: Math.round(km * 10) / 10, hecho: terminada, activa };
   });
   const allData = semanasKm.map((d, i) => {
-    const prevKm = i > 0 ? semanasKm[i - 1].km : 0;
-    const excede = i > 0 && prevKm > 0 && (d.km - prevKm) / prevKm > VOLUMEN_INCREMENTO_MAX + 1e-6;
+    // Si la semana actual es de carga, comparar contra la última semana de carga
+    // real (saltando descargas de por medio) para no marcar falso positivo tras
+    // una semana de descarga. Robusto a ciclos irregulares.
+    const esDescargaActual = plan.semanas[i].es_descarga;
+    let prevIdx = i - 1;
+    if (!esDescargaActual) {
+      while (prevIdx >= 0 && plan.semanas[prevIdx].es_descarga) prevIdx--;
+    }
+    const prevKm = prevIdx >= 0 ? semanasKm[prevIdx].km : 0;
+    const excede = prevIdx >= 0 && prevKm > 0 && !esDescargaActual && (d.km - prevKm) / prevKm > VOLUMEN_INCREMENTO_MAX + 1e-6;
     return { ...d, excede };
   });
 
