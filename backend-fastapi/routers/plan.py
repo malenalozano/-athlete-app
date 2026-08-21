@@ -354,14 +354,19 @@ def _migrar_fartlek_legacy(conn, sesiones: list) -> list:
             continue
 
         km_actual = s.get("km_planificados") or 0
-        is_legacy_name = "Mac" in sesion_name or "mac" in sesion_name
-        is_low_km = km_actual > 0 and km_actual < 5.0
 
         # Extraer reps ANTES del filtro para poder verificar el cap
         detalles = s.get("detalles", "") or ""
         match = re.search(r"(\d+)[×x]\(", detalles)
         reps_extraidas = int(match.group(1)) if match else None
         is_reps_over_cap = reps_extraidas is not None and reps_extraidas > FARTLEK_REPS_MAX
+
+        is_legacy_name = "Mac" in sesion_name or "mac" in sesion_name
+        # Solo tratamos "km bajos" como señal de formato viejo si además no hay reps
+        # detectables en el texto — si hay reps válidas, es un km editado a mano
+        # por el usuario (p.ej. porque en la práctica el fartlek le sale más corto)
+        # y no debe sobreescribirse en cada carga de la semana.
+        is_low_km = km_actual > 0 and km_actual < 5.0 and reps_extraidas is None
 
         if not (is_legacy_name or is_low_km or is_reps_over_cap):
             continue  # sesión moderna y dentro del rango permitido, nada que hacer

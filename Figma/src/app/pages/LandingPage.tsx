@@ -622,6 +622,41 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
   const [notes, setNotes] = useState(session.notes);
   const [subtype, setSubtype] = useState<Subtype>(session.subtype);
 
+  // Sesiones de calidad (Fartlek/Intervalos): el nº de repeticiones no da un km
+  // exacto — depende del ritmo real de cada rep. Dejamos editar N y km por
+  // separado; cambiar N recalcula km como estimación, pero km sigue siendo
+  // editable a mano encima (así el usuario ajusta al km real que le salió).
+  const repsRegex = /(\d+)\s*[×x]\s*\(/;
+  const isFartlek = /fartlek/i.test(session.title);
+  const isIntervalos = /intervalos/i.test(session.title) && !/vo2max/i.test(session.title);
+  const isQualityWithReps = session.subtype === "CAL" && (isFartlek || isIntervalos);
+  const repsMatch = session.notes.match(repsRegex);
+  const [reps, setReps] = useState(repsMatch ? repsMatch[1] : "");
+
+  const estimarKmDesdeReps = (n: string) => {
+    const r = parseInt(n, 10);
+    if (!r || r <= 0) return null;
+    if (isFartlek) {
+      const kmWarmup = Math.round((15 / 6.33) * 10) / 10;
+      const kmPerRep = Math.round((1 / 4.917 + 2 / 6.5) * 100) / 100;
+      const kmCool = Math.round((5 / 7.0) * 10) / 10;
+      return Math.round((kmWarmup + r * kmPerRep + kmCool) * 10) / 10;
+    }
+    // Intervalos: 3km calentamiento + N×(2000m + 2' Z1) + 2km enfriamiento
+    const kmPerRep = 2.0 + Math.round((2 / 6.5) * 100) / 100;
+    return Math.round((5 + r * kmPerRep) * 10) / 10;
+  };
+
+  const handleRepsChange = (val: string) => {
+    const clean = val.replace(/[^0-9]/g, "");
+    setReps(clean);
+    const kmEstimado = estimarKmDesdeReps(clean);
+    if (kmEstimado != null) {
+      setMetric(String(kmEstimado));
+      setNotes(prev => prev.replace(repsRegex, `${clean}×(`));
+    }
+  };
+
   const subtypeOptions: { key: Subtype; label: string }[] = session.type === "carrera"
     ? [{ key: "RB", label: "Rodaje Base" }, { key: "RG", label: "Regenerativo" }, { key: "CAL", label: "Calidad" }, { key: "TL", label: "Tirada Larga" }]
     : [{ key: "PULL", label: "Pull" }, { key: "PUSH", label: "Push" }, { key: "FULL", label: "Full" }, { key: "PIERNA", label: "Pierna" }];
@@ -689,6 +724,15 @@ function RunningEditModal({ session, onClose, onSave, onToggle, onDelete, onMove
               </div>
             )}
           </div>
+
+          {/* N repeticiones (Fartlek/Intervalos) — recalcula km estimado, pero el km sigue editable arriba */}
+          {isQualityWithReps && (
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black uppercase tracking-wider block" style={{ color: T.text3 }}>N (repeticiones) — km es solo estimado, ajústalo si en la práctica te sale distinto</label>
+              <input value={reps} onChange={e => handleRepsChange(e.target.value)} inputMode="numeric" placeholder="Ej: 6"
+                className="w-full rounded-xl py-2.5 px-3 text-xs font-bold outline-none" style={{ background: T.bgApp, border: `1px solid ${T.border}`, color: T.text1 }} />
+            </div>
+          )}
 
           {/* Notes */}
           <div className="space-y-1.5">
