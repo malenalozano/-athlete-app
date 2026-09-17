@@ -1,24 +1,7 @@
-# Athlete - Docs Rápidas
+# Documentation
 
-## Punto de entrada oficial
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — system overview, layers, database, Garmin ingestion, deployment.
+- [`MARATÓN.pdf`](MARATÓN.pdf) — the marathon training methodology the planning engine implements.
 
-La app se ejecuta siempre desde:
-
-```bash
-streamlit run app.py
-```
-
-No usar `src/app.py` (retirado para evitar confusiones).
-
-## Estructura principal
-
-- `app.py`: router principal y navegación multipágina.
-- `pages/`: vistas de Dashboard, Plan, Diario, Garmin, Ejercicios y Entrenador.
-- `src/core/`: lógica de negocio y componentes reutilizables.
-- `src/db/`: acceso a base de datos.
-- `src/garmin/`: integración Garmin y sincronización.
-- `tests/`: pruebas.
-
-## Nota
-
-El código refactorizado se conserva en módulos pequeños dentro de `src/core/`.
+The repository root [`README.md`](../README.md) is the entry point; `CLAUDE.md` holds day-to-day working notes
+and the decision log.
